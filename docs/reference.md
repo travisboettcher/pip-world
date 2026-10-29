@@ -15,7 +15,7 @@ Internal only: `https://agent-world.internal.example.io` (`/state`, `/events`, `
 - `LLM_BACKEND`: `anthropic` (default) | `openai_compat` (set `LLM_BASE_URL`, e.g. `http://ollama:11434/v1`) | `fake`
 - `PACING`: `heartbeat_events` (default) | `fixed_tick` | `manual` (only `POST /tick`)
 - `MAX_CALLS_PER_TICK` (default 3): extra LLM calls in one wake happen only when a tool result needs a response (currently `web_search` and tool errors). `1` restores one-call-per-tick.
-- `TOOLS`: comma list of registered tools. `DAILY_TOKEN_BUDGET` caps spend; ticks pause when hit.
+- `TOOLS`: comma list of registered tools. `DAILY_TOKEN_BUDGET` (default 5M, ~$0.70/day on Haiku 5.5) caps spend; ticks pause when hit.
 
 Add a backend in `brain/app/llm/` and register it in `llm/__init__.py`; add a pacing policy in `pacing.py`.
 `brain/persona.md` is re-read every tick.

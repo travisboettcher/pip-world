@@ -27,6 +27,10 @@ REPLY_TIMEOUT = 120   # Pip wakes within ~MIN_TICK_INTERVAL of a message, then t
 LINGER = 6            # keep listening this long after the reply for follow-up actions
 JSON_MODE = False
 
+# USD per million tokens (input, output) for the cost estimate in `usage`. Override with
+# PIP_PRICE_IN / PIP_PRICE_OUT. Flat rates: prompts here stay far below the >100k-token tier.
+PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
+
 
 def c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m" if TTY else text
@@ -130,15 +134,30 @@ def cmd_status(pip: Pip, a) -> None:
     out_json(st) if JSON_MODE else print(describe_state(st))
 
 
+def prices_for(model: str) -> tuple[float, float] | None:
+    if os.environ.get("PIP_PRICE_IN") and os.environ.get("PIP_PRICE_OUT"):
+        return float(os.environ["PIP_PRICE_IN"]), float(os.environ["PIP_PRICE_OUT"])
+    return PRICES.get(model)
+
+
 def cmd_usage(pip: Pip, a) -> None:
-    u = pip.call("/state")["usage"]
+    st = pip.call("/state")
+    u, price = st["usage"], prices_for(st["model"])
+    cost = (u["input_tokens"] * price[0] + u["output_tokens"] * price[1]) / 1e6 if price else None
     if JSON_MODE:
-        return out_json(u)
+        return out_json({**u, "model": st["model"], "estimated_cost_usd": cost})
     pct = 100 * u["total_tokens"] / u["budget"] if u["budget"] else 0
-    bar = "#" * int(pct // 5) + "." * (20 - int(pct // 5))
+    filled = min(20, int(pct // 5))
+    bar = "#" * filled + "." * (20 - filled)
     avg = u["total_tokens"] // u["calls"] if u["calls"] else 0
-    print(f"{u['day']}: [{bar}] {pct:.0f}%  {u['total_tokens']:,}/{u['budget']:,} tokens")
+    print(f"{u['day']}: [{bar}] {pct:.1f}%  {u['total_tokens']:,}/{u['budget']:,} tokens")
     print(f"  {u['calls']} LLM calls ({u['input_tokens']:,} in, {u['output_tokens']:,} out), ~{avg:,} tokens/call")
+    if not price:
+        return print(dim(f"  (no price known for {st['model']}; set PIP_PRICE_IN / PIP_PRICE_OUT to see costs)"))
+    mix_in = u["input_tokens"] / u["total_tokens"] if u["total_tokens"] else 0.9
+    per_mtok = mix_in * price[0] + (1 - mix_in) * price[1]  # blended $/M tokens at today's in/out mix
+    cap = u["budget"] * per_mtok / 1e6
+    print(f"  est. cost today ${cost:.4f}  |  full budget at this mix ~${cap:.2f}/day (~${cap * 30:.0f}/month)")
 
 
 def cmd_health(pip: Pip, a) -> None:
