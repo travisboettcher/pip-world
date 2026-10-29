@@ -10,6 +10,7 @@ import httpx
 from .config import Settings
 from .llm.base import ToolSpec
 from .state import RESOLVABLE, SECTIONS, State, clamp
+from .world import FOOD_DEFAULT
 
 
 @dataclass
@@ -79,11 +80,21 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"now {activity}")
 
 
-@tool("eat", "Eat a meal. Lowers hunger.", _obj({}, []))
+@tool("eat", "Eat. With no `item` you have a plain meal (lowers hunger). Name a food item you own (e.g. "
+      "something you harvested) to eat that instead - it is used up and usually fills you more.",
+      _obj({"item": {"type": "string", "description": "optional: a food item from your belongings"}}, []))
 async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     a = ctx.state.agent()
-    ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4), activity="eating", description="")
-    return ToolResult("ate a meal")
+    if not args.get("item"):
+        ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4), activity="eating", description="")
+        return ToolResult("ate a meal")
+    item, err = ctx.state.find_item(args["item"], kind="food")
+    if not item:
+        return ToolResult(f"error: {err}", followup=True)
+    ctx.state.take_item(item["id"])
+    value = float(item["attrs"].get("food_value", FOOD_DEFAULT))
+    ctx.state.update_agent(hunger=clamp(a["hunger"] - value), activity="eating", description=f"eating {item['name']}")
+    return ToolResult(f"ate {item['name']}")
 
 
 @tool("rest", "Rest to recover energy until you choose another activity.", _obj({}, []))
@@ -115,6 +126,78 @@ async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
 async def resolve_note(ctx: ToolContext, args: dict) -> ToolResult:
     err = ctx.state.resolve_memory(int(args["id"]), str(args.get("outcome") or "")[:300])
     return ToolResult(f"error: {err}" if err else f"crossed off #{args['id']}", followup=bool(err))
+
+
+@tool("use_item", "Use something you own for a purpose. Materials (like brass) are used up; tools are kept.",
+      _obj({"item": {"type": "string"}, "purpose": {"type": "string"},
+            "quantity": {"type": "integer", "description": "materials only, default 1"}}, ["item", "purpose"]))
+async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
+    item, err = ctx.state.find_item(args["item"])
+    if not item:
+        return ToolResult(f"error: {err}", followup=True)
+    if item["kind"] == "seed":
+        return ToolResult("error: seeds are planted with the plant tool", followup=True)
+    if item["kind"] == "food":
+        return ToolResult("error: food is eaten with the eat tool", followup=True)
+    if item["kind"] == "tool":
+        return ToolResult(f"used your {item['name']} (you keep it)")
+    qty = max(1, int(args.get("quantity") or 1))
+    if qty > item["qty"]:
+        return ToolResult(f"error: you only have {item['qty']} {item['name']}", followup=True)
+    ctx.state.take_item(item["id"], qty)
+    left = item["qty"] - qty
+    return ToolResult(f"used {qty} {item['name']} ({left} left)" if left else f"used up your last {item['name']}")
+
+
+def _plot_arg(args: dict):
+    try:
+        return int(args["plot"]) if args.get("plot") not in (None, "") else None
+    except (TypeError, ValueError):
+        return "bad"
+
+
+@tool("plant", "Plant a seed from your belongings in a garden plot. It grows over real time and you'll "
+      "be told when it's ready to harvest.",
+      _obj({"seed": {"type": "string"}, "plot": {"type": "integer", "description": "optional; default first empty plot"}},
+           ["seed"]))
+async def plant(ctx: ToolContext, args: dict) -> ToolResult:
+    item, err = ctx.state.find_item(args["seed"], kind="seed")
+    if not item:
+        return ToolResult(f"error: {err}", followup=True)
+    plots = ctx.state.garden()
+    plot = _plot_arg(args)
+    if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
+        return ToolResult(f"error: plots are numbered 1-{len(plots)}", followup=True)
+    if plot is None:
+        free = [p["plot"] for p in plots if p["state"] == "empty"]
+        if not free:
+            return ToolResult("error: every plot is in use; harvest one first", followup=True)
+        plot = free[0]
+    elif plots[plot - 1]["state"] != "empty":
+        return ToolResult(f"error: plot {plot} is already growing {plots[plot - 1]['crop']}", followup=True)
+    at = item["attrs"]
+    ctx.state.take_item(item["id"])
+    ctx.state.plant(plot, item["name"], at["crop"], float(at["grow_minutes"]), int(at["yield"]), float(at["food_value"]))
+    mins = max(1, round(float(at["grow_minutes"]) / ctx.settings.garden_speed))
+    return ToolResult(f"planted {item['name']} in plot {plot}; {at['crop']} will be ready in about {mins} min")
+
+
+@tool("harvest", "Harvest a ripe crop from the garden. Gives you food to eat.",
+      _obj({"plot": {"type": "integer", "description": "optional; default the first ripe plot"}}, []))
+async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
+    plots = ctx.state.garden()
+    plot = _plot_arg(args)
+    if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
+        return ToolResult(f"error: plots are numbered 1-{len(plots)}", followup=True)
+    ripe = [p for p in plots if p["state"] == "ready" and plot in (None, p["plot"])]
+    if not ripe:
+        growing = [p for p in plots if p["state"] == "growing"]
+        hint = f"; next ready in about {min(p['ready_in_min'] for p in growing)} min" if growing else "; nothing is planted"
+        return ToolResult(f"nothing ripe to harvest{hint}")
+    p = ripe[0]
+    ctx.state.clear_plot(p["plot"])
+    ctx.state.add_item(p["crop"], p["yield"], "food", f"fresh {p['crop']} from your garden", {"food_value": p["food_value"]})
+    return ToolResult(f"harvested {p['yield']} {p['crop']} from plot {p['plot']}")
 
 
 @tool("web_search", "Search the web for something you are curious about.",

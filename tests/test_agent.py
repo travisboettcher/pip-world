@@ -286,3 +286,131 @@ def test_archived_hidden_unless_asked(tmp_path):
     st.db.execute("UPDATE memories SET status = 'archived' WHERE id = ?", (b,)); st.db.commit()
     assert [m["id"] for m in st.memories("diary")] == [a]
     assert [m["id"] for m in st.memories("diary", status="archived")] == [b]
+
+
+# --- belongings & garden ----------------------------------------------------
+def reg(name):
+    return tools_mod.REGISTRY[name][1]
+
+
+@pytest.mark.asyncio
+async def test_starter_seeds_once_only(tmp_path):
+    s, st, *_ = make(tmp_path)
+    assert {i["name"] for i in st.items()} == {"tomato seeds", "carrot seeds"}
+    st.take_item(st.find_item("tomato")[0]["id"], 3)  # used them all up
+    st2 = State(s)  # "restart"
+    assert [i["name"] for i in st2.items()] == ["carrot seeds"]
+
+
+def test_items_stack_and_fuzzy_find(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.add_item("Tiny Needle File", 1, "tool")
+    again = st.add_item("tiny needle file", 1, "tool")
+    assert again["qty"] == 2 and len([i for i in st.items() if "file" in i["name"].lower()]) == 1
+    assert st.find_item("needle file")[0]["name"] == "Tiny Needle File"
+    assert st.find_item("seeds")[0] is None  # ambiguous: tomato + carrot
+    assert "you don't have" in st.find_item("anvil")[1]
+    with pytest.raises(ValueError):
+        st.add_item("x", 1, "weapon")
+
+
+@pytest.mark.asyncio
+async def test_use_item_consumes_materials_not_tools(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    st.add_item("brass", 3, "material"); st.add_item("needle file", 1, "tool")
+    assert "2 left" in (await reg("use_item")(agent.ctx, {"item": "brass", "purpose": "anchor"})).text
+    assert "keep it" in (await reg("use_item")(agent.ctx, {"item": "file", "purpose": "filing"})).text
+    assert st.find_item("file")[0]["qty"] == 1
+    assert "only have 2" in (await reg("use_item")(agent.ctx, {"item": "brass", "purpose": "x", "quantity": 5})).text
+    assert "plant" in (await reg("use_item")(agent.ctx, {"item": "carrot seeds", "purpose": "x"})).text
+
+
+@pytest.mark.asyncio
+async def test_garden_plant_harvest_eat(tmp_path):
+    s, st, _, agent = make(tmp_path, garden_speed=1e6)  # grows instantly
+    r = await reg("plant")(agent.ctx, {"seed": "tomato"})
+    assert "plot 1" in r.text and st.find_item("tomato seeds")[0]["qty"] == 2
+    await reg("plant")(agent.ctx, {"seed": "carrot seeds", "plot": 3})
+    assert "already growing" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 1})).text
+    assert "numbered 1-3" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 9})).text
+    time.sleep(0.05)  # speed 1e6 still needs a few ms
+    ready = [g["crop"] for g in st.garden_newly_ready()]
+    assert sorted(ready) == ["carrots", "tomatoes"] and st.garden_newly_ready() == []  # reported once
+    assert "harvested 3 tomatoes" in (await reg("harvest")(agent.ctx, {})).text
+    assert st.find_item("tomatoes")[0]["kind"] == "food"
+    st.update_agent(hunger=0.9)
+    await reg("eat")(agent.ctx, {"item": "tomatoes"})
+    assert st.agent()["hunger"] == pytest.approx(0.4)  # tomatoes restore 0.5, a plain meal only 0.4
+    assert st.find_item("tomatoes")[0]["qty"] == 2
+    assert "error" in (await reg("eat")(agent.ctx, {"item": "brass"})).text
+
+
+@pytest.mark.asyncio
+async def test_harvest_when_nothing_ripe(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    assert "nothing is planted" in (await reg("harvest")(agent.ctx, {})).text
+    await reg("plant")(agent.ctx, {"seed": "carrot"})
+    assert "next ready in about" in (await reg("harvest")(agent.ctx, {})).text
+
+
+@pytest.mark.asyncio
+async def test_perception_shows_belongings_and_garden_and_ripe_wakes(tmp_path):
+    s, st, backend, agent = make(tmp_path, garden_speed=1e6)
+    agent.tools = tools_mod.enabled_tools(Settings(tools=["use_item", "plant", "harvest", "eat"]))
+    await reg("plant")(agent.ctx, {"seed": "tomato"})
+    time.sleep(0.05)
+    agent.check_world()
+    assert agent._wake.is_set()  # ripe crop wakes Pip
+    assert any(e["kind"] == "garden" for e in st.events(10))
+    await agent.tick("event")
+    p = backend.calls[0]["messages"][0]["content"]
+    assert "Your belongings:" in p and "carrot seeds x3 (seed)" in p
+    assert "plot 1: tomatoes are RIPE" in p and "plot 2: empty" in p
+
+
+# --- diary moments -----------------------------------------------------------
+def prompt_of(backend, i=-1):
+    return backend.calls[i]["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_moments_offered_then_cleared_by_a_diary_entry(tmp_path):
+    s, st, backend, agent = make(tmp_path)
+    await agent.tick("quiet")
+    assert "this happened:" not in prompt_of(backend)  # ordinary tick: nothing notable
+    st.log("inbox", id=1, text="Did you find the file?")
+    st.log("gift", sender="Morgan", item="tiny needle file", qty=1, item_kind="tool")
+    st.log("garden", plot=2, crop="carrots")
+    await agent.tick("event")
+    full = prompt_of(backend)
+    p = full.split("this happened:")[1]
+    assert full.rstrip().endswith("skip it.")  # the ask is the last thing in the prompt
+    assert "Morgan gave you 1 x tiny needle file" in p and "Your carrots in plot 2 ripened" in p
+    assert "A visitor came by and talked with you (1 message;" in p
+    assert "Did you find the file" not in p  # visitor text must not be quoted back at Pip
+    st.add_memory("Morgan brought me a file. It meant a lot.", "diary")
+    await agent.tick("later")
+    assert "this happened:" not in prompt_of(backend)  # writing a diary entry clears them
+
+
+@pytest.mark.asyncio
+async def test_moments_expire_after_a_few_showings(tmp_path):
+    s, st, backend, agent = make(tmp_path, moment_showings=2)
+    st.log("inbox", id=1, text="hello there")
+    for _ in range(3):
+        await agent.tick("t")
+    shown = ["this happened:" in backend.calls[i]["messages"][0]["content"] for i in range(3)]
+    assert shown == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_moments_cover_planting_harvest_and_finishing(tmp_path):
+    s, st, backend, agent = make(tmp_path)
+    st.log("tool", tool="plant", args={"seed": "tomato"}, result="planted tomato seeds in plot 1; tomatoes will be ready in about 60 min")
+    st.log("tool", tool="harvest", args={}, result="harvested 3 tomatoes from plot 1")
+    st.log("tool", tool="resolve_note", args={"id": 4, "outcome": "it works"}, result="crossed off #4")
+    st.log("tool", tool="set_activity", args={"activity": "filing"}, result="now filing")  # ordinary
+    await agent.tick("t")
+    p = prompt_of(backend).split("this happened:")[1]
+    assert "Planted tomato seeds" in p and "Harvested 3 tomatoes" in p and "crossed off #4: it works" in p
+    assert "now filing" not in p

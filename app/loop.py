@@ -28,6 +28,7 @@ class Agent:
         self._force = False
         self._budget_logged = False
         self.ticks = 0
+        self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
 
     # --- wake control ------------------------------------------------
     def request_wake(self, force: bool = False) -> None:
@@ -70,12 +71,18 @@ class Agent:
             monitor.cancel()
 
     async def _monitor(self) -> None:
-        """Cheap, LLM-free: advance stats and wake the agent when a threshold is crossed."""
+        """Cheap, LLM-free: advance stats, ripen crops, and wake the agent when something needs it."""
         while True:
             await asyncio.sleep(self.s.monitor_seconds)
-            for alert in self.state.apply_decay():
-                self.state.log("alert", stat=alert)
-                self.request_wake()
+            self.check_world()
+
+    def check_world(self) -> None:
+        for alert in self.state.apply_decay():
+            self.state.log("alert", stat=alert)
+            self.request_wake()
+        for crop in self.state.garden_newly_ready():
+            self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
+            self.request_wake()
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
@@ -158,6 +165,73 @@ class Agent:
                 return open(p).read()
         return "You are a small autonomous creature living in a room."
 
+    def _belongings(self) -> list[str]:
+        lines: list[str] = []
+        if "use_item" in self.tools:
+            items = self.state.items()
+            lines.append("Your belongings:")
+            lines += [f"- {i['name']} x{i['qty']} ({i['kind']})" + (f": {i['description']}" if i["description"] else "")
+                      for i in items] or ["- (nothing)"]
+        if "plant" in self.tools:
+            lines.append("Your garden:")
+            for g in self.state.garden():
+                if g["state"] == "empty":
+                    lines.append(f"- plot {g['plot']}: empty")
+                elif g["state"] == "ready":
+                    lines.append(f"- plot {g['plot']}: {g['crop']} are RIPE - harvest them")
+                else:
+                    lines.append(f"- plot {g['plot']}: {g['crop']} growing, ready in about {g['ready_in_min']} min")
+        return lines
+
+    @staticmethod
+    def _moment_text(e: dict) -> str | None:
+        """One-line description of an event worth a diary entry, or None for ordinary events."""
+        d, k = e["data"], e["kind"]
+        if k == "gift":
+            return f"{d['sender']} gave you {d['qty']} x {d['item']}"
+        if k == "garden":
+            return f"Your {d['crop']} in plot {d['plot']} ripened"
+        if k == "tool":
+            t, a, r = d["tool"], d["args"], str(d.get("result", ""))
+            if t == "plant" and r.startswith("planted"):
+                return r.capitalize()
+            if t == "harvest" and r.startswith("harvested"):
+                return r.capitalize()
+            if t == "resolve_note" and r.startswith("crossed off"):
+                return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
+        return None  # visitor messages are summarised separately in _moments
+
+    def _moments(self) -> list[str]:
+        """Notable things since Pip's last diary entry, offered a few times so they aren't forgotten.
+
+        Deterministic about *when* something is worth a diary line; Pip decides what (if anything) to write.
+        """
+        if "note_to_self" not in self.tools:
+            return []
+        last = self.state.memories("diary", limit=1)
+        since = max(time.time() - self.s.moment_window_minutes * 60, last[0]["ts"] if last else 0)
+        moments, visit_ids = [], []
+        for e in self.state.events_since(since):  # oldest first
+            if self._moment_shown.get(e["id"], 0) >= self.s.moment_showings:
+                continue
+            if e["kind"] == "inbox":
+                visit_ids.append(e["id"])  # never quote visitor text here: Pip would answer it again
+            elif text := self._moment_text(e):
+                moments.append(([e["id"]], text))
+        if visit_ids:
+            n = len(visit_ids)
+            moments.insert(0, (visit_ids, f"A visitor came by and talked with you ({n} message{'s' if n != 1 else ''}; "
+                                          "you already replied, don't answer again)"))
+        moments = moments[-5:]
+        for ids, _ in moments:
+            for event_id in ids:
+                self._moment_shown[event_id] = self._moment_shown.get(event_id, 0) + 1
+        if not moments:
+            return []
+        return ["Since you last wrote in your diary, this happened:"] + [f"- {text}" for _, text in moments] + \
+               ["If any of it mattered to you, write a short diary entry now about how it felt "
+                "(note_to_self, section diary) - in your own voice, not a list of facts. If none of it did, skip it."]
+
     def _journal(self) -> list[str]:
         def fmt(m): return f"- #{m['id']} {m['text'][:200]}"
         lines: list[str] = []
@@ -183,6 +257,7 @@ class Agent:
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
         ]
+        lines += self._belongings()
         lines += self._journal()
         events = [e for e in reversed(self.state.events(EVENT_CONTEXT * 2)) if e["kind"] not in HIDDEN_EVENT_KINDS]
         if events:
@@ -197,4 +272,5 @@ class Agent:
         if inbox:
             lines.append("Inbox (visitors):")
             lines += [f"- {m['text']}" for m in inbox]
+        lines += self._moments()  # last, so it is the freshest thing in the prompt
         return "\n".join(lines)

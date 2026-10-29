@@ -42,3 +42,18 @@ def test_notes_endpoint(tmp_path):
         notes = c.get("/notes").json()
         assert set(notes) == {"diary", "todo", "wishlist", "ambitions", "learned"}
         assert notes["wishlist"][0]["text"] == "a wish"
+
+
+def test_gift_endpoint_and_inventory(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        r = c.post("/items", json={"name": "tiny needle file", "kind": "tool", "sender": "Morgan",
+                                   "message": "For the clock!"}).json()
+        assert r["queued"] and r["item"]["qty"] == 1
+        names = [i["name"] for i in c.get("/items").json()]
+        assert "tiny needle file" in names and "tomato seeds" in names
+        ev = c.get("/events?limit=20").json()
+        assert any(e["kind"] == "gift" and e["data"]["item"] == "tiny needle file" for e in ev)
+        assert any(e["kind"] == "inbox" and "Morgan gave you 1 x tiny needle file" in e["data"]["text"] for e in ev)
+        assert c.post("/items", json={"name": "x", "kind": "weapon"}).status_code == 422
+        assert [g["state"] for g in c.get("/garden").json()] == ["empty"] * 3

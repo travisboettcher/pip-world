@@ -2,8 +2,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from .config import Settings
 from .llm import get_backend
@@ -16,6 +16,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 class InboxItem(BaseModel):
     text: str
+
+
+class Gift(BaseModel):
+    name: str
+    qty: int = Field(1, ge=1, le=999)
+    kind: str = "tool"
+    description: str = ""
+    attrs: dict = {}
+    sender: str = "A visitor"
+    message: str = ""
 
 
 def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
@@ -61,6 +71,30 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         """status=archived shows archived entries; otherwise they're hidden."""
         st = app.state.agent.state
         return {sec: st.memories(sec, status=status, limit=min(limit, 500)) for sec in SECTIONS}
+
+    @app.get("/items")
+    def get_items():
+        return app.state.agent.state.items()
+
+    @app.get("/garden")
+    def get_garden():
+        return app.state.agent.state.garden()
+
+    @app.post("/items")
+    def give_item(g: Gift):
+        """A visitor gives Pip something: it joins the inventory and Pip is told (so it can react)."""
+        agent: Agent = app.state.agent
+        try:
+            item = agent.state.add_item(g.name, g.qty, g.kind, g.description, g.attrs)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        text = f"{g.sender} gave you {g.qty} x {item['name']} ({item['kind']})" \
+               + (f": {item['description']}" if item["description"] else "") + "." + (f" {g.message}" if g.message else "")
+        inbox_id = agent.state.add_inbox(text)
+        agent.state.log("gift", sender=g.sender, item=item["name"], qty=g.qty, item_kind=item["kind"])
+        agent.state.log("inbox", id=inbox_id, text=text)
+        agent.request_wake()
+        return {"queued": True, "id": inbox_id, "item": item}
 
     @app.post("/inbox")
     def post_inbox(item: InboxItem):

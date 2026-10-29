@@ -6,6 +6,7 @@ import time
 from datetime import date
 
 from .config import Settings
+from .world import KINDS, STARTER_ITEMS, normalize_attrs
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent (
@@ -31,6 +32,18 @@ CREATE TABLE IF NOT EXISTS memories (
   status TEXT NOT NULL DEFAULT 'open',
   outcome TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'tool',
+  qty INTEGER NOT NULL DEFAULT 1, attrs TEXT NOT NULL DEFAULT '{}', ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS garden (
+  plot INTEGER PRIMARY KEY, seed TEXT NOT NULL, crop TEXT NOT NULL,
+  planted_at REAL NOT NULL, ready_at REAL NOT NULL, yield INTEGER NOT NULL,
+  food_value REAL NOT NULL, notified INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS usage (
   day TEXT PRIMARY KEY, input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0
@@ -69,6 +82,10 @@ class State:
                     "VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', ?)",
                     (time.time(),),
                 )
+            if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
+                for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
+                    self.add_item(it["name"], it["qty"], it["kind"], it["description"], it["attrs"])
+                self.db.execute("INSERT INTO meta VALUES ('starter_items', '1')")
             self.db.commit()
 
     # --- agent stats -------------------------------------------------
@@ -134,6 +151,12 @@ class State:
             rows = self.db.execute(q, args).fetchall()
         return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
 
+    def events_since(self, ts: float, limit: int = 2000) -> list[dict]:
+        """Events newer than ts, oldest first."""
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM events WHERE ts > ? ORDER BY id ASC LIMIT ?", (ts, limit)).fetchall()
+        return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
+
     # --- inbox -------------------------------------------------------
     def add_inbox(self, text: str) -> int:
         with self.lock:
@@ -189,6 +212,97 @@ class State:
             self.db.execute("UPDATE memories SET status = 'done', outcome = ? WHERE id = ?", (outcome, memory_id))
             self.db.commit()
             return ""
+
+    # --- items (belongings) ---------------------------------------------
+    @staticmethod
+    def _item(row) -> dict:
+        return {**dict(row), "attrs": json.loads(row["attrs"])}
+
+    def add_item(self, name: str, qty: int = 1, kind: str = "tool", description: str = "",
+                 attrs: dict | None = None) -> dict:
+        name = name.strip()[:60]
+        if not name:
+            raise ValueError("item needs a name")
+        if kind not in KINDS:
+            raise ValueError(f"unknown kind {kind!r}; options: {list(KINDS)}")
+        if qty < 1:
+            raise ValueError("qty must be at least 1")
+        with self.lock:
+            row = self.db.execute("SELECT * FROM items WHERE name = ?", (name,)).fetchone()
+            if row:  # same item again: stack it
+                self.db.execute("UPDATE items SET qty = qty + ?, description = COALESCE(NULLIF(?, ''), description) "
+                                "WHERE id = ?", (qty, description[:200], row["id"]))
+            else:
+                self.db.execute(
+                    "INSERT INTO items (name, description, kind, qty, attrs, ts) VALUES (?, ?, ?, ?, ?, ?)",
+                    (name, description[:200], kind, qty, json.dumps(normalize_attrs(name, kind, attrs)), time.time()))
+            self.db.commit()
+            return self._item(self.db.execute("SELECT * FROM items WHERE name = ?", (name,)).fetchone())
+
+    def items(self) -> list[dict]:
+        with self.lock:
+            return [self._item(r) for r in self.db.execute("SELECT * FROM items ORDER BY id")]
+
+    def find_item(self, query: str, kind: str | None = None) -> tuple[dict | None, str]:
+        """Resolve a loose name ('needle file') to one item. Returns (item, '') or (None, error)."""
+        q = str(query).strip().lower()
+        rows = [i for i in self.items() if not kind or i["kind"] == kind]
+        exact = [i for i in rows if i["name"].lower() == q]
+        if exact:
+            return exact[0], ""
+        part = [i for i in rows if q and (q in i["name"].lower() or i["name"].lower() in q)]
+        if len(part) == 1:
+            return part[0], ""
+        if not part:
+            return None, f"you don't have {query!r}" + (f" (kind: {kind})" if kind else "")
+        return None, "which one? " + ", ".join(i["name"] for i in part)
+
+    def take_item(self, item_id: int, qty: int = 1) -> None:
+        with self.lock:
+            self.db.execute("UPDATE items SET qty = qty - ? WHERE id = ?", (qty, item_id))
+            self.db.execute("DELETE FROM items WHERE id = ? AND qty <= 0", (item_id,))
+            self.db.commit()
+
+    # --- garden ----------------------------------------------------------
+    def garden(self, now: float | None = None) -> list[dict]:
+        now = now or time.time()
+        with self.lock:
+            rows = {r["plot"]: dict(r) for r in self.db.execute("SELECT * FROM garden")}
+        out = []
+        for n in range(1, self.s.garden_plots + 1):
+            r = rows.get(n)
+            if not r:
+                out.append({"plot": n, "state": "empty"})
+            else:
+                left = r["ready_at"] - now
+                out.append({**r, "state": "ready" if left <= 0 else "growing",
+                            "ready_in_min": max(0, int(left // 60) + (1 if left % 60 else 0))})
+        return out
+
+    def plant(self, plot: int, seed: str, crop: str, minutes: float, yield_: int, food_value: float) -> None:
+        now = time.time()
+        with self.lock:
+            self.db.execute("INSERT INTO garden (plot, seed, crop, planted_at, ready_at, yield, food_value) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (plot, seed, crop, now, now + minutes * 60 / self.s.garden_speed, yield_, food_value))
+            self.db.commit()
+
+    def clear_plot(self, plot: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM garden WHERE plot = ?", (plot,)).fetchone()
+            self.db.execute("DELETE FROM garden WHERE plot = ?", (plot,))
+            self.db.commit()
+            return dict(row) if row else None
+
+    def garden_newly_ready(self) -> list[dict]:
+        """Crops that ripened since we last looked (each is reported once)."""
+        now = time.time()
+        with self.lock:
+            rows = [dict(r) for r in self.db.execute(
+                "SELECT * FROM garden WHERE ready_at <= ? AND notified = 0", (now,))]
+            self.db.execute("UPDATE garden SET notified = 1 WHERE ready_at <= ?", (now,))
+            self.db.commit()
+        return rows
 
     # --- usage / budget ----------------------------------------------
     def add_usage(self, input_tokens: int, output_tokens: int) -> None:

@@ -39,3 +39,15 @@ Stdlib-only CLI (`./pipchat`, or symlink it onto your PATH). Defaults to the Tra
 `note_to_self` writes to one of five sections (`diary`, `todo`, `wishlist`, `ambitions`, `learned`); `resolve_note`
 crosses off a todo/wishlist/ambition item. Open items and the latest diary entries are shown to Pip every tick, and the
 persona (`brain/persona.md`, re-read live) encourages it to keep them. HTTP: `GET /notes`.
+
+## Belongings and garden
+Pip owns items (kind `tool`: kept, `material`: used up by `use_item`, `food`: eaten, `seed`: planted) and has a small
+garden (`GARDEN_PLOTS`, default 3). It starts with tomato and carrot seeds (given once). Crops grow in real time
+(`GROW_SPEED` speeds that up), a ripe crop wakes Pip, and harvested produce is food that fills more than a plain meal.
+```sh
+./pipchat give "tiny needle file" --message "for the clock!"          # tool (kept)
+./pipchat give "spare brass" --kind material -q 5                     # used up as Pip works
+./pipchat give "basil seeds" --kind seed --grow-minutes 30            # Pip can plant it
+./pipchat items | garden
+```
+HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`.

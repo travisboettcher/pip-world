@@ -4,6 +4,8 @@
   pipchat                       interactive chat (slash commands work inside it too)
   pipchat "hello there"         say something, print the reply, exit
   pipchat status | usage | health
+  pipchat give "tiny needle file" [--kind tool|material|food|seed] [-q N] [--message "for the clock!"]
+  pipchat items | garden
   pipchat notes [section] [--status open|done] [-n N]
   pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
   pipchat tick                  wake Pip now
@@ -96,9 +98,22 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
             return dim(f"  * Pip writes {where}: {a.get('text')}")
         if t == "resolve_note":
             return dim(f"  * Pip crosses off #{a.get('id')}" + (f": {a['outcome']}" if a.get("outcome") else ""))
+        if t == "use_item":
+            return dim(f"  * Pip uses {a.get('item')}" + (f" - {a['purpose']}" if a.get("purpose") else ""))
+        if t == "plant":
+            return dim(f"  * Pip plants {a.get('seed')}" + (f" in plot {a['plot']}" if a.get("plot") else ""))
+        if t == "harvest":
+            return dim(f"  * Pip harvests: {d.get('result')}")
+        if t == "eat" and a.get("item"):
+            return dim(f"  * Pip eats {a['item']}")
         if t == "web_search":
             return dim(f"  * Pip searches the web for: {a.get('query')}")
         return dim(f"  * Pip uses {t}")
+    if k == "gift":
+        n = d.get("qty", 1)
+        return yellow(f"  + {d['sender']} gives Pip {n} x {d['item']}")
+    if k == "garden":
+        return green(f"  * Pip's {d['crop']} in plot {d['plot']} are ripe")
     if k == "tool_error":
         return yellow(f"  ! tool {d.get('tool')} failed: {d.get('error')}")
     if k == "error":
@@ -226,9 +241,10 @@ def cmd_say(pip: Pip, a) -> None:
     send_and_wait(pip, " ".join(a.message))
 
 
-def send_and_wait(pip: Pip, text: str) -> None:
+def send_and_wait(pip: Pip, text: str | None = None, path: str = "/inbox", body: dict | None = None) -> None:
+    """POST a message (or a gift via path/body) to Pip, then show its reaction as it happens."""
     cur = pip.cursor()
-    msg_id = pip.call("/inbox", {"text": text})["id"]
+    msg_id = pip.call(path, body if body is not None else {"text": text})["id"]
     start, replied_at, spin, heard = time.time(), None, 0, False
     try:
         while True:
@@ -262,6 +278,45 @@ def send_and_wait(pip: Pip, text: str) -> None:
             time.sleep(1)
     except KeyboardInterrupt:
         print(dim("\n  (stopped waiting; your message is still queued)"))
+
+
+def cmd_give(pip: Pip, a) -> None:
+    attrs = {k: v for k, v in (("crop", a.crop), ("grow_minutes", a.grow_minutes), ("yield", a.yield_),
+                               ("food_value", a.food_value)) if v is not None}
+    body = {"name": a.name, "qty": a.quantity, "kind": a.kind, "description": a.desc or "",
+            "sender": a.sender, "message": a.message or "", "attrs": attrs}
+    send_and_wait(pip, path="/items", body=body)
+
+
+def cmd_items(pip: Pip, a) -> None:
+    items = pip.call("/items")
+    if JSON_MODE:
+        return out_json(items)
+    print(bold("Belongings"))
+    for i in items:
+        extra = ""
+        if i["kind"] == "seed":
+            at = i["attrs"]
+            extra = dim(f"  -> {at['crop']}, ~{at['grow_minutes']} min, yields {at['yield']}")
+        elif i["kind"] == "food":
+            extra = dim(f"  (fills {i['attrs'].get('food_value', 0.3)})")
+        print(f"  {i['name']} x{i['qty']} [{i['kind']}]" + (f" - {i['description']}" if i["description"] else "") + extra)
+    if not items:
+        print(dim("  (nothing)"))
+
+
+def cmd_garden(pip: Pip, a) -> None:
+    plots = pip.call("/garden")
+    if JSON_MODE:
+        return out_json(plots)
+    print(bold("Garden"))
+    for g in plots:
+        if g["state"] == "empty":
+            print(f"  plot {g['plot']}: " + dim("empty"))
+        elif g["state"] == "ready":
+            print(f"  plot {g['plot']}: " + green(f"{g['crop']} - ripe, ready to harvest"))
+        else:
+            print(f"  plot {g['plot']}: {g['crop']} - ready in about {g['ready_in_min']} min")
 
 
 def cmd_chat(pip: Pip, a) -> None:
@@ -339,6 +394,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kind", action="append", help="only this event kind (tick, tool, say, inbox, error, ...); repeatable")
     p = add("watch", cmd_watch, "stream events live (Ctrl-C to stop)")
     p.add_argument("--kind", action="append", help="only this event kind; repeatable")
+    add("items", cmd_items, "what Pip owns")
+    add("garden", cmd_garden, "Pip's garden plots")
+    p = add("give", cmd_give, "give Pip something and see how it reacts")
+    p.add_argument("name", help='e.g. "tiny needle file"')
+    p.add_argument("-q", "--quantity", type=int, default=1)
+    p.add_argument("--kind", choices=["tool", "material", "food", "seed"], default="tool",
+                   help="tool: kept; material: used up; food: eaten; seed: planted (default tool)")
+    p.add_argument("--desc", help="short description Pip will see")
+    p.add_argument("--message", help="something you say as you hand it over")
+    p.add_argument("--from", dest="sender", default="Morgan", help="who it's from (default Morgan)")
+    p.add_argument("--crop", help="seeds: what grows (default: name minus 'seeds')")
+    p.add_argument("--grow-minutes", type=float, help="seeds: minutes to ripen (default 60)")
+    p.add_argument("--yield", dest="yield_", type=int, help="seeds: crops per harvest (default 3)")
+    p.add_argument("--food-value", type=float, help="seeds/food: hunger restored per portion")
     add("tick", cmd_tick, "wake Pip now")
     p = add("say", cmd_say, "say something to Pip and wait for the reply")
     p.add_argument("message", nargs="+")
@@ -348,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

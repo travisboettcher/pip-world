@@ -31,6 +31,10 @@ class Settings:
     monitor_seconds: float = 30
 
     daily_token_budget: int = 5_000_000
+    garden_plots: int = 3
+    moment_window_minutes: float = 60  # how far back a notable moment can be offered for the diary
+    moment_showings: int = 3           # how many ticks a moment is offered before it's dropped
+    garden_speed: float = 1.0  # >1 grows crops faster (testing / impatience)
     tools: list[str] = field(default_factory=list)
     tavily_api_key: str = ""
 
@@ -59,6 +63,10 @@ class Settings:
             tick_seconds=_float("TICK_SECONDS", 120),
             min_tick_interval=_float("MIN_TICK_INTERVAL", 15),
             daily_token_budget=_int("DAILY_TOKEN_BUDGET", 5_000_000),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,resolve_note,web_search").split(",") if t.strip()],
+            garden_plots=_int("GARDEN_PLOTS", 3),
+            moment_window_minutes=_float("MOMENT_WINDOW_MINUTES", 60),
+            moment_showings=_int("MOMENT_SHOWINGS", 3),
+            garden_speed=_float("GROW_SPEED", 1.0),
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,resolve_note,use_item,plant,harvest,web_search").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )
