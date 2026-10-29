@@ -261,3 +261,28 @@ async def test_todo_section(tmp_path):
     todo_block = backend.calls[2]["messages"][0]["content"].split("Your to-do list (open):")[1].split("Your wishlist")[0]
     assert "oil the hinges" not in todo_block
     assert st.memories("todo")[0]["outcome"] == "squeak gone"
+
+
+# --- note guards -----------------------------------------------------------
+async def _note(agent, section, text):
+    return (await tools_mod.REGISTRY["note_to_self"][1](agent.ctx, {"section": section, "text": text})).text
+
+
+@pytest.mark.asyncio
+async def test_note_guards(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    assert "numbers" in await _note(agent, "diary", "Woke to the timer, hunger 0.22, energy 0.89. Still working.")
+    assert await _note(agent, "diary", "Found out how escapements work and it changed my plan.") == "wrote in diary"
+    # no rate limit: a second, genuinely different entry right away is fine
+    assert await _note(agent, "diary", "Morgan stopped by and we talked about birds.") == "wrote in diary"
+    assert "too close" in await _note(agent, "diary", "Morgan stopped by and we talked about birds!")
+    await _note(agent, "todo", "Oil the clock hinges tomorrow")
+    assert "too close" in await _note(agent, "todo", "Oil the clock hinges tomorrow!")
+
+
+def test_archived_hidden_unless_asked(tmp_path):
+    s, st, *_ = make(tmp_path)
+    a = st.add_memory("keep me"); b = st.add_memory("hide me")
+    st.db.execute("UPDATE memories SET status = 'archived' WHERE id = ?", (b,)); st.db.commit()
+    assert [m["id"] for m in st.memories("diary")] == [a]
+    assert [m["id"] for m in st.memories("diary", status="archived")] == [b]

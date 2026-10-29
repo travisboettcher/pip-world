@@ -12,10 +12,9 @@ from .tools import ToolContext, enabled_tools
 log = logging.getLogger("agent")
 MAX_TOOL_CALLS = 4
 EVENT_CONTEXT = 15
-DIARY_SHOWN = 5
+DIARY_SHOWN = 4
 LIST_SHOWN = 10
 LEARNED_SHOWN = 5
-DIARY_NUDGE_SECONDS = 1800
 HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
 
 
@@ -174,10 +173,6 @@ class Agent:
         learned = self.state.memories("learned", limit=LEARNED_SHOWN)
         if learned:
             lines += ["Things you've learned:"] + [fmt(m) for m in learned]
-        if diary:
-            quiet = time.time() - diary[-1]["ts"]
-            if quiet > DIARY_NUDGE_SECONDS:
-                lines.append(f"(You haven't written in your diary for {int(quiet // 60)} minutes.)")
         return lines
 
     def _perception(self, reason: str, inbox: list[dict]) -> str:

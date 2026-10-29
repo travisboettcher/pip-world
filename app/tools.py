@@ -1,4 +1,7 @@
 """Tool registry. Tools are declared once in a provider-neutral schema; enable by name via TOOLS."""
+import difflib
+import re
+import time
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
@@ -31,6 +34,22 @@ def tool(name: str, description: str, parameters: dict):
         REGISTRY[name] = (ToolSpec(name, description, parameters), fn)
         return fn
     return deco
+
+
+STAT_NUMBERS = re.compile(r"\b(hunger|energy)\b[^.;]{0,15}\d\.\d", re.I)
+SIMILARITY_LIMIT = 0.6
+
+
+
+def check_note(ctx: "ToolContext", section: str, text: str) -> str:
+    """Why this note shouldn't be written, or '' if it's fine. Guards against log-spam."""
+    if STAT_NUMBERS.search(text):
+        return "don't write hunger/energy numbers in notes - your stats are already tracked for you"
+    st = ctx.state
+    for m in st.memories(section, status="open" if section in RESOLVABLE else None, limit=10):
+        if difflib.SequenceMatcher(None, text.lower(), m["text"].lower()).ratio() >= SIMILARITY_LIMIT:
+            return f"too close to your note #{m['id']}; only write something new"
+    return ""
 
 
 def _obj(props: dict, required: list[str]) -> dict:
@@ -74,7 +93,7 @@ async def rest(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("note_to_self",
-      "Write in your journal. Sections: diary (how your day went, how you feel), todo (concrete tasks "
+      "Write in your journal. Sections: diary (rare, important moments only: discoveries and your reflections on them, visitors), todo (concrete tasks "
       "you plan to do soon), wishlist (things you want - objects, experiences, people), ambitions (bigger goals you want to work toward over time), "
       "learned (facts or skills you picked up). Entries are remembered across wakes.",
       _obj({"section": {"type": "string", "enum": list(SECTIONS)},
@@ -83,7 +102,10 @@ async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
     section = args.get("section", "diary")
     if section not in SECTIONS:
         return ToolResult(f"error: section must be one of {list(SECTIONS)}", followup=True)
-    ctx.state.add_memory(str(args["text"])[:500], section)
+    text = str(args["text"])[:500]
+    if problem := check_note(ctx, section, text):
+        return ToolResult(f"not written: {problem}")
+    ctx.state.add_memory(text, section)
     return ToolResult(f"wrote in {section}")
 
 

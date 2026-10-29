@@ -57,9 +57,10 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         return app.state.agent.state.events(min(limit, 500), before_id, after_id)
 
     @app.get("/notes")
-    def get_notes(limit: int = 50):
+    def get_notes(limit: int = 50, status: str | None = None):
+        """status=archived shows archived entries; otherwise they're hidden."""
         st = app.state.agent.state
-        return {sec: st.memories(sec, limit=min(limit, 200)) for sec in SECTIONS}
+        return {sec: st.memories(sec, status=status, limit=min(limit, 500)) for sec in SECTIONS}
 
     @app.post("/inbox")
     def post_inbox(item: InboxItem):

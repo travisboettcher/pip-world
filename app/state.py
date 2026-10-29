@@ -161,8 +161,11 @@ class State:
             return cur.lastrowid
 
     def memories(self, section: str | None = None, status: str | None = None, limit: int = 10) -> list[dict]:
-        """Newest `limit` entries matching the filters, returned oldest first."""
+        """Newest `limit` entries matching the filters, returned oldest first.
+        Archived entries (status 'archived') are hidden unless asked for explicitly."""
         q, args = "SELECT * FROM memories WHERE 1=1", []
+        if status != "archived":
+            q += " AND status != 'archived'"
         if section:
             q += " AND section = ?"
             args.append(section)

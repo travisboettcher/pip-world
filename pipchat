@@ -168,7 +168,7 @@ def cmd_health(pip: Pip, a) -> None:
 
 
 def cmd_notes(pip: Pip, a) -> None:
-    notes = pip.call(f"/notes?limit={a.n}")
+    notes = pip.call(f"/notes?limit={a.n}" + ("&status=archived" if a.status == "archived" else ""))
     if a.section:
         notes = {a.section: notes[a.section]}
     if a.status:
@@ -330,7 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("health", cmd_health, "check that the service is up")
     p = add("notes", cmd_notes, "read Pip's journal")
     p.add_argument("section", nargs="?", choices=SECTIONS, help="only this section")
-    p.add_argument("--status", choices=["open", "done"], help="only open or crossed-off items")
+    p.add_argument("--status", choices=["open", "done", "archived"],
+                   help="only open or crossed-off items, or show archived entries (hidden by default)")
     p.add_argument("-n", type=int, default=50, help="entries per section (default 50)")
     p = add("log", cmd_log, "recent events (newest last)")
     p.add_argument("count", nargs="?", type=int, help="same as -n")
