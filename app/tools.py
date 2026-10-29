@@ -1,18 +1,19 @@
 """Tool registry. Tools are declared once in a provider-neutral schema; enable by name via TOOLS."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import httpx
 
 from .config import Settings
 from .llm.base import ToolSpec
-from .state import State, clamp
+from .state import RESOLVABLE, SECTIONS, State, clamp
 
 
 @dataclass
 class ToolContext:
     state: State
     settings: Settings
+    visitor_ids: list[int] = field(default_factory=list)  # inbox items being answered this tick
 
 
 @dataclass
@@ -36,11 +37,23 @@ def _obj(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-@tool("set_activity", "Choose what you are doing right now (e.g. painting, reading, tinkering).",
-      _obj({"activity": {"type": "string"}, "mood": {"type": "string"}}, ["activity"]))
+@tool("say", "Speak out loud to a visitor. This is the only way a visitor can hear you.",
+      _obj({"text": {"type": "string"}}, ["text"]))
+async def say(ctx: ToolContext, args: dict) -> ToolResult:
+    text = str(args["text"])[:1000]
+    ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
+    return ToolResult("said it")
+
+
+@tool("set_activity",
+      "Choose what you are doing right now. `activity` is a short label (1-3 words, e.g. "
+      "'tinkering', 'painting'); `description` is one sentence about what exactly you're doing.",
+      _obj({"activity": {"type": "string", "description": "short label, max ~3 words"},
+            "description": {"type": "string", "description": "one sentence of detail"},
+            "mood": {"type": "string"}}, ["activity"]))
 async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     activity = str(args["activity"])[:40].strip().lower() or "idle"
-    fields = {"activity": activity}
+    fields = {"activity": activity, "description": str(args.get("description") or "")[:200].strip()}
     if args.get("mood"):
         fields["mood"] = str(args["mood"])[:40]
     ctx.state.update_agent(**fields)
@@ -50,21 +63,36 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("eat", "Eat a meal. Lowers hunger.", _obj({}, []))
 async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     a = ctx.state.agent()
-    ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4), activity="eating")
+    ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4), activity="eating", description="")
     return ToolResult("ate a meal")
 
 
 @tool("rest", "Rest to recover energy until you choose another activity.", _obj({}, []))
 async def rest(ctx: ToolContext, args: dict) -> ToolResult:
-    ctx.state.update_agent(activity="resting")
+    ctx.state.update_agent(activity="resting", description="")
     return ToolResult("resting")
 
 
-@tool("note_to_self", "Save a short note you want to remember in future ticks.",
-      _obj({"text": {"type": "string"}}, ["text"]))
+@tool("note_to_self",
+      "Write in your journal. Sections: diary (how your day went, how you feel), todo (concrete tasks "
+      "you plan to do soon), wishlist (things you want - objects, experiences, people), ambitions (bigger goals you want to work toward over time), "
+      "learned (facts or skills you picked up). Entries are remembered across wakes.",
+      _obj({"section": {"type": "string", "enum": list(SECTIONS)},
+            "text": {"type": "string", "description": "1-2 sentences"}}, ["section", "text"]))
 async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
-    ctx.state.add_memory(str(args["text"])[:500])
-    return ToolResult("noted")
+    section = args.get("section", "diary")
+    if section not in SECTIONS:
+        return ToolResult(f"error: section must be one of {list(SECTIONS)}", followup=True)
+    ctx.state.add_memory(str(args["text"])[:500], section)
+    return ToolResult(f"wrote in {section}")
+
+
+@tool("resolve_note",
+      "Cross off a todo, wishlist or ambitions item (by its #id) once you've done it, achieved it or let it go.",
+      _obj({"id": {"type": "integer"}, "outcome": {"type": "string", "description": "how it turned out"}}, ["id"]))
+async def resolve_note(ctx: ToolContext, args: dict) -> ToolResult:
+    err = ctx.state.resolve_memory(int(args["id"]), str(args.get("outcome") or "")[:300])
+    return ToolResult(f"error: {err}" if err else f"crossed off #{args['id']}", followup=bool(err))
 
 
 @tool("web_search", "Search the web for something you are curious about.",

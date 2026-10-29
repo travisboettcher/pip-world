@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS agent (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   hunger REAL NOT NULL, energy REAL NOT NULL,
   mood TEXT NOT NULL, location TEXT NOT NULL, activity TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   hunger_alerted INTEGER NOT NULL DEFAULT 0,
   energy_alerted INTEGER NOT NULL DEFAULT 0,
   updated_at REAL NOT NULL
@@ -25,7 +26,10 @@ CREATE TABLE IF NOT EXISTS inbox (
   text TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS memories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL,
+  section TEXT NOT NULL DEFAULT 'diary',
+  status TEXT NOT NULL DEFAULT 'open',
+  outcome TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS usage (
   day TEXT PRIMARY KEY, input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -34,6 +38,8 @@ CREATE TABLE IF NOT EXISTS usage (
 """
 
 STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
+SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
+RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
 
 
 def clamp(x: float) -> float:
@@ -48,9 +54,19 @@ class State:
         self.db.row_factory = sqlite3.Row
         with self.lock:
             self.db.executescript(SCHEMA)
+            # DBs created before a column existed
+            for table, col, ddl in (
+                ("agent", "description", "TEXT NOT NULL DEFAULT ''"),
+                ("memories", "section", "TEXT NOT NULL DEFAULT 'diary'"),
+                ("memories", "status", "TEXT NOT NULL DEFAULT 'open'"),
+                ("memories", "outcome", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
             if not self.db.execute("SELECT 1 FROM agent").fetchone():
                 self.db.execute(
-                    "INSERT INTO agent VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', 0, 0, ?)",
+                    "INSERT INTO agent (id, hunger, energy, mood, location, activity, updated_at) "
+                    "VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', ?)",
                     (time.time(),),
                 )
             self.db.commit()
@@ -102,14 +118,18 @@ class State:
             self.db.commit()
             return cur.lastrowid
 
-    def events(self, limit: int = 50, before_id: int | None = None) -> list[dict]:
-        q = "SELECT * FROM events"
-        args: list = []
-        if before_id:
-            q += " WHERE id < ?"
-            args.append(before_id)
-        q += " ORDER BY id DESC LIMIT ?"
-        args.append(limit)
+    def events(self, limit: int = 50, before_id: int | None = None, after_id: int | None = None) -> list[dict]:
+        """Newest first by default; with after_id, oldest first (for polling forward)."""
+        q, args = "SELECT * FROM events", []
+        if after_id is not None:
+            q += " WHERE id > ? ORDER BY id ASC LIMIT ?"
+            args += [after_id, limit]
+        else:
+            if before_id:
+                q += " WHERE id < ?"
+                args.append(before_id)
+            q += " ORDER BY id DESC LIMIT ?"
+            args.append(limit)
         with self.lock:
             rows = self.db.execute(q, args).fetchall()
         return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
@@ -130,16 +150,42 @@ class State:
             self.db.executemany("UPDATE inbox SET consumed = 1 WHERE id = ?", [(i,) for i in ids])
             self.db.commit()
 
-    # --- memories ----------------------------------------------------
-    def add_memory(self, text: str) -> None:
+    # --- memories (the journal) ----------------------------------------
+    def add_memory(self, text: str, section: str = "diary") -> int:
+        if section not in SECTIONS:
+            raise ValueError(f"unknown section {section!r}; options: {list(SECTIONS)}")
         with self.lock:
-            self.db.execute("INSERT INTO memories (ts, text) VALUES (?, ?)", (time.time(), text))
+            cur = self.db.execute(
+                "INSERT INTO memories (ts, text, section) VALUES (?, ?, ?)", (time.time(), text, section))
             self.db.commit()
+            return cur.lastrowid
 
-    def recent_memories(self, limit: int = 10) -> list[str]:
+    def memories(self, section: str | None = None, status: str | None = None, limit: int = 10) -> list[dict]:
+        """Newest `limit` entries matching the filters, returned oldest first."""
+        q, args = "SELECT * FROM memories WHERE 1=1", []
+        if section:
+            q += " AND section = ?"
+            args.append(section)
+        if status:
+            q += " AND status = ?"
+            args.append(status)
+        q += " ORDER BY id DESC LIMIT ?"
+        args.append(limit)
         with self.lock:
-            rows = self.db.execute("SELECT text FROM memories ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [r["text"] for r in reversed(rows)]
+            rows = self.db.execute(q, args).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def resolve_memory(self, memory_id: int, outcome: str = "") -> str:
+        """Mark a wishlist/ambition item done. Returns an error string, or '' on success."""
+        with self.lock:
+            row = self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+            if not row:
+                return f"no note #{memory_id}"
+            if row["section"] not in RESOLVABLE:
+                return f"note #{memory_id} is in {row['section']}; only {'/'.join(RESOLVABLE)} items can be resolved"
+            self.db.execute("UPDATE memories SET status = 'done', outcome = ? WHERE id = ?", (outcome, memory_id))
+            self.db.commit()
+            return ""
 
     # --- usage / budget ----------------------------------------------
     def add_usage(self, input_tokens: int, output_tokens: int) -> None:

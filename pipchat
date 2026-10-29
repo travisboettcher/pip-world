@@ -1,0 +1,353 @@
+#!/usr/bin/env python3
+"""Talk to Pip, the agent_world agent. Stdlib only.
+
+  pipchat                       interactive chat (slash commands work inside it too)
+  pipchat "hello there"         say something, print the reply, exit
+  pipchat status | usage | health
+  pipchat notes [section] [--status open|done] [-n N]
+  pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
+  pipchat tick                  wake Pip now
+  pipchat --json <command>      machine-readable output (watch emits JSON lines)
+
+Set PIP_URL (or --url) if Pip isn't at the default Traefik address.
+"""
+import argparse
+import json
+import os
+import shlex
+import sys
+import time
+import urllib.error
+import urllib.request
+
+DEFAULT_URL = "https://agent-world.internal.example.io"
+SECTIONS = ["diary", "todo", "wishlist", "ambitions", "learned"]
+TTY = sys.stdout.isatty()
+REPLY_TIMEOUT = 120   # Pip wakes within ~MIN_TICK_INTERVAL of a message, then thinks
+LINGER = 6            # keep listening this long after the reply for follow-up actions
+JSON_MODE = False
+
+
+def c(code: str, text: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if TTY else text
+
+
+dim, green, yellow, red, bold = (lambda t, k=k: c(k, t) for k in ("2", "32", "33", "31", "1"))
+
+
+def out_json(obj) -> None:
+    print(json.dumps(obj, indent=2, ensure_ascii=False))
+
+
+class Pip:
+    def __init__(self, url: str):
+        self.url = url.rstrip("/")
+
+    def call(self, path: str, body: dict | None = None, method: str | None = None):
+        data = json.dumps(body).encode() if body is not None else (b"" if method == "POST" else None)
+        req = urllib.request.Request(
+            self.url + path, data=data, method=method or ("POST" if body is not None else "GET"),
+            headers={"content-type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r)
+
+    def cursor(self) -> int:
+        evs = self.call("/events?limit=1")
+        return evs[0]["id"] if evs else 0
+
+
+# --- formatting ---------------------------------------------------------------
+
+def fmt_time(ts: float) -> str:
+    return time.strftime("%b %d %H:%M:%S", time.localtime(ts))
+
+
+def describe_state(st: dict) -> str:
+    a = st["agent"]
+    now = a["activity"] + (f" - {a['description']}" if a.get("description") else "")
+    u = st["usage"]
+    return (f"Pip is {bold(now)}\n"
+            f"  mood {a['mood']} | hunger {a['hunger']:.2f} | energy {a['energy']:.2f} | location {a['location']}\n"
+            f"  {st['model']} via {st['backend']} | pacing {st['pacing']} | ticks since start {st['ticks']} | "
+            f"inbox waiting {st['pending_inbox']}\n"
+            f"  tools: {', '.join(st['tools'])}\n"
+            f"  tokens today {u['total_tokens']}/{u['budget']}")
+
+
+def format_event(e: dict, verbose: bool = False) -> str | None:
+    d, k = e["data"], e["kind"]
+    if k == "say":
+        return green("pip> ") + (d["text"] or dim("(says nothing)"))
+    if k == "tool":
+        t, a = d["tool"], d["args"]
+        if t == "say":
+            return dim(f"  * Pip says: {a.get('text')}") if verbose else None  # shown via the "say" event
+        if t == "set_activity":
+            return dim(f"  * Pip is now {a.get('activity')}" + (f" - {a['description']}" if a.get("description") else ""))
+        if t == "note_to_self":
+            sec = a.get("section", "diary")
+            where = {"diary": "in its diary", "todo": "on its to-do list", "wishlist": "on its wishlist",
+                     "ambitions": "under ambitions", "learned": "under things learned"}.get(sec, f"in {sec}")
+            return dim(f"  * Pip writes {where}: {a.get('text')}")
+        if t == "resolve_note":
+            return dim(f"  * Pip crosses off #{a.get('id')}" + (f": {a['outcome']}" if a.get("outcome") else ""))
+        if t == "web_search":
+            return dim(f"  * Pip searches the web for: {a.get('query')}")
+        return dim(f"  * Pip uses {t}")
+    if k == "tool_error":
+        return yellow(f"  ! tool {d.get('tool')} failed: {d.get('error')}")
+    if k == "error":
+        return red(f"  ! {d.get('error')}")
+    if k == "budget_exceeded":
+        return yellow("  ! Pip has used today's token budget and is asleep until tomorrow.")
+    if k == "alert":
+        return dim(f"  * Pip's {d['stat']} needs attention")
+    if verbose:
+        if k == "inbox":
+            return dim(f"  < visitor: {d['text']}")
+        if k == "inbox_read":
+            return dim(f"  . Pip read visitor message(s) {d['ids']}")
+        if k == "tick":
+            return dim(f"  . tick ({d['reason']}, step {d.get('step', 0)}, {d['tokens']} tokens)"
+                       + (f": {d['text']}" if d.get("text") else ""))
+        if k == "start":
+            return dim(f"  . started: {d.get('model')} via {d.get('backend')}, pacing {d.get('pacing')}")
+    return None
+
+
+def print_events(events: list[dict], verbose: bool) -> None:
+    for e in events:
+        line = format_event(e, verbose)
+        if line:
+            print(f"{dim(fmt_time(e['ts']))} {line}" if verbose else line)
+
+
+# --- commands -----------------------------------------------------------------
+
+def cmd_status(pip: Pip, a) -> None:
+    st = pip.call("/state")
+    out_json(st) if JSON_MODE else print(describe_state(st))
+
+
+def cmd_usage(pip: Pip, a) -> None:
+    u = pip.call("/state")["usage"]
+    if JSON_MODE:
+        return out_json(u)
+    pct = 100 * u["total_tokens"] / u["budget"] if u["budget"] else 0
+    bar = "#" * int(pct // 5) + "." * (20 - int(pct // 5))
+    avg = u["total_tokens"] // u["calls"] if u["calls"] else 0
+    print(f"{u['day']}: [{bar}] {pct:.0f}%  {u['total_tokens']:,}/{u['budget']:,} tokens")
+    print(f"  {u['calls']} LLM calls ({u['input_tokens']:,} in, {u['output_tokens']:,} out), ~{avg:,} tokens/call")
+
+
+def cmd_health(pip: Pip, a) -> None:
+    t0 = time.time()
+    r = pip.call("/healthz")
+    ms = (time.time() - t0) * 1000
+    out_json({**r, "latency_ms": round(ms)}) if JSON_MODE else print(f"{pip.url}: {'ok' if r.get('ok') else r} ({ms:.0f} ms)")
+
+
+def cmd_notes(pip: Pip, a) -> None:
+    notes = pip.call(f"/notes?limit={a.n}")
+    if a.section:
+        notes = {a.section: notes[a.section]}
+    if a.status:
+        notes = {s: [m for m in ms if m["status"] == a.status] for s, ms in notes.items()}
+    if JSON_MODE:
+        return out_json(notes)
+    titles = {"diary": "Diary", "todo": "To-do", "wishlist": "Wishlist", "ambitions": "Ambitions", "learned": "Learned"}
+    for sec, items in notes.items():
+        print(bold(titles.get(sec, sec)))
+        if not items:
+            print(dim("  (nothing)"))
+        for m in items:
+            done = dim(f"  [done{': ' + m['outcome'] if m['outcome'] else ''}]") if m["status"] == "done" else ""
+            print(f"  #{m['id']} {dim(fmt_time(m['ts']))}  {m['text']}{done}")
+
+
+def cmd_log(pip: Pip, a) -> None:
+    kinds = set(a.kind or [])
+    n = a.count or a.n
+    events = pip.call(f"/events?limit={500 if kinds else n}")
+    if kinds:
+        events = [e for e in events if e["kind"] in kinds]
+    events = list(reversed(events[:n]))
+    if JSON_MODE:
+        return out_json(events)
+    print_events(events, verbose=True)
+
+
+def cmd_watch(pip: Pip, a) -> None:
+    kinds = set(a.kind or [])
+    if not JSON_MODE:
+        print(dim("watching Pip live - Ctrl-C to stop"))
+    cur = pip.cursor()
+    try:
+        while True:
+            for e in pip.call(f"/events?after_id={cur}&limit=100"):
+                cur = e["id"]
+                if kinds and e["kind"] not in kinds:
+                    continue
+                if JSON_MODE:
+                    print(json.dumps(e, ensure_ascii=False), flush=True)
+                else:
+                    print_events([e], verbose=True)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print()
+
+
+def cmd_tick(pip: Pip, a) -> None:
+    pip.call("/tick", method="POST")
+    out_json({"requested": True}) if JSON_MODE else print(dim("  poked."))
+
+
+def cmd_say(pip: Pip, a) -> None:
+    send_and_wait(pip, " ".join(a.message))
+
+
+def send_and_wait(pip: Pip, text: str) -> None:
+    cur = pip.cursor()
+    msg_id = pip.call("/inbox", {"text": text})["id"]
+    start, replied_at, spin, heard = time.time(), None, 0, False
+    try:
+        while True:
+            for e in pip.call(f"/events?after_id={cur}&limit=100"):
+                cur = e["id"]
+                mine = msg_id in (e["data"].get("to") or e["data"].get("ids") or [])
+                if e["kind"] == "say" and not mine:
+                    continue
+                if JSON_MODE:
+                    print(json.dumps(e, ensure_ascii=False), flush=True)
+                elif line := format_event(e):
+                    if TTY:
+                        print("\r\033[K", end="")
+                    print(line)
+                if e["kind"] in ("say", "inbox_read") and mine:
+                    replied_at = replied_at or time.time()
+                    heard = heard or e["kind"] == "say"
+                if e["kind"] == "budget_exceeded":
+                    return
+            now = time.time()
+            if replied_at and now - replied_at > LINGER:
+                if not heard and not JSON_MODE:
+                    print(dim("  (Pip read your message but chose not to say anything)"))
+                return
+            if not replied_at and now - start > REPLY_TIMEOUT:
+                print(yellow("  Pip hasn't answered yet (it may be busy or paused). Your message is still queued."))
+                return
+            if TTY and not replied_at and not JSON_MODE:
+                print(dim(f"\r  Pip is thinking{'.' * (spin % 4):<4}"), end="", flush=True)
+                spin += 1
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(dim("\n  (stopped waiting; your message is still queued)"))
+
+
+def cmd_chat(pip: Pip, a) -> None:
+    try:
+        import readline  # noqa: F401  (line editing + history)
+    except ImportError:
+        pass
+    print(describe_state(pip.call("/state")))
+    print(dim("Type to talk to Pip. /help for commands, /quit to leave.\n"))
+    parser = build_parser()
+    while True:
+        try:
+            line = input(bold("you> ")).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not line:
+            continue
+        if not line.startswith("/"):
+            send_and_wait(pip, line)
+            continue
+        try:
+            argv = shlex.split(line[1:])
+        except ValueError as e:
+            print(red(f"  {e}"))
+            continue
+        if not argv or argv[0] in ("quit", "exit", "q"):
+            return
+        if argv[0] in ("help", "h", "?"):
+            parser.print_help()
+            continue
+        if argv[0] in ("chat", "say"):
+            print(dim("  (just type your message)"))
+            continue
+        try:
+            ns = parser.parse_args(argv)
+            ns.func(pip, ns)
+        except SystemExit:
+            pass  # argparse already printed the usage error
+        except urllib.error.URLError as e:
+            print(red(f"  {getattr(e, 'reason', e)}"))
+
+
+# --- entry --------------------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    def common():  # fresh option objects per parser: set_defaults() mutates them in place
+        cp = argparse.ArgumentParser(add_help=False)
+        cp.add_argument("--url", default=argparse.SUPPRESS, help=f"Pip's address (default $PIP_URL or {DEFAULT_URL})")
+        cp.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
+        return cp
+
+    ap = argparse.ArgumentParser(prog="pipchat", description="Talk to Pip", parents=[common()],
+                                 epilog="Anything that isn't a command is said to Pip: pipchat \"hi!\"")
+    ap.set_defaults(url=os.environ.get("PIP_URL", DEFAULT_URL), json=False, func=cmd_chat)
+    sub = ap.add_subparsers(dest="command", metavar="command")
+
+    def add(name, func, help, **kw):
+        p = sub.add_parser(name, help=help, parents=[common()], **kw)
+        p.set_defaults(func=func)
+        return p
+
+    add("chat", cmd_chat, "interactive chat (default)")
+    add("status", cmd_status, "what Pip is doing, its stats, model, pacing and tools")
+    add("usage", cmd_usage, "today's token usage against the daily budget")
+    add("health", cmd_health, "check that the service is up")
+    p = add("notes", cmd_notes, "read Pip's journal")
+    p.add_argument("section", nargs="?", choices=SECTIONS, help="only this section")
+    p.add_argument("--status", choices=["open", "done"], help="only open or crossed-off items")
+    p.add_argument("-n", type=int, default=50, help="entries per section (default 50)")
+    p = add("log", cmd_log, "recent events (newest last)")
+    p.add_argument("count", nargs="?", type=int, help="same as -n")
+    p.add_argument("-n", type=int, default=20, help="how many events (default 20)")
+    p.add_argument("--kind", action="append", help="only this event kind (tick, tool, say, inbox, error, ...); repeatable")
+    p = add("watch", cmd_watch, "stream events live (Ctrl-C to stop)")
+    p.add_argument("--kind", action="append", help="only this event kind; repeatable")
+    add("tick", cmd_tick, "wake Pip now")
+    p = add("say", cmd_say, "say something to Pip and wait for the reply")
+    p.add_argument("message", nargs="+")
+    return ap
+
+
+def main() -> int:
+    global JSON_MODE
+    argv = sys.argv[1:]
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "-h", "--help"}
+    # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
+    i = 0
+    while i < len(argv) and argv[i] in ("--json", "--url"):
+        i += 2 if argv[i] == "--url" else 1
+    if i < len(argv) and argv[i] not in commands:
+        argv = argv[:i] + ["say"] + argv[i:]
+    args = build_parser().parse_args(argv)
+    JSON_MODE = args.json
+    pip = Pip(args.url)
+    try:
+        args.func(pip, args)
+    except urllib.error.HTTPError as e:
+        print(red(f"Pip answered {e.code} {e.reason} ({pip.url}). If it was just restarted, give it a few seconds."), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print(red(f"Can't reach Pip at {pip.url}: {e.reason}"), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

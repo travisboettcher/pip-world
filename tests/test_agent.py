@@ -13,7 +13,7 @@ from app.state import State
 
 def make(tmp_path, script=None, **kw):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/nonexistent", persona_default_path="/nonexistent",
-                 tools=["set_activity", "eat", "rest", "note_to_self"], min_tick_interval=0, **kw)
+                 tools=["set_activity", "eat", "rest", "note_to_self", "resolve_note"], min_tick_interval=0, **kw)
     st = State(s)
     backend = FakeBackend(script)
     return s, st, backend, Agent(s, st, backend, get_policy(s))
@@ -38,13 +38,13 @@ def test_resting_recovers_energy(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tick_runs_tools_and_logs(tmp_path):
-    script = [LLMResponse("Hungry!", [ToolCall("1", "eat", {}), ToolCall("2", "note_to_self", {"text": "ate"})], Usage(100, 20))]
+    script = [LLMResponse("Hungry!", [ToolCall("1", "eat", {}), ToolCall("2", "note_to_self", {"section": "diary", "text": "ate"})], Usage(100, 20))]
     s, st, backend, agent = make(tmp_path, script)
     st.update_agent(hunger=0.9)
     st.add_inbox("hello pip")
     await agent.tick("test")
     assert st.agent()["hunger"] < 0.6
-    assert st.recent_memories() == ["ate"]
+    assert [m["text"] for m in st.memories("diary")] == ["ate"]
     assert st.pending_inbox() == []
     assert st.usage_today()["total_tokens"] == 120
     kinds = [e["kind"] for e in st.events(20)]
@@ -116,7 +116,7 @@ async def _fake_search(ctx, args):
 async def test_followup_lets_model_use_tool_result(tmp_path):
     script = [
         LLMResponse("searching", [ToolCall("c1", "fake_search", {})], Usage(10, 5), raw="RAW1"),
-        LLMResponse("", [ToolCall("c2", "note_to_self", {"text": "cats rule"})], Usage(20, 5)),
+        LLMResponse("", [ToolCall("c2", "note_to_self", {"section": "diary", "text": "cats rule"})], Usage(20, 5)),
     ]
     s, st, backend, agent = make(tmp_path, script)
     agent.tools = tools_mod.enabled_tools(Settings(tools=["fake_search", "note_to_self"]))
@@ -126,7 +126,7 @@ async def test_followup_lets_model_use_tool_result(tmp_path):
     assert [m["role"] for m in second] == ["user", "assistant", "tool"]
     assert second[1]["raw"] == "RAW1"
     assert second[2]["results"][0]["id"] == "c1" and "cats are great" in second[2]["results"][0]["content"]
-    assert st.recent_memories() == ["cats rule"]
+    assert [m["text"] for m in st.memories("diary")] == ["cats rule"]
     assert st.usage_today()["calls"] == 2 and agent.ticks == 1
 
 
@@ -178,3 +178,86 @@ def test_message_translation():
         {"type": "tool_result", "tool_use_id": "c1", "content": "ok", "is_error": True}]}
     assert o_api(asst)[0]["tool_calls"][0]["function"] == {"name": "eat", "arguments": '{"x": 1}'}
     assert o_api(tool) == [{"role": "tool", "tool_call_id": "c1", "content": "ok"}]
+
+
+def test_old_db_gets_description_column(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    db = sqlite3.connect(path)
+    db.executescript("""CREATE TABLE agent (id INTEGER PRIMARY KEY, hunger REAL, energy REAL, mood TEXT,
+      location TEXT, activity TEXT, hunger_alerted INTEGER, energy_alerted INTEGER, updated_at REAL);
+      INSERT INTO agent VALUES (1, .2, .9, 'curious', 'workshop', 'idle', 0, 0, 0);""")
+    db.commit(); db.close()
+    st = State(Settings(), path)
+    assert st.agent()["description"] == ""
+
+
+@pytest.mark.asyncio
+async def test_say_tool_replies_to_visitor(tmp_path):
+    s, st, backend, agent = make(tmp_path, [LLMResponse("", [ToolCall("1", "say", {"text": "Hello!"})], Usage(1, 1))])
+    agent.tools = tools_mod.enabled_tools(Settings(tools=["say"]))
+    mid = st.add_inbox("hi")
+    await agent.tick("test")
+    evs = st.events(20)
+    assert {"kind": "say", "to": [mid], "text": "Hello!"} in [{"kind": e["kind"], **e["data"]} for e in evs]
+    assert any(e["kind"] == "inbox_read" and e["data"]["ids"] == [mid] for e in evs)
+
+
+# --- journal ---------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_sections_shown_in_perception_and_resolvable(tmp_path):
+    script = [
+        LLMResponse("", [ToolCall("1", "note_to_self", {"section": "wishlist", "text": "a brass key"}),
+                         ToolCall("2", "note_to_self", {"section": "ambitions", "text": "build a clock"}),
+                         ToolCall("3", "note_to_self", {"section": "diary", "text": "good day"})], Usage(1, 1)),
+        LLMResponse("", [ToolCall("4", "resolve_note", {"id": 1, "outcome": "found one!"})], Usage(1, 1)),
+        LLMResponse("", [], Usage(1, 1)),
+    ]
+    s, st, backend, agent = make(tmp_path, script)
+    await agent.tick("one")
+    await agent.tick("two")
+    await agent.tick("three")
+    p2 = backend.calls[1]["messages"][0]["content"]
+    assert "#1 a brass key" in p2 and "#2 build a clock" in p2 and "#3 good day" in p2
+    p3 = backend.calls[2]["messages"][0]["content"]
+    wishlist_block = p3.split("Your wishlist (open):")[1].split("Your ambitions")[0]
+    assert "a brass key" not in wishlist_block and "what do you want" in wishlist_block  # crossed off
+    assert st.memories("wishlist")[0]["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_bad_section_and_resolve_errors_are_reported(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    r = await tools_mod.REGISTRY["note_to_self"][1](agent.ctx, {"section": "gossip", "text": "x"})
+    assert r.text.startswith("error") and r.followup
+    st.add_memory("dear diary", "diary")
+    r = await tools_mod.REGISTRY["resolve_note"][1](agent.ctx, {"id": 1})
+    assert "only todo/wishlist/ambitions" in r.text
+    r = await tools_mod.REGISTRY["resolve_note"][1](agent.ctx, {"id": 99})
+    assert "no note #99" in r.text
+
+
+def test_old_memories_table_migrates(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    db = sqlite3.connect(path)
+    db.executescript("CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL);"
+                     "INSERT INTO memories (ts, text) VALUES (1, 'old note');")
+    db.commit(); db.close()
+    st = State(Settings(), path)
+    m = st.memories()[0]
+    assert (m["text"], m["section"], m["status"]) == ("old note", "diary", "open")
+
+
+@pytest.mark.asyncio
+async def test_todo_section(tmp_path):
+    script = [LLMResponse("", [ToolCall("1", "note_to_self", {"section": "todo", "text": "oil the hinges"})], Usage(1, 1)),
+              LLMResponse("", [ToolCall("2", "resolve_note", {"id": 1, "outcome": "squeak gone"})], Usage(1, 1)),
+              LLMResponse("", [], Usage(1, 1))]
+    s, st, backend, agent = make(tmp_path, script)
+    for r in "abc":
+        await agent.tick(r)
+    assert "To-do list (open):\n- #1 oil the hinges" in backend.calls[1]["messages"][0]["content"].replace("Your to-do list", "To-do list")
+    todo_block = backend.calls[2]["messages"][0]["content"].split("Your to-do list (open):")[1].split("Your wishlist")[0]
+    assert "oil the hinges" not in todo_block
+    assert st.memories("todo")[0]["outcome"] == "squeak gone"

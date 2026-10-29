@@ -12,6 +12,10 @@ from .tools import ToolContext, enabled_tools
 log = logging.getLogger("agent")
 MAX_TOOL_CALLS = 4
 EVENT_CONTEXT = 15
+DIARY_SHOWN = 5
+LIST_SHOWN = 10
+LEARNED_SHOWN = 5
+DIARY_NUDGE_SECONDS = 1800
 HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
 
 
@@ -87,6 +91,7 @@ class Agent:
         self.state.apply_decay()
 
         inbox = self.state.pending_inbox()
+        self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         specs = [spec for spec, _ in self.tools.values()]
 
@@ -107,12 +112,14 @@ class Agent:
             self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
             if step == 0:
                 self.state.consume_inbox([m["id"] for m in inbox])
+                if inbox:
+                    self.state.log("inbox_read", ids=[m["id"] for m in inbox])
                 self.ticks += 1
             self.state.log("tick", reason=reason, step=step, text=resp.text,
                            tokens=resp.usage.input_tokens + resp.usage.output_tokens,
                            tools=[c.name for c in resp.tool_calls])
-            if inbox and resp.text:
-                self.state.log("say", text=resp.text)
+            if inbox and resp.text:  # plain-text reply (the `say` tool is the reliable path)
+                self.state.log("say", text=resp.text, to=[m["id"] for m in inbox])
             if not resp.tool_calls:
                 return
 
@@ -152,16 +159,36 @@ class Agent:
                 return open(p).read()
         return "You are a small autonomous creature living in a room."
 
+    def _journal(self) -> list[str]:
+        def fmt(m): return f"- #{m['id']} {m['text'][:200]}"
+        lines: list[str] = []
+        diary = self.state.memories("diary", limit=DIARY_SHOWN)
+        lines += ["Your diary (latest entries):"] + [fmt(m) for m in diary] if diary else ["Your diary is empty."]
+        for section, label, hint in (
+            ("todo", "Your to-do list (open)", "nothing planned - anything you'd like to get done?"),
+            ("wishlist", "Your wishlist (open)", "nothing yet - what do you want?"),
+            ("ambitions", "Your ambitions (open)", "none yet - what would you like to achieve?"),
+        ):
+            items = self.state.memories(section, status="open", limit=LIST_SHOWN)
+            lines += [f"{label}:"] + ([fmt(m) for m in items] if items else [f"- ({hint})"])
+        learned = self.state.memories("learned", limit=LEARNED_SHOWN)
+        if learned:
+            lines += ["Things you've learned:"] + [fmt(m) for m in learned]
+        if diary:
+            quiet = time.time() - diary[-1]["ts"]
+            if quiet > DIARY_NUDGE_SECONDS:
+                lines.append(f"(You haven't written in your diary for {int(quiet // 60)} minutes.)")
+        return lines
+
     def _perception(self, reason: str, inbox: list[dict]) -> str:
         a = self.state.agent()
         lines = [
             f"Woke because: {reason}",
             f"State: hunger {a['hunger']:.2f} (1=starving), energy {a['energy']:.2f} (0=exhausted), "
-            f"mood {a['mood']}, location {a['location']}, activity {a['activity']}",
+            f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
+            + (f" ({a['description']})" if a["description"] else ""),
         ]
-        notes = self.state.recent_memories()
-        if notes:
-            lines += ["Your notes:"] + [f"- {n}" for n in notes]
+        lines += self._journal()
         events = [e for e in reversed(self.state.events(EVENT_CONTEXT * 2)) if e["kind"] not in HIDDEN_EVENT_KINDS]
         if events:
             lines.append("Recent events:")

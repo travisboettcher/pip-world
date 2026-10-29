@@ -22,3 +22,20 @@ Add a backend in `brain/app/llm/` and register it in `llm/__init__.py`; add a pa
 
 ## Tests
 `cd brain && pip install -r requirements-dev.txt && pytest`
+
+## Talking to Pip: `pipchat`
+Stdlib-only CLI (`./pipchat`, or symlink it onto your PATH). Defaults to the Traefik URL; override with `PIP_URL` or `--url`.
+```sh
+./pipchat                       # interactive chat; /status /usage /notes /log /watch /tick work inside it
+./pipchat "hello Pip"           # say one thing, print the reply
+./pipchat status | usage | health
+./pipchat notes [diary|todo|wishlist|ambitions|learned] [--status open|done]
+./pipchat log 30 --kind tool --kind say
+./pipchat watch --kind tick     # live stream
+./pipchat --json notes          # JSON for scripting (watch emits JSON lines)
+```
+
+## Pip's journal
+`note_to_self` writes to one of five sections (`diary`, `todo`, `wishlist`, `ambitions`, `learned`); `resolve_note`
+crosses off a todo/wishlist/ambition item. Open items and the latest diary entries are shown to Pip every tick, and the
+persona (`brain/persona.md`, re-read live) encourages it to keep them. HTTP: `GET /notes`.

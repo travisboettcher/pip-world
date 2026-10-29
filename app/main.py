@@ -9,7 +9,7 @@ from .config import Settings
 from .llm import get_backend
 from .loop import Agent
 from .pacing import get_policy
-from .state import State
+from .state import SECTIONS, State
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -53,16 +53,21 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         }
 
     @app.get("/events")
-    def get_events(limit: int = 50, before_id: int | None = None):
-        return app.state.agent.state.events(min(limit, 500), before_id)
+    def get_events(limit: int = 50, before_id: int | None = None, after_id: int | None = None):
+        return app.state.agent.state.events(min(limit, 500), before_id, after_id)
+
+    @app.get("/notes")
+    def get_notes(limit: int = 50):
+        st = app.state.agent.state
+        return {sec: st.memories(sec, limit=min(limit, 200)) for sec in SECTIONS}
 
     @app.post("/inbox")
     def post_inbox(item: InboxItem):
         agent: Agent = app.state.agent
-        agent.state.log("inbox", text=item.text)
-        agent.state.add_inbox(item.text)
+        inbox_id = agent.state.add_inbox(item.text)
+        agent.state.log("inbox", id=inbox_id, text=item.text)
         agent.request_wake()
-        return {"queued": True}
+        return {"queued": True, "id": inbox_id}
 
     @app.post("/tick")
     def post_tick():

@@ -59,6 +59,6 @@ class Settings:
             tick_seconds=_float("TICK_SECONDS", 120),
             min_tick_interval=_float("MIN_TICK_INTERVAL", 15),
             daily_token_budget=_int("DAILY_TOKEN_BUDGET", 200_000),
-            tools=[t.strip() for t in (e("TOOLS") or "set_activity,eat,rest,note_to_self,web_search").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,resolve_note,web_search").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )
