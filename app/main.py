@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import creations as cr
+from . import projects as proj
 from .config import Settings
 from .llm import get_backend
 from .loop import Agent
@@ -95,6 +98,31 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.get("/garden")
     def get_garden():
         return app.state.agent.state.garden()
+
+    @app.get("/projects")
+    def get_projects(status: str | None = None):
+        st = app.state.agent.state
+        sess = st.session()
+        out = []
+        for p in st.projects(status):
+            i = proj.current_stage(p)
+            out.append({**p, "percent": proj.percent(p), "current_stage": i,
+                        "working_until": sess["ends_at"] if sess and sess["project_id"] == p["id"] else None})
+        return {"projects": out, "skills": {c: {"xp": xp, "level": proj.level(xp)} for c, xp in st.skills().items()}}
+
+    @app.get("/creations")
+    def get_creations():
+        st = app.state.agent.state
+        now = time.time()
+        chars = {ch["creation_id"]: ch["name"] for ch in st.characters() if ch["kind"] == "creation"}
+        out = []
+        for c in st.creations():
+            extra = {"running": cr.running(c, now), "summary": cr.describe(c, now)[2:], "character": chars.get(c["id"])}
+            if "timekeeper" in c["spec"]["capabilities"]:
+                shown, off = cr.clock_reading(c, now)
+                extra["clock"] = {"reads": shown, "minutes_off": round(off, 1)}
+            out.append({**c, **extra})
+        return out
 
     @app.post("/items")
     def give_item(g: Gift):

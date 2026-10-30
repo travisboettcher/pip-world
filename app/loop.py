@@ -1,9 +1,14 @@
 import asyncio
 import logging
 import os
+import random
 import time
 
+from . import companions as comp
+from . import creations as cr
+from . import projects as proj
 from .config import Settings
+from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
 from .state import State
@@ -19,10 +24,13 @@ HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
 
 
 class Agent:
-    def __init__(self, settings: Settings, state: State, backend: LLMBackend, pacing: PacingPolicy):
+    def __init__(self, settings: Settings, state: State, backend: LLMBackend, pacing: PacingPolicy,
+                 gm_backend: LLMBackend | None = None, rng: random.Random | None = None):
         self.s, self.state, self.backend, self.pacing = settings, state, backend, pacing
         self.tools = enabled_tools(settings)
-        self.ctx = ToolContext(state, settings)
+        self.rng = rng or random.Random()
+        self.gm = GameMaster(gm_backend or backend, state)
+        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng)
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
@@ -39,6 +47,9 @@ class Agent:
         """Block until the policy says it's time. Returns the wake reason."""
         while True:
             delay = self.pacing.next_delay(time.time(), self.last_tick)
+            sess = self.state.session()
+            if delay is not None and sess:  # working: no heartbeat until the session ends (events still wake)
+                delay = max(delay, sess["ends_at"] - time.time())
             if self._wake.is_set():
                 self._wake.clear()
                 if self._force:
@@ -74,7 +85,11 @@ class Agent:
         """Cheap, LLM-free: advance stats, ripen crops, and wake the agent when something needs it."""
         while True:
             await asyncio.sleep(self.s.monitor_seconds)
-            self.check_world()
+            try:
+                self.check_world()
+                await self.resolve_world()
+            except Exception:
+                log.exception("monitor failed")
 
     def check_world(self) -> None:
         for alert in self.state.apply_decay():
@@ -82,6 +97,22 @@ class Agent:
             self.request_wake()
         for crop in self.state.garden_newly_ready():
             self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
+            self.request_wake()
+        if cr.tick(self.state, self.rng):
+            self.request_wake()
+
+    async def resolve_world(self) -> None:
+        """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
+        sess = self.state.session()
+        if sess and sess["ends_at"] <= time.time():
+            work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
+            if work:
+                if work["project_done"]:
+                    p = self.state.project(work["project_id"])
+                    c = await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
+                    comp.add_for_creation(self.state, self.rng, c)
+                self.request_wake()
+        if await comp.step(self.state, self.s, self.gm, self.rng):
             self.request_wake()
 
     # --- one tick ----------------------------------------------------
@@ -183,6 +214,44 @@ class Agent:
                     lines.append(f"- plot {g['plot']}: {g['crop']} growing, ready in about {g['ready_in_min']} min")
         return lines
 
+    def _projects(self) -> list[str]:
+        if "work_on" not in self.tools:
+            return []
+        active = self.state.projects("active")
+        sess = self.state.session()
+        lines = ["Your projects:"]
+        for p in active:
+            i = proj.current_stage(p)
+            line = f"- #{p['id']} {p['name']} ({p['craft']}, difficulty {p['difficulty']}/5): {proj.percent(p)}% done"
+            if i is not None:
+                st = p["stages"][i]
+                line += f", now on stage {i + 1}/{len(p['stages'])} '{st['name']}'"
+                if st["materials"]:
+                    needs = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
+                    if st["started"]:
+                        line += f" (its {needs} are already in hand)"
+                    else:
+                        _, missing = proj.missing_materials(self.state, st)
+                        line += f" (needs {needs}" + (f"; missing {', '.join(missing)})" if missing else "; you have them)")
+                later = proj.upcoming_needs(p, i + 1)
+                if later:
+                    line += "; later stages need " + ", ".join(
+                        f"{q} {n} (you have {self.state.find_item(n)[0]['qty'] if self.state.find_item(n)[0] else 0})"
+                        for n, q in later.items())
+            if sess and sess["project_id"] == p["id"]:
+                line += f" - you're working on it now, about {max(1, round((sess['ends_at'] - time.time()) / 60))} min left"
+            lines.append(line)
+        if not active:
+            lines.append("- (none - start_project when you want to make something)")
+        skills = {c: proj.level(xp) for c, xp in self.state.skills().items()}
+        if skills:
+            lines.append("Your skills (0-5): " + ", ".join(f"{c} {lvl}" for c, lvl in skills.items()))
+        made = self.state.creations()
+        if made:
+            lines.append("Things you've made:")
+            lines += [cr.describe(c) for c in made]
+        return lines
+
     @staticmethod
     def _moment_text(e: dict) -> str | None:
         """One-line description of an event worth a diary entry, or None for ordinary events."""
@@ -191,12 +260,22 @@ class Agent:
             return f"{d['sender']} gave you {d['qty']} x {d['item']}"
         if k == "garden":
             return f"Your {d['crop']} in plot {d['plot']} ripened"
+        if k == "creation_made":
+            return f"Your {d['project']} became {d['name']}: {d['description']}"
+        if k == "work" and not d.get("interrupted"):
+            if d["project_done"]:
+                return f"You finished {d['project']}! {d['text']}"
+            if d["result"] in ("breakthrough", "setback") or d["finished_stage"]:
+                done = " (that stage is done)" if d["finished_stage"] else ""
+                return f"Working on {d['project']}: {d['text']}{done}"
         if k == "tool":
             t, a, r = d["tool"], d["args"], str(d.get("result", ""))
             if t == "plant" and r.startswith("planted"):
                 return r.capitalize()
             if t == "harvest" and r.startswith("harvested"):
                 return r.capitalize()
+            if t == "start_project" and r.startswith("started project"):
+                return f"You started a new project: {a.get('name')}"
             if t == "resolve_note" and r.startswith("crossed off"):
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
@@ -268,6 +347,7 @@ class Agent:
             + (f" ({a['description']})" if a["description"] else ""),
         ]
         lines += self._belongings()
+        lines += self._projects()
         lines += self._journal()
         events = [e for e in reversed(self.state.events(EVENT_CONTEXT * 2)) if e["kind"] not in HIDDEN_EVENT_KINDS]
         if events:
@@ -279,6 +359,18 @@ class Agent:
                         lines.append(f"- you said/thought: {d['text']}")
                 elif e["kind"] == "tool":
                     lines.append(f"- you used {d['tool']}({d['args']}) -> {d['result']}")
+                elif e["kind"] == "creation":
+                    lines.append(f"- {d['text']}" if d["what"] in ("stopped", "helper", "used")
+                                 else f"- your {d['name']}: {d['text']}")
+                elif e["kind"] == "companion":  # model-written, so quoted like a visitor's words
+                    lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
+                elif e["kind"] == "creation_made":
+                    lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}")
+                elif e["kind"] == "work":
+                    lines.append(f"- work on {d['project']} ({d['stage']}): {d['result']}"
+                                 + ("" if d.get("interrupted") else f" - {d['text']}")
+                                 + (" [project finished!]" if d["project_done"] else
+                                    " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
         if inbox:
             lines.append("Inbox (visitors):")
             lines += [f"- {m['text']}" for m in inbox]

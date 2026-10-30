@@ -1,4 +1,9 @@
+import random
+import time
+
 from fastapi.testclient import TestClient
+
+from app import creations as cr
 
 from app.config import Settings
 from app.llm.base import LLMResponse, ToolCall, Usage
@@ -122,3 +127,21 @@ def test_gift_points_at_matching_wish(tmp_path):
         texts = [i["text"] for i in st.pending_inbox()]
         assert f"#{wish}" in texts[0] and "edit_note" in texts[0] and "resolve_note" in texts[0]
         assert "wished for" not in texts[1]
+
+
+def test_projects_and_creations_endpoints(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        st = c.app.state.agent.state
+        p = st.add_project("kite", "fly", "sewing", 2, [{"name": "cut", "minutes": 30, "materials": {},
+                                                        "progress": 15.0, "started": True}], [])
+        st.start_session(p["id"], 0, 30, 9e9)
+        st.add_xp("sewing", 120)
+        _, _, spec = cr.sanitize_spec({"description": "a clock", "capabilities": [{"type": "timekeeper"}]},
+                                      {"name": "clock", "difficulty": 1}, "fine", [], random.Random(1))
+        st.add_creation("clock", "a clock", None, "fine", spec, cr.initial_runtime(spec, time.time()))
+        r = c.get("/projects").json()
+        assert r["projects"][0]["percent"] == 50 and r["projects"][0]["working_until"] == 9e9
+        assert r["skills"] == {"sewing": {"xp": 120, "level": 1}}
+        (made,) = c.get("/creations").json()
+        assert made["running"] and made["clock"]["minutes_off"] == 0 and made["summary"].startswith("clock (fine)")

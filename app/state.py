@@ -45,6 +45,27 @@ CREATE TABLE IF NOT EXISTS garden (
   planted_at REAL NOT NULL, ready_at REAL NOT NULL, yield INTEGER NOT NULL,
   food_value REAL NOT NULL, notified INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS projects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, goal TEXT NOT NULL DEFAULT '',
+  craft TEXT NOT NULL, difficulty INTEGER NOT NULL,
+  stages TEXT NOT NULL, tools TEXT NOT NULL DEFAULT '[]', history TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active', outcome TEXT NOT NULL DEFAULT '',
+  ts REAL NOT NULL, finished_at REAL
+);
+CREATE TABLE IF NOT EXISTS work_session (
+  id INTEGER PRIMARY KEY CHECK (id = 1), project_id INTEGER NOT NULL, stage INTEGER NOT NULL,
+  minutes REAL NOT NULL, started_at REAL NOT NULL, ends_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS creations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+  project_id INTEGER, quality TEXT NOT NULL, spec TEXT NOT NULL, runtime TEXT NOT NULL DEFAULT '{}', ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS characters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, creation_id INTEGER,
+  persona TEXT NOT NULL, chatter_minutes REAL NOT NULL, next_chatter_at REAL NOT NULL,
+  heard TEXT NOT NULL DEFAULT '[]', replies TEXT NOT NULL DEFAULT '[]', ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS usage (
   day TEXT PRIMARY KEY, input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -114,6 +135,8 @@ class State:
             energy_rate = (
                 self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
             )
+            if self.session():
+                energy_rate -= self.s.work_energy_per_hour
             hunger = clamp(a["hunger"] + self.s.hunger_per_hour * hours)
             energy = clamp(a["energy"] + energy_rate * hours)
             new = []
@@ -332,6 +355,167 @@ class State:
     def matching_wishes(self, item_name: str) -> list[dict]:
         """Open wishlist entries that share a meaningful word with an item (e.g. 'tiny needle file')."""
         return [m for m in self.memories("wishlist", status="open", limit=50) if self.related(item_name, m["text"])]
+
+    # --- projects, work sessions, skills -------------------------------------
+    PROJECT_JSON = ("stages", "tools", "history")
+
+    def _project(self, row) -> dict:
+        return {**dict(row), **{k: json.loads(row[k]) for k in self.PROJECT_JSON}}
+
+    def add_project(self, name: str, goal: str, craft: str, difficulty: int, stages: list[dict],
+                    tools: list[str]) -> dict:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO projects (name, goal, craft, difficulty, stages, tools, ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (name, goal, craft, difficulty, json.dumps(stages), json.dumps(tools), time.time()))
+            self.db.commit()
+            return self.project(cur.lastrowid)
+
+    def project(self, project_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return self._project(row) if row else None
+
+    def projects(self, status: str | None = None, limit: int = 50) -> list[dict]:
+        q, args = "SELECT * FROM projects", []
+        if status:
+            q += " WHERE status = ?"
+            args.append(status)
+        with self.lock:
+            rows = self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+        return [self._project(r) for r in reversed(rows)]
+
+    def update_project(self, project_id: int, **fields) -> None:
+        vals = {k: json.dumps(v) if k in self.PROJECT_JSON else v for k, v in fields.items()}
+        with self.lock:
+            self.db.execute(f"UPDATE projects SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?",
+                            (*vals.values(), project_id))
+            self.db.commit()
+
+    def find_project(self, query, status: str = "active") -> tuple[dict | None, str]:
+        """Resolve '#3', 3 or a loose name ('clock') to one project with the given status."""
+        rows = self.projects(status)
+        q = str(query).strip().lower().lstrip("#")
+        if q.isdigit():
+            hit = [p for p in rows if p["id"] == int(q)]
+            return (hit[0], "") if hit else (None, f"no {status} project #{q}")
+        exact = [p for p in rows if p["name"].lower() == q]
+        part = exact or [p for p in rows if q and (q in p["name"].lower() or p["name"].lower() in q)]
+        if len(part) == 1:
+            return part[0], ""
+        if not part:
+            names = ", ".join(f"#{p['id']} {p['name']}" for p in rows) or "none"
+            return None, f"no {status} project called {query!r} (yours: {names})"
+        return None, "which one? " + ", ".join(f"#{p['id']} {p['name']}" for p in part)
+
+    def session(self) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM work_session WHERE id = 1").fetchone()
+        return dict(row) if row else None
+
+    def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO work_session VALUES (1, ?, ?, ?, ?, ?)",
+                            (project_id, stage, minutes, time.time(), ends_at))
+            self.db.commit()
+
+    def end_session(self) -> None:
+        with self.lock:
+            self.db.execute("DELETE FROM work_session")
+            self.db.commit()
+
+    def add_xp(self, craft: str, minutes: float) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO skills VALUES (?, ?) ON CONFLICT(craft) DO UPDATE SET xp = xp + excluded.xp",
+                            (craft, minutes))
+            self.db.commit()
+
+    def skills(self) -> dict[str, float]:
+        """craft -> xp (minutes of practice)."""
+        with self.lock:
+            return {r["craft"]: r["xp"] for r in self.db.execute("SELECT * FROM skills ORDER BY xp DESC")}
+
+    # --- creations --------------------------------------------------------------
+    @staticmethod
+    def _creation(row) -> dict:
+        return {**dict(row), "spec": json.loads(row["spec"]), "runtime": json.loads(row["runtime"])}
+
+    def add_creation(self, name: str, description: str, project_id: int | None, quality: str, spec: dict,
+                     runtime: dict) -> dict:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO creations (name, description, project_id, quality, spec, runtime, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (name, description, project_id, quality, json.dumps(spec), json.dumps(runtime), time.time()))
+            self.db.commit()
+            return self.creation(cur.lastrowid)
+
+    def creation(self, creation_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM creations WHERE id = ?", (creation_id,)).fetchone()
+        return self._creation(row) if row else None
+
+    def creations(self) -> list[dict]:
+        with self.lock:
+            return [self._creation(r) for r in self.db.execute("SELECT * FROM creations ORDER BY id")]
+
+    def set_runtime(self, creation_id: int, runtime: dict) -> None:
+        with self.lock:
+            self.db.execute("UPDATE creations SET runtime = ? WHERE id = ?", (json.dumps(runtime), creation_id))
+            self.db.commit()
+
+    def find_creation(self, query: str) -> tuple[dict | None, str]:
+        q = str(query).strip().lower().lstrip("#")
+        rows = self.creations()
+        exact = [c for c in rows if c["name"].lower() == q]
+        part = exact or [c for c in rows if q and (q in c["name"].lower() or c["name"].lower() in q)]
+        if len(part) == 1:
+            return part[0], ""
+        if not part:
+            return None, f"you haven't made anything called {query!r}"
+        return None, "which one? " + ", ".join(c["name"] for c in part)
+
+    # --- characters (companions; later neighbors) ----------------------------
+    @staticmethod
+    def _character(row) -> dict:
+        return {**dict(row), "heard": json.loads(row["heard"]), "replies": json.loads(row["replies"])}
+
+    def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
+                      next_chatter_at: float) -> dict:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes, next_chatter_at,
+                                                  time.time()))
+            self.db.commit()
+            return self._character(self.db.execute("SELECT * FROM characters WHERE id = ?", (cur.lastrowid,)).fetchone())
+
+    def characters(self) -> list[dict]:
+        with self.lock:
+            return [self._character(r) for r in self.db.execute("SELECT * FROM characters ORDER BY id")]
+
+    def update_character(self, character_id: int, **fields) -> None:
+        vals = {k: json.dumps(v) if k in ("heard", "replies") else v for k, v in fields.items()}
+        with self.lock:
+            self.db.execute(f"UPDATE characters SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?",
+                            (*vals.values(), character_id))
+            self.db.commit()
+
+    def find_character(self, query: str) -> dict | None:
+        q = str(query).strip().lower()
+        rows = self.characters()
+        hit = [c for c in rows if c["name"].lower() == q] or \
+              [c for c in rows if q and (q in c["name"].lower() or c["name"].lower() in q)]
+        return hit[0] if len(hit) == 1 else None
+
+    def hurry_garden(self, fraction: float, now: float | None = None) -> int:
+        """Cut the remaining growing time of every unripe crop by `fraction`. Returns how many were helped."""
+        now = now or time.time()
+        with self.lock:
+            n = self.db.execute("UPDATE garden SET ready_at = ready_at - (ready_at - ?) * ? WHERE ready_at > ?",
+                                (now, fraction, now)).rowcount
+            self.db.commit()
+        return n
 
     # --- usage / budget ----------------------------------------------
     def add_usage(self, input_tokens: int, output_tokens: int) -> None:

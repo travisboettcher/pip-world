@@ -5,7 +5,7 @@
   pipchat "hello there"         say something, print the reply, exit
   pipchat status | usage | health
   pipchat give "tiny needle file" [--kind tool|material|food|seed] [-q N] [--message "for the clock!"]
-  pipchat items | garden
+  pipchat items | garden | projects | creations
   pipchat notes [section] [--status open|done] [-n N]
   pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
   pipchat tick                  wake Pip now
@@ -38,7 +38,7 @@ def c(code: str, text: str) -> str:
     return f"\033[{code}m{text}\033[0m" if TTY else text
 
 
-dim, green, yellow, red, bold = (lambda t, k=k: c(k, t) for k in ("2", "32", "33", "31", "1"))
+dim, green, yellow, red, bold, cyan = (lambda t, k=k: c(k, t) for k in ("2", "32", "33", "31", "1", "36"))
 
 
 def out_json(obj) -> None:
@@ -112,12 +112,35 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
             return dim(f"  * Pip eats {a['item']}")
         if t == "web_search":
             return dim(f"  * Pip searches the web for: {a.get('query')}")
+        if t == "start_project":
+            return dim(f"  * Pip starts a project: {a.get('name')}" + (f" - {a['goal']}" if a.get("goal") else ""))
+        if t == "work_on":
+            r = str(d.get("result", ""))
+            return yellow(f"  ! {r}") if r.startswith(("error", "can't", "you're in the middle")) else \
+                dim(f"  * Pip settles in to work on {a.get('project')}" + (f" for {a['minutes']} min" if a.get("minutes") else ""))
+        if t == "abandon_project":
+            return dim(f"  * Pip gives up on {a.get('project')}" + (f": {a['reason']}" if a.get("reason") else ""))
+        if t == "tend":
+            return dim(f"  * Pip {d.get('result')}")
         return dim(f"  * Pip uses {t}")
     if k == "gift":
         n = d.get("qty", 1)
         return yellow(f"  + {d['sender']} gives Pip {n} x {d['item']}")
     if k == "garden":
         return green(f"  * Pip's {d['crop']} in plot {d['plot']} are ripe")
+    if k == "work":
+        mark = {"setback": red, "breakthrough": green}.get(d["result"], dim)
+        tail = " - finished!" if d["project_done"] else " (stage done)" if d["finished_stage"] else f" ({d['percent']}%)"
+        if d.get("interrupted"):
+            return dim(f"  * Pip stopped working on {d['project']} early{tail}")
+        return mark(f"  ~ {d['project']}, {d['stage']}: {d['result']}") + dim(f" - {d['text']}{tail}")
+    if k == "creation_made":
+        tags = ", ".join([d["quality"], *d["capabilities"]])
+        return green(f"  + Pip made {d['name']} ({tags}): {d['description']}")
+    if k == "creation":
+        return dim(f"  ~ {d['text']}") if d["what"] in ("stopped", "helper", "used") else dim(f"  ~ {d['name']}: {d['text']}")
+    if k == "companion":
+        return cyan(f"{d['name'].lower()}> ") + d["text"]
     if k == "tool_error":
         return yellow(f"  ! tool {d.get('tool')} failed: {d.get('error')}")
     if k == "error":
@@ -324,6 +347,42 @@ def cmd_garden(pip: Pip, a) -> None:
             print(f"  plot {g['plot']}: {g['crop']} - ready in about {g['ready_in_min']} min")
 
 
+def cmd_projects(pip: Pip, a) -> None:
+    r = pip.call("/projects" + (f"?status={a.status}" if a.status else ""))
+    if JSON_MODE:
+        return out_json(r)
+    print(bold("Projects"))
+    for p in r["projects"]:
+        head = f"  #{p['id']} {p['name']} [{p['status']}] {p['craft']}, difficulty {p['difficulty']}/5, {p['percent']}%"
+        if p["working_until"]:
+            head += green(f" - working, ~{max(1, round((p['working_until'] - time.time()) / 60))} min left")
+        print(head)
+        for i, st in enumerate(p["stages"]):
+            mats = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
+            mark = "x" if st["progress"] >= st["minutes"] else ">" if i == p["current_stage"] else " "
+            print(dim(f"    [{mark}] {st['name']} ({round(st['progress'])}/{st['minutes']} min" + (f"; {mats}" if mats else "") + ")"))
+        if a.verbose:
+            for h in p["history"]:
+                print(dim(f"      {fmt_time(h['ts'])} {h['result']}: {h['text']}"))
+    if not r["projects"]:
+        print(dim("  (none)"))
+    if r["skills"]:
+        print(bold("Skills"))
+        for c, v in r["skills"].items():
+            print(f"  {c}: level {v['level']} " + dim(f"({round(v['xp'])} min of practice)"))
+
+
+def cmd_creations(pip: Pip, a) -> None:
+    made = pip.call("/creations")
+    if JSON_MODE:
+        return out_json(made)
+    print(bold("Things Pip has made"))
+    for c in made:
+        print(f"  {c['summary']}" + (cyan(f" [talks as {c['character']}]") if c.get("character") else ""))
+    if not made:
+        print(dim("  (nothing yet)"))
+
+
 def cmd_chat(pip: Pip, a) -> None:
     try:
         import readline  # noqa: F401  (line editing + history)
@@ -401,6 +460,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kind", action="append", help="only this event kind; repeatable")
     add("items", cmd_items, "what Pip owns")
     add("garden", cmd_garden, "Pip's garden plots")
+    p = add("projects", cmd_projects, "Pip's projects, their stages and Pip's skills")
+    p.add_argument("--status", choices=["active", "done", "abandoned"])
+    p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
+    add("creations", cmd_creations, "things Pip has made, and what they're doing")
     p = add("give", cmd_give, "give Pip something and see how it reacts")
     p.add_argument("name", help='e.g. "tiny needle file"')
     p.add_argument("-q", "--quantity", type=int, default=1)
@@ -422,7 +485,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

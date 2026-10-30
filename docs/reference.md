@@ -51,3 +51,24 @@ garden (`GARDEN_PLOTS`, default 3). It starts with tomato and carrot seeds (give
 ./pipchat items | garden
 ```
 HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`.
+
+## Projects and creations
+Design and rationale: [DESIGN-creations.md](DESIGN-creations.md). Pip chooses what to make; the engine decides how it
+goes; a "game master" LLM call (same backend and budget) only writes flavor and picks from a fixed vocabulary.
+- `start_project(name, goal)`: the GM plans stages, materials, difficulty and craft. `work_on(project, minutes)` runs a
+  real-time session (`WORK_SPEED` speeds it up), and Pip isn't woken by the heartbeat until it ends. Then a dice roll
+  (skill, owned helpful tools, difficulty, fatigue) decides setback / slow / good / breakthrough and the GM narrates
+  it. Resting cuts a session short at half credit; `set_activity` only re-describes it. `abandon_project` gives up.
+- A finished project becomes a creation. Most (art, writing, keepsakes) have no behaviour and simply exist. Ones that
+  genuinely work get up to 3 generic capabilities (`timekeeper`, `upkeep`, `periodic`, `sensor`, `helper`,
+  `companion`), with the specifics (what it does, how it's tended, what it finds) written by the GM, plus quirks
+  (setbacks leave marks). The engine runs them every monitor pass without the LLM: timekeepers drift, things that
+  need upkeep stop until Pip `tend`s them, sensors wake Pip, helpers speed the garden, find things or comfort Pip.
+  `use_item` on a creation asks the GM what happens, with only small capped effects.
+- A `companion` creation talks: it chatters now and then and answers `say(text, to=<name>)`, capped at
+  `COMPANION_REPLIES_PER_HOUR`.
+```sh
+./pipchat projects [-v] [--status active|done|abandoned]   # stages, progress, skills; -v shows each session
+./pipchat creations                                         # what Pip has made and what it's doing
+```
+HTTP: `GET /projects`, `GET /creations`. New tools must be listed in `TOOLS` in `.env` (see `.env.tpl`).

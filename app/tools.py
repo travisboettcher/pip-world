@@ -1,12 +1,16 @@
 """Tool registry. Tools are declared once in a provider-neutral schema; enable by name via TOOLS."""
 import difflib
+import random
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 import httpx
 
+from . import companions as comp
+from . import creations as cr
+from . import projects as proj
 from .config import Settings
 from .llm.base import ToolSpec
 from .state import RESOLVABLE, SECTIONS, State, clamp
@@ -18,6 +22,16 @@ class ToolContext:
     state: State
     settings: Settings
     visitor_ids: list[int] = field(default_factory=list)  # inbox items being answered this tick
+    gm: Any = None  # GameMaster, or None (world content falls back to templates)
+    rng: random.Random = field(default_factory=random.Random)
+
+
+async def stop_working(ctx: "ToolContext") -> str:
+    """Cut a running work session short (when Pip switches to something else). Returns a note for the result."""
+    if not ctx.state.session():
+        return ""
+    w = await proj.resolve_session(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
+    return f" (you stopped working on {w['project']} early)" if w else ""
 
 
 @dataclass
@@ -57,10 +71,18 @@ def _obj(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-@tool("say", "Speak out loud to a visitor. This is the only way a visitor can hear you.",
-      _obj({"text": {"type": "string"}}, ["text"]))
+@tool("say", "Speak out loud. This is the only way a visitor can hear you. To talk to something you made that "
+      "has a mind of its own, give its name in `to`.",
+      _obj({"text": {"type": "string"}, "to": {"type": "string", "description": "optional: one of your creations"}},
+           ["text"]))
 async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
+    if args.get("to"):
+        ch = ctx.state.find_character(args["to"])
+        if ch:
+            comp.hear(ctx.state, ch, text)
+            ctx.state.log("say", text=text, to=[], to_name=ch["name"])
+            return ToolResult(f"said it to {ch['name']}; it will answer in a moment")
     ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
     return ToolResult("said it")
 
@@ -76,6 +98,14 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     fields = {"activity": activity, "description": str(args.get("description") or "")[:200].strip()}
     if args.get("mood"):
         fields["mood"] = str(args["mood"])[:40]
+    sess = ctx.state.session()
+    if sess:  # describing the work doesn't stop it; rest (or finishing) does
+        fields.pop("activity")
+        if not fields["description"]:
+            fields.pop("description")
+        ctx.state.update_agent(**fields)
+        left = max(1, round((sess["ends_at"] - time.time()) / 60))
+        return ToolResult(f"you're still working (about {left} min left); rest if you want to stop early")
     ctx.state.update_agent(**fields)
     return ToolResult(f"now {activity}")
 
@@ -85,22 +115,26 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"item": {"type": "string", "description": "optional: a food item from your belongings"}}, []))
 async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     a = ctx.state.agent()
+    working = bool(ctx.state.session())  # a quick bite doesn't interrupt a work session
     if not args.get("item"):
-        ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4), activity="eating", description="")
+        ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4),
+                               **({} if working else {"activity": "eating", "description": ""}))
         return ToolResult("ate a meal")
     item, err = ctx.state.find_item(args["item"], kind="food")
     if not item:
         return ToolResult(f"error: {err}", followup=True)
     ctx.state.take_item(item["id"])
     value = float(item["attrs"].get("food_value", FOOD_DEFAULT))
-    ctx.state.update_agent(hunger=clamp(a["hunger"] - value), activity="eating", description=f"eating {item['name']}")
+    ctx.state.update_agent(hunger=clamp(a["hunger"] - value),
+                           **({} if working else {"activity": "eating", "description": f"eating {item['name']}"}))
     return ToolResult(f"ate {item['name']}")
 
 
 @tool("rest", "Rest to recover energy until you choose another activity.", _obj({}, []))
 async def rest(ctx: ToolContext, args: dict) -> ToolResult:
+    note = await stop_working(ctx)
     ctx.state.update_agent(activity="resting", description="")
-    return ToolResult("resting")
+    return ToolResult(f"resting{note}")
 
 
 @tool("note_to_self",
@@ -144,12 +178,17 @@ async def edit_note(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"edited #{args['id']} (was: {old[:120]})")
 
 
-@tool("use_item", "Use something you own for a purpose. Materials (like brass) are used up; tools are kept.",
+@tool("use_item", "Use something you own or made for a purpose. Materials are used up; tools are kept. Things you "
+      "made respond in their own way - use, look at, play or read them, whatever fits.",
       _obj({"item": {"type": "string"}, "purpose": {"type": "string"},
             "quantity": {"type": "integer", "description": "materials only, default 1"}}, ["item", "purpose"]))
 async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
     item, err = ctx.state.find_item(args["item"])
     if not item:
+        made, _ = ctx.state.find_creation(args["item"])
+        if made:
+            return ToolResult(await cr.use(ctx.state, ctx.gm, made, str(args.get("purpose") or "")[:200]),
+                              followup=True)
         return ToolResult(f"error: {err}", followup=True)
     if item["kind"] == "seed":
         return ToolResult("error: seeds are planted with the plant tool", followup=True)
@@ -230,6 +269,108 @@ async def web_search(ctx: ToolContext, args: dict) -> ToolResult:
     lines = [d.get("answer") or ""]
     lines += [f"- {x['title']}: {x['content'][:200]}" for x in d.get("results", [])]
     return ToolResult("\n".join(l for l in lines if l)[:1200], followup=True)
+
+
+# --- projects ---------------------------------------------------------------------
+def describe_stage(project: dict, i: int) -> str:
+    st = project["stages"][i]
+    mats = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
+    return (f"stage {i + 1}/{len(project['stages'])} '{st['name']}' (about {st['minutes']} min of work"
+            + (f"; uses {mats}" if mats and not st["started"] else "") + ")")
+
+
+@tool("start_project",
+      "Start making something - anything you'd like to exist. The world works out its stages, any materials they "
+      "need and how hard it is. Then work_on it. Some things you make will work or act on their own; many are "
+      "simply themselves, and that's just as good.",
+      _obj({"name": {"type": "string", "description": "short name"},
+            "goal": {"type": "string", "description": "what it should be, look like or do, one sentence"}}, ["name"]))
+async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
+    name = str(args["name"]).strip()[:60]
+    goal = str(args.get("goal") or "").strip()[:300]
+    if not name:
+        return ToolResult("error: a project needs a name", followup=True)
+    active = ctx.state.projects("active")
+    if any(p["name"].lower() == name.lower() for p in active):
+        return ToolResult(f"you're already working on {name!r}; use work_on", followup=True)
+    if len(active) >= ctx.settings.max_active_projects:
+        return ToolResult(f"you already have {len(active)} projects going ({', '.join(p['name'] for p in active)}); "
+                          "finish or abandon_project one first", followup=True)
+    belongings = [f"{i['name']} x{i['qty']} ({i['kind']})" for i in ctx.state.items()]
+    skills = {c: proj.level(xp) for c, xp in ctx.state.skills().items()}
+    raw = await ctx.gm.plan(name, goal, belongings, skills) if ctx.gm else None
+    plan = proj.sanitize_plan(raw)
+    p = ctx.state.add_project(name, goal, plan["craft"], plan["difficulty"], proj.new_stages(plan), plan["tools"])
+    stages = "; ".join(f"{i + 1}. {s['name']} (~{s['minutes']} min"
+                       + (", needs " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
+                       + ")" for i, s in enumerate(p["stages"]))
+    tools = f" Helpful tools: {', '.join(p['tools'])}." if p["tools"] else ""
+    return ToolResult(f"started project #{p['id']} {p['name']} ({p['craft']}, difficulty {p['difficulty']}/5). "
+                      f"Stages: {stages}.{tools}", followup=True)
+
+
+@tool("work_on",
+      "Spend a block of focused time (15-120 minutes) on one of your projects. You'll find out how it went when "
+      "the time is up - you don't need to do anything meanwhile (or set_activity). Resting stops early.",
+      _obj({"project": {"type": "string", "description": "name or #id"},
+            "minutes": {"type": "integer", "description": "15-120, default 60"}}, ["project"]))
+async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
+    st = ctx.state
+    p, err = st.find_project(args["project"])
+    if not p:
+        return ToolResult(f"error: {err}", followup=True)
+    sess = st.session()
+    if sess:
+        left = max(1, round((sess["ends_at"] - time.time()) / 60))
+        cur = st.project(sess["project_id"])
+        if cur and cur["id"] == p["id"]:
+            return ToolResult(f"you're already working on {p['name']}; about {left} min to go")
+        return ToolResult(f"you're in the middle of working on {cur['name'] if cur else 'something'} "
+                          f"(about {left} min left); set_activity or rest stops it", followup=True)
+    i = proj.current_stage(p)
+    if i is None:
+        return ToolResult(f"{p['name']} is already finished", followup=True)
+    stage = p["stages"][i]
+    if not stage["started"]:
+        take, missing = proj.missing_materials(st, stage)
+        if missing:
+            return ToolResult(f"can't start {describe_stage(p, i)} yet: it needs {', '.join(missing)}", followup=True)
+        for item, qty in take:
+            if item["kind"] == "material":
+                st.take_item(item["id"], qty)
+        stage["started"] = True
+        st.update_project(p["id"], stages=p["stages"])
+    minutes = proj.clamp_int(args.get("minutes"), *proj.SESSION_MINUTES, 60)
+    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed)
+    st.update_agent(activity="working", description=f"{p['name']}: {stage['name']}")
+    real = max(1, round(minutes / ctx.settings.work_speed))
+    return ToolResult(f"you settle in to work on {p['name']}, {describe_stage(p, i)}, for {minutes} min. "
+                      f"You'll hear how it went in about {real} min.")
+
+
+@tool("abandon_project", "Give up on one of your projects (materials already used are gone).",
+      _obj({"project": {"type": "string"}, "reason": {"type": "string"}}, ["project"]))
+async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
+    p, err = ctx.state.find_project(args["project"])
+    if not p:
+        return ToolResult(f"error: {err}", followup=True)
+    sess = ctx.state.session()
+    if sess and sess["project_id"] == p["id"]:
+        ctx.state.end_session()
+        ctx.state.update_agent(activity="idle", description="")
+    ctx.state.update_project(p["id"], status="abandoned", outcome=str(args.get("reason") or "")[:300],
+                             finished_at=time.time())
+    return ToolResult(f"abandoned {p['name']}")
+
+
+@tool("tend", "Tend something you made that needs regular care to keep going (however that thing is tended).",
+      _obj({"creation": {"type": "string"}}, ["creation"]))
+async def tend(ctx: ToolContext, args: dict) -> ToolResult:
+    c, err = ctx.state.find_creation(args["creation"])
+    if not c:
+        return ToolResult(f"error: {err}", followup=True)
+    r = cr.tend(ctx.state, c)
+    return ToolResult(r, followup=r.startswith("error"))
 
 
 def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:

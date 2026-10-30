@@ -35,6 +35,9 @@ class Settings:
     moment_window_minutes: float = 60  # how far back a notable moment can be offered for the diary
     moment_showings: int = 3           # how many ticks a moment is offered before it's dropped
     garden_speed: float = 1.0  # >1 grows crops faster (testing / impatience)
+    work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
+    max_active_projects: int = 3
+    companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
     tools: list[str] = field(default_factory=list)
     tavily_api_key: str = ""
 
@@ -42,6 +45,7 @@ class Settings:
     hunger_per_hour: float = 0.08
     energy_per_hour: float = 0.05
     recover_per_hour: float = 0.30
+    work_energy_per_hour: float = 0.05  # extra drain during a work session
     hunger_alert: float = 0.8
     energy_alert: float = 0.2
 
@@ -67,6 +71,9 @@ class Settings:
             moment_window_minutes=_float("MOMENT_WINDOW_MINUTES", 60),
             moment_showings=_int("MOMENT_SHOWINGS", 3),
             garden_speed=_float("GROW_SPEED", 1.0),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search").split(",") if t.strip()],
+            work_speed=_float("WORK_SPEED", 1.0),
+            max_active_projects=_int("MAX_ACTIVE_PROJECTS", 3),
+            companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

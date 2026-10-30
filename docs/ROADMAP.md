@@ -10,6 +10,7 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 | M1 | Headless brain | Done |
 | M1.5 | Local LLM backend experiment | Not started (optional) |
 | M2a | Web dashboard + chat (same info as `pipchat`) | **Built, needs a browser check** |
+| M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | **Built, not deployed** |
 | M2b | Visual world (2D) | Not started |
 | M3 | Long-term memory | Not started |
 | M4 | Richer tools, optional exposure | Not started |
@@ -64,6 +65,58 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
+## Ideas (not yet scheduled)
+Collected 2026-10-29 after watching Pip's first ~60 ticks. The main gap: Pip's projects exist only in its head.
+Nothing in the world reports results, so it repeats activities ("filing pallets" x6), accumulates near-duplicate
+todos (#19/#34/#38/#43/#50), and only moves on by deciding it's "close enough". Diary #26 says it itself: "the loop
+is in my notes, not in the gears".
+
+### Projects and creations (M1.6: phases 1-3 built, see DESIGN-creations.md)
+- [ ] Deploy: add `start_project,work_on,abandon_project,tend` to `TOOLS` in `.env`, rebuild, watch Pip's first project
+- [x] **Projects with world-decided progress**: `start_project(name, goal, needs, effort)` and `work_on(project, minutes)`.
+      The engine owns progress, cost (energy, materials) and outcome rolls; Pip only chooses what to do. Work takes
+      real time like crops do, so Pip can sleep until it's done instead of re-stating its activity every minute
+- [x] **Referee pattern**: the engine rolls success / partial / setback (from skill, tools, materials); an LLM call
+      only *narrates* that result ("the third tooth chipped"). The engine decides what happened, the LLM describes it
+- [x] **Living creations without scripting each one**: on completion, a one-time "world" LLM call turns the project
+      into a stored spec built from a small fixed set of **capabilities** the engine knows how to run, plus a quirk or
+      two. Capabilities compose (timekeeper + chime = cuckoo clock), so adding one capability benefits every future
+      creation. Candidates:
+  - `timekeeper(drift)`: Pip's perception shows the time by its clock ("reads 3:14, runs 2 min fast")
+  - `upkeep(verb, hours)`: stops working until Pip tends it, however that thing is tended (upkeep = attachment)
+  - `periodic(event, every)`: chirps, plays a tune, ticks; shows in the event feed
+  - `sensor(condition)`: wakes Pip when something happens (crop ripe, visitor, dusk)
+  - `helper(effect, every)`: hurries the garden, finds things (GM-chosen), or comforts Pip, on a schedule
+  - `companion(persona)`: becomes a small agent of its own (see social: same multi-agent seam as a neighbor)
+- [x] **Generic `use` fallback**: actively using a creation calls the world LLM with its spec and context and returns
+      narration plus effects from a small, capped vocabulary (adjust stat, add/remove item, change crop timer, schedule
+      an event, write an event). Specs are persisted so items behave consistently instead of being re-improvised
+- [x] A shelf of finished creations: perception, `GET /creations`, `pipchat creations`, "Made by Pip" UI panel
+
+### World mechanics
+- [ ] **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). A nightly
+      "dream" pass condenses the day into memories, which makes this a natural home for M3
+- [ ] **Places**: `location` exists but never changes. A few places (junkyard, woods, market) and `go_to` / `forage`
+      with random finds, so materials don't only come from visitors
+- [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
+- [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
+- [ ] **LLM-free surprises**: a cheap random-event generator (storm flattens a plot, a mouse gets the tomatoes, a
+      creation breaks) so the diary has things happen *to* Pip, not just things Pip decides
+- [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
+
+### Social
+- [ ] **Pip can reach out**: `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
+      Pip can only talk when spoken to
+- [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
+- [ ] **A neighbor** (designed as phase 4 in DESIGN-creations.md): a second creature with its own persona exchanging letters with delivery delays, so Pip has
+      relationships beyond Morgan. Build multi-agent support once and reuse it for `companion` creations
+- [ ] Visitor identity: remember who visited and what they talked about, per person
+
+### Homelab tie-ins
+- [ ] Real weather / daylight from Home Assistant (harmless sensors only): cloudy days slow the garden, sunset means bed
+- [ ] A bookshelf: `read` a chapter at a time from the Calibre library instead of web snippets; slow reading that feeds
+      the `learned` section
+
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item
@@ -76,6 +129,8 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state
+- [ ] Todos pile up as near-duplicate restatements of the same step instead of being edited or resolved (projects
+      should largely replace these)
 
 ## Key decisions
 - **Internal only**, safe tools only in v1; no code execution until M4.

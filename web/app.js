@@ -61,13 +61,29 @@ function describeTool(d) {
     case 'eat': return { group: 'actions', text: a.item ? `Pip eats ${a.item}` : 'Pip has a meal' };
     case 'rest': return { group: 'actions', text: 'Pip rests' };
     case 'web_search': return { group: 'actions', text: `Pip searches the web for: ${a.query}` };
+    case 'start_project': return { group: 'world', cls: 'world', text: `Pip starts a project: ${a.name}` + (a.goal ? ` — ${a.goal}` : '') };
+    case 'work_on': return /^(error|can't|you're in the middle)/.test(r)
+      ? { group: 'system', cls: 'warn', text: `Pip can't work yet: ${r}` }
+      : { group: 'actions', text: `Pip settles in to work on ${a.project}` + (a.minutes ? ` for ${a.minutes} min` : '') };
+    case 'abandon_project': return { group: 'world', cls: 'world', text: `Pip gives up on ${a.project}` + (a.reason ? `: ${a.reason}` : '') };
+    case 'tend': return { group: 'world', cls: 'world', text: `Pip ${r}` };
     default: return { group: 'actions', text: `Pip uses ${d.tool}` };
   }
 }
 function describe(e) {
   const d = e.data;
   switch (e.kind) {
-    case 'say': return { group: 'chat', text: `Pip: ${d.text || '(says nothing)'}` };
+    case 'say': return d.to_name ? { group: 'world', cls: 'world', text: `Pip to ${d.to_name}: ${d.text}` }
+      : { group: 'chat', text: `Pip: ${d.text || '(says nothing)'}` };
+    case 'work': {
+      const tail = d.project_done ? ' — finished!' : d.finished_stage ? ' (stage done)' : ` (${d.percent}%)`;
+      if (d.interrupted) return { group: 'actions', text: `Pip stopped working on ${d.project} early${tail}` };
+      const cls = d.result === 'setback' ? 'warn' : 'world';
+      return { group: 'world', cls, text: `${d.project}, ${d.stage}: ${d.result} — ${d.text}${tail}` };
+    }
+    case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
+    case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
+    case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
     case 'inbox': return d.gift ? null : { group: 'chat', text: `Visitor: ${d.text}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
@@ -145,7 +161,7 @@ function chatFromEvent(e, live) {
   const d = e.data;
   if (e.kind === 'inbox' && !d.gift) showVisitor(d.id, d.text, e.ts);
   else if (e.kind === 'gift') bubble('sys', `${d.sender} gave Pip ${d.qty} × ${d.item}`);
-  else if (e.kind === 'say') {
+  else if (e.kind === 'say' && !d.to_name) {
     if (d.text) bubble('pip', d.text, e.ts); else if (live) bubble('sys', 'Pip says nothing.');
     for (const id of d.to || []) settle(id);
     syncTyping();
@@ -246,6 +262,46 @@ function renderGarden() {
 }
 const refreshGarden = async () => { gardenData = await api('/garden'); renderGarden(); };
 
+let projectData = { projects: [], skills: {} };
+function renderProjects() {
+  const now = Date.now() / 1000;
+  const active = projectData.projects.filter((p) => p.status === 'active');
+  const done = projectData.projects.filter((p) => p.status !== 'active').slice(-5).reverse();
+  const card = (p) => {
+    const st = p.current_stage != null ? p.stages[p.current_stage] : null;
+    const mats = st && !st.started ? Object.entries(st.materials).map(([n, q]) => `${q} ${n}`).join(', ') : '';
+    const last = p.history[p.history.length - 1];
+    const sub = [`${p.craft}, difficulty ${p.difficulty}/5`,
+                 st ? `stage ${p.current_stage + 1}/${p.stages.length}: ${st.name}` : null,
+                 mats ? `needs ${mats}` : null,
+                 p.working_until ? `working, ~${Math.max(1, Math.round((p.working_until - now) / 60))} min left` : null];
+    return h('div', { class: 'plot' },
+      h('span', {}, `#${p.id} ${p.name}`, h('small', {}, `${p.percent}%`)),
+      h('div', { class: 'bar' }, h('i', { style: `width:${p.percent}%` })),
+      h('small', { class: 'hint' }, sub.filter(Boolean).join(' · ')),
+      last ? h('small', { class: 'hint' }, `Last: ${last.result} — ${last.text}`) : null);
+  };
+  const skills = Object.entries(projectData.skills).map(([c, v]) => `${c} ${v.level}`).join(', ');
+  $('projects').replaceChildren(
+    ...(active.length ? active.map(card) : [h('p', { class: 'hint' }, 'No projects going.')]),
+    skills ? h('p', { class: 'hint' }, `Skills: ${skills}`) : '',
+    ...done.map((p) => h('p', { class: 'hint' }, `${p.status === 'done' ? '✓' : '✗'} ${p.name}`)));
+}
+const refreshProjects = async () => { projectData = await api('/projects'); renderProjects(); };
+
+async function refreshCreations() {
+  const made = await api('/creations');
+  $('creations').replaceChildren(...(made.length ? made.map((c) => {
+    const caps = c.spec.capabilities;
+    const lively = Object.keys(caps).length > 0;  // art and keepsakes have no running state
+    const bits = [c.quality, lively ? (c.running ? 'running' : 'stopped') : null,
+                  c.clock ? `reads ${c.clock.reads}` : null, c.character ? `talks as ${c.character}` : null,
+                  ...Object.keys(caps).filter((k) => !['timekeeper', 'upkeep', 'companion'].includes(k))];
+    return h('li', { class: c.running ? '' : 'done' }, h('b', {}, c.name), ` — ${c.description}`,
+      h('small', {}, bits.filter(Boolean).join(' · ') + (c.spec.quirks.length ? ` · quirks: ${c.spec.quirks.join('; ')}` : '')));
+  }) : [h('li', { class: 'empty' }, 'nothing yet')]));
+}
+
 // ---- actions ----------------------------------------------------------------
 $('wake').addEventListener('click', async () => {
   const b = $('wake');
@@ -296,6 +352,9 @@ function handleEvent(e, live) {
   if (e.kind === 'tool' && ['eat', 'use_item', 'plant', 'harvest'].includes(t)) { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
+  if (e.kind === 'work' || (e.kind === 'tool' && ['start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
+  if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
+  if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (['tick', 'alert', 'tool'].includes(e.kind)) debounce('state', refreshState, 1200);
 }
 function connect() {
@@ -310,7 +369,7 @@ renderFilters();
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden()]);
+    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {
@@ -319,6 +378,6 @@ renderFilters();
   }
   connect();
   setInterval(() => refreshState().catch(() => {}), 10_000);
-  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden()]).catch(() => {}), 60_000);
-  setInterval(renderGarden, 30_000);
+  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations()]).catch(() => {}), 60_000);
+  setInterval(() => { renderGarden(); renderProjects(); }, 30_000);
 })();
