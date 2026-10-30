@@ -125,6 +125,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     if not lines:
         state.set_meta(**done)  # a quiet day: nothing to go over
         return None
+    firsts = state.firsts_between(since, now)
     known = {p["name"]: p for p in state.people()}
     names = sorted(appeared | set(known))
     portrait = state.meta("self_portrait")
@@ -135,6 +136,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
            "You haven't described yourself before.\n\n")
         + ("What you thought of people so far:\n" + "\n".join(f"- {n}: {p['notes']}" for n, p in known.items()) + "\n\n"
            if known else "")
+        + (("Things that happened for the first time since you last slept:\n"
+            + "\n".join(f"- {f['label']}" for f in firsts) + "\n\n") if firsts else "")
         + "What happened (oldest first):\n" + "\n".join(lines) + "\n\n"
         "Report, all in your own first-person voice:\n"
         "- `summary`: 2-4 sentences: this stretch of time as you'll remember it - what mattered and how it felt, "

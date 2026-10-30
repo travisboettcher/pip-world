@@ -150,8 +150,10 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
 
 ### Introspection and a sense of self
-- [ ] Engine-detected firsts and cited reflections: **designed, not built** (DESIGN-self.md; sources in RESEARCH-self.md).
-      Firsts are facets computed from the log and shown as facts; the thought stays Pip's
+- [x] Engine-detected firsts: facets computed from the log, shown as facts (DESIGN-self.md; sources in RESEARCH-self.md);
+      the thought stays Pip's
+- [ ] Cited reflections (designed, not built): ids in the material, insights cite evidence, validation + support check,
+      hunches block, `recall` evidence, event importance
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one
 - [ ] Rare open question prompts, not scripted performances

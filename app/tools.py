@@ -246,8 +246,7 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
     note = await stop_working(ctx)
     r = sleepmod.fall_asleep(ctx.state, ctx.settings, now)
     wake = time.strftime("%-I %p", time.localtime(r["until"])).lower()
-    return ToolResult(f"you go to bed and fall asleep; you'll sleep until about {wake}{note}."
-                      + (" This is the first time you have ever gone to sleep." if r["first"] else ""))
+    return ToolResult(f"you go to bed and fall asleep; you'll sleep until about {wake}{note}.")
 
 
 @tool("note_to_self",

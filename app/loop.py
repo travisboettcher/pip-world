@@ -342,6 +342,14 @@ class Agent:
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
 
+    def _firsts(self) -> list[str]:
+        """Things that happened for the first time recently, as plain facts (shown a few ticks, then dropped)."""
+        found = self.state.recent_firsts(self.s.firsts_max_age_hours, self.s.firsts_showings, self.s.firsts_shown)
+        if not found:
+            return []
+        self.state.mark_firsts_shown([f["key"] for f in found])
+        return ["New for you:"] + [f"- {f['label']} ({mem.ago(f['first_ts'])})" for f in found]
+
     def _moments(self) -> list[str]:
         """Notable things since Pip's last diary entry, offered a few times so they aren't forgotten.
 
@@ -364,6 +372,8 @@ class Agent:
                     visitors.append(who)
             elif text := self._moment_text(e):
                 moments.append(([e["id"]], text))
+            elif majors := [f["label"] for f in e["data"].get("firsts", []) if f["tier"] == "major"]:
+                moments.append(([e["id"]], majors[0].capitalize()))
         if visit_ids:
             n = len(visit_ids)
             who = " and ".join(visitors) if visitors else "A visitor"
@@ -416,6 +426,7 @@ class Agent:
         ]
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
+        lines += self._firsts()
         lines += places.perception(self.state, self.library)
         lines += mem.perception(self.state)
         lines += self._belongings()

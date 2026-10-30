@@ -7,6 +7,7 @@ import time
 from datetime import date
 
 from .config import Settings
+from . import firsts as firstsmod
 from .memory import RECALL_EVENT_KINDS, STOP_WORDS, recall_text
 from .text import craft_name
 from .world import KINDS, STARTER_ITEMS, normalize_attrs
@@ -79,6 +80,10 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS facets (
+  key TEXT PRIMARY KEY, label TEXT NOT NULL, tier TEXT NOT NULL, first_event_id INTEGER,
+  first_ts REAL NOT NULL, last_ts REAL NOT NULL, count INTEGER NOT NULL DEFAULT 1, shown INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS abilities (name TEXT PRIMARY KEY, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reflections (
@@ -104,6 +109,10 @@ EDITABLE = tuple(sec for sec in SECTIONS if sec != "diary")  # the diary is a re
 
 def clean_sender(name) -> str:
     return " ".join(str(name or "").split())[:40] or "A visitor"
+
+
+FIRSTS_VERSION = "2"  # bump to rebuild facets from the log when firsts.py changes
+SHOWINGS_DONE = 99  # backfilled history is never presented as new
 
 
 def clamp(x: float) -> float:
@@ -148,6 +157,7 @@ class State:
                 )
             self._normalize_crafts()
             self._seed_abilities()
+            self._backfill_firsts()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
@@ -206,10 +216,61 @@ class State:
                 "INSERT INTO events (ts, kind, data) VALUES (?, ?, ?)",
                 (now, kind, json.dumps(data)),
             )
+            if new := self._note_facets(kind, data, now, cur.lastrowid):
+                self.db.execute("UPDATE events SET data = ? WHERE id = ?",
+                                (json.dumps({**data, "firsts": new}), cur.lastrowid))
             if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
                 self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
             return cur.lastrowid
+
+    # --- firsts (see firsts.py, DESIGN-self.md) -------------------------------------
+    def _note_facets(self, kind: str, data: dict, ts: float, event_id: int, shown: int = 0) -> list[dict]:
+        """Count this event's facets; returns the ones seen for the first time ({key, label, tier})."""
+        new = []
+        for key, label, tier in firstsmod.facets(kind, data, self.s, ts):
+            row = self.db.execute("SELECT 1 FROM facets WHERE key = ?", (key,)).fetchone()
+            if row:
+                self.db.execute("UPDATE facets SET count = count + 1, last_ts = ? WHERE key = ?", (ts, key))
+            else:
+                self.db.execute("INSERT INTO facets (key, label, tier, first_event_id, first_ts, last_ts, shown) "
+                                "VALUES (?, ?, ?, ?, ?, ?, ?)", (key, label, tier, event_id, ts, ts, shown))
+                new.append({"key": key, "label": label, "tier": tier})
+        return new
+
+    def _backfill_firsts(self) -> None:
+        """One-time: replay the existing log so history gets its true first dates (silently: nothing is 'new')."""
+        if self.meta("firsts_v") == FIRSTS_VERSION:
+            return
+        self.db.execute("DELETE FROM facets")
+        for row in self.db.execute("SELECT id, ts, kind, data FROM events ORDER BY id").fetchall():
+            data = {k: v for k, v in json.loads(row["data"]).items() if k != "firsts"}
+            new = self._note_facets(row["kind"], data, row["ts"], row["id"], shown=SHOWINGS_DONE)
+            self.db.execute("UPDATE events SET data = ? WHERE id = ?",
+                            (json.dumps({**data, **({"firsts": new} if new else {})}), row["id"]))
+        self.set_meta(firsts_v=FIRSTS_VERSION)
+
+    def recent_firsts(self, max_age_hours: float, showings: int, limit: int, now: float | None = None) -> list[dict]:
+        """Firsts young enough and not yet shown enough times; majors first, then newest."""
+        now = now or time.time()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT * FROM facets WHERE first_ts >= ? AND shown < ? "
+                "ORDER BY (tier = 'major') DESC, first_ts DESC LIMIT ?",
+                (now - max_age_hours * 3600, showings, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_firsts_shown(self, keys: list[str]) -> None:
+        with self.lock:
+            self.db.executemany("UPDATE facets SET shown = shown + 1 WHERE key = ?", [(k,) for k in keys])
+            self.db.commit()
+
+    def firsts_between(self, start: float, end: float, limit: int = 12) -> list[dict]:
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT * FROM facets WHERE first_ts > ? AND first_ts <= ? "
+                "ORDER BY (tier = 'major') DESC, first_ts LIMIT ?", (start, end, limit)).fetchall()
+        return [dict(r) for r in rows]
 
     def events(self, limit: int = 50, before_id: int | None = None, after_id: int | None = None) -> list[dict]:
         """Newest first by default; with after_id, oldest first (for polling forward)."""

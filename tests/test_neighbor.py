@@ -154,7 +154,7 @@ async def test_visiting_the_neighbor_in_person(tmp_path):
     assert "A badger who keeps bees" in gm.calls[0]["messages"][0]["content"]  # her home is described from who she is
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True  # she greets Pip at the door
     assert "Pip has just arrived at the door" in gm.calls[1]["messages"][0]["content"]
-    assert st.events(1)[0]["data"] == {"name": "Marigold", "text": "*wipes honey off her paws* Pip! Come in, come in.",
+    assert {k: v for k, v in st.events(1)[0]["data"].items() if k != "firsts"} == {"name": "Marigold", "text": "*wipes honey off her paws* Pip! Come in, come in.",
                                        "reply": True, "visit": True}
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False  # once per visit
     assert "said it to Marigold" in (await call(agent, "say", text="How are the bees?", to="marigold")).text

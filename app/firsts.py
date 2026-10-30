@@ -1,0 +1,97 @@
+"""Firsts: the first time something happens to Pip, computed from the event log (see DESIGN-self.md).
+
+Each logged event yields a few independent *facets* (a stable key plus a plain-fact label). A facet seen for the
+first time is a "first": it is stored in the `facets` table, marked on the event, and shown to Pip as a fact. The
+engine never says what a first means - no mood words, no scripted reactions. Pip decides if it matters.
+Add a new kind of first by extending `facets()`.
+"""
+from . import sleep as sleepmod
+
+MAJOR, MINOR = "major", "minor"
+ROUTINE_TOOLS = {"set_activity", "say", "edit_note"}
+TOOL_LABELS = {
+    "plant": "planted something", "harvest": "harvested something", "eat": "ate something",
+    "start_project": "started a project", "work_on": "worked on a project", "experiment": "ran an experiment",
+    "revise_plan": "changed a plan", "write_letter": "wrote a letter", "read": "read a book",
+    "browse_library": "browsed the library", "web_search": "searched the web", "recall": "tried to remember something",
+    "tend": "tended to something", "use_item": "used something", "rest": "rested", "resolve_note": "crossed something off",
+    "sleep": "went to sleep", "abandon_project": "gave up on a project",
+}
+TOOL_MAJOR = {"sleep"}
+WORK_RESULTS = {"setback": "had a setback on a project", "blowup": "had a try blow up",
+                "breakthrough": "had a breakthrough"}
+ALERTS = {"hunger": "your hunger alert went off", "energy": "your energy alert went off"}
+
+
+def _ok(result) -> bool:
+    return not str(result or "").startswith(("error", "not ", "no change"))
+
+
+def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]]:
+    """(key, label, tier) for each facet of this event. Labels read as 'the first time you <label>'."""
+    out: list[tuple[str, str, str]] = []
+
+    def add(key, label, tier=MINOR):
+        out.append((key, label, tier))
+
+    def you(what):  # "the first time you <what>"
+        return f"the first time you {what}"
+
+    if kind == "tool":
+        t, a = d.get("tool"), d.get("args") or {}
+        if not d.get("noop") and _ok(d.get("result")):
+            if t == "note_to_self":
+                sec = a.get("section", "diary")
+                add(f"note:{sec}", f"your first {sec} entry")
+            elif t in TOOL_LABELS and t not in ROUTINE_TOOLS:
+                add(f"tool:{t}", you(TOOL_LABELS[t]), MAJOR if t in TOOL_MAJOR else MINOR)
+    elif kind == "inbox":
+        who = d.get("sender") or "A visitor"
+        if d.get("letter"):
+            add("letter:received", you("received a letter"), MAJOR)
+            add(f"letter_from:{who}", f"your first letter from {who}")
+        elif not d.get("gift"):
+            add("visitor", "the first time someone came to talk to you", MAJOR)
+            if who != "A visitor":  # the default name for an anonymous caller is not a person
+                add(f"person:{who}", f"your first message from {who}", MAJOR)
+    elif kind == "gift":
+        add("gift", you("were given something"), MAJOR)
+        if d.get("sender"):
+            add(f"gift_from:{d['sender']}", f"your first gift from {d['sender']}")
+        if d.get("item"):
+            add(f"gift_item:{str(d['item']).lower()}", you(f"were given {d['item']}"))
+    elif kind == "letter_sent":
+        add("letter:sent", you("sent a letter"), MAJOR)
+    elif kind == "work":
+        if not d.get("interrupted"):
+            if d.get("result") in WORK_RESULTS:
+                add(f"work:{d['result']}", you(WORK_RESULTS[d["result"]]), MAJOR)
+            if d.get("project_done"):
+                add("project:done", you("finished a project"), MAJOR)
+    elif kind == "experiment":
+        if not d.get("interrupted") and d.get("outcome") in ("insight", "surprise"):
+            add(f"experiment:{d['outcome']}", you(f"had an experiment give you {'an insight' if d['outcome'] == 'insight' else 'a surprise'}"))
+    elif kind == "creation_made":
+        add("creation", you("finished making a thing"), MAJOR)
+    elif kind == "reading":
+        if d.get("finished"):
+            add("book_finished", you("finished a book"))
+    elif kind == "arrived":
+        if d.get("place"):
+            add(f"place:{d['place']}", you(f"were at {d['place']}"))
+    elif kind == "woke":
+        add("woke", you("woke from sleep"), MAJOR)
+    elif kind == "reflection":
+        add("reflection", you("went over your day in your sleep"), MAJOR)
+    elif kind == "alert":
+        if d.get("stat") in ALERTS:
+            add(f"alert:{d['stat']}", f"the first time {ALERTS[d['stat']]}", MAJOR)
+    elif kind == "companion":
+        if d.get("name"):
+            add(f"companion:{d['name']}", you(f"heard {d['name']} speak"))
+    elif kind == "garden":
+        add("garden:ripe", you("had a crop ripen"))
+    elif kind == "tick":
+        p = sleepmod.period(settings, ts)
+        add(f"period:{p}", f"your first {p} here")
+    return out

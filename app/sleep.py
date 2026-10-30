@@ -31,13 +31,12 @@ def day_number(state, now: float) -> int:
 
 
 def fall_asleep(state, settings, now: float | None = None) -> dict:
-    """Pip goes to bed. Returns facts for the tool result: when it will wake and whether it's the first time."""
+    """Pip goes to bed. Returns when it will wake."""
     now = now or time.time()
-    first = not state.meta("first_sleep")
     until = next_wake(settings, now)
     state.update_agent(activity="sleeping", description="asleep")
-    state.set_meta(sleep_started=now, sleep_until=until, first_sleep="1")
-    return {"until": until, "first": first}
+    state.set_meta(sleep_started=now, sleep_until=until)
+    return {"until": until}
 
 
 def wake_up(state, now: float | None = None) -> dict | None:
@@ -47,9 +46,9 @@ def wake_up(state, now: float | None = None) -> dict | None:
     now = now or time.time()
     started = float(state.meta("sleep_started") or now)
     until = float(state.meta("sleep_until") or now)
-    data = {"hours": round((now - started) / 3600, 1), "early": now < until - 60, "first": not state.meta("first_woke")}
+    data = {"hours": round((now - started) / 3600, 1), "early": now < until - 60}
     state.update_agent(activity="idle", description="")
-    state.set_meta(first_woke="1", sleep_until=0)
+    state.set_meta(sleep_until=0)
     state.log("woke", **data)
     return data
 
@@ -67,6 +66,4 @@ def woke_text(d: dict) -> str:
     bits = [f"you woke after about {d['hours']:g} hours of sleep"]
     if d["early"]:
         bits.append("you were woken early; you can go back to sleep")
-    if d["first"]:
-        bits.append("this is the first time you have slept and woken")
     return "; ".join(bits)

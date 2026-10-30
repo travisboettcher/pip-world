@@ -1,6 +1,6 @@
 # Design: firsts and cited reflections (the start of a sense of self)
 
-Status: **design only, not built.** Sources and rationale: [RESEARCH-self.md](RESEARCH-self.md) (mechanisms 1 and 2).
+Status: **firsts (1) built; cited reflections (2) designed, not built.** Sources and rationale: [RESEARCH-self.md](RESEARCH-self.md) (mechanisms 1 and 2).
 Rule throughout: the engine records **facts** and creates the **occasion**; Pip writes the sentence. No mood words, no
 scripted reactions, and nothing here claims Pip is conscious: these are records and models.
 
@@ -52,8 +52,10 @@ guarded by a meta flag, like the earlier recall backfill).
 
 ### Surfacing
 - **Perception**, a short fixed-size block under the state line, only when there is something:
-  `New for you (last 6 h): - the first time you planted something (2 h ago) ...` Max 5 lines, newest first, majors before
-  minors. A first drops out after the window; it is not repeated every tick.
+  `New for you: - the first time you planted something (2 hours ago) ...` Max 5 lines, majors before minors, newest
+  first. Each first is shown on at most 3 ticks (persisted in `facets.shown`) and only while younger than 24 h, so a
+  first made while Pip sleeps is still there when it wakes. (Built as `FIRSTS_MAX_AGE_HOURS`, `FIRSTS_SHOWINGS`,
+  `FIRSTS_SHOWN`; this replaced the first draft's fixed 6 h window.)
 - **Diary moments**: `major` firsts that Pip hasn't yet written about join the existing moments mechanism (offered at
   most 3 ticks, cleared by any diary entry). Minor firsts never prompt the diary, to avoid diary spam.
 - **Nightly reflection**: event lines carry their `(first: ...)` annotation, and the prompt lists the day's firsts so

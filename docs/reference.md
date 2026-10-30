@@ -126,3 +126,9 @@ HTTP: `GET /library/search?q=`, `GET /library/bookmarks`.
 See [DESIGN-sleep.md](DESIGN-sleep.md). Pip perceives the period of day and which day of its life it is. At night (`BEDTIME_HOUR`-`WAKE_HOUR`)
 it can `sleep` until morning: no ticks, faster recovery, slower hunger; the nightly reflection runs as it falls asleep.
 Only a visitor (or `pipchat tick`) wakes it early. `SLEEP=0` turns the rhythm off.
+
+## Firsts
+See [DESIGN-self.md](DESIGN-self.md) and [RESEARCH-self.md](RESEARCH-self.md). Every logged event yields facets; the first time one is seen
+it is recorded (`facets` table), marked on the event, shown to Pip as plain fact under "New for you", and listed for the
+nightly reflection. Major firsts (first sleep, first visitor, first setback...) can also prompt a diary moment. The engine
+never says what a first means. Existing history was backfilled silently on first start.

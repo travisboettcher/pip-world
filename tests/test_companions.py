@@ -26,7 +26,7 @@ async def test_companion_answers_pip_and_wakes_it(tmp_path):
     await agent.resolve_world()
     assert agent._wake.is_set()
     e = st.events(1)[0]
-    assert e["kind"] == "companion" and e["data"] == {"name": "Wren", "text": "Shiny? Where?!", "reply": True}
+    assert e["kind"] == "companion" and {k: v for k, v in e["data"].items() if k != "firsts"} == {"name": "Wren", "text": "Shiny? Where?!", "reply": True}
     prompt = gm.calls[0]["messages"][0]["content"]
     assert "A cheeky tin bird" in prompt and 'Pip just said to Wren: "Look what I found, Wren"' in prompt
     assert "one wing squeaks" in prompt

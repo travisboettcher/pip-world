@@ -39,7 +39,7 @@ async def test_sleep_tool_only_at_night_and_at_home(tmp_path):
     assert "go_to home first" in (await call(agent, "sleep")).text
     st.update_agent(location="workshop")
     r = await call(agent, "sleep")
-    assert "fall asleep" in r.text and "first time you have ever gone to sleep" in r.text
+    assert "fall asleep" in r.text
     a = st.agent()
     assert a["activity"] == "sleeping" and float(st.meta("sleep_until")) > time.time()
     assert "already asleep" in (await call(agent, "sleep")).text
@@ -73,14 +73,14 @@ async def test_waking_on_time_and_early(tmp_path):
     st.set_meta(sleep_started=time.time() - 7 * 3600, sleep_until=time.time() - 10)
     await agent.tick("timer")
     e = [x for x in st.events(20) if x["kind"] == "woke"][0]["data"]
-    assert e["hours"] == pytest.approx(7, abs=0.1) and not e["early"] and e["first"]
+    assert e["hours"] == pytest.approx(7, abs=0.1) and not e["early"]
     assert st.agent()["activity"] != "sleeping"
-    assert "first time you have slept and woken" in agent._perception("timer", [])
+    assert "the first time you woke from sleep" in agent._perception("timer", [])
     # a second night, woken early by a visitor
     await call(agent, "sleep")
     await agent.tick("event")
     e = [x for x in st.events(20) if x["kind"] == "woke"][0]["data"]
-    assert e["early"] and not e["first"] and "woken early" in agent._perception("event", [])
+    assert e["early"] and "woken early" in agent._perception("event", [])
 
 
 @pytest.mark.asyncio
