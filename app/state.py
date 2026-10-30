@@ -174,6 +174,7 @@ class State:
                 ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
                 ("characters", "life", "TEXT NOT NULL DEFAULT '[]'"),
                 ("creations", "given_to", "TEXT"),
+                ("inbox", "offers", "INTEGER NOT NULL DEFAULT 0"),             # times it was held back for another look (unanswered)
                 ("inbox", "source", "TEXT NOT NULL DEFAULT 'web'"),           # 'web' or the channel it came through
                 ("inbox", "conversation", "TEXT NOT NULL DEFAULT ''"),        # the channel's thread reference
                 ("inbox", "external_id", "TEXT NOT NULL DEFAULT ''"),         # the channel's message id (replay guard)
@@ -356,6 +357,12 @@ class State:
                 (time.time(), text, sender, int(gift), source, conversation, external_id))
             self.db.commit()
             return cur.lastrowid
+
+    def reoffer_inbox(self, inbox_id: int) -> None:
+        """Put a message Pip read but didn't answer back in the inbox once more."""
+        with self.lock:
+            self.db.execute("UPDATE inbox SET consumed = 0, offers = offers + 1 WHERE id = ?", (inbox_id,))
+            self.db.commit()
 
     def inbox_has(self, source: str, external_id: str) -> bool:
         with self.lock:

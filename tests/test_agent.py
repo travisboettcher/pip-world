@@ -539,3 +539,49 @@ async def test_rest_default_is_until_recovered_and_capped(tmp_path):
     await agent.tick("test")
     mins = (float(st.meta("rest_until")) - time.time()) / 60
     assert mins == pytest.approx(min(240, 0.9 / s.recover_per_hour * 60), abs=1)
+
+
+# --- a message Pip read but didn't answer gets one more look ----------------------------------------------
+def _calls(*names):
+    return LLMResponse("", [ToolCall(str(i), n, a) for i, (n, a) in enumerate(names)], Usage(1, 1))
+
+
+@pytest.mark.asyncio
+async def test_an_unanswered_visitor_message_is_put_back_once_and_marked(tmp_path):
+    s, st, backend, agent = make(tmp_path, [
+        _calls(("note_to_self", {"section": "diary", "text": "Morgan wrote to me; I want to answer kindly soon."})),
+        _calls(("say", {"text": "Hello Morgan! It works."})),
+    ])
+    agent.tools["say"] = tools_mod.REGISTRY["say"]
+    i = agent.receive("Hey Pip, a new way to reach me!", "Morgan", source="matrix", conversation="$t")
+    await agent.tick("event")
+    assert st.pending_inbox()[0]["id"] == i and st.pending_inbox()[0]["offers"] == 1 and agent._wake.is_set()   # back, marked, and a wake asked for
+    await agent.tick("event")
+    p = backend.calls[-1]["messages"][0]["content"]
+    assert "A visitor wrote earlier and you haven't answered" in p and "- Morgan (via matrix): Hey Pip, a new way to reach me!" in p
+    assert "Inbox (visitors) - they only hear you" not in p
+    assert st.pending_inbox() == []                                                       # answered: gone for good
+
+
+@pytest.mark.asyncio
+async def test_a_second_silence_is_respected_and_answered_and_gift_messages_are_not_retried(tmp_path):
+    s, st, backend, agent = make(tmp_path, [_calls(("rest", {})), _calls(("rest", {})), _calls(("rest", {}))])
+    agent.receive("anyone home?", "Jade")
+    gift = st.add_inbox("Jade gave you 2 x string.", "Jade", gift=True)
+    await agent.tick("event")                                                             # silence, once
+    assert [m["id"] for m in st.pending_inbox()] != [gift] and gift not in [m["id"] for m in st.pending_inbox()]
+    await agent.tick("event")                                                             # silence again
+    assert st.pending_inbox() == []                                                       # respected: not offered a third time
+    p = backend.calls[0]["messages"][0]["content"]
+    assert "Inbox (visitors) - they only hear you if you use `say`:" in p and "- Jade: anyone home?" in p
+
+
+@pytest.mark.asyncio
+async def test_the_diary_moment_no_longer_claims_a_reply_that_never_happened(tmp_path):
+    s, st, backend, agent = make(tmp_path, [_calls(("rest", {}))])
+    agent.receive("hello there", "Morgan")
+    await agent.tick("event")
+    p = agent._perception("timer", [])
+    assert "you haven't said anything back to them yet" in p and "you already replied" not in p
+    st.log("say", text="hi!", to=[1])
+    assert "you already replied, don't answer again" in agent._perception("timer", [])

@@ -48,6 +48,7 @@ class Agent:
         self._wake = asyncio.Event()
         self._force = False
         self._urgent = False
+        self._shown_inbox: list[int] = []
         self._budget_logged = False
         self.ticks = 0
         self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
@@ -193,6 +194,28 @@ class Agent:
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
+        """One wake. A visitor message Pip read but never answered gets one more look (see _second_chance)."""
+        started, self._shown_inbox = time.time(), []
+        try:
+            await self._tick(reason)
+        finally:
+            self._second_chance(started)
+
+    def _second_chance(self, started: float) -> None:
+        """Pip is told a visitor can only hear it through `say`, but a model busy with its work sometimes forgets.
+        A message that got no `say` is put back once, plainly marked; a second silence is respected."""
+        if not self._shown_inbox:
+            return
+        said = {i for e in self.state.events_since(started - 1) if e["kind"] == "say" for i in e["data"].get("to", [])}
+        again = False
+        for row in self.state.inbox_rows(self._shown_inbox):
+            if row["id"] not in said and not row["gift"] and not row["offers"]:
+                self.state.reoffer_inbox(row["id"])
+                again = True
+        if again:
+            self.request_wake()
+
+    async def _tick(self, reason: str) -> None:
         """One wake: up to max_calls_per_tick LLM calls.
 
         The first call always happens; further calls happen only when a tool result
@@ -231,6 +254,7 @@ class Agent:
             self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
             if step == 0:
                 self.state.consume_inbox([m["id"] for m in inbox])
+                self._shown_inbox = [m["id"] for m in inbox]
                 if inbox:
                     self.state.log("inbox_read", ids=[m["id"] for m in inbox])
                 self.ticks += 1
@@ -419,14 +443,17 @@ class Agent:
             return []
         last = self.state.memories("diary", limit=1)
         since = max(time.time() - self.s.moment_window_minutes * 60, last[0]["ts"] if last else 0)
-        moments, visit_ids, visitors = [], [], []
-        for e in self.state.events_since(since):  # oldest first
+        moments, visit_ids, visitors, visit_inbox = [], [], [], []
+        window = self.state.events_since(since)
+        said_to = {i for e in window if e["kind"] == "say" for i in e["data"].get("to", [])}
+        for e in window:  # oldest first
             if self._moment_shown.get(e["id"], 0) >= self.s.moment_showings:
                 continue
             if e["kind"] == "inbox" and e["data"].get("letter"):
                 moments.append(([e["id"]], f"A letter came from {e['data']['sender']}"))
             elif e["kind"] == "inbox":
                 visit_ids.append(e["id"])  # never quote visitor text here: Pip would answer it again
+                visit_inbox.append(e["data"].get("id"))
                 who = e["data"].get("sender") or "A visitor"
                 if who not in visitors:
                     visitors.append(who)
@@ -437,8 +464,10 @@ class Agent:
         if visit_ids:
             n = len(visit_ids)
             who = " and ".join(visitors) if visitors else "A visitor"
+            replied = all(i in said_to for i in visit_inbox)
             moments.insert(0, (visit_ids, f"{who} came by and talked with you ({n} message{'s' if n != 1 else ''}; "
-                                          "you already replied, don't answer again)"))
+                                          + ("you already replied, don't answer again)" if replied else
+                                             "you haven't said anything back to them yet - only `say` is heard)")))
         moments = moments[-5:]
         for ids, _ in moments:
             for event_id in ids:
@@ -543,8 +572,17 @@ class Agent:
                                  + (f" [{d['step_note']}]" if d.get("step_note") else "")
                                  + (" [project finished!]" if d["project_done"] else
                                     " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
-        if inbox:
-            lines.append("Inbox (visitors):")
-            lines += [f"- {m['text']}" if m["gift"] else f"- {m['sender']}: {m['text']}" for m in inbox]
+        def visitor(m):
+            if m["gift"]:
+                return f"- {m['text']}"
+            via = f" (via {m['source']})" if m.get("source", "web") != "web" else ""
+            return f"- {m['sender']}{via}: {m['text']}"
+        fresh, again = [m for m in inbox if not m.get("offers")], [m for m in inbox if m.get("offers")]
+        if fresh:
+            lines.append("Inbox (visitors) - they only hear you if you use `say`:")
+            lines += [visitor(m) for m in fresh]
+        if again:
+            lines.append("A visitor wrote earlier and you haven't answered (use `say` if you'd like to; silence is fine too):")
+            lines += [visitor(m) for m in again]
         lines += self._moments()  # last, so it is the freshest thing in the prompt
         return "\n".join(lines)
