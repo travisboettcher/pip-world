@@ -51,9 +51,40 @@ message, so a postcard can turn into a back-and-forth.
 For Home Assistant or n8n: a POST of `{id, text, from, ts, context}` to a URL (`OUTREACH_WEBHOOK_URL`, optional bearer token). Same limits,
 same tool; no replies except through `/inbox`.
 
-## Backends
-`OUTREACH_BACKEND = telegram | webhook | log`. A backend implements `send(text)` and optionally `poll()` (Telegram), the same plug-in
-style as the LLM backend and pacing policy.
+## Pluggable channels
+Telegram is the first channel, not a built-in. The core talks to a small **`Channel`** interface (same plug-in style as the LLM backend and the
+pacing policy: a registry, chosen by env, one file per channel), so Matrix, Signal, Slack or a webhook can replace or sit beside it later with the
+same send/receive semantics and no change to Pip, the tool, the limits or the UI.
+
+```python
+@dataclass
+class Inbound:    sender_id: str; sender_name: str; text: str; conversation: str; ts: float; message_id: str  # conversation is opaque
+@dataclass
+class Outbound:   text: str; kind: str            # 'reply' (to a message) or 'postcard' (unprompted)
+@dataclass
+class SendResult: delivered: bool; error: str = ""
+
+class Channel(Protocol):
+    name: str
+    capabilities: frozenset[str]                  # e.g. {'receive', 'typing'}; the core only uses what a channel declares
+    async def start(self, on_message: Callable[[Inbound], Awaitable[None]]) -> None   # begin receiving (poll/socket/subscribe); no-op if send-only
+    async def stop(self) -> None
+    async def send(self, out: Outbound, conversation: str | None = None) -> SendResult  # conversation=None -> the channel's primary recipient
+    async def typing(self, conversation: str) -> None                                   # optional; only if 'typing' declared
+```
+- **Authorization lives in the channel.** A channel only calls `on_message` for senders it considers allowed (Telegram: the id allow-list), and
+  fills `sender_name` from its own config. The core treats whatever arrives as a visitor message, like `POST /inbox`.
+- **Routing is generic.** The inbox row and the `inbox` event record `source` (the channel name) and `conversation` (opaque). Pip's `say` reply to
+  that message is sent back through the same channel and conversation; unprompted postcards go to the **primary** channel's primary recipient. Several
+  channels can run at once (`OUTREACH_CHANNELS=telegram,webhook`; the first is primary).
+- **The core owns policy** (modes, per-day and gap limits, quiet hours, repeat and URL checks, length caps, events, firsts, day counts), so every
+  channel gets the same safety for free and none can bypass it.
+- **Contract tests, one suite for every channel.** A `FakeChannel` (in-memory, scriptable, like `FakeBackend`) ships with the code and drives the
+  core tests with no network. A reusable contract test runs against any implementation using a fake transport: inbound is delivered once and in
+  order; unauthorised senders are dropped; `send` reports failure honestly; `typing` only when declared; a restart doesn't replay; secrets never
+  appear in `repr` or events. A new channel is done when it passes the contract.
+- **Built-ins:** `telegram` (two-way, long polling), `webhook` (send-only), `fake`/`log` (tests and dry runs). Adding another is one file plus a
+  registry entry.
 
 ## The tool: `send_postcard(text)` (anywhere, awake only)
 - **What Pip sees:** "Send a short postcard to a friend outside. Rarely; for something worth telling: a thing you finished, a specific thing you
@@ -96,8 +127,9 @@ A Home Assistant automation: trigger `webhook` (`webhook_id` a long random strin
 `https://agent-world.internal.example.io/ui/` so tapping opens the UI. The same payload works for an n8n Webhook node.
 
 ## Build order
-1. Shared `deliver_visitor_message` (extracted from `POST /inbox`), the `Channel` interface, the Telegram bridge (long poll, allow-list,
-   offset, typing, reply routing), the webhook and log backends, tests with a fake Telegram API.
+1. Shared `deliver_visitor_message` (extracted from `POST /inbox`; `inbox` gains `source` and `conversation`), the `Channel` interface and
+   registry, `FakeChannel` and the contract test suite, then the Telegram channel (long poll, allow-list, offset, typing) and the webhook and log
+   channels, each passing the contract (Telegram against a fake Telegram API).
 2. `send_postcard`, limits and quiet hours, events, `GET /outreach`, `pipchat outreach`/`telegram`, feed and chat labels, firsts, day counts.
 3. Persona paragraph, the prompt allowance line, README setup steps.
 4. (Later) photos of what Pip makes or draws, once the art tools exist; `reply_to` marking; other backends.
@@ -108,3 +140,5 @@ A Home Assistant automation: trigger `webhook` (`webhook_id` a long random strin
 3. Name: `send_postcard` or something plainer?
 4. Limits: 2 unprompted a day, 3 hours apart, none at night. Too tight, or too loose?
 5. Start in `log` mode first (recommended), then `on`?
+6. Anything the `Channel` interface above is missing for a channel you'd want later (attachments/photos, groups, message edits)? Photos are the
+   likely first extension, once Pip can draw (a `send_image` capability).
