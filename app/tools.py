@@ -52,6 +52,9 @@ async def stop_working(ctx: "ToolContext") -> str:
     return f" (you stopped working on {w['project']} early)" if w else ""
 
 
+MAX_REST_MINUTES = 240
+
+
 def busy(ctx: "ToolContext") -> str:
     """Why Pip can't start something new right now, or '' if it can."""
     sess = ctx.state.session()
@@ -164,14 +167,23 @@ async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"ate {item['name']}")
 
 
-@tool("rest", "Rest to recover energy until you choose another activity.", _obj({}, []))
+@tool("rest", "Rest to recover energy. Say how many minutes you want to rest (up to 240); the world lets you be until then "
+      "unless something happens. Leave it out to rest until you're recovered. Resting continues until you choose another activity.",
+      _obj({"minutes": {"type": "integer", "description": "How long to rest, in minutes"}}, []))
 async def rest(ctx: ToolContext, args: dict) -> ToolResult:
     sess = ctx.state.session()
     if sess and sess["kind"] == "walk":
         return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can rest once you get there")
     note = await stop_working(ctx)
     ctx.state.update_agent(activity="resting", description="")
-    return ToolResult(f"resting{note}")
+    full = (1 - ctx.state.agent()["energy"]) / ctx.settings.recover_per_hour * 60  # minutes until fully rested
+    try:
+        minutes = int(args.get("minutes") or 0)
+    except (TypeError, ValueError):
+        minutes = 0
+    minutes = max(1, min(minutes, MAX_REST_MINUTES)) if minutes else round(max(15, min(full, MAX_REST_MINUTES)))
+    ctx.state.set_meta(rest_until=str(time.time() + minutes * 60))
+    return ToolResult(f"resting for about {minutes} min{note}")
 
 
 @tool("note_to_self",

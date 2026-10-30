@@ -9,12 +9,12 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 |---|---|---|
 | M1 | Headless brain | Done |
 | M1.5 | Local LLM backend experiment | Not started (optional) |
-| M2a | Web dashboard + chat (same info as `pipchat`) | **Built, needs a browser check** |
-| M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | **Built, not deployed** |
+| M2a | Web dashboard + chat (same info as `pipchat`) | Done |
+| M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | Deployed |
 | M2b | Visual world (2D) | Not started |
-| M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-2 deployed |
-| M3.5 | A neighbor and slow letters ([design](DESIGN-neighbor.md)) | **Built, not deployed** |
-| M3.6 | Places + the library (Calibre) ([design](DESIGN-library.md)) | **Built, not deployed** |
+| M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-2 deployed; 3-4 open |
+| M3.5 | A neighbor and slow letters ([design](DESIGN-neighbor.md)) | Deployed |
+| M3.6 | Places + the library (Calibre) ([design](DESIGN-library.md)) | Deployed |
 | M4 | Richer tools, optional exposure | Not started |
 
 ## M1 - Headless brain (done)
@@ -38,7 +38,7 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 - [ ] If a dedicated NVIDIA GPU is added (12-16+ GB): stock Ollama with passthrough and a larger model
 - [ ] Compare against the Claude default through the same loop (cost vs quality)
 
-## M2a - Web dashboard + chat (built; open `/ui/` and check it)
+## M2a - Web dashboard + chat (done)
 Browser equivalent of `pipchat`, served by the existing service at `https://agent-world.internal.example.io/ui/`
 (plain HTML/JS in `brain/web/`, bind-mounted so edits show on refresh; live updates over SSE at `/stream`).
 - [x] Live status (activity, mood, hunger/energy, model/pacing/tools, token usage and cost)
@@ -46,8 +46,7 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [x] Chat with Pip (send message, typing indicator, reply)
 - [x] Journal browser (sections, open/done/archived)
 - [x] Belongings and garden views; give-item form; wake button
-- [ ] **Verify in a real browser** (layout on phone width, dark mode, SSE reconnect, chat/gift flow). Only the API,
-      static serving, SSE framing and JS syntax have been checked so far
+- [x] Verified in a real browser (in daily use)
 - [ ] Decide whether Authentik is wanted in front of it (currently internal-only, IP whitelisted)
 
 ## M2b - Visual world
@@ -79,7 +78,7 @@ todos (#19/#34/#38/#43/#50), and only moves on by deciding it's "close enough". 
 is in my notes, not in the gears".
 
 ### Projects and creations (M1.6: phases 1-3 built, see DESIGN-creations.md)
-- [ ] Deploy: add `start_project,work_on,abandon_project,tend` to `TOOLS` in `.env`, rebuild, watch Pip's first project
+- [x] Deployed (tools are in `.env`)
 - [x] **Projects with world-decided progress**: `start_project(name, goal, needs, effort)` and `work_on(project, minutes)`.
       The engine owns progress, cost (energy, materials) and outcome rolls; Pip only chooses what to do. Work takes
       real time like crops do, so Pip can sleep until it's done instead of re-stating its activity every minute
@@ -123,6 +122,53 @@ is in my notes, not in the gears".
 - [ ] Real weather / daylight from Home Assistant (harmless sensors only): cloudy days slow the garden, sunset means bed
 - [x] A bookshelf: the Calibre library is a place Pip walks to and reads in (M3.6, DESIGN-library.md)
 
+## Ideas to design (2026-10-30)
+Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (links in the design docs).
+
+### Discovery in projects
+- [ ] Pip holds a *partial* plan: `start_project` takes an approach, not a full stage list; the GM flags only what is
+      infeasible and stages are revealed/revised as work proceeds
+- [ ] `experiment(project, hypothesis)`: the GM resolves it against hidden facts it wrote at project creation (the engine
+      still rolls; the GM invents and narrates within constraints). Outcomes can add/replace stages, change the goal, or
+      unlock a capability, so a plan evolves after each experiment
+- [ ] Research feeds the plan: `web_search`, library reading and (later) other tools can be cited when revising a plan;
+      a revision records what prompted it
+- [ ] Prior art: Voyager (iterative prompting + skill library), AutoDiscovery (Bayesian-surprise-driven hypothesis search,
+      NeurIPS 2025), Reflexion (verbal self-critique after failures)
+
+### Skills: generic and transferable
+- [ ] A few underlying abilities (precision, patience, ingenuity, measurement, ...) instead of per-craft xp; crafts and
+      stages map to weighted blends so practice carries across projects
+- [ ] Narrated, not numeric: Pip sees "your hands are steadier", the engine keeps the numbers
+
+### Extract to a public repo
+- [ ] Split `agent_world/` with history (`git subtree split` / `filter-repo`); audit history for secrets first
+- [ ] Remove homelab specifics: hostnames, Calibre mount, Morgan-specific persona text; ship a plain
+      `docker-compose.yml` + `.env.example`, README, license, token-budget warning
+- [ ] Consume it here as a **published artifact** (container image from the new repo's CI) rather than a copy or
+      submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
+
+### Introspection and a sense of self
+- [ ] Engine-detected firsts (first night, first finished project, first visitor, first failure, first letter) given to
+      Pip as facts; the thought itself stays Pip's (facts and occasion, never the sentence)
+- [ ] World/Pip age and time of day in perception (needs day/night, see World mechanics)
+- [ ] Self-portrait diffs at reflection time: what changed since the last one
+- [ ] Rare open question prompts, not scripted performances
+- [ ] **Survey the full body of prior work before designing** (the list below is from memory, not yet read or verified):
+  - Russell & Norvig, *AIMA*: the agent-program ladder (simple reflex -> model-based -> goal-based -> utility-based),
+    the **learning agent** (critic, learning element, performance element, problem generator; maps onto our reflection
+    and experiments), belief states / world models, rationality and bounded optimality, metareasoning
+  - Cognitive architectures: Soar and ACT-R (episodic / semantic / procedural memory, chunking), BDI agents
+    (beliefs, desires, intentions), Global Workspace Theory, CoALA's mapping of these onto LLM agents
+  - Psychology and philosophy of self: Tulving (episodic memory, autonoetic awareness), Conway's self-memory system
+    (autobiographical memory grounded in goals), Neisser's five selves, Damasio's proto / core / autobiographical self,
+    Dennett's "center of narrative gravity", McAdams' narrative identity ("first night of my life" is a narrative
+    anchor)
+- [ ] Prior art: Generative Agents (reflections stored back as retrievable memories citing their sources), Reflexion,
+      MemGPT/Letta-style self-editing core memory, CoALA-style memory taxonomy. Introspection research (Lindsey 2026,
+      Introspect-Bench) says model self-reports are limited and unreliable, so ground Pip's self-model in logged
+      facts, not in its claims about its own internals
+
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item
@@ -135,6 +181,7 @@ is in my notes, not in the gears".
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state
+- [x] `rest(minutes)`: timed rest; the heartbeat sleeps through it (Pip was resting every 60 s tick)
 - [ ] Todos pile up as near-duplicate restatements of the same step instead of being edited or resolved (projects
       should largely replace these)
 

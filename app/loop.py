@@ -58,6 +58,9 @@ class Agent:
             sess = self.state.session()
             if delay is not None and sess:  # working: no heartbeat until the session ends (events still wake)
                 delay = max(delay, sess["ends_at"] - time.time())
+            until = self.state.meta("rest_until")
+            if delay is not None and until and self.state.agent()["activity"] == "resting":  # resting: sleep through (events still wake)
+                delay = max(delay, float(until) - time.time())
             if self._wake.is_set():
                 self._wake.clear()
                 if self._force:

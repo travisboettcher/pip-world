@@ -470,3 +470,27 @@ async def test_wishlist_flags_received_items_until_edited(tmp_path):
     st.edit_memory(wish, "Some fine brass gears")
     await agent.tick("c")
     assert "since received" not in prompt_of(backend)  # editing the wish acknowledges the gift
+
+
+@pytest.mark.asyncio
+async def test_timed_rest_sleeps_through_the_heartbeat(tmp_path):
+    import time
+    s, st, backend, agent = make(tmp_path, [LLMResponse("", [ToolCall("1", "rest", {"minutes": 90})], Usage(1, 1))])
+    await agent.tick("test")
+    assert st.agent()["activity"] == "resting"
+    assert float(st.meta("rest_until")) - time.time() == pytest.approx(90 * 60, abs=5)
+    agent.pacing.next_delay = lambda now, last: 1.0
+    with pytest.raises(asyncio.TimeoutError):  # the 1 s heartbeat is stretched to the rest's end
+        await asyncio.wait_for(agent._sleep(), timeout=0.3)
+    st.update_agent(activity="tinkering")
+    assert await asyncio.wait_for(agent._sleep(), timeout=3) == "timer"  # not resting any more
+
+
+@pytest.mark.asyncio
+async def test_rest_default_is_until_recovered_and_capped(tmp_path):
+    import time
+    s, st, backend, agent = make(tmp_path, [LLMResponse("", [ToolCall("1", "rest", {})], Usage(1, 1))])
+    st.update_agent(energy=0.1)
+    await agent.tick("test")
+    mins = (float(st.meta("rest_until")) - time.time()) / 60
+    assert mins == pytest.approx(min(240, 0.9 / s.recover_per_hour * 60), abs=1)
