@@ -438,6 +438,12 @@ def cmd_memory(pip: Pip, a) -> None:
         print(bold("People"))
         for p in m["people"]:
             print(f"  {p['name']}: {p['notes']}" + dim(f"  (last seen {fmt_time(p['last_seen'])})"))
+    if m.get("changes"):
+        print(bold("How Pip has changed"))
+        for c in m["changes"][:a.n]:
+            print(f"  {dim(fmt_time(c['period_end']))} {c['text']}" + ("" if c["grounded"] else dim(" (hunch)")))
+    if m.get("portraits") and len(m["portraits"]) > 1:
+        print(dim(f"  ({len(m['portraits'])} versions of the self-portrait are kept; --json shows them)"))
     if m["insights"]:
         print(bold("Beliefs"))
         for i in m["insights"][:a.n]:

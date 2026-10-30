@@ -163,6 +163,8 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         st = app.state.agent.state
         return {"self": st.meta("self_portrait"), "people": st.people(),
                 "days": st.reflections("day", limit=30), "insights": st.reflections("insight", limit=50, by_importance=True),
+                "portraits": st.reflections("portrait", limit=20), "changes": st.reflections("change", limit=20),
+                "stats": [{"day": d, **v} for d, v in st.day_stats(14)],
                 "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
 
     @app.get("/recall")

@@ -134,3 +134,22 @@ people notes and a self-portrait. Nothing ties an insight to evidence.
 1. Firsts (facets table, derivation in `State.log`, backfill, perception block, replace the hard-coded sleep flags).
 2. Event importance and ids in the reflection material.
 3. Cited insights, validation, optional support check, hunches block, `recall` evidence.
+
+## 3. Versioned self-portrait, change claims and day counts (built 2026-10-30)
+Mechanism 3 of RESEARCH-self.md (Conway's goals-and-correspondence, Dennett's movable "center of narrative gravity",
+the Narrative Continuity Test's style/goal drift).
+- **Every portrait is kept.** `reflections` gains kind `portrait`; the current one stays in `meta.self_portrait` for
+  the prompt. The existing portrait was backfilled as version 1. History is append-only; recall finds old
+  self-descriptions ("how you described yourself").
+- **The reflection sees its past selves, dated.** The last three portraits are shown oldest first with their dates,
+  plus the last few days **in plain counts** (work sessions, minutes worked, sessions where Pip described an
+  approach, setbacks, blowups, breakthroughs, experiments, projects finished, visitor messages, journal entries,
+  letters, hours slept, tool errors). The counts are computed from the log, are not judgments, and are stored per day
+  (`day_stats`, also in `GET /memory`).
+- **`changed` claims.** Optional: only if Pip sees itself differently than in the earlier descriptions. Each cites
+  evidence like an insight (event ids, earlier beliefs, or the counts named in the text), goes through the same
+  validation and support check, and is stored as kind `change`. Grounded changes appear in the prompt as "How you've
+  changed" (max 2); ungrounded ones are not shown there. The prompt says most nights Pip is much the same.
+- This is the mechanism behind a thought like "I used to check before cutting; now I rush": the counts give it
+  something checkable, and a wrong claim gets demoted rather than believed.
+Not done yet: Pip's state at the time of a recalled memory (a "recall frame"), and a delayed-self recognition test.

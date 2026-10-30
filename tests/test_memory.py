@@ -118,7 +118,7 @@ async def test_reflection_consolidates_the_day_in_pips_voice(tmp_path):
     assert "Who you are (in your own words" in p and "I'm Pip, a maker who is learning patience." in p
     assert "- Morgan (last seen just now): Kind; brings exactly what I need." in p
     assert "- just now: Morgan came by twice" in p and "- Gardens keep going without me." in p
-    assert st.recall("patience") == [] and st.recall("re-checking")[0]["source"] == "insight"
+    assert st.recall("patience")[0]["source"] == "portrait" and st.recall("re-checking")[0]["source"] == "insight"
     assert "person" in {h["source"] for h in st.recall("morgan")}
 
 
@@ -131,7 +131,7 @@ async def test_next_reflection_only_reads_new_material_and_sees_its_old_self(tmp
     await agent.reflect()
     task = gm.calls[1]["messages"][0]["content"]
     assert "second visit" in task and "first visit" not in task
-    assert "How you described yourself last time:\nI'm Pip, a maker" in task
+    assert "How you have described yourself before (oldest first):" in task and "] I'm Pip, a maker" in task
     assert "- Morgan: Kind; brings exactly what I need." in task
     assert st.meta("self_portrait") == "Still Pip." and st.people()[0]["notes"] == "Kind; brings exactly what I need."
 
@@ -298,3 +298,67 @@ async def test_hunches_are_shown_apart_from_beliefs_and_recall_shows_the_evidenc
     assert "Hunches (nothing you can point to yet):\n- Maybe the garden likes me." in p
     r = await call(agent, "recall", query="escapements")
     assert "Compliments follow careful escapements." in r.text and "because: Morgan said to you: I really love the escapement" in r.text
+
+
+# --- versioned portrait, changes, and day counts --------------------------------------------------
+@pytest.mark.asyncio
+async def test_every_portrait_is_kept_and_the_next_reflection_sees_them_dated(tmp_path):
+    s, st, gm, agent = make(tmp_path, verify_insights=False)
+    visit(st, "first")
+    gm.queue(report(summary="One.", people=[], insights=[], **{"self": "I am careful and slow."}),
+             report(summary="Two.", people=[], insights=[], **{"self": "I am bolder than I was."}))
+    await agent.reflect()
+    visit(st, "second")
+    await agent.reflect()
+    assert [p["text"] for p in st.reflections("portrait")] == ["I am bolder than I was.", "I am careful and slow."]
+    assert st.meta("self_portrait") == "I am bolder than I was."
+    assert "I am careful and slow." in gm.calls[1]["messages"][0]["content"]
+
+
+def test_an_existing_portrait_becomes_the_first_version(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.set_meta(self_portrait="I'm Pip.", last_reflection_ts="100")
+    State(s)  # restart
+    (p,) = st.reflections("portrait")
+    assert p["text"] == "I'm Pip." and p["support"] == "legacy"
+    State(s)
+    assert len(st.reflections("portrait")) == 1
+
+
+@pytest.mark.asyncio
+async def test_changes_cite_evidence_are_shown_to_pip_and_recalled(tmp_path):
+    s, st, gm, agent = make(tmp_path, verify_insights=False)
+    for i in range(2):
+        st.log("work", project="clock", stage="s", text="t", result="blowup", project_done=False, interrupted=False,
+               minutes=60, approach="", finished_stage=False, percent=10)
+    ref = dict(summary="Two bad days.", people=[], insights=[], **{"self": "I rush more than I thought."},
+               changed=[{"text": "I used to check before cutting; now I rush (0 of 2 sessions had an approach).",
+                         "importance": 7, "because": [f"e{eid(st, 'work')}"]},
+                        {"text": "I feel different somehow.", "importance": 3}])
+    gm.queue(report(**ref))
+    d = await agent.reflect()
+    ch = st.reflections("change")
+    assert {c["text"][:20]: c["grounded"] for c in ch} == {"I used to check befo": 1, "I feel different som": 0}
+    assert len(d["changes"]) == 2
+    p = agent._perception("timer", [])
+    assert "How you've changed:\n- I used to check before cutting" in p and "feel different somehow" not in p
+    r = await call(agent, "recall", query="rush")
+    assert "something you noticed changing in yourself" in r.text and "because:" in r.text
+
+
+@pytest.mark.asyncio
+async def test_day_counts_are_plain_facts_in_the_prompt_and_stored(tmp_path):
+    s, st, gm, agent = make(tmp_path, verify_insights=False)
+    st.log("work", project="clock", stage="s", text="t", result="setback", project_done=False, interrupted=False,
+           minutes=60, approach="measure first")
+    st.log("work", project="clock", stage="s", text="t", result="good", project_done=False, interrupted=False,
+           minutes=30, approach="")
+    visit(st, "hi")
+    gm.queue(report(summary="A day.", people=[], insights=[], **{"self": "Pip."}))
+    d = await agent.reflect()
+    assert d["stats"]["work_sessions"] == 2 and d["stats"]["minutes_worked"] == 90 and d["stats"]["with_approach"] == 1
+    assert d["stats"]["setbacks"] == 1 and d["stats"]["visitor_messages"] == 1
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "2 work sessions, 90 minutes worked, 1 sessions where you described your approach, 1 setbacks" in task
+    ((day, stored),) = st.day_stats(5)
+    assert stored == d["stats"]

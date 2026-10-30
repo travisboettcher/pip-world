@@ -140,3 +140,8 @@ apart from its beliefs. A small GM call (`VERIFY_INSIGHTS`) checks that the cite
 unsupported ones to hunches. `recall` shows the moments behind a belief. Events carry a deterministic importance that
 decides what survives the reflection's character budget. Nothing is rewritten: a revised belief is a new insight that
 cites the old one.
+
+## Portrait versions and change
+Every nightly self-portrait is kept (`GET /memory` -> `portraits`); the reflection sees the last three, dated, plus the last
+days in plain counts (`day_stats`). If Pip sees itself differently it can record a cited `changed` claim; supported ones
+show up in its prompt as "How you've changed".

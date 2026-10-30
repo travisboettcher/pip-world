@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS day_stats (day TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
 );
@@ -165,6 +166,7 @@ class State:
             self._normalize_crafts()
             self._seed_abilities()
             self._backfill_firsts()
+            self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
@@ -791,6 +793,24 @@ class State:
         q += " ORDER BY " + ("importance DESC, id DESC" if by_importance else "id DESC") + " LIMIT ?"
         with self.lock:
             return [dict(r) for r in self.db.execute(q, (*args, limit))]
+
+    def save_day_stats(self, day: str, stats: dict) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO day_stats VALUES (?, ?)", (day, json.dumps(stats)))
+            self.db.commit()
+
+    def day_stats(self, limit: int = 3) -> list[tuple[str, dict]]:
+        """The most recent days' counts, oldest first."""
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM day_stats ORDER BY day DESC LIMIT ?", (limit,)).fetchall()
+        return [(r["day"], json.loads(r["data"])) for r in reversed(rows)]
+
+    def _backfill_portraits(self) -> None:
+        """The portrait used to be one overwritten value; keep the current one as the first version."""
+        portrait = self.meta("self_portrait")
+        if portrait and not self.reflections("portrait", limit=1):
+            end = float(self.meta("last_reflection_ts") or time.time())
+            self.add_reflection("portrait", portrait, 5, 0, end, support="legacy")
 
     def reflection_cites(self, reflection_id: int) -> list[tuple[str, int]]:
         with self.lock:

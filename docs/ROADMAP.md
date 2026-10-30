@@ -154,8 +154,9 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       the thought stays Pip's
 - [x] Cited reflections: ids in the material, insights cite evidence, validation + nightly support check, hunches
       block, `recall` shows the evidence, deterministic event importance decides what survives the budget
-- [ ] Next from RESEARCH-self.md: versioned self-portrait with diffs and dated recall, expectations/surprise,
-      turning-point detector, capabilities table, a night pass that can change goals
+- [x] Versioned self-portrait (all versions kept), `changed` claims with citations, daily counts as evidence
+- [ ] Next from RESEARCH-self.md: expectations/surprise, turning-point detector, capabilities table, a night pass
+      that can change goals, recall frame (Pip's state then), delayed-self recognition test
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one
 - [ ] Rare open question prompts, not scripted performances
