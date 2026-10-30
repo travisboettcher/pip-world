@@ -438,6 +438,12 @@ def cmd_memory(pip: Pip, a) -> None:
         print(bold("People"))
         for p in m["people"]:
             print(f"  {p['name']}: {p['notes']}" + dim(f"  (last seen {fmt_time(p['last_seen'])})"))
+    if m.get("capabilities"):
+        print(bold("What Pip can do (from outcomes)"))
+        for group, rows in m["capabilities"].items():
+            top = sorted(((n, c) for n, c in rows.items() if c["tries"] >= 3), key=lambda r: -r[1]["tries"])[:5]
+            if top:
+                print(f"  {group}s: " + ", ".join(f"{n} {c['good']}/{c['tries']}" for n, c in top))
     if m.get("turning"):
         print(bold("Days that mattered"))
         for t in m["turning"][:a.n]:

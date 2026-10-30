@@ -277,6 +277,7 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
     if state.agent()["activity"] == "working":
         state.update_agent(activity="idle", description=f"just finished working on {project['name']}")
     data = {"project": project["name"], "project_id": project["id"], "stage": stage["name"], "result": result,
+            "craft": project["craft"], "abilities": stage_abilities(stage),
             "minutes": round(minutes), "text": text, "finished_stage": finished_stage, "project_done": done,
             "interrupted": interrupted, "percent": percent(project), "approach": approach, "lost": lost,
             "learned": learned, **_expectation_fields(comparison, step), "crossroads": crossroads({**project, "status": "active"}) and not done}
@@ -399,7 +400,8 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
     done = current_stage(project) is None and not project["questions"] and bool(project["stages"])
     if done:
         state.update_project(project["id"], status="done", finished_at=now)
-    data = {"project": project["name"], "project_id": project["id"], "hypothesis": hypothesis, "outcome": outcome,
+    data = {"project": project["name"], "project_id": project["id"], "craft": project["craft"],
+            "hypothesis": hypothesis, "outcome": outcome,
             "relevant": relevant, "minutes": round(minutes), "text": text, "finding": changes["finding"],
             "answered": changes["answered"], "added": changes["added"],
             "interrupted": interrupted, "project_done": done, "percent": percent(project),

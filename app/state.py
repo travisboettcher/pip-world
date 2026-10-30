@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS capability_snapshots (day TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS turning_points (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, period_start REAL NOT NULL, period_end REAL NOT NULL,
   score INTEGER NOT NULL, signals TEXT NOT NULL
@@ -835,6 +836,26 @@ class State:
             q += " WHERE " + " AND ".join(where)
         with self.lock:
             return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
+
+    def capability_context(self) -> tuple[dict, dict]:
+        """({project id: craft}, {(project id, stage name): abilities}) for events that predate those fields."""
+        crafts, stages = {}, {}
+        for p in self.projects(limit=500):
+            crafts[p["id"]] = p["craft"]
+            for st in p["stages"]:
+                stages[(p["id"], st["name"])] = st.get("abilities") or []
+        return crafts, stages
+
+    def save_capabilities(self, day: str, snapshot: dict) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO capability_snapshots VALUES (?, ?)", (day, json.dumps(snapshot)))
+            self.db.commit()
+
+    def capability_snapshots(self, limit: int = 2) -> list[tuple[str, dict]]:
+        """Most recent first."""
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM capability_snapshots ORDER BY day DESC LIMIT ?", (limit,)).fetchall()
+        return [(r["day"], json.loads(r["data"])) for r in rows]
 
     def add_turning(self, score: int, signals: list, start: float, end: float) -> int:
         with self.lock:

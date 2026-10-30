@@ -156,3 +156,8 @@ the first-surprise facts, the nightly reflection and a small calibration block; 
 At each reflection the engine looks for signals that the day changed more than usual (major firsts, surprises, counts far
 from Pip's own usual, goal changes, a new main conversation partner, returns after a long gap). Three or more make a
 candidate that the reflection is asked about as facts; Pip may mark at most one day as mattering, with cited evidence.
+
+## Capabilities
+Each night the engine counts how Pip's tools, crafts and abilities have actually gone (worked / didn't, went well / badly), keeps a
+dated snapshot, and shows the counts (with the change since last time) to the reflection so the self-portrait is grounded in what
+Pip really did. `GET /memory` exposes the latest snapshot.

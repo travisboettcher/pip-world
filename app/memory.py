@@ -9,6 +9,7 @@ import re
 import time
 from datetime import datetime
 
+from . import capabilities as caps
 from . import turning
 from .text import clip
 
@@ -211,6 +212,11 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     stats = compute_day_stats(state, since, now)
     today = datetime.fromtimestamp(now).date().isoformat()
     state.save_day_stats(today, stats)
+    crafts, ability_of = state.capability_context()
+    snapshot = caps.collect([e for e in state.events_since(0, limit=10**6) if e["ts"] <= now], crafts, ability_of)
+    before = next((snap for day, snap in state.capability_snapshots(2) if day != today), None)
+    state.save_capabilities(today, snapshot)
+    can_do = caps.format_snapshot(snapshot, before)
     candidate = turning.detect(state, since, now, stats, today, STAT_LABELS)
     if candidate["flagged"]:
         state.add_turning(candidate["score"], candidate["signals"], since, now)
@@ -233,6 +239,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         + (f"Your recent days in plain counts (not judgments):\n{numbers}\n\n" if (numbers := format_stats(state.day_stats(4))) else "")
         + ("What you thought of people so far:\n" + "\n".join(f"- {n}: {p['notes']}" for n, p in known.items()) + "\n\n"
            if known else "")
+        + (("What you have actually been able to do, counted from outcomes (not judgments):\n" + can_do + "\n\n")
+           if can_do else "")
         + (("Things that changed more than usual (facts, not verdicts):\n"
             + "\n".join("- " + (f"[e{sg['events'][0]}] " if sg["events"] else "") + sg["text"]
                          for sg in candidate["signals"]) + "\n\n") if candidate["flagged"] else "")
@@ -256,7 +264,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         "- `people`: for each person who mattered here, `name` and `notes` (1-3 sentences: who they are to you "
         f"now). Only these names: {', '.join(names) if names else '(nobody came by)'}.\n"
         "- `self`: describe yourself afresh in under 120 words - who you are, what you care about, what you're "
-        "working toward - keeping what's still true from before.\n"
+        "working toward - keeping what's still true from before. Describe what you can do from the counts above, "
+        "not from what you'd like to be true.\n"
         "- `changed`: only if you see yourself differently than in the earlier descriptions - what you do, care "
         "about or believe differently now. Each has `text`, `importance`, and `because` (ids of the lines or "
         "beliefs, as above; the counts above are fair evidence too - name them in `text`). Leave it empty if "

@@ -169,3 +169,16 @@ the last reflection. It never decides that something mattered: it only makes a *
   insights and stored as kind `turning`. Supported ones show in the prompt as "Days that mattered to you" (max 2),
   are found by `recall` ("a day that mattered"), and appear in `GET /memory`.
 - **No extra LLM calls.** Not done: grouping days into "chapters" (life periods) and a mid-day detector.
+
+## 6. Capabilities (built 2026-10-30)
+Mechanism 6 of RESEARCH-self.md (Voyager's verified skills; Lipson's self-model from measured competence). Pip's
+self-portrait used to draw on what Pip *felt* it could do. Now it also gets what it actually did.
+- **Counted from outcomes, no LLM:** per tool (worked / didn't: errors and refusals; `recall`/`web_search`/`browse_library`
+  count "found something"), per craft and per ability (sessions and experiments: went well / slowly / badly). Routine
+  tools (`say`, `set_activity`) and no-op calls are skipped; interrupted sessions don't count. `work` and `experiment`
+  events now record their craft and abilities; older events are filled in from their project.
+- **Dated snapshots** (`capability_snapshots`, one per reflection day) keep competence over time, so the reflection
+  sees "since last time: +3 tries, +1 good, +2 bad". Entries need 3 tries to be shown; most-practised first, 8 per group.
+- **Surfacing:** only in the nightly reflection ("What you have actually been able to do, counted from outcomes (not
+  judgments)"), with the `self` instruction to describe what it can do from those counts rather than what it would like to
+  be true. Also `GET /memory` -> `capabilities` and a line in `pipchat memory`. Not in the per-tick prompt (it would be noise).
