@@ -120,7 +120,15 @@ people notes and a self-portrait. Nothing ties an insight to evidence.
 - `recall` returns cited evidence for insight hits.
 - `material()` keeps high-importance events over newer routine ones when over budget.
 
-## Open questions for you
-1. Window and caps (6 h, 5 lines) and the major/minor split: any firsts you'd promote or drop?
-2. Is the optional verification call (one small call per night) worth keeping on by default?
-3. Should ungrounded insights be shown to Pip at all, or just stored?
+## Decisions (2026-10-30)
+1. Window (6 h), cap (5 lines) and the major/minor split stand for now; the facet list is meant to grow, so new
+   facets are added by extending one table in code, not by schema change.
+2. The nightly support check is **on by default** (`VERIFY_INSIGHTS=1`; one small call a night, off with `0`). No
+   strong view was expressed, so the cheap safeguard from the research stays.
+3. **Pip sees ungrounded insights**, labelled as hunches ("with nothing you can point to yet"), at most 2, apart from
+   the grounded beliefs.
+
+## Build order
+1. Firsts (facets table, derivation in `State.log`, backfill, perception block, replace the hard-coded sleep flags).
+2. Event importance and ids in the reflection material.
+3. Cited insights, validation, optional support check, hunches block, `recall` evidence.
