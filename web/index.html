@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="who"><span id="conn" class="dot" title="connecting"></span><h1>Pip</h1></div>
+    <div id="now" class="now">loading…</div>
+    <button id="wake" type="button" title="Wake Pip for a tick right now">Wake Pip</button>
+  </header>
+
+  <main>
+    <section class="col-main">
+      <div class="card">
+        <h2>Chat</h2>
+        <div id="chat" class="chat" role="log" aria-live="polite"></div>
+        <form id="chat-form" class="row">
+          <label class="sr" for="chat-input">Message to Pip</label>
+          <input id="chat-input" autocomplete="off" placeholder="Say something to Pip…" maxlength="2000">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Activity</h2>
+        <div id="filters" class="filters" role="group" aria-label="Event filters"></div>
+        <ol id="feed" class="feed"></ol>
+      </div>
+    </section>
+
+    <aside class="col-side">
+      <div class="card">
+        <h2>Pip</h2>
+        <div id="stats"></div>
+        <dl id="meta" class="meta"></dl>
+      </div>
+
+      <div class="card">
+        <h2>Usage today</h2>
+        <div id="usage"></div>
+      </div>
+
+      <div class="card">
+        <h2>Journal</h2>
+        <div class="row">
+          <div id="tabs" class="tabs" role="tablist"></div>
+          <label class="sr" for="note-status">Status</label>
+          <select id="note-status">
+            <option value="">all</option>
+            <option value="open" selected>open</option>
+            <option value="done">done</option>
+            <option value="archived">archived</option>
+          </select>
+        </div>
+        <ul id="notes" class="notes"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Belongings</h2>
+        <ul id="items" class="plain"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Garden</h2>
+        <div id="garden"></div>
+      </div>
+
+      <div class="card">
+        <h2>Give Pip something</h2>
+        <form id="give-form" class="give">
+          <label>Name <input id="g-name" required maxlength="60" placeholder="tiny needle file"></label>
+          <div class="row">
+            <label>Kind
+              <select id="g-kind">
+                <option value="tool">tool (kept)</option>
+                <option value="material">material (used up)</option>
+                <option value="food">food (eaten)</option>
+                <option value="seed">seed (planted)</option>
+              </select>
+            </label>
+            <label>Qty <input id="g-qty" type="number" min="1" max="999" value="1"></label>
+          </div>
+          <div id="g-seed" class="row" hidden>
+            <label>Grows in (min) <input id="g-minutes" type="number" min="1" placeholder="60"></label>
+            <label>Yield <input id="g-yield" type="number" min="1" placeholder="3"></label>
+          </div>
+          <label>Description <input id="g-desc" maxlength="200" placeholder="optional"></label>
+          <label>Say something <input id="g-message" maxlength="300" placeholder="for the clock!"></label>
+          <label>From <input id="g-from" maxlength="40" value="Morgan"></label>
+          <button type="submit">Give</button>
+          <p id="g-status" class="hint" role="status"></p>
+        </form>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -414,3 +414,57 @@ async def test_moments_cover_planting_harvest_and_finishing(tmp_path):
     p = prompt_of(backend).split("this happened:")[1]
     assert "Planted tomato seeds" in p and "Harvested 3 tomatoes" in p and "crossed off #4: it works" in p
     assert "now filing" not in p
+
+
+# --- editing notes ----------------------------------------------------------
+@pytest.mark.asyncio
+async def test_edit_note_rules(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    wish = st.add_memory("A small brass set of fine gears and a tiny file", "wishlist")
+    diary = st.add_memory("Dear diary", "diary")
+    edit = reg("edit_note")
+    r = await edit(agent.ctx, {"id": wish, "text": "Some fine brass gears"})
+    assert r.text.startswith(f"edited #{wish}") and "tiny file" in r.text  # old wording is reported
+    m = st.memories("wishlist")[0]
+    assert m["text"] == "Some fine brass gears" and m["edited_at"]
+    assert "can't be changed" in (await edit(agent.ctx, {"id": diary, "text": "x"})).text
+    assert "no note #99" in (await edit(agent.ctx, {"id": 99, "text": "x"})).text
+    assert "hunger/energy" in (await edit(agent.ctx, {"id": wish, "text": "Gears, hunger 0.5"})).text
+    st.resolve_memory(wish, "got them")
+    assert "already done" in (await edit(agent.ctx, {"id": wish, "text": "again"})).text
+
+
+def test_matching_wishes(tmp_path):
+    s, st, *_ = make(tmp_path)
+    w = st.add_memory("A small brass set of fine gears and a tiny file", "wishlist")
+    st.add_memory("A telescope", "wishlist")
+    assert [m["id"] for m in st.matching_wishes("tiny needle file")] == [w]
+    assert [m["id"] for m in st.matching_wishes("spare brass")] == [w]
+    assert st.matching_wishes("watering can") == []
+
+
+def test_old_memories_table_gains_edited_at(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    db = sqlite3.connect(path)
+    db.executescript("CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL);"
+                     "INSERT INTO memories (ts, text) VALUES (1, 'old note');")
+    db.commit(); db.close()
+    assert State(Settings(), path).memories()[0]["edited_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_wishlist_flags_received_items_until_edited(tmp_path):
+    s, st, backend, agent = make(tmp_path)
+    wish = st.add_memory("A small brass set of fine gears and a tiny file", "wishlist")
+    await agent.tick("a")
+    assert "since received" not in prompt_of(backend)  # nothing related owned yet
+    time.sleep(0.01)
+    st.add_item("tiny needle file", 1, "tool")
+    st.add_item("watering can", 1, "tool")
+    await agent.tick("b")
+    p = prompt_of(backend)
+    assert "you've since received: tiny needle file" in p and "watering" not in p.split("since received")[1].split("]")[0]
+    st.edit_memory(wish, "Some fine brass gears")
+    await agent.tick("c")
+    assert "since received" not in prompt_of(backend)  # editing the wish acknowledges the gift

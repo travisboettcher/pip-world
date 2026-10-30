@@ -57,3 +57,68 @@ def test_gift_endpoint_and_inventory(tmp_path):
         assert any(e["kind"] == "inbox" and "Morgan gave you 1 x tiny needle file" in e["data"]["text"] for e in ev)
         assert c.post("/items", json={"name": "x", "kind": "weapon"}).status_code == 422
         assert [g["state"] for g in c.get("/garden").json()] == ["empty"] * 3
+
+
+def test_ui_is_served_and_root_redirects(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        r = c.get("/", follow_redirects=False)
+        assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
+        page = c.get("/ui/")
+        assert page.status_code == 200 and "<title>Pip</title>" in page.text
+        assert c.get("/ui/app.js").status_code == 200 and c.get("/ui/style.css").status_code == 200
+        # the JSON API is unaffected by the static mount
+        assert c.get("/healthz").json() == {"ok": True}
+
+
+def test_gift_inbox_event_is_flagged(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        c.post("/items", json={"name": "file"})
+        c.post("/inbox", json={"text": "hello"})
+        inbox = [e["data"] for e in c.get("/events?after_id=0").json() if e["kind"] == "inbox"]
+        assert [d.get("gift", False) for d in inbox] == [True, False]  # the UI hides gift messages from chat
+
+
+import asyncio  # noqa: E402
+
+from app.state import State  # noqa: E402
+from app.stream import event_stream  # noqa: E402
+
+
+def test_event_stream_frames_and_resume(tmp_path):
+    st = State(Settings(db_path=str(tmp_path / "t.db")))
+    first = st.log("a", n=1)
+    st.log("b", n=2)
+
+    async def collect(cur, polls=2):
+        async def never(): return False
+        return [f async for f in event_stream(st, cur, never, interval=0, max_polls=polls)]
+
+    frames = asyncio.run(collect(first))
+    assert frames[0].startswith("retry:")
+    data = [f for f in frames if f.startswith("id:")]
+    assert len(data) == 1 and f"id: {first + 1}\n" in data[0] and '"kind": "b"' in data[0]  # only events after `first`
+    assert asyncio.run(collect(first + 1)) == ["retry: 3000\n\n"]  # nothing new -> only the retry hint
+
+
+def test_event_stream_stops_on_disconnect(tmp_path):
+    st = State(Settings(db_path=str(tmp_path / "t.db")))
+
+    async def run():
+        async def gone(): return True
+        return [f async for f in event_stream(st, 0, gone, interval=0)]
+
+    assert asyncio.run(run()) == ["retry: 3000\n\n"]
+
+
+def test_gift_points_at_matching_wish(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        st = c.app.state.agent.state
+        wish = st.add_memory("A small brass set of fine gears and a tiny file", "wishlist")
+        c.post("/items", json={"name": "tiny needle file", "sender": "Morgan"})
+        c.post("/items", json={"name": "watering can", "sender": "Morgan"})
+        texts = [i["text"] for i in st.pending_inbox()]
+        assert f"#{wish}" in texts[0] and "edit_note" in texts[0] and "resolve_note" in texts[0]
+        assert "wished for" not in texts[1]

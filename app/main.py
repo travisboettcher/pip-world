@@ -1,8 +1,12 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
@@ -10,6 +14,7 @@ from .llm import get_backend
 from .loop import Agent
 from .pacing import get_policy
 from .state import SECTIONS, State
+from .stream import event_stream
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -43,6 +48,17 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         task.cancel()
 
     app = FastAPI(title="agent-world", lifespan=lifespan)
+
+    @app.get("/stream")
+    async def stream(request: Request, after_id: int | None = None):
+        """Live events (SSE). Starts after `after_id`, the Last-Event-ID header (auto-reconnect), or now."""
+        state = app.state.agent.state
+        if after_id is None:
+            after_id = int(request.headers.get("last-event-id") or 0) or \
+                       next((e["id"] for e in state.events(limit=1)), 0)
+        return StreamingResponse(event_stream(state, after_id, request.is_disconnected),
+                                 media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.get("/healthz")
     def healthz():
@@ -90,9 +106,14 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(e))
         text = f"{g.sender} gave you {g.qty} x {item['name']} ({item['kind']})" \
                + (f": {item['description']}" if item["description"] else "") + "." + (f" {g.message}" if g.message else "")
+        wishes = agent.state.matching_wishes(item["name"])
+        if wishes:
+            ids = ", ".join(f"#{m['id']}" for m in wishes)
+            text += (f" (This may be something you wished for: {ids}. Cross it off with resolve_note if it is "
+                     "fully met, or use edit_note to trim the wish down to what's still missing.)")
         inbox_id = agent.state.add_inbox(text)
         agent.state.log("gift", sender=g.sender, item=item["name"], qty=g.qty, item_kind=item["kind"])
-        agent.state.log("inbox", id=inbox_id, text=text)
+        agent.state.log("inbox", id=inbox_id, text=text, gift=True)
         agent.request_wake()
         return {"queued": True, "id": inbox_id, "item": item}
 
@@ -108,6 +129,14 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     def post_tick():
         app.state.agent.request_wake(force=True)
         return {"requested": True}
+
+    web_dir = Path(os.environ.get("WEB_DIR") or Path(__file__).resolve().parent.parent / "web")
+    if web_dir.is_dir():
+        app.mount("/ui", StaticFiles(directory=web_dir, html=True), name="ui")
+
+        @app.get("/", include_in_schema=False)
+        def root():
+            return RedirectResponse("/ui/")
 
     return app
 

@@ -128,6 +128,22 @@ async def resolve_note(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"error: {err}" if err else f"crossed off #{args['id']}", followup=bool(err))
 
 
+@tool("edit_note",
+      "Rewrite one of your open todo, wishlist, ambitions or learned entries (by #id): trim a wish down to what "
+      "is still missing, sharpen a goal, correct something you learned. Diary entries can't be edited; write a "
+      "new one instead.",
+      _obj({"id": {"type": "integer"}, "text": {"type": "string", "description": "the new wording, 1-2 sentences"}},
+           ["id", "text"]))
+async def edit_note(ctx: ToolContext, args: dict) -> ToolResult:
+    text = str(args["text"]).strip()[:500]
+    if STAT_NUMBERS.search(text):
+        return ToolResult("not edited: don't write hunger/energy numbers in notes")
+    err, old = ctx.state.edit_memory(int(args["id"]), text)
+    if err:
+        return ToolResult(f"error: {err}", followup=True)
+    return ToolResult(f"edited #{args['id']} (was: {old[:120]})")
+
+
 @tool("use_item", "Use something you own for a purpose. Materials (like brass) are used up; tools are kept.",
       _obj({"item": {"type": "string"}, "purpose": {"type": "string"},
             "quantity": {"type": "integer", "description": "materials only, default 1"}}, ["item", "purpose"]))

@@ -67,6 +67,6 @@ class Settings:
             moment_window_minutes=_float("MOMENT_WINDOW_MINUTES", 60),
             moment_showings=_int("MOMENT_SHOWINGS", 3),
             garden_speed=_float("GROW_SPEED", 1.0),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,resolve_note,use_item,plant,harvest,web_search").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

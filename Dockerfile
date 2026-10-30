@@ -4,6 +4,7 @@ WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+COPY web ./web
 COPY persona.md ./persona.default.md
 RUN useradd -u 10001 -m agent && mkdir /data && chown agent /data
 USER agent

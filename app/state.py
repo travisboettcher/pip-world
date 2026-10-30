@@ -1,5 +1,6 @@
 """SQLite-backed world state: agent stats, event log, inbox, memories, usage."""
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL,
   section TEXT NOT NULL DEFAULT 'diary',
   status TEXT NOT NULL DEFAULT 'open',
-  outcome TEXT NOT NULL DEFAULT ''
+  outcome TEXT NOT NULL DEFAULT '',
+  edited_at REAL
 );
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +55,7 @@ CREATE TABLE IF NOT EXISTS usage (
 STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
 SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
 RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
+EDITABLE = tuple(sec for sec in SECTIONS if sec != "diary")  # the diary is a record: never rewritten
 
 
 def clamp(x: float) -> float:
@@ -73,6 +76,7 @@ class State:
                 ("memories", "section", "TEXT NOT NULL DEFAULT 'diary'"),
                 ("memories", "status", "TEXT NOT NULL DEFAULT 'open'"),
                 ("memories", "outcome", "TEXT NOT NULL DEFAULT ''"),
+                ("memories", "edited_at", "REAL"),
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -303,6 +307,31 @@ class State:
             self.db.execute("UPDATE garden SET notified = 1 WHERE ready_at <= ?", (now,))
             self.db.commit()
         return rows
+
+    def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
+        """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
+        with self.lock:
+            row = self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+            if not row:
+                return f"no note #{memory_id}", ""
+            if row["section"] not in EDITABLE:
+                return (f"note #{memory_id} is a {row['section']} entry, and those can't be changed - "
+                        "write a new one if something has changed"), ""
+            if row["status"] != "open":
+                return f"note #{memory_id} is already {row['status']}", ""
+            self.db.execute("UPDATE memories SET text = ?, edited_at = ? WHERE id = ?", (text, time.time(), memory_id))
+            self.db.commit()
+            return "", row["text"]
+
+    @staticmethod
+    def related(a: str, b: str) -> bool:
+        """Do two phrases share a meaningful word (4+ letters, plural-insensitive)?"""
+        def words(t): return {w.removesuffix("s") for w in re.findall(r"[a-z]+", t.lower()) if len(w) >= 4}
+        return bool(words(a) & words(b))
+
+    def matching_wishes(self, item_name: str) -> list[dict]:
+        """Open wishlist entries that share a meaningful word with an item (e.g. 'tiny needle file')."""
+        return [m for m in self.memories("wishlist", status="open", limit=50) if self.related(item_name, m["text"])]
 
     # --- usage / budget ----------------------------------------------
     def add_usage(self, input_tokens: int, output_tokens: int) -> None:

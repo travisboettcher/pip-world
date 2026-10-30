@@ -234,6 +234,15 @@ class Agent:
 
     def _journal(self) -> list[str]:
         def fmt(m): return f"- #{m['id']} {m['text'][:200]}"
+        belongings = self.state.items()
+
+        def fmt_wish(m):
+            # items received since the wish was last written/edited, so editing or resolving silences this
+            since = m["edited_at"] or m["ts"]
+            got = [i["name"] for i in belongings if i["ts"] > since and State.related(i["name"], m["text"])]
+            note = (f"  [you've since received: {', '.join(got)} - is this wish met? resolve_note it, or "
+                    "edit_note it down to what's still missing]") if got else ""
+            return fmt(m) + note
         lines: list[str] = []
         diary = self.state.memories("diary", limit=DIARY_SHOWN)
         lines += ["Your diary (latest entries):"] + [fmt(m) for m in diary] if diary else ["Your diary is empty."]
@@ -243,7 +252,8 @@ class Agent:
             ("ambitions", "Your ambitions (open)", "none yet - what would you like to achieve?"),
         ):
             items = self.state.memories(section, status="open", limit=LIST_SHOWN)
-            lines += [f"{label}:"] + ([fmt(m) for m in items] if items else [f"- ({hint})"])
+            show = fmt_wish if section == "wishlist" else fmt
+            lines += [f"{label}:"] + ([show(m) for m in items] if items else [f"- ({hint})"])
         learned = self.state.memories("learned", limit=LEARNED_SHOWN)
         if learned:
             lines += ["Things you've learned:"] + [fmt(m) for m in learned]

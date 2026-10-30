@@ -96,6 +96,10 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
             where = {"diary": "in its diary", "todo": "on its to-do list", "wishlist": "on its wishlist",
                      "ambitions": "under ambitions", "learned": "under things learned"}.get(sec, f"in {sec}")
             return dim(f"  * Pip writes {where}: {a.get('text')}")
+        if t == "edit_note":
+            if str(d.get("result", "")).startswith(("error", "not edited")):
+                return yellow(f"  ! Pip couldn't edit #{a.get('id')}: {d.get('result')}")
+            return dim(f"  * Pip rewrites #{a.get('id')}: {a.get('text')}")
         if t == "resolve_note":
             return dim(f"  * Pip crosses off #{a.get('id')}" + (f": {a['outcome']}" if a.get("outcome") else ""))
         if t == "use_item":
@@ -197,6 +201,7 @@ def cmd_notes(pip: Pip, a) -> None:
             print(dim("  (nothing)"))
         for m in items:
             done = dim(f"  [done{': ' + m['outcome'] if m['outcome'] else ''}]") if m["status"] == "done" else ""
+            done += dim("  (edited)") if m.get("edited_at") else ""
             print(f"  #{m['id']} {dim(fmt_time(m['ts']))}  {m['text']}{done}")
 
 
