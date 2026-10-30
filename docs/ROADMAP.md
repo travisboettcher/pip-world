@@ -192,6 +192,10 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       `draw` shows the result and `replaces=<id>` redoes it (3 times at most); `look(drawing)` shows any of them (`LOOKS_PER_DAY`)
 - [ ] Drawing as a timed session; inbound pictures from the owner
 
+### Emotions (idea, 2026-10-30; DESIGN-emotions.md)
+- [ ] Eight core emotions, 0-100, with baselines and decay; appraisal from events; blends/valence/arousal shown to Pip; small capped effects on dice,
+      pace and memory; nightly emotional arc; optional `feel` self-report vs engine state. Awaiting owner answers on the emotion set and influence strength
+
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item
