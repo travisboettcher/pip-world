@@ -165,6 +165,7 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       guesses, facts-only comparison, surprise firsts, calibration block, learning progress
 - [x] Turning-point detector (DESIGN-self.md section 5)
 - [x] Capabilities table (DESIGN-self.md section 6)
+- [ ] Night pass that can change goals: designed (DESIGN-nightpass.md), not built
 - [ ] Next from RESEARCH-self.md: life periods/chapters, a night pass
       that can change goals, recall frame (Pip's state then), delayed-self recognition test
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
