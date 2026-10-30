@@ -59,6 +59,9 @@ function describeTool(d) {
     case 'use_item': return { group: 'world', cls: 'world', text: `Pip uses ${a.item}` + (a.purpose ? ` — ${a.purpose}` : '') };
     case 'plant': return { group: 'world', cls: 'world', text: r.startsWith('error') ? `Pip couldn't plant: ${r}` : `Pip: ${r}` };
     case 'harvest': return { group: 'world', cls: 'world', text: `Pip: ${r}` };
+    case 'sleep': return { group: 'actions', text: r.startsWith('you go to bed') ? 'Pip goes to bed' : `Pip can't sleep yet: ${r}` };
+    case 'gather': return { group: 'actions', text: r.startsWith('you set about') ? `Pip ${r.replace(/^you /, '')}`.replace(/ You'll see.*$/, '') : `Pip can't gather: ${r}` };
+    case 'undo_decision': return { group: 'journal', text: `Pip takes back a night decision: ${r}` };
     case 'eat': return { group: 'actions', text: a.item ? `Pip eats ${a.item}` : 'Pip has a meal' };
     case 'rest': return { group: 'actions', text: 'Pip rests' };
     case 'web_search': return { group: 'actions', text: `Pip searches the web for: ${a.query}` };
@@ -79,8 +82,24 @@ function describe(e) {
     case 'work': {
       const tail = d.project_done ? ' — finished!' : d.finished_stage ? ' (stage done)' : ` (${d.percent}%)`;
       if (d.interrupted) return { group: 'actions', text: `Pip stopped working on ${d.project} early${tail}` };
-      const cls = d.result === 'setback' ? 'warn' : 'world';
-      return { group: 'world', cls, text: `${d.project}, ${d.stage}: ${d.result} — ${d.text}${tail}` };
+      const cls = ['setback', 'blowup'].includes(d.result) ? 'warn' : 'world';
+      return { group: 'world', cls, text: `${d.project}, ${d.stage}: ${d.result} — ${d.text}${tail}` + (d.expectation ? ` (${d.expectation})` : '') + (d.learned ? ` Learned: ${d.learned}` : '') };
+    }
+    case 'experiment': {
+      if (d.interrupted) return { group: 'actions', text: `Pip cut an experiment on ${d.project} short` };
+      return { group: 'world', cls: 'world', text: `Experiment on ${d.project} (${d.hypothesis}): ${d.text}` + (d.finding ? ` Learned: ${d.finding}` : '') + (d.expectation ? ` (${d.expectation})` : '') };
+    }
+    case 'gathered': return { group: 'world', cls: 'world', text: d.text + (d.interrupted ? ' (cut short)' : '') };
+    case 'woke': return { group: 'world', cls: 'world', text: `Pip wakes after about ${d.hours} hours of sleep` + (d.early ? ' (woken early)' : '') };
+    case 'night_pass': {
+      const bits = [...(d.decisions || []), ...(d.focus || []).map((f) => `focus: ${f}`)];
+      if (!bits.length) return d.failed ? { group: 'system', cls: 'warn', text: 'The night pass failed' } : null;
+      return { group: 'journal', text: `Pip's sleeping self${d.mode === 'log' ? ' (logged only)' : ''}: ${bits.join('; ')}` };
+    }
+    case 'night_undo': return { group: 'journal', text: `Night decision #${d.decision} taken back: ${d.summary}` };
+    case 'plan_revised': {
+      const bits = [...(d.added || []).map((x) => `+${x}`), ...(d.dropped || []).map((x) => `−${x}`)];
+      return bits.length ? { group: 'world', cls: 'world', text: `Pip changed the plan for ${d.project}: ${bits.join(', ')}` } : null;
     }
     case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
@@ -119,14 +138,35 @@ const applyFilters = () => { for (const li of $('feed').children) li.hidden = !f
 function feedAdd(e) {
   const m = describe(e);
   if (!m) return;
-  const li = h('li', { 'data-group': m.group, class: m.cls || '' }, h('time', {}, fmtTime(e.ts)), h('span', {}, m.text));
+  const firsts = (e.data?.firsts || []).map((f) => f.label);
+  const li = h('li', { 'data-group': m.group, class: m.cls || '' }, h('time', {}, fmtTime(e.ts)),
+    h('span', {}, m.text, firsts.length ? h('span', { class: 'first' }, `★ ${firsts.join('; ')}`) : null));
   li.hidden = !filters[m.group];
   $('feed').prepend(li);
   while ($('feed').children.length > 400) $('feed').lastChild.remove();
 }
 
 // ---- chat -------------------------------------------------------------------
-const chat = { seenInbox: new Set(), pending: new Map(), typing: null };
+const chat = { seenInbox: new Set(), pending: new Map(), typing: null, open: false, unread: 0 };
+function renderBadge() {
+  $('chat-badge').hidden = chat.unread === 0;
+  $('chat-badge').textContent = String(chat.unread);
+  $('chat-toggle').setAttribute('aria-label', chat.unread ? `Chat (${chat.unread} unread)` : 'Chat');
+}
+function setChatOpen(on, focus = true) {
+  chat.open = on;
+  $('chat-panel').hidden = !on;
+  $('chat-toggle').setAttribute('aria-expanded', String(on));
+  store.set('chatOpen', on);
+  if (on) {
+    chat.unread = 0;
+    renderBadge();
+    $('chat').scrollTop = $('chat').scrollHeight;
+    if (focus) $('chat-input').focus();
+  }
+}
+$('chat-toggle').addEventListener('click', () => setChatOpen(!chat.open));
+$('chat-close').addEventListener('click', () => { setChatOpen(false); $('chat-toggle').focus(); });
 function bubble(cls, text, ts) {
   const box = $('chat');
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
@@ -170,7 +210,10 @@ function chatFromEvent(e, live) {
   if (e.kind === 'inbox' && !d.gift && !d.letter) showVisitor(d.id, d.text, e.ts);
   else if (e.kind === 'gift') bubble('sys', `${d.sender} gave Pip ${d.qty} × ${d.item}`);
   else if (e.kind === 'say' && !d.to_name) {
-    if (d.text) bubble('pip', d.text, e.ts); else if (live) bubble('sys', 'Pip says nothing.');
+    if (d.text) {
+      bubble('pip', d.text, e.ts);
+      if (live && !chat.open) { chat.unread += 1; renderBadge(); }
+    } else if (live) bubble('sys', 'Pip says nothing.');
     for (const id of d.to || []) settle(id);
     syncTyping();
   } else if (e.kind === 'inbox_read' && live) {
@@ -200,16 +243,42 @@ $('chat-form').addEventListener('submit', async (ev) => {
   }
 });
 
+// ---- tabs -------------------------------------------------------------------
+const TABS = ['now', 'journal', 'world', 'work', 'mind'];
+function showTab(name, remember = true) {
+  if (!TABS.includes(name)) name = 'now';
+  for (const t of TABS) {
+    $(`tab-${t}`).hidden = t !== name;
+    $(`tab-btn-${t}`).setAttribute('aria-selected', String(t === name));
+    $(`tab-btn-${t}`).tabIndex = t === name ? 0 : -1;
+  }
+  if (remember) { store.set('tab', name); history.replaceState(null, '', `#${name}`); }
+}
+$('tabbar').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+$('tabbar').addEventListener('keydown', (ev) => {
+  if (!['ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
+  const i = TABS.findIndex((t) => $(`tab-btn-${t}`).getAttribute('aria-selected') === 'true');
+  const next = TABS[(i + (ev.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+  showTab(next);
+  $(`tab-btn-${next}`).focus();
+});
+window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
+
 // ---- state panels -----------------------------------------------------------
 let state = null, notes = {}, noteTab = store.get('noteTab', 'diary'), gardenData = [];
 function bar(label, value, cls = '') {
   return h('div', { class: 'stat' }, h('span', {}, label, pct(value)), h('div', { class: `bar ${cls}` }, h('i', { style: `width:${pct(value)}` })));
 }
+const fmtTok = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+function meter(label, value, cls = '') {
+  return h('div', { class: 'meter', title: `${label} ${pct(value)}` }, h('span', {}, `${label} ${pct(value)}`),
+    h('div', { class: `bar ${cls}` }, h('i', { style: `width:${pct(value)}` })));
+}
 function renderState() {
   if (!state) return;
   const a = state.agent, u = state.usage;
   $('now').replaceChildren(h('b', {}, a.activity), a.description ? ` — ${a.description}` : '');
-  $('stats').replaceChildren(bar('Hunger', a.hunger, 'hunger'), bar('Energy', a.energy));
+  $('meters').replaceChildren(meter('Hunger', a.hunger, 'hunger'), meter('Energy', a.energy));
   const meta = [['Mood', a.mood], ['Location', a.location], ['Model', `${state.model} via ${state.backend}`],
                 ['Pacing', state.pacing], ['Ticks since start', state.ticks], ['Inbox waiting', state.pending_inbox],
                 ['Tools', state.tools.join(', ')]];
@@ -220,11 +289,27 @@ function renderState() {
   const share = u.budget ? u.total_tokens / u.budget : 0;
   const per = u.total_tokens ? u.input_tokens / u.total_tokens : 0.9;
   const fullDay = price ? (u.budget * (per * price[0] + (1 - per) * price[1])) / 1e6 : null;
-  $('usage').replaceChildren(
-    bar(`${u.total_tokens.toLocaleString()} / ${u.budget.toLocaleString()} tokens`, share),
-    h('p', { class: 'hint' }, `${u.calls} LLM calls (${u.input_tokens.toLocaleString()} in, ${u.output_tokens.toLocaleString()} out)`
-      + (cost != null ? ` · est. $${cost.toFixed(4)} today · full budget ≈ $${fullDay.toFixed(2)}/day (~$${(fullDay * 30).toFixed(0)}/month)` : '')));
+  $('usage-text').textContent = `${fmtTok(u.total_tokens)} / ${fmtTok(u.budget)}` + (cost != null ? ` · $${cost.toFixed(2)}` : '');
+  $('usage-bar').style.width = pct(share);
+  $('usage-pop').replaceChildren(
+    h('p', {}, h('b', {}, `${u.total_tokens.toLocaleString()} of ${u.budget.toLocaleString()} tokens today (${pct(share)})`)),
+    h('p', {}, `${u.calls} LLM calls: ${u.input_tokens.toLocaleString()} in, ${u.output_tokens.toLocaleString()} out`),
+    cost != null ? h('p', {}, `Estimated cost today: $${cost.toFixed(4)}`) : null,
+    fullDay != null ? h('p', { class: 'hint' }, `A full budget is about $${fullDay.toFixed(2)}/day (~$${(fullDay * 30).toFixed(0)}/month).`) : null);
 }
+$('usage-pill').addEventListener('click', () => {
+  const pop = $('usage-pop'), on = pop.hidden;
+  pop.hidden = !on;
+  $('usage-pill').setAttribute('aria-expanded', String(on));
+});
+document.addEventListener('click', (ev) => {
+  if (!ev.target.closest('.usage-wrap') && !$('usage-pop').hidden) { $('usage-pop').hidden = true; $('usage-pill').setAttribute('aria-expanded', 'false'); }
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape') return;
+  if (!$('usage-pop').hidden) { $('usage-pop').hidden = true; $('usage-pill').setAttribute('aria-expanded', 'false'); }
+  else if (chat.open) setChatOpen(false);
+});
 const refreshState = async () => { state = await api('/state'); renderState(); };
 
 function renderNotes() {
@@ -297,15 +382,52 @@ function renderProjects() {
 }
 const refreshProjects = async () => { projectData = await api('/projects'); renderProjects(); };
 
+let memoryData = null;
+const STAT_NAMES = { work_sessions: 'work sessions', minutes_worked: 'minutes worked', with_approach: 'with an approach stated',
+  setbacks: 'setbacks', blowups: 'blow-ups', breakthroughs: 'breakthroughs', experiments: 'experiments', projects_finished: 'projects finished',
+  visitor_messages: 'visitor messages', notes_written: 'journal entries', letters_sent: 'letters sent', hours_slept: 'hours slept',
+  tool_errors: 'tool errors', predictions: 'predictions', surprises: 'surprises', focus_kept: 'focus kept', focus_total: 'focus reviewed' };
+function section(title, items) { return items.length ? [h('h3', {}, title), h('ul', { class: 'plain' }, ...items)] : []; }
+function renderFocus() {
+  const open = (memoryData?.focus || []).filter((f) => f.status === 'open');
+  $('focus').replaceChildren(...section('Focus (chosen in its sleep)', open.map((f) => h('li', {}, f.text))));
+}
+function renderMind() {
+  const m = memoryData;
+  if (!m) return;
+  if (!m.last_reflection_ts) {
+    for (const id of ['mind-self', 'mind-beliefs', 'mind-people', 'mind-night', 'mind-caps']) $(id).replaceChildren(h('p', { class: 'hint' }, 'Pip reflects each night; nothing yet.'));
+    return;
+  }
+  $('mind-self').replaceChildren(h('p', {}, m.self || ''),
+    m.portraits && m.portraits.length > 1 ? h('p', { class: 'hint' }, `${m.portraits.length} versions of this portrait are kept.`) : null,
+    ...section('Days that mattered', (m.turning || []).filter((t) => t.grounded).slice(0, 4).map((t) => h('li', {}, t.text, h('small', {}, fmtDay(t.period_end))))));
+  const tag = (i) => (i.grounded ? null : h('span', { class: 'tag' }, 'hunch'));
+  $('mind-beliefs').replaceChildren(
+    ...section('Beliefs', (m.insights || []).filter((i) => i.grounded).slice(0, 8).map((i) => h('li', {}, i.text, h('small', {}, `importance ${i.importance}${i.support && !['legacy', 'none'].includes(i.support) ? ` · ${i.support}` : ''}`)))),
+    ...section('Hunches', (m.insights || []).filter((i) => !i.grounded).slice(0, 4).map((i) => h('li', {}, i.text, tag(i)))),
+    ...section('How Pip has changed', (m.changes || []).slice(0, 4).map((c) => h('li', {}, c.text, tag(c), h('small', {}, fmtDay(c.period_end))))));
+  const ex = (m.expectations || []).filter((x) => x.kind !== 'step');
+  $('mind-people').replaceChildren(
+    ...section('People', (m.people || []).map((p) => h('li', {}, h('b', {}, p.name), ` — ${p.notes}`))),
+    ...section('Days', (m.days || []).slice(0, 5).map((d) => h('li', {}, d.text, h('small', {}, fmtDay(d.period_end))))),
+    ex.length ? h('p', { class: 'hint' }, `${ex.length} predictions recorded, ${ex.filter((x) => x.surprising).length} surprising.`) : null);
+  const decisions = (m.night_decisions || []).slice(0, 6).map((d) => h('li', { class: d.undone ? 'done' : '' }, `#${d.id} ${d.summary}`,
+    h('small', {}, [fmtDay(d.ts), d.undone ? 'undone' : d.applied ? 'applied' : 'logged only', d.reason].filter(Boolean).join(' · '))));
+  const recent = (m.stats || []).slice(-3).reverse().map((st) => h('li', {}, st.day, h('small', {},
+    Object.entries(STAT_NAMES).filter(([k]) => st[k]).map(([k, label]) => `${st[k]} ${label}`).join(', ') || 'a quiet day')));
+  $('mind-night').replaceChildren(...section('Decisions', decisions), ...section('Recent days in numbers', recent),
+    decisions.length || recent.length ? null : h('p', { class: 'hint' }, 'Nothing decided in its sleep yet.'));
+  const caps = m.capabilities;
+  $('mind-caps').replaceChildren(...(caps ? Object.entries({ tool: 'Tools', craft: 'Crafts', ability: 'Abilities' }).flatMap(([g, title]) => {
+    const top = Object.entries(caps[g] || {}).filter(([, c]) => c.tries >= 3).sort((x, y) => y[1].tries - x[1].tries).slice(0, 8);
+    return top.length ? [h('h3', {}, title), h('div', { class: 'caps' }, ...top.map(([n, c]) => h('span', { class: 'chip', title: `${c.good} good, ${c.neutral} slow, ${c.bad} bad of ${c.tries}` }, `${n} ${c.good}/${c.tries}`)))] : [];
+  }) : [h('p', { class: 'hint' }, 'Counted each night from what Pip has actually done.')]));
+}
 async function refreshMemory() {
-  const m = await api('/memory');
-  if (!m.last_reflection_ts) { $('memory').replaceChildren(h('p', { class: 'hint' }, 'Pip reflects each night; nothing yet.')); return; }
-  const sec = (title, items) => items.length ? [h('h3', {}, title), h('ul', { class: 'plain' }, ...items)] : [];
-  $('memory').replaceChildren(
-    h('p', {}, m.self || ''),
-    ...sec('People', m.people.map((p) => h('li', {}, h('b', {}, p.name), ` — ${p.notes}`))),
-    ...sec('Beliefs', m.insights.slice(0, 8).map((i) => h('li', {}, i.text, h('small', {}, `importance ${i.importance}`)))),
-    ...sec('Days', m.days.slice(0, 5).map((d) => h('li', {}, d.text, h('small', {}, fmtDay(d.period_end))))));
+  memoryData = await api('/memory');
+  renderMind();
+  renderFocus();
 }
 
 async function refreshLetters() {
@@ -381,11 +503,11 @@ function handleEvent(e, live) {
   if (!live) return;
   const t = e.data?.tool;
   if (e.kind === 'tool' && ['note_to_self', 'edit_note', 'resolve_note'].includes(t)) debounce('notes', refreshNotes);
-  if (e.kind === 'tool' && ['eat', 'use_item', 'plant', 'harvest'].includes(t)) { debounce('items', refreshItems); debounce('garden', refreshGarden); }
+  if (e.kind === 'gathered' || (e.kind === 'tool' && ['eat', 'use_item', 'plant', 'harvest', 'gather'].includes(t))) { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
-  if (e.kind === 'work' || (e.kind === 'tool' && ['start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
-  if (e.kind === 'reflection') debounce('memory', refreshMemory);
+  if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
+  if (['reflection', 'night_pass', 'night_undo', 'woke'].includes(e.kind) || (e.kind === 'tool' && t === 'undo_decision')) debounce('memory', refreshMemory);
   if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
   if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
@@ -400,6 +522,8 @@ function connect() {
 
 // ---- boot -------------------------------------------------------------------
 renderFilters();
+showTab(location.hash.slice(1) || store.get('tab', 'now'), false);
+setChatOpen(store.get('chatOpen', false), false);
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
@@ -412,6 +536,6 @@ renderFilters();
   }
   connect();
   setInterval(() => refreshState().catch(() => {}), 10_000);
-  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations()]).catch(() => {}), 60_000);
+  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]).catch(() => {}), 60_000);
   setInterval(() => { renderGarden(); renderProjects(); }, 30_000);
 })();

@@ -10,44 +10,44 @@
   <header class="top">
     <div class="who"><span id="conn" class="dot" title="connecting"></span><h1>Pip</h1></div>
     <div id="now" class="now">loading…</div>
-    <button id="wake" type="button" title="Wake Pip for a tick right now">Wake Pip</button>
+    <div id="meters" class="meters" aria-label="Pip's hunger and energy"></div>
+    <div class="usage-wrap">
+      <button id="usage-pill" class="pill" type="button" aria-expanded="false" aria-controls="usage-pop" title="Token usage today">
+        <span id="usage-text">…</span>
+        <span class="bar mini"><i id="usage-bar"></i></span>
+      </button>
+      <div id="usage-pop" class="pop" role="status" hidden></div>
+    </div>
+    <button id="wake" type="button" title="Wake Pip for a tick right now">Wake</button>
   </header>
 
-  <main>
-    <section class="col-main">
-      <div class="card">
-        <h2>Chat</h2>
-        <div id="chat" class="chat" role="log" aria-live="polite"></div>
-        <form id="chat-form" class="row">
-          <label class="sr" for="chat-input">Message to Pip</label>
-          <input id="chat-input" autocomplete="off" placeholder="Say something to Pip…" maxlength="2000">
-          <button type="submit">Send</button>
-        </form>
-      </div>
+  <nav id="tabbar" class="tabbar" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" data-tab="now" id="tab-btn-now">Now</button>
+    <button type="button" role="tab" data-tab="journal" id="tab-btn-journal">Journal</button>
+    <button type="button" role="tab" data-tab="world" id="tab-btn-world">World</button>
+    <button type="button" role="tab" data-tab="work" id="tab-btn-work">Work</button>
+    <button type="button" role="tab" data-tab="mind" id="tab-btn-mind">Mind</button>
+  </nav>
 
-      <div class="card">
+  <main>
+    <section id="tab-now" class="tab" role="tabpanel" aria-labelledby="tab-btn-now">
+      <div class="card wide">
         <h2>Activity</h2>
         <div id="filters" class="filters" role="group" aria-label="Event filters"></div>
         <ol id="feed" class="feed"></ol>
       </div>
+      <div class="card">
+        <h2>Pip right now</h2>
+        <dl id="meta" class="meta"></dl>
+        <div id="focus"></div>
+      </div>
     </section>
 
-    <aside class="col-side">
-      <div class="card">
-        <h2>Pip</h2>
-        <div id="stats"></div>
-        <dl id="meta" class="meta"></dl>
-      </div>
-
-      <div class="card">
-        <h2>Usage today</h2>
-        <div id="usage"></div>
-      </div>
-
-      <div class="card">
+    <section id="tab-journal" class="tab" role="tabpanel" aria-labelledby="tab-btn-journal" hidden>
+      <div class="card wide">
         <h2>Journal</h2>
         <div class="row">
-          <div id="tabs" class="tabs" role="tablist"></div>
+          <div id="tabs" class="tabs" role="tablist" aria-label="Journal sections"></div>
           <label class="sr" for="note-status">Status</label>
           <select id="note-status">
             <option value="">all</option>
@@ -58,37 +58,21 @@
         </div>
         <ul id="notes" class="notes"></ul>
       </div>
+    </section>
 
+    <section id="tab-world" class="tab" role="tabpanel" aria-labelledby="tab-btn-world" hidden>
       <div class="card">
         <h2>Belongings</h2>
         <ul id="items" class="plain"></ul>
       </div>
-
       <div class="card">
         <h2>Garden</h2>
         <div id="garden"></div>
       </div>
-
       <div class="card">
         <h2>Neighbors &amp; letters</h2>
         <div id="letters"></div>
       </div>
-
-      <div class="card">
-        <h2>Pip's memory</h2>
-        <div id="memory"></div>
-      </div>
-
-      <div class="card">
-        <h2>Projects</h2>
-        <div id="projects"></div>
-      </div>
-
-      <div class="card">
-        <h2>Made by Pip</h2>
-        <ul id="creations" class="plain"></ul>
-      </div>
-
       <div class="card">
         <h2>Give Pip something</h2>
         <form id="give-form" class="give">
@@ -115,8 +99,58 @@
           <p id="g-status" class="hint" role="status"></p>
         </form>
       </div>
-    </aside>
+    </section>
+
+    <section id="tab-work" class="tab" role="tabpanel" aria-labelledby="tab-btn-work" hidden>
+      <div class="card">
+        <h2>Projects</h2>
+        <div id="projects"></div>
+      </div>
+      <div class="card">
+        <h2>Made by Pip</h2>
+        <ul id="creations" class="plain"></ul>
+      </div>
+    </section>
+
+    <section id="tab-mind" class="tab" role="tabpanel" aria-labelledby="tab-btn-mind" hidden>
+      <div class="card">
+        <h2>Who Pip is</h2>
+        <div id="mind-self"></div>
+      </div>
+      <div class="card">
+        <h2>Beliefs &amp; change</h2>
+        <div id="mind-beliefs"></div>
+      </div>
+      <div class="card">
+        <h2>People &amp; days</h2>
+        <div id="mind-people"></div>
+      </div>
+      <div class="card">
+        <h2>Sleeping self</h2>
+        <div id="mind-night"></div>
+      </div>
+      <div class="card">
+        <h2>What Pip can do</h2>
+        <div id="mind-caps"></div>
+      </div>
+    </section>
   </main>
+
+  <aside id="chat-panel" class="chatpanel" aria-label="Chat with Pip" hidden>
+    <div class="chat-head">
+      <h2>Chat with Pip</h2>
+      <button id="chat-close" class="ghost" type="button" aria-label="Hide chat">Hide</button>
+    </div>
+    <div id="chat" class="chat" role="log" aria-live="polite"></div>
+    <form id="chat-form" class="row chat-form">
+      <label class="sr" for="chat-input">Message to Pip</label>
+      <input id="chat-input" autocomplete="off" placeholder="Say something to Pip…" maxlength="2000">
+      <button type="submit">Send</button>
+    </form>
+  </aside>
+  <button id="chat-toggle" class="fab" type="button" aria-expanded="false" aria-controls="chat-panel">
+    Chat <span id="chat-badge" class="badge" hidden>0</span>
+  </button>
 
   <script type="module" src="app.js"></script>
 </body>

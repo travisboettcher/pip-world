@@ -50,12 +50,13 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [x] Belongings and garden views; give-item form; wake button
 - [x] Verified in a real browser (in daily use)
 - [ ] Decide whether Authentik is wanted in front of it (currently internal-only, IP whitelisted)
-- [ ] **Rework the layout** (2026-10-30; too much scrolling: 12 stacked sections in a side column). Ideas so far:
-  chat becomes a hideable bubble (bottom-right, unread badge, remembers open/closed); usage moves into the header with a
-  hover tooltip (tokens, cost, budget bar); the rest is regrouped into tabs/sections instead of one long column, e.g.
-  *Now* (state, activity feed), *Journal* (diary/todo/wishlist/ambitions/learned), *World* (belongings, garden,
-  neighbors & letters), *Work* (projects, made by Pip), *Mind* (memory, beliefs, changes, firsts); the give-Pip form
-  tucked beside the chat or under World. Design before building; needs a browser check on phone width.
+- [x] **Rework the layout** (built 2026-10-30; the owner should check it in a browser, esp. phone width and dark mode):
+  chat is a hideable bubble (bottom-right, unread badge, remembers open/closed; a bottom sheet on phones); usage moved to a
+  header pill with a hover/tap popover; hunger/energy are small header meters; the old 12-card column is five tabs
+  (*Now*: activity and Pip right now; *Journal*; *World*: belongings, garden, letters, give; *Work*: projects and creations;
+  *Mind*: self-portrait, beliefs and hunches, how Pip has changed, days that mattered, people, night decisions, capabilities).
+  The feed marks firsts with a star and shows experiments, gathers, sleeping, and night decisions. The tab is in the URL hash.
+  Checked in an embedded V8 with a stub DOM against the live API's real data (boot, tabs, chat toggle/unread, usage popover); not yet seen in a real browser.
 
 ## M2b - Visual world
 - [ ] Decide 2D (pixel canvas: a room, a sprite, activity -> animation) vs 3D; default 2D

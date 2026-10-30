@@ -183,3 +183,9 @@ place's loot table (sticks, bark, berries, seeds; scrap brass, wire, gears, the 
 time, so camping there yields less. The GM only narrates what the engine found. Finds are remembered per place; `where_to` answers
 "where could I get brass?" from the directory and what Pip has found, and a project step missing a material says where it was found.
 `WILD_PLACES` chooses which places exist. See [DESIGN-places.md](DESIGN-places.md).
+
+## The web UI
+`/ui/` has five tabs (Now, Journal, World, Work, Mind), a chat bubble (bottom-right; unread badge; remembers whether it was open) and a header
+with Pip's activity, hunger/energy meters and a token-usage pill (hover or tap for the breakdown and cost). The Mind tab shows the
+self-portrait, beliefs and hunches, how Pip has changed, days that mattered, people, what its sleeping self decided, and what it can do.
+The files are bind-mounted: edit `brain/web/` and refresh, no rebuild.
