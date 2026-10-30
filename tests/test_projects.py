@@ -61,7 +61,8 @@ def call(agent, tool, **args):
 def test_sanitize_stages_and_build_plan_keep_the_plan_pips():
     steps = proj.sanitize_stages([{"name": "one", "minutes": 5000, "materials": {"Brass": 6, "wood": 6}}, {"name": " "},
                                   "junk", {"name": "two", "abilities": ["patience", "bogus"]}], 5)
-    assert steps[0] == {"name": "one", "minutes": 240, "materials": {"brass": 6, "wood": 2}, "abilities": ["handiness"]}
+    assert steps[0] == {"name": "one", "minutes": 240, "guess": 240, "materials": {"brass": 6, "wood": 2},
+                        "abilities": ["handiness"]}
     assert [x["name"] for x in steps] == ["one", "junk", "two"] and steps[2]["abilities"] == ["patience"]  # 8 units max
     plan = proj.build_plan(steps, {"craft": "Clockmaking (gears)", "difficulty": 9, "tools": list("abcd"),
                                    "steps": [{"abilities": ["precision"], "minutes": 90}, "junk", {"minutes": 1}],

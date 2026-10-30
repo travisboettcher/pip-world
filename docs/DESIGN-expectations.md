@@ -1,6 +1,8 @@
 # Design: expectations and surprise
 
-Status: **design only, not built.** Sources: [RESEARCH-self.md](RESEARCH-self.md), mechanism 4 (Metacognitive Loop
+Status: **built** (all four phases, 2026-10-30). Decisions: three-word vocabulary kept (a 1-5 scale can come later); calibration
+block after 5 predictions; surprises only create a diary prompt through the first-of-each-kind firsts. Step-duration
+comparisons are recorded whether or not they are surprising (only surprising ones are flagged). Sources: [RESEARCH-self.md](RESEARCH-self.md), mechanism 4 (Metacognitive Loop
 note-assess-guide; AIMA belief states; Schmidhuber / Oudeyer learning progress; Ricoeur's concordance vs discordance).
 Same rule as the rest of the self work: the engine records **facts** (what Pip expected, what happened, how far apart) and
 creates the **occasion**; Pip decides what it means. No evaluative words, no scripted reaction.
@@ -64,7 +66,7 @@ you read your own work. Not required, not scored as good or bad.
 - Over-weighting surprise: only surprises beyond the thresholds are flagged, and nothing nudges Pip to act on them.
 - Prediction as ritual: it is optional and unrewarded, so the log shows what Pip chose to predict.
 
-## Open questions
+## Decisions made
 1. Is a 3-word vocabulary right (`well`/`slowly`/`badly`; `works`/`partly`/`fails`), or do you prefer a 1-5 scale?
 2. Show the calibration block only after 5 predictions (proposed), or sooner?
 3. Should a surprise ever create a diary moment on its own (beyond the first of each kind)? Proposed: no, the

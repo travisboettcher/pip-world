@@ -41,11 +41,13 @@ def recall_text(kind: str, d: dict) -> str | None:
     if kind == "work":
         return None if d.get("interrupted") else (
             f"Working on {d['project']} ({d['stage']}), {d['result']}: {d['text']}"
-            + (f" You learned: {d['learned']}" if d.get("learned") else ""))
+            + (f" You learned: {d['learned']}" if d.get("learned") else "")
+            + (f" ({d['expectation']})" if d.get("expectation") else ""))
     if kind == "experiment":
         return None if d.get("interrupted") else (
             f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"
-            + (f" You learned: {d['finding']}" if d.get("finding") else ""))
+            + (f" You learned: {d['finding']}" if d.get("finding") else "")
+            + (f" ({d['expectation']})" if d.get("expectation") else ""))
     if kind == "creation_made":
         return f"You finished making {d['name']}: {d['description']}"
     if kind == "companion":
@@ -116,8 +118,12 @@ def compute_day_stats(state, since: float, until: float) -> dict:
             c["blowups"] += d.get("result") == "blowup"
             c["breakthroughs"] += d.get("result") == "breakthrough"
             c["projects_finished"] += bool(d.get("project_done"))
+            c["predictions"] += bool(d.get("expected"))
+            c["surprises"] += bool(d.get("surprise"))
         elif k == "experiment" and not d.get("interrupted"):
             c["experiments"] += 1
+            c["predictions"] += bool(d.get("expected"))
+            c["surprises"] += bool(d.get("surprise"))
         elif k == "inbox" and not d.get("letter") and not d.get("gift"):
             c["visitor_messages"] += 1
         elif k == "letter_sent":
@@ -204,6 +210,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     stats = compute_day_stats(state, since, now)
     state.save_day_stats(datetime.fromtimestamp(now).date().isoformat(), stats)
     firsts = state.firsts_between(since, now)
+    surprises = [x for x in reversed(state.expectations(limit=20, since=since, surprising=True)) if x["event_id"] in shown]
     portraits = list(reversed(state.reflections("portrait", limit=PORTRAITS_SHOWN)))
     earlier = state.reflections("insight", limit=EARLIER_BELIEFS, by_importance=True)
     earlier_text = {r["id"]: r["text"] for r in earlier}
@@ -218,6 +225,10 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         + (f"Your recent days in plain counts (not judgments):\n{numbers}\n\n" if (numbers := format_stats(state.day_stats(4))) else "")
         + ("What you thought of people so far:\n" + "\n".join(f"- {n}: {p['notes']}" for n, p in known.items()) + "\n\n"
            if known else "")
+        + (("Things that did not go as you expected (cite their ids):\n"
+            + "\n".join(f"- [e{x['event_id']}] {x['subject']}: you expected {x['expected']}; {x['actual']}"
+                         if x["kind"] != "step" else f"- [e{x['event_id']}] {x['subject']}: you guessed {x['expected']}; "
+                         f"it took {x['actual']}" for x in surprises) + "\n\n") if surprises else "")
         + (("Things that happened for the first time since you last slept:\n"
             + "\n".join(f"- {f['label']}" for f in firsts) + "\n\n") if firsts else "")
         + ("What you already believed (cite as i<number> if a new insight builds on or revises one):\n"
@@ -284,7 +295,8 @@ STAT_LABELS = [("work_sessions", "work sessions"), ("minutes_worked", "minutes w
                ("blowups", "tries that blew up"), ("breakthroughs", "breakthroughs"), ("experiments", "experiments"),
                ("projects_finished", "projects finished"), ("visitor_messages", "messages from visitors"),
                ("notes_written", "journal entries"), ("letters_sent", "letters sent"), ("hours_slept", "hours slept"),
-               ("tool_errors", "tool errors")]
+               ("tool_errors", "tool errors"),
+               ("predictions", "predictions made"), ("surprises", "surprises")]
 EARLIER_BELIEFS = 8
 HUNCHES_SHOWN = 2
 PORTRAITS_SHOWN = 3

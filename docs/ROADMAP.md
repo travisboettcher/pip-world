@@ -161,7 +161,8 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [x] Cited reflections: ids in the material, insights cite evidence, validation + nightly support check, hunches
       block, `recall` shows the evidence, deterministic event importance decides what survives the budget
 - [x] Versioned self-portrait (all versions kept), `changed` claims with citations, daily counts as evidence
-- [ ] Expectations and surprise: designed (DESIGN-expectations.md), not built
+- [x] Expectations and surprise (DESIGN-expectations.md): optional `expect` on `work_on`/`experiment`, step-duration
+      guesses, facts-only comparison, surprise firsts, calibration block, learning progress
 - [ ] Next from RESEARCH-self.md: turning-point detector, capabilities table, a night pass
       that can change goals, recall frame (Pip's state then), delayed-self recognition test
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
@@ -181,6 +182,13 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       MemGPT/Letta-style self-editing core memory, CoALA-style memory taxonomy. Introspection research (Lindsey 2026,
       Introspect-Bench) says model self-reports are limited and unreliable, so ground Pip's self-model in logged
       facts, not in its claims about its own internals
+
+### Typed-decision model (idea, 2026-10-30)
+- [ ] A fast "System One" model that returns typed decisions instead of text (TypeSafe's Jev is one; claims of 100x+ faster
+      and cheaper are the company's own and unverified). Candidate fits: the GM's enum judgments (`verify_insights`
+      verdicts, experiment `relevant`, `accepted`), and a pre-tick gate ("is there anything new worth a full call?").
+      Not the narration or Pip itself. Cost today is tiny (~$0.0003/call), so revisit only if cost or latency starts to
+      matter; the seam would be a `DecisionBackend` beside `LLMBackend`.
 
 ### Writing and drawing (idea, 2026-10-30)
 - [ ] Give Pip tools to write and draw: interact with visual media (a page/canvas it can compose on, that visitors can

@@ -6,6 +6,7 @@ import time
 
 from . import companions as comp
 from . import creations as cr
+from . import expectations as exp
 from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
@@ -321,15 +322,19 @@ class Agent:
         if k == "work" and not d.get("interrupted"):
             if d["project_done"]:
                 return f"You finished {d['project']}! {d['text']}"
-            if d["result"] in ("breakthrough", "setback", "blowup") or d["finished_stage"] or d.get("learned"):
+            if (d["result"] in ("breakthrough", "setback", "blowup") or d["finished_stage"] or d.get("learned")
+                    or d.get("expectation")):
                 done = " (that stage is done)" if d["finished_stage"] else ""
+                done += f" ({d['step_note']})" if d.get("step_note") else ""
+                done += f" ({d['expectation']})" if d.get("expectation") else ""
                 lost = f" You lost some {', '.join(d['lost'])}." if d.get("lost") else ""
                 learned = f" You learned: {d['learned']}" if d.get("learned") else ""
                 return f"Working on {d['project']}: {d['text']}{done}{lost}{learned}"
         if k == "experiment" and not d.get("interrupted"):
             extra = (f" You now know: {d['finding']}" if d.get("finding") else "") + (
                 " New steps opened up: " + ", ".join(d["added"]) + "." if d.get("added") else "")
-            return f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}{extra}"
+            note = f" ({d['expectation']})" if d.get("expectation") else ""
+            return f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}{extra}{note}"
         if k == "tool":
             t, a, r = d["tool"], d["args"], str(d.get("result", ""))
             if t == "plant" and r.startswith("planted"):
@@ -341,6 +346,19 @@ class Agent:
             if t == "resolve_note" and r.startswith("crossed off"):
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
+
+    def _calibration(self) -> list[str]:
+        """How close Pip's predictions have been, in plain counts (only once there are enough to count)."""
+        rows = self.state.expectations(limit=60)
+        lines = exp.calibration(rows)
+        if lines:
+            by_craft: dict[str, list[float]] = {}
+            for r in rows:
+                if r["kind"] in ("session", "experiment"):
+                    by_craft.setdefault(r["craft"] or "your work", []).append(abs(r["error"]))
+            lines += [f"Your misses on {c} (average distance from what you expected): {a} before, {b} lately."
+                      for c, a, b in exp.learning_progress(by_craft) if abs(a - b) >= 0.5]
+        return lines
 
     def _firsts(self) -> list[str]:
         """Things that happened for the first time recently, as plain facts (shown a few ticks, then dropped)."""
@@ -427,6 +445,7 @@ class Agent:
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
         lines += self._firsts()
+        lines += self._calibration()
         lines += places.perception(self.state, self.library)
         lines += mem.perception(self.state)
         lines += self._belongings()
@@ -468,11 +487,14 @@ class Agent:
                 elif e["kind"] == "experiment":
                     lines.append(f"- experiment on {d['project']} ({d['hypothesis']}): {d['outcome']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")
-                                 + (f" [learned: {d['finding']}]" if d.get("finding") else ""))
+                                 + (f" [learned: {d['finding']}]" if d.get("finding") else "")
+                                 + (f" [{d['expectation']}]" if d.get("expectation") else ""))
                 elif e["kind"] == "work":
                     lines.append(f"- work on {d['project']} ({d['stage']}): {d['result']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")
                                  + (f" [learned: {d['learned']}]" if d.get("learned") else "")
+                                 + (f" [{d['expectation']}]" if d.get("expectation") else "")
+                                 + (f" [{d['step_note']}]" if d.get("step_note") else "")
                                  + (" [project finished!]" if d["project_done"] else
                                     " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
         if inbox:

@@ -80,6 +80,11 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS expectations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, project_id INTEGER, craft TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT '', expected TEXT NOT NULL, actual TEXT NOT NULL, error REAL NOT NULL,
+  surprising INTEGER NOT NULL DEFAULT 0, direction TEXT, event_id INTEGER
+);
 CREATE TABLE IF NOT EXISTS day_stats (day TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
@@ -152,6 +157,7 @@ class State:
                 ("projects", "findings", "TEXT NOT NULL DEFAULT '[]'"),    # what Pip has learned (strings)
                 ("projects", "dry", "INTEGER NOT NULL DEFAULT 0"),         # dry experiments in a row
                 ("projects", "revised_at", "INTEGER NOT NULL DEFAULT 0"),  # len(history) at the last plan revision
+                ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what Pip said it expects (may be empty)
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
                 ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
             ):
@@ -542,12 +548,12 @@ class State:
         return dict(row) if row else None
 
     def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float, kind: str = "work",
-                      target: str = "") -> None:
+                      target: str = "", expect: str = "") -> None:
         """The one thing Pip is busy with in real time: work on a project, a walk, or reading (project_id = book)."""
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO work_session (id, project_id, stage, minutes, started_at, ends_at, "
-                            "kind, target) VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
-                            (project_id, stage, minutes, time.time(), ends_at, kind, target))
+                            "kind, target, expect) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (project_id, stage, minutes, time.time(), ends_at, kind, target, expect))
             self.db.commit()
 
     def end_session(self) -> None:
@@ -793,6 +799,30 @@ class State:
         q += " ORDER BY " + ("importance DESC, id DESC" if by_importance else "id DESC") + " LIMIT ?"
         with self.lock:
             return [dict(r) for r in self.db.execute(q, (*args, limit))]
+
+    def add_expectation(self, kind: str, project_id: int | None, craft: str, subject: str, c: dict, event_id=None) -> int:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO expectations (ts, kind, project_id, craft, subject, expected, actual, error, surprising, "
+                "direction, event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), kind, project_id, craft, subject[:200], str(c["expected"]), str(c["actual"]), c["error"],
+                 int(bool(c["surprise"])), c["surprise"], event_id))
+            self.db.commit()
+            return cur.lastrowid
+
+    def expectations(self, limit: int = 50, since: float | None = None, surprising: bool | None = None) -> list[dict]:
+        """Newest first."""
+        q, args, where = "SELECT * FROM expectations", [], []
+        if since is not None:
+            where.append("ts > ?")
+            args.append(since)
+        if surprising is not None:
+            where.append("surprising = ?")
+            args.append(int(surprising))
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
 
     def save_day_stats(self, day: str, stats: dict) -> None:
         with self.lock:

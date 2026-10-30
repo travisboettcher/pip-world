@@ -145,3 +145,9 @@ cites the old one.
 Every nightly self-portrait is kept (`GET /memory` -> `portraits`); the reflection sees the last three, dated, plus the last
 days in plain counts (`day_stats`). If Pip sees itself differently it can record a cited `changed` claim; supported ones
 show up in its prompt as "How you've changed".
+
+## Expectations and surprise
+See [DESIGN-expectations.md](DESIGN-expectations.md). `work_on` and `experiment` take an optional `expect`
+(`well`/`slowly`/`badly`, `works`/`partly`/`fails`); the engine compares it with the outcome and Pip sees the plain comparison.
+Step durations are compared with Pip's own minutes guess. Big misses are flagged as surprises (better/worse/longer/shorter), feed
+the first-surprise facts, the nightly reflection and a small calibration block; `GET /memory` lists the records.

@@ -9,6 +9,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from . import companions as comp
+from . import expectations as exp
 from . import creations as cr
 from . import memory as mem
 from . import library as lib
@@ -448,7 +449,9 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"project": {"type": "string", "description": "name or #id"},
             "minutes": {"type": "integer", "description": "15-120, default 60"},
             "approach": {"type": "string", "description": "how you'll go about it this time - the world judges what "
-                                                          "you actually try, so a thoughtful approach counts"}},
+                                                          "you actually try, so a thoughtful approach counts"},
+            "expect": {"type": "string", "enum": ["well", "slowly", "badly"],
+                       "description": "optional: how you expect this session to go; you'll see how close you were"}},
            ["project"]))
 async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
@@ -480,7 +483,9 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
         st.update_project(p["id"], stages=p["stages"])
     minutes = proj.clamp_int(args.get("minutes"), *proj.SESSION_MINUTES, 60)
     approach = str(args.get("approach") or "").strip()[:240]
-    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, target=approach)
+    expect = str(args.get("expect") or "").strip().lower()
+    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, target=approach,
+                     expect=expect if expect in exp.SESSION_EXPECT else "")
     st.update_agent(activity="working", description=f"{p['name']}: {stage['name']}")
     real = max(1, round(minutes / ctx.settings.work_speed))
     return ToolResult(f"you settle in to work on {p['name']}, {describe_stage(p, i)}, for {minutes} min. "
@@ -493,7 +498,10 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
       "steps, answer what you didn't know, or surprise you. You'll hear how it went when the time is up.",
       _obj({"project": {"type": "string", "description": "name or #id"},
             "hypothesis": {"type": "string", "description": "what you think might be true or work, and how you'll test it"},
-            "minutes": {"type": "integer", "description": "20-90, default 45"}}, ["project", "hypothesis"]))
+            "minutes": {"type": "integer", "description": "20-90, default 45"},
+            "expect": {"type": "string", "enum": ["works", "partly", "fails"],
+                       "description": "optional: how you expect it to turn out; you'll see how close you were"}},
+           ["project", "hypothesis"]))
 async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
     p, err = st.find_project(args["project"])
@@ -505,8 +513,9 @@ async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
     if why := busy(ctx) or away_from_home(ctx):
         return ToolResult(why, followup=True)
     minutes = proj.clamp_int(args.get("minutes"), *proj.EXPERIMENT_MINUTES, 45)
+    expect = str(args.get("expect") or "").strip().lower()
     st.start_session(p["id"], -1, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="experiment",
-                     target=hypothesis)
+                     target=hypothesis, expect=expect if expect in exp.EXPERIMENT_EXPECT else "")
     st.update_agent(activity="working", description=f"experiment on {p['name']}: {hypothesis[:80]}")
     real = max(1, round(minutes / ctx.settings.work_speed))
     return ToolResult(f"you set up an experiment on {p['name']} ({hypothesis}) for {minutes} min. "

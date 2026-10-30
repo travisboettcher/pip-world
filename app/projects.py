@@ -8,6 +8,7 @@ import math
 import random
 import time
 
+from . import expectations as exp
 from .text import clip, craft_name
 
 STAGE_MINUTES = (15, 240)
@@ -58,7 +59,8 @@ def sanitize_stages(raw, limit: int, units: int = 0) -> list[dict]:
             if qty and name:
                 mats[name] = mats.get(name, 0) + qty
                 units += qty
-        stages.append({"name": str(st["name"]).strip()[:60], "minutes": clamp_int(st.get("minutes"), *STAGE_MINUTES, 60),
+        minutes = clamp_int(st.get("minutes"), *STAGE_MINUTES, 60)
+        stages.append({"name": str(st["name"]).strip()[:60], "minutes": minutes, "guess": minutes,  # guess = Pip's own
                        "materials": mats, "abilities": sanitize_abilities(st.get("abilities"))})
     return stages
 
@@ -192,6 +194,16 @@ def fallback_narration(stage: str, result: str) -> str:
             "breakthrough": f"Something clicked on {stage}, and it came together faster than expected."}[result]
 
 
+def _expectation_fields(c: dict | None, step: dict | None) -> dict:
+    """What a session's event records about expectations (empty when Pip predicted nothing)."""
+    out = {}
+    if c:
+        out.update(expected=c["expected"], expectation=c["phrase"], error=c["error"], surprise=c["surprise"])
+    if step:
+        out.update(step_note=step["phrase"], step_surprise=step["surprise"])
+    return out
+
+
 async def resolve_session(state, settings, gm, rng: random.Random, now: float | None = None,
                           interrupted: bool = False) -> dict | None:
     """Finish the current work session (on time, or cut short). Returns the logged `work` event data."""
@@ -238,6 +250,12 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
         stage["progress"] += min(remaining, minutes * CREDIT[result])
     finished_stage = stage["progress"] >= stage["minutes"] - 1e-6
     grant_xp(state, project, stage_abilities(stage), minutes)
+    comparison = None if interrupted else exp.compare_session(sess.get("expect") or "", result)
+    step = None
+    if finished_stage:  # how long it really took vs Pip's own guess when it wrote the step
+        spent = minutes + sum(h["minutes"] for h in project["history"]
+                              if h["stage"] == stage["name"] and h.get("kind") != "experiment")
+        step = exp.compare_step(stage.get("guess", stage["minutes"]), spent)
     learned = None
     if lesson:  # trying (and failing) can teach: a lesson, or even a hidden fact
         ch = apply_changes(project, {**lesson, "new_question": None}, reveal=lesson.get("reveal") is not None,
@@ -261,8 +279,11 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
     data = {"project": project["name"], "project_id": project["id"], "stage": stage["name"], "result": result,
             "minutes": round(minutes), "text": text, "finished_stage": finished_stage, "project_done": done,
             "interrupted": interrupted, "percent": percent(project), "approach": approach, "lost": lost,
-            "learned": learned, "crossroads": crossroads({**project, "status": "active"}) and not done}
-    state.log("work", **data)
+            "learned": learned, **_expectation_fields(comparison, step), "crossroads": crossroads({**project, "status": "active"}) and not done}
+    event_id = state.log("work", **data)
+    for c, subject in ((comparison, stage["name"]), (step, stage["name"])):
+        if c:
+            state.add_expectation(c["kind"], project["id"], project["craft"], subject, c, event_id)
     return data
 
 
@@ -346,6 +367,7 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
         minutes = min(minutes, max(0.0, now - sess["started_at"]) * settings.work_speed / 60)
     grant_xp(state, project, ["ingenuity", "knowledge"], minutes)
     changes = {"finding": None, "answered": None, "added": [], "dropped": []}
+    comparison = None
     relevant, outcome = True, "interrupted"
     text = f"You stopped before the experiment ({hypothesis}) could show anything."
     if not interrupted:
@@ -364,6 +386,7 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
                                               "surprise": "It did something you didn't expect."}[outcome])
         if not relevant:
             outcome = "nothing"
+        comparison = exp.compare_experiment(sess.get("expect") or "", outcome)
         changes = apply_changes(project, verdict if relevant else {}, reveal=outcome in ("insight", "surprise"),
                                 new_question=outcome == "surprise", may_answer=outcome in ("insight", "surprise"))
         if relevant:
@@ -380,8 +403,10 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
             "relevant": relevant, "minutes": round(minutes), "text": text, "finding": changes["finding"],
             "answered": changes["answered"], "added": changes["added"],
             "interrupted": interrupted, "project_done": done, "percent": percent(project),
-            "crossroads": crossroads(project)}
-    state.log("experiment", **data)
+            "crossroads": crossroads(project), **_expectation_fields(comparison, None)}
+    event_id = state.log("experiment", **data)
+    if comparison:
+        state.add_expectation("experiment", project["id"], project["craft"], hypothesis, comparison, event_id)
     return data
 
 

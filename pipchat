@@ -442,6 +442,9 @@ def cmd_memory(pip: Pip, a) -> None:
         print(bold("How Pip has changed"))
         for c in m["changes"][:a.n]:
             print(f"  {dim(fmt_time(c['period_end']))} {c['text']}" + ("" if c["grounded"] else dim(" (hunch)")))
+    if m.get("expectations"):
+        ex = [x for x in m["expectations"] if x["kind"] != "step"]
+        print(dim(f"  ({len(ex)} predictions recorded, {sum(x['surprising'] for x in ex)} surprising; --json for detail)"))
     if m.get("portraits") and len(m["portraits"]) > 1:
         print(dim(f"  ({len(m['portraits'])} versions of the self-portrait are kept; --json shows them)"))
     if m["insights"]:

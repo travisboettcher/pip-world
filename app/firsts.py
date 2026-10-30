@@ -27,6 +27,11 @@ def _ok(result) -> bool:
     return not str(result or "").startswith(("error", "not ", "no change"))
 
 
+def _surprise(add, d: dict) -> None:
+    if d.get("surprise") in ("better", "worse"):
+        add(f"surprise:{d['surprise']}", f"the first time something went much {d['surprise']} than you expected", MAJOR)
+
+
 def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]]:
     """(key, label, tier) for each facet of this event. Labels read as 'the first time you <label>'."""
     out: list[tuple[str, str, str]] = []
@@ -68,7 +73,10 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
                 add(f"work:{d['result']}", you(WORK_RESULTS[d["result"]]), MAJOR)
             if d.get("project_done"):
                 add("project:done", you("finished a project"), MAJOR)
+            _surprise(add, d)
     elif kind == "experiment":
+        if not d.get("interrupted"):
+            _surprise(add, d)
         if not d.get("interrupted") and d.get("outcome") in ("insight", "surprise"):
             add(f"experiment:{d['outcome']}", you(f"had an experiment give you {'an insight' if d['outcome'] == 'insight' else 'a surprise'}"))
     elif kind == "creation_made":
