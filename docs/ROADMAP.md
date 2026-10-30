@@ -119,6 +119,13 @@ is in my notes, not in the gears".
       creation breaks) so the diary has things happen *to* Pip, not just things Pip decides
 - [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
 
+- [ ] **Pip changes its world** (idea, 2026-10-30): if Pip works out how to clear a new garden plot, the world should allow it. The
+      right shape is a project whose finished result is a bounded *world effect* the engine applies (a new plot first; later e.g. a
+      pond, a path that shortens a walk), limited by effort, tools and materials, with a hard cap (e.g. 8 plots), not by a hardcoded
+      number. Needs: a dynamic plot count in state (today `GARDEN_PLOTS` is fixed), a `plot`-style capability in creation design, and the
+      persona line. Foraging for food and seeds exists (woods: berries, hazelnuts, sunflower and carrot seeds, rare); consider making
+      seeds a little commoner and adding more wild varieties.
+
 ### Social
 - [ ] **Pip can reach out** (designed: DESIGN-outreach.md, a pluggable two-way channel with self-hosted Matrix first; the channel-agnostic core and the Matrix channel are built; the homeserver service and bootstrap are next) -- `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
       Pip can only talk when spoken to

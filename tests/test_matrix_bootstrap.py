@@ -151,3 +151,15 @@ def test_write_env_updates_in_place_and_appends(tmp_path):
     p.write_text("# top\nA=1\nB=2\n")
     B.write_env(p, {"B": "9", "C": "3"})
     assert p.read_text() == "# top\nA=1\nB=9\nC=3\n"
+
+
+def test_registration_is_opened_and_closed_in_the_env_and_the_compose_service_restarted(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text("MATRIX_REGISTRATION_TOKEN=t\nMATRIX_ALLOW_REGISTRATION=false\n")
+    calls = []
+    monkeypatch.setattr(B.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(B, "call", lambda *a, **k: {"versions": []})
+    B.set_registration(env, True, "https://x", managed=True)
+    assert B.read_env(env)["MATRIX_ALLOW_REGISTRATION"] == "true" and calls == [["docker", "compose", "up", "-d"]]
+    B.set_registration(env, False, "https://x", managed=False)
+    assert B.read_env(env)["MATRIX_ALLOW_REGISTRATION"] == "false" and len(calls) == 1      # a remote server is left alone
