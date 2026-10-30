@@ -46,6 +46,13 @@ class Settings:
     night_pass: str = "apply"          # off | log (decide and record, don't act) | apply
     max_night_ops: int = 3
     wild_places: list[str] = field(default_factory=lambda: ["woods", "junkyard"])  # places to gather at
+    outreach: str = "on"                # off | on | log (record, don't deliver)
+    outreach_channels: list[str] = field(default_factory=list)   # e.g. ["matrix"]; the first is primary; empty = no outside world
+    outreach_per_day: int = 2           # new conversations Pip may start per local day
+    outreach_min_gap_hours: float = 3
+    outreach_max_chars: int = 240
+    outreach_reply_max_chars: int = 1500
+    outreach_failures_per_day: int = 3
     sleep: bool = True                 # day/night rhythm and the sleep tool
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
@@ -103,6 +110,13 @@ class Settings:
             night_pass=(e("NIGHT_PASS") or "apply").lower() if (e("NIGHT_PASS") or "apply").lower() in ("off", "log", "apply") else "apply",
             max_night_ops=_int("MAX_NIGHT_OPS", 3),
             wild_places=[w.strip() for w in (e("WILD_PLACES") if e("WILD_PLACES") is not None else "woods,junkyard").split(",") if w.strip()],
+            outreach=(e("OUTREACH") or "on").lower() if (e("OUTREACH") or "on").lower() in ("off", "on", "log") else "on",
+            outreach_channels=[c.strip() for c in (e("OUTREACH_CHANNELS") or "").split(",") if c.strip()],
+            outreach_per_day=_int("OUTREACH_PER_DAY", 2),
+            outreach_min_gap_hours=_float("OUTREACH_MIN_GAP_HOURS", 3),
+            outreach_max_chars=_int("OUTREACH_MAX_CHARS", 240),
+            outreach_reply_max_chars=_int("OUTREACH_REPLY_MAX_CHARS", 1500),
+            outreach_failures_per_day=_int("OUTREACH_FAILURES_PER_DAY", 3),
             sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
@@ -116,6 +130,6 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

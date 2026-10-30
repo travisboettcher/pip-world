@@ -189,3 +189,10 @@ time, so camping there yields less. The GM only narrates what the engine found. 
 with Pip's activity, hunger/energy meters and a token-usage pill (hover or tap for the breakdown and cost). The Mind tab shows the
 self-portrait, beliefs and hunches, how Pip has changed, days that mattered, people, what its sleeping self decided, and what it can do.
 The files are bind-mounted: edit `brain/web/` and refresh, no rebuild.
+
+## Reaching out
+See [DESIGN-outreach.md](DESIGN-outreach.md). `OUTREACH_CHANNELS` names the channel(s) Pip can use (empty = none, and `send_postcard` is not offered). A channel
+receives messages from allowed people into Pip's inbox (shown in the web chat as "via <channel>") and Pip's `say` answers go back through the same channel
+into the same thread; `send_postcard` starts a new thread, at most `OUTREACH_PER_DAY` (2) a day, `OUTREACH_MIN_GAP_HOURS` (3) apart, never at night, plain
+short text without links, never twice alike. `pipchat outreach` shows channels, today's allowance and what was sent. New channels implement the small `Channel`
+interface in `channels.py` and pass `tests/channel_contract.py`.

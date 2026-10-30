@@ -107,7 +107,12 @@ function describe(e) {
     case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
     case 'inbox': return d.letter ? { group: 'world', cls: 'world', text: d.text }
-      : d.gift ? null : { group: 'chat', text: `${d.sender || 'Visitor'}: ${d.text}` };
+      : d.gift ? null : { group: 'chat', text: `${d.sender || 'Visitor'}${d.source && d.source !== 'web' ? ` (via ${d.source})` : ''}: ${d.text}` };
+    case 'outreach': {
+      const to = d.what === 'postcard' ? 'sent a postcard' : 'answered';
+      if (!d.delivered) return { group: 'system', cls: 'warn', text: `Pip tried to send a ${d.what === 'postcard' ? 'postcard' : 'reply'} via ${d.channel} but it didn't go: ${d.error || d.status}` };
+      return { group: 'world', cls: 'world', text: `Pip ${to} via ${d.channel}${d.mode === 'log' ? ' (logged only)' : ''}: ${d.text}` };
+    }
     case 'arrived': return { group: 'world', cls: 'world', text: d.place === 'workshop' ? 'Pip gets home' : `Pip arrives at ${d.label || d.place}` + (d.first_time && d.description ? ` — ${d.description}` : '') };
     case 'reading': return { group: 'world', cls: 'world', text: `Pip reads ${d.title}${d.finished ? ' (finished!)' : ` (${d.percent}%)`}: ${d.summary}` };
     case 'letter_sent': return { group: 'world', cls: 'world', text: `Pip wrote to ${d.to}: ${d.text}` + (d.enclosed ? ` (enclosed: ${d.enclosed})` : '') };
@@ -167,10 +172,10 @@ function setChatOpen(on, focus = true) {
 }
 $('chat-toggle').addEventListener('click', () => setChatOpen(!chat.open));
 $('chat-close').addEventListener('click', () => { setChatOpen(false); $('chat-toggle').focus(); });
-function bubble(cls, text, ts) {
+function bubble(cls, text, ts, via) {
   const box = $('chat');
   const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
-  const node = h('div', { class: `msg ${cls}` }, text, cls === 'sys' || !ts ? null : h('time', {}, fmtTime(ts)));
+  const node = h('div', { class: `msg ${cls}` }, text, cls === 'sys' || !ts ? null : h('time', {}, fmtTime(ts) + (via && via !== 'web' ? ` · via ${via}` : '')));
   if (chat.typing) box.insertBefore(node, chat.typing); else box.append(node);
   if (stick) box.scrollTop = box.scrollHeight;
   return node;
@@ -199,15 +204,17 @@ function trackPending(id) {
   chat.pending.set(id, { timer });
   syncTyping();
 }
-function showVisitor(id, text, ts) {
+function showVisitor(id, text, ts, via) {
   if (chat.seenInbox.has(id)) return false;
   chat.seenInbox.add(id);
-  bubble('you', text, ts);
+  bubble('you', text, ts, via);
   return true;
 }
 function chatFromEvent(e, live) {
   const d = e.data;
-  if (e.kind === 'inbox' && !d.gift && !d.letter) showVisitor(d.id, d.text, e.ts);
+  if (e.kind === 'inbox' && !d.gift && !d.letter) {
+    if (showVisitor(d.id, d.text, e.ts, d.source) && live && d.source && d.source !== 'web' && !chat.open) { chat.unread += 1; renderBadge(); }
+  }
   else if (e.kind === 'gift') bubble('sys', `${d.sender} gave Pip ${d.qty} × ${d.item}`);
   else if (e.kind === 'say' && !d.to_name) {
     if (d.text) {

@@ -1,6 +1,10 @@
 # Design: reaching out (a two-way, pluggable channel; Matrix first)
 
-Status: **design only, not built.** Roadmap item "Pip can reach out" (Social). Revised 2026-10-30 after the owner asked to look at
+Status: **step 1 (the channel-agnostic core) built 2026-10-30; the Matrix channel and service are next.** Built: `channels.py` (the `Channel`
+interface, `ChannelStore`, registry, `FakeChannel`), `outreach.py` (policy, `send_postcard`, reply routing, typing), a shared `Agent.receive`
+(also used by `POST /inbox`), `inbox` source/conversation/external id, `GET /outreach`, `pipchat outreach`, events, firsts, day counts, and the
+contract test suite (`tests/channel_contract.py`). With no `OUTREACH_CHANNELS` configured the tool is not offered and nothing changes. Event field
+note: outreach events use `what` ('postcard' | 'reply') because `kind` is the event kind. Roadmap item "Pip can reach out" (Social). Revised 2026-10-30 after the owner asked to look at
 self-hosted Matrix and wants the channel pluggable. Telegram stays a documented alternative; the same interface fits both.
 
 ## Why
@@ -134,7 +138,7 @@ One short paragraph: you have a way to message a friend outside, in a thread; st
 3. **The service:** `matrix/matrix.hll` (homeserver, Traefik route, restic entry, bootstrap script), accounts and room, Element X on the phone.
 4. Later: Element Web, E2EE, a Telegram or webhook channel, inbound photos.
 
-## Decisions made / needed
+## Decisions
 - Made: pluggable; the web UI chat stays separate; the name `send_postcard`; 2 new threads a day with replies free inside a thread; live from the start; photos supported by the interface.
-- Needed: homeserver choice at build time (Tuwunel/Continuwuity vs Synapse); **public hostname or internal + VPN** (recommended: public, federation and registration off);
-  **unencrypted room** for the first version (recommended); whether to host Element Web too.
+- Made (2026-10-30): **public hostname** for the homeserver (federation and registration off), **unencrypted room** for the first version.
+- Still to settle at build time: the homeserver (Tuwunel/Continuwuity vs Synapse, whichever is current and healthy) and whether to host Element Web too.

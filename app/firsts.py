@@ -51,8 +51,15 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
                 add(f"note:{sec}", f"your first {sec} entry")
             elif t in TOOL_LABELS and t not in ROUTINE_TOOLS:
                 add(f"tool:{t}", you(TOOL_LABELS[t]), MAJOR if t in TOOL_MAJOR else MINOR)
+    elif kind == "outreach":
+        if d.get("what") == "postcard" and d.get("delivered"):
+            add("outreach:postcard", you("sent something out into the world"), MAJOR)
+        elif d.get("what") == "reply" and d.get("delivered"):
+            add("outreach:reply", you("answered someone outside"))
     elif kind == "inbox":
         who = d.get("sender") or "A visitor"
+        if d.get("source") not in (None, "web"):
+            add(f"heard:{d['source']}", you(f"heard from someone outside, through {d['source']}"), MAJOR)
         if d.get("letter"):
             add("letter:received", you("received a letter"), MAJOR)
             add(f"letter_from:{who}", f"your first letter from {who}")

@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS expectations (
   surprising INTEGER NOT NULL DEFAULT 0, direction TEXT, event_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS day_stats (day TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS outreach (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, channel TEXT NOT NULL,
+  conversation TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS place_finds (
   place TEXT NOT NULL, item TEXT NOT NULL, times INTEGER NOT NULL DEFAULT 0, last_ts REAL NOT NULL,
   PRIMARY KEY (place, item)
@@ -170,6 +174,9 @@ class State:
                 ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
                 ("characters", "life", "TEXT NOT NULL DEFAULT '[]'"),
                 ("creations", "given_to", "TEXT"),
+                ("inbox", "source", "TEXT NOT NULL DEFAULT 'web'"),           # 'web' or the channel it came through
+                ("inbox", "conversation", "TEXT NOT NULL DEFAULT ''"),        # the channel's thread reference
+                ("inbox", "external_id", "TEXT NOT NULL DEFAULT ''"),         # the channel's message id (replay guard)
                 ("events", "importance", "INTEGER NOT NULL DEFAULT 0"),
                 ("reflections", "grounded", "INTEGER NOT NULL DEFAULT 1"),     # 0 = a hunch: nothing cited / unsupported
                 ("reflections", "support", "TEXT NOT NULL DEFAULT 'legacy'"),  # supported|partly|unsupported|unchecked|none|legacy
@@ -340,13 +347,27 @@ class State:
         return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
 
     # --- inbox -------------------------------------------------------
-    def add_inbox(self, text: str, sender: str = "A visitor", gift: bool = False) -> int:
+    def add_inbox(self, text: str, sender: str = "A visitor", gift: bool = False, source: str = "web",
+                  conversation: str = "", external_id: str = "") -> int:
         sender = clean_sender(sender)
         with self.lock:
-            cur = self.db.execute("INSERT INTO inbox (ts, text, sender, gift) VALUES (?, ?, ?, ?)",
-                                  (time.time(), text, sender, int(gift)))
+            cur = self.db.execute(
+                "INSERT INTO inbox (ts, text, sender, gift, source, conversation, external_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), text, sender, int(gift), source, conversation, external_id))
             self.db.commit()
             return cur.lastrowid
+
+    def inbox_has(self, source: str, external_id: str) -> bool:
+        with self.lock:
+            return bool(external_id) and self.db.execute(
+                "SELECT 1 FROM inbox WHERE source = ? AND external_id = ?", (source, external_id)).fetchone() is not None
+
+    def inbox_rows(self, ids: list[int]) -> list[dict]:
+        if not ids:
+            return []
+        with self.lock:
+            marks = ",".join("?" * len(ids))
+            return [dict(r) for r in self.db.execute(f"SELECT * FROM inbox WHERE id IN ({marks}) ORDER BY id", ids)]
 
     def pending_inbox(self) -> list[dict]:
         with self.lock:
@@ -953,6 +974,33 @@ class State:
             self.db.execute("UPDATE focus SET status = ?, reviewed_at = ?, note = ? WHERE id = ?",
                             (status, time.time(), note[:200], focus_id))
             self.db.commit()
+
+    def add_outreach(self, kind: str, channel: str, conversation: str, text: str, status: str, error: str = "",
+                     ts: float | None = None) -> int:
+        with self.lock:
+            cur = self.db.execute("INSERT INTO outreach (ts, kind, channel, conversation, text, status, error) "
+                                  "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                  (ts or time.time(), kind, channel, conversation, text, status, error[:300]))
+            self.db.commit()
+            return cur.lastrowid
+
+    def outreach_rows(self, limit: int = 50, kind: str | None = None, since: float | None = None,
+                      statuses: tuple = ()) -> list[dict]:
+        """Newest first."""
+        q, args, where = "SELECT * FROM outreach", [], []
+        if kind:
+            where.append("kind = ?")
+            args.append(kind)
+        if since is not None:
+            where.append("ts >= ?")
+            args.append(since)
+        if statuses:
+            where.append("status IN (%s)" % ",".join("?" * len(statuses)))
+            args += list(statuses)
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
 
     def add_find(self, place: str, item: str, ts: float | None = None) -> None:
         with self.lock:

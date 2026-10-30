@@ -35,6 +35,7 @@ class ToolContext:
     gm: Any = None  # GameMaster, or None (world content falls back to templates)
     rng: random.Random = field(default_factory=random.Random)
     library: Any = None  # library.Library, or None when no Calibre library is mounted
+    outreach: Any = None  # outreach.Outreach, or None
 
 
 async def stop_working(ctx: "ToolContext") -> str:
@@ -199,6 +200,8 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
             ctx.state.log("say", text=text, to=[], to_name=ch["name"])
             return ToolResult(f"said it to {ch['name']}; it will answer in a moment")
     ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
+    if ctx.outreach:
+        await ctx.outreach.route_reply(text, list(ctx.visitor_ids))  # answers go back the way the message came
     return ToolResult("said it")
 
 
@@ -736,6 +739,8 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue
+        if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
+            continue  # no way out configured
         if name in ("browse", "read") and not lib.Library(settings.library_path).available():
             continue  # no Calibre library mounted
         out[name] = REGISTRY[name]
@@ -810,3 +815,14 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"you can't think of anywhere you'd find {what}. Try asking a neighbor, looking in a book, "
                           "or having a look around somewhere new.", followup=True)
     return ToolResult(f"For {what}, you think of:\n" + "\n".join(lines), followup=True)
+
+
+@tool("send_postcard", "Start a conversation with a friend outside your world: a short postcard. Do it rarely, for something worth "
+      "telling - a thing you finished, something specific you need, something you found out. Plain words only (at most 240 "
+      "characters, no links). If they write back you'll hear it, and you can answer.",
+      _obj({"text": {"type": "string", "description": "what you want to tell them"}}, ["text"]))
+async def send_postcard(ctx: ToolContext, args: dict) -> ToolResult:
+    if not ctx.outreach:
+        return ToolResult("you have no way to reach anyone outside right now", followup=True)
+    ok, msg = await ctx.outreach.send_postcard(str(args.get("text") or ""))
+    return ToolResult(msg, followup=not ok)

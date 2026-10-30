@@ -162,11 +162,14 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.post("/inbox")
     def post_inbox(item: InboxItem):
         agent: Agent = app.state.agent
-        sender = clean_sender(item.sender)
-        inbox_id = agent.state.add_inbox(item.text, sender)
-        agent.state.log("inbox", id=inbox_id, text=item.text, sender=sender)
-        agent.request_wake(urgent=True)
+        inbox_id = agent.receive(item.text, item.sender)
         return {"queued": True, "id": inbox_id}
+
+    @app.get("/outreach")
+    def get_outreach(limit: int = 50):
+        o = app.state.agent.outreach
+        return {"mode": settings.outreach, "channels": o.status(), "allowance": o.allowance(),
+                "items": o.state.outreach_rows(min(limit, 200))}
 
     @app.get("/memory")
     def get_memory():

@@ -12,6 +12,7 @@ from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
 from . import nightpass as np
+from .outreach import Outreach
 from . import places
 from . import sleep as sleepmod
 from . import projects as proj
@@ -19,7 +20,7 @@ from .config import Settings
 from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
-from .state import State
+from .state import State, clean_sender
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
 
@@ -41,7 +42,8 @@ class Agent:
         self.gm = GameMaster(gm_backend or backend, state)
         library = lib.Library(settings.library_path)
         self.library = library if library.available() else None
-        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library)
+        self.outreach = Outreach(settings, state, receive=self.receive)
+        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach)
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
@@ -53,6 +55,18 @@ class Agent:
         self._finishing = asyncio.Lock()  # the monitor and a tick may both try to resolve the same session
 
     # --- wake control ------------------------------------------------
+    def receive(self, text: str, sender: str, source: str = "web", conversation: str = "", external_id: str = "") -> int | None:
+        """A visitor's message arrives (the web UI, or a channel): queue it, record it and wake Pip. A channel message
+        already seen (same source and id) is ignored, so a replay can't answer twice."""
+        if external_id and self.state.inbox_has(source, external_id):
+            return None
+        sender = clean_sender(sender)
+        inbox_id = self.state.add_inbox(text, sender, source=source, conversation=conversation, external_id=external_id)
+        self.state.log("inbox", id=inbox_id, text=text, sender=sender, **({"source": source, "conversation": conversation}
+                                                                          if source != "web" else {}))
+        self.request_wake(urgent=True)
+        return inbox_id
+
     def request_wake(self, force: bool = False, urgent: bool = False) -> None:
         """Ask for an early tick. While Pip sleeps only urgent wakes (a visitor) or a forced tick get through."""
         self._force = self._force or force
@@ -94,6 +108,7 @@ class Agent:
     # --- background tasks --------------------------------------------
     async def run(self) -> None:
         monitor = asyncio.create_task(self._monitor())
+        await self.outreach.start()
         try:
             while True:
                 reason = await self._sleep()
@@ -105,6 +120,7 @@ class Agent:
                     self.last_tick = time.time()
         finally:
             monitor.cancel()
+            await self.outreach.stop()
 
     async def _monitor(self) -> None:
         """Cheap, LLM-free: advance stats, ripen crops, and wake the agent when something needs it."""
@@ -194,6 +210,8 @@ class Agent:
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         here = places.here(self.state, self.s, self.library)
         specs = specs_for(self.tools, here.key, here, places.open_now(here, self.s))  # what can be done here, described for here
+        if not self.outreach.can_send():  # a postcard is only offered when one could actually go out
+            specs = [sp for sp in specs if sp.name != "send_postcard"]
 
         for step in range(max(1, self.s.max_calls_per_tick)):
             if self.state.budget_exceeded():
@@ -205,6 +223,7 @@ class Agent:
                 return
             self._budget_logged = False
 
+            await self.outreach.typing([m["id"] for m in inbox])  # "typing..." wherever Pip is about to answer
             resp = await self.backend.complete(
                 system=self._persona(), messages=messages, tools=specs,
                 max_tokens=self.s.llm_max_tokens,
@@ -220,6 +239,7 @@ class Agent:
                            tools=[c.name for c in resp.tool_calls])
             if inbox and resp.text:  # plain-text reply (the `say` tool is the reliable path)
                 self.state.log("say", text=resp.text, to=[m["id"] for m in inbox])
+                await self.outreach.route_reply(resp.text, [m["id"] for m in inbox])
             if not resp.tool_calls:
                 return
 
@@ -471,6 +491,7 @@ class Agent:
         lines += places.perception(self.state, self.s, self.library)
         lines += mem.perception(self.state)
         lines += np.perception(self.state, self.s)
+        lines += self.outreach.perception()
         lines += self._belongings()
         lines += self._projects()
         lines += nb.perception(self.state)

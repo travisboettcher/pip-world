@@ -158,6 +158,13 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return cyan(f"{d['name'].lower()}> ") + d["text"]
     if k == "inbox" and d.get("letter"):
         return cyan(f"  @ {d['text']}")
+    if k == "inbox" and d.get("source", "web") != "web":
+        return cyan(f"  < {d.get('sender') or 'visitor'} (via {d['source']}): {d['text']}")
+    if k == "outreach":
+        what = "sent a postcard" if d["what"] == "postcard" else "answered"
+        if not d.get("delivered"):
+            return yellow(f"  ! Pip tried to send a {d['what']} via {d['channel']} but it didn't go: {d.get('error') or d['status']}")
+        return green(f"  > Pip {what} via {d['channel']}" + (" (logged only)" if d.get("mode") == "log" else "")) + dim(f": {d['text']}")
     if k == "arrived":
         return dim(f"  * Pip arrives at {d.get('label') or d['place']}" if d["place"] != "workshop" else "  * Pip gets home") + \
             (dim(f" - {d['description']}") if d.get("first_time") and d.get("description") else "")
@@ -377,6 +384,25 @@ def cmd_garden(pip: Pip, a) -> None:
             print(f"  plot {g['plot']}: " + green(f"{g['crop']} - ripe, ready to harvest"))
         else:
             print(f"  plot {g['plot']}: {g['crop']} - ready in about {g['ready_in_min']} min")
+
+
+def cmd_outreach(pip: Pip, a) -> None:
+    r = pip.call("/outreach")
+    if JSON_MODE:
+        return out_json(r)
+    print(bold("Channels") + dim(f"  (mode {r['mode']})"))
+    for c in r["channels"] or []:
+        print(f"  {c['name']}{' (primary)' if c['primary'] else ''}: {', '.join(c['capabilities'])}" + (red(f"  ERROR {c['error']}") if c["error"] else ""))
+    if not r["channels"]:
+        print(dim("  none configured (set OUTREACH_CHANNELS in .env)"))
+    al = r["allowance"]
+    print(bold("Allowance") + f"  {al['remaining']} left today" + (dim(f" - {al['reason']}") if al.get("reason") else dim(" - can send now")))
+    print(bold("Sent and received"))
+    for i in r["items"][: a.n]:
+        mark = {"sent": green("sent"), "logged": dim("logged"), "failed": red("failed")}.get(i["status"], i["status"])
+        print(f"  {fmt_time(i['ts'])} {i['kind']:<8} {i['channel']} {mark}  {i['text']}" + (dim(f"  ({i['error']})") if i["error"] else ""))
+    if not r["items"]:
+        print(dim("  nothing yet"))
 
 
 def cmd_projects(pip: Pip, a) -> None:
@@ -621,6 +647,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kind", action="append", help="only this event kind; repeatable")
     add("items", cmd_items, "what Pip owns")
     add("garden", cmd_garden, "Pip's garden plots")
+    p = add("outreach", cmd_outreach, "Pip's channels to the outside world, today's allowance, postcards and replies")
+    p.add_argument("-n", type=int, default=15, help="how many to show (default 15)")
     p = add("projects", cmd_projects, "Pip's projects, their stages and Pip's skills")
     p.add_argument("--status", choices=["active", "done", "abandoned"])
     p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
@@ -657,7 +685,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

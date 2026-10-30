@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -50,6 +50,11 @@ def recall_text(kind: str, d: dict) -> str | None:
             f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"
             + (f" You learned: {d['finding']}" if d.get("finding") else "")
             + (f" ({d['expectation']})" if d.get("expectation") else ""))
+    if kind == "outreach":
+        if not d.get("delivered"):
+            return None
+        return (f"You sent a postcard to a friend outside: {d['text']}" if d.get("what") == "postcard"
+                else f"You answered a friend outside: {d['text']}")
     if kind == "gathered":
         return None if d.get("interrupted") and not d.get("items") else d["text"]
     if kind == "creation_made":
@@ -81,6 +86,8 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
         base = 4 if d.get("finished") else 2
     elif kind in ("woke", "alert"):
         base = 3
+    elif kind == "outreach":
+        base = 5 if d.get("what") == "postcard" else 3
     elif kind == "reflection":
         base = 2
     elif kind == "say":
@@ -130,8 +137,11 @@ def compute_day_stats(state, since: float, until: float) -> dict:
             c["surprises"] += bool(d.get("surprise"))
         elif k == "inbox" and not d.get("letter") and not d.get("gift"):
             c["visitor_messages"] += 1
+            c["messages_from_outside"] += d.get("source", "web") != "web"
         elif k == "letter_sent":
             c["letters_sent"] += 1
+        elif k == "outreach" and d.get("what") == "postcard" and d.get("delivered"):
+            c["postcards_sent"] += 1
         elif k == "woke":
             c["hours_slept"] += d.get("hours") or 0
         elif k == "tool_error" or (k == "tool" and str(d.get("result", "")).startswith("error")):
@@ -328,7 +338,8 @@ STAT_LABELS = [("work_sessions", "work sessions"), ("minutes_worked", "minutes w
                ("notes_written", "journal entries"), ("letters_sent", "letters sent"), ("hours_slept", "hours slept"),
                ("tool_errors", "tool errors"),
                ("predictions", "predictions made"), ("surprises", "surprises"),
-               ("focus_kept", "focus items kept"), ("focus_total", "focus items reviewed")]
+               ("focus_kept", "focus items kept"), ("focus_total", "focus items reviewed"),
+               ("postcards_sent", "postcards sent"), ("messages_from_outside", "messages from outside")]
 EARLIER_BELIEFS = 8
 HUNCHES_SHOWN = 2
 PORTRAITS_SHOWN = 3
