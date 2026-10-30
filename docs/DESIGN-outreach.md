@@ -1,138 +1,140 @@
-# Design: reaching out (postcards to the outside world)
+# Design: reaching out (a two-way, pluggable channel; Matrix first)
 
-Status: **design only, not built.** Roadmap item "Pip can reach out" (Social). Revised 2026-10-30: the owner wants it to be an
-extension of chat, two-way from a phone in a native app, so the primary channel is a **Telegram bot** (below); the one-way
-webhook is kept as a second backend.
+Status: **design only, not built.** Roadmap item "Pip can reach out" (Social). Revised 2026-10-30 after the owner asked to look at
+self-hosted Matrix and wants the channel pluggable. Telegram stays a documented alternative; the same interface fits both.
 
 ## Why
-Pip can only talk when someone talks to it, or by writing letters to a neighbor it invented. It has things it would
-like to say to a real person: a project finished, a specific thing it is missing, something it found out. A push message
-to the owner's phone is the smallest real-world channel, and the one most likely to matter.
+Pip can only talk when someone talks to it, or in letters to a neighbor it invented. It has things it would like to tell a real
+person: a project finished, a specific thing it is missing, something it found out. And the owner wants to answer from a phone, in a
+native app, as an extension of the chat. So: a real two-way channel, owned by the owner, that Pip can start a conversation on.
 
-Principles: **rare and meaningful** (a postcard, not a notification stream), **the owner stays in control** (a kill
-switch, hard caps, everything logged), **no new secrets in Pip's reach**, and the model gets **no way to choose a
-destination or send anything but short plain text**.
+Principles: **rare and meaningful** unprompted messages; **the owner stays in control** (a kill switch, hard caps, everything logged);
+**no secrets in the model's reach**; the model chooses only **short plain words** (and, later, a picture), never a destination.
 
-## Channel: Telegram, two-way (recommended)
-A Telegram bot gives a native phone app, two-way chat, notifications, and a simple HTTPS API. It fits this setup because Pip's
-UI is internal-only: the bot can be driven by **long polling** (`getUpdates`), where Pip's container makes outbound HTTPS calls to
-`api.telegram.org` and nothing is exposed (no webhook, no public endpoint, no port).
-
-| Option | Verdict |
-|---|---|
-| **Telegram bot** | native apps, trivial API, long polling works behind NAT, typing indicator, free. Bot chats are not end-to-end encrypted (messages pass through Telegram's servers): fine for Pip, not for secrets |
-| Signal | private, but needs `signal-cli` and a spare number; fragile for bots |
-| Matrix (self-hosted) | fully yours, but means running Synapse/Conduit and a client; much more to maintain |
-| Home Assistant / ntfy | good for one-way push; replies are awkward (notification actions only) |
-| Slack / Discord | workable, but heavier than a bot chat on a phone |
-
-### How Pip gets your replies
-A small bridge runs inside the agent-world container as a background task:
-1. **Long-poll** `getUpdates` (30 s timeout) with an offset kept in the database, so a restart never replays old messages.
-2. For each message from an **allowed chat** (`TELEGRAM_ALLOWED`, your numeric user id; anyone else is ignored), do exactly what
-   `POST /inbox` does today: add an inbox item (sender "Morgan", source `telegram`), log the `inbox` event (so it appears in the web
-   chat as one of your bubbles, labelled as Telegram), and wake Pip as a visitor does. One shared function serves both paths.
-3. **Pip's answer** is its normal `say` reply to that message. The bridge watches for `say` events addressed to inbox ids that came
-   from Telegram and sends that text to the same chat. While Pip is thinking, the bridge shows "typing…" (`sendChatAction`), the same
-   cue as the web UI's "Pip is thinking".
-So it is one conversation with two clients: whatever you type in the web UI or in Telegram reaches Pip the same way, and a reply goes
-back to the place the message came from (and always shows in the web feed).
-
-**Pip starting a conversation** is `send_postcard` (below), delivered to the first allowed chat. Your reply to it arrives as a normal
-message, so a postcard can turn into a back-and-forth.
-
-### Setup (once, by the owner)
-1. In Telegram, talk to **@BotFather**: `/newbot`, pick a name; it gives a **token**.
-2. Put the token in `agent_world/.env` (`TELEGRAM_BOT_TOKEN`, gitignored); start Pip with `OUTREACH=log`.
-3. Message the bot from your phone. It ignores you but records the sender, and `pipchat telegram` shows "unknown sender 123456789 (name)".
-4. Put that id in `TELEGRAM_ALLOWED=123456789:Morgan` and switch on. (Several `id:Name` pairs are allowed; unprompted postcards go to the first.)
-
-## Channel: webhook (one-way, optional)
-For Home Assistant or n8n: a POST of `{id, text, from, ts, context}` to a URL (`OUTREACH_WEBHOOK_URL`, optional bearer token). Same limits,
-same tool; no replies except through `/inbox`.
+## The shape: a conversation is a thread
+The owner's model is: Pip may start **2 new threads a day**, and within a thread it may reply to what the human says (but doesn't have to).
+- **Unprompted** = a new thread (a top-level message). Capped: 2 a day, a minimum gap, none in quiet hours (the night window).
+- **A reply** = Pip's normal `say` answer to a message the human sent, delivered inside that thread. Not capped (the human started or
+  continued it). Pip can't post follow-ups into a thread nobody has replied to, so a thread ends when the human stops.
+- A human message that is **not** in a thread starts a new one (Pip's answer goes in a thread under it).
+Matrix has real threads; Telegram has reply chains; a webhook has none (every message is its own thread). The core only uses the abstract
+idea (`conversation`).
 
 ## Pluggable channels
-Telegram is the first channel, not a built-in. The core talks to a small **`Channel`** interface (same plug-in style as the LLM backend and the
-pacing policy: a registry, chosen by env, one file per channel), so Matrix, Signal, Slack or a webhook can replace or sit beside it later with the
-same send/receive semantics and no change to Pip, the tool, the limits or the UI.
+The core talks to a small **`Channel`** interface (the same plug-in style as the LLM backend and pacing policy: a registry, chosen by env,
+one file per channel). Matrix is the first real channel; Telegram, Signal, Slack or a webhook can sit beside or replace it later with the same
+send/receive semantics and no change to Pip, the tool, the policy or the UI.
 
 ```python
 @dataclass
-class Inbound:    sender_id: str; sender_name: str; text: str; conversation: str; ts: float; message_id: str  # conversation is opaque
+class Inbound:   sender_id: str; sender_name: str; text: str; conversation: str; ts: float; message_id: str  # conversation: opaque thread ref
 @dataclass
-class Outbound:   text: str; kind: str            # 'reply' (to a message) or 'postcard' (unprompted)
+class Outbound:  text: str; kind: str; images: list[Image] = ()        # kind: 'reply' | 'postcard'; images only if the channel declares 'images'
 @dataclass
-class SendResult: delivered: bool; error: str = ""
+class SendResult: delivered: bool; error: str = ""; conversation: str = ""     # the thread the message landed in (a new postcard's root)
 
 class Channel(Protocol):
     name: str
-    capabilities: frozenset[str]                  # e.g. {'receive', 'typing'}; the core only uses what a channel declares
-    async def start(self, on_message: Callable[[Inbound], Awaitable[None]]) -> None   # begin receiving (poll/socket/subscribe); no-op if send-only
+    capabilities: frozenset[str]                     # {'receive', 'threads', 'typing', 'images'}: the core uses only what is declared
+    async def start(self, on_message) -> None         # begin receiving (sync/poll/socket); a no-op if send-only
     async def stop(self) -> None
-    async def send(self, out: Outbound, conversation: str | None = None) -> SendResult  # conversation=None -> the channel's primary recipient
-    async def typing(self, conversation: str) -> None                                   # optional; only if 'typing' declared
+    async def send(self, out: Outbound, conversation: str | None = None) -> SendResult   # None -> a new thread to the primary recipient
+    async def typing(self, conversation: str) -> None # optional
 ```
-- **Authorization lives in the channel.** A channel only calls `on_message` for senders it considers allowed (Telegram: the id allow-list), and
-  fills `sender_name` from its own config. The core treats whatever arrives as a visitor message, like `POST /inbox`.
-- **Routing is generic.** The inbox row and the `inbox` event record `source` (the channel name) and `conversation` (opaque). Pip's `say` reply to
-  that message is sent back through the same channel and conversation; unprompted postcards go to the **primary** channel's primary recipient. Several
-  channels can run at once (`OUTREACH_CHANNELS=telegram,webhook`; the first is primary).
-- **The core owns policy** (modes, per-day and gap limits, quiet hours, repeat and URL checks, length caps, events, firsts, day counts), so every
-  channel gets the same safety for free and none can bypass it.
-- **Contract tests, one suite for every channel.** A `FakeChannel` (in-memory, scriptable, like `FakeBackend`) ships with the code and drives the
-  core tests with no network. A reusable contract test runs against any implementation using a fake transport: inbound is delivered once and in
-  order; unauthorised senders are dropped; `send` reports failure honestly; `typing` only when declared; a restart doesn't replay; secrets never
-  appear in `repr` or events. A new channel is done when it passes the contract.
-- **Built-ins:** `telegram` (two-way, long polling), `webhook` (send-only), `fake`/`log` (tests and dry runs). Adding another is one file plus a
-  registry entry.
+- **Authorization lives in the channel.** It only calls `on_message` for senders it allows and fills `sender_name` from its own config; the core
+  treats the result like any visitor message (same function as `POST /inbox`).
+- **Routing is generic.** The `inbox` row and event record `source` (channel name) and `conversation` (opaque). A `say` reply to that message
+  goes back through the same channel into the same conversation; a postcard goes to the **primary** channel (the first in
+  `OUTREACH_CHANNELS`, several can run at once).
+- **The core owns policy**: limits, quiet hours, repeat/URL/length checks, events, firsts, day counts. Every channel gets the same safety.
+- **Contract tests:** a `FakeChannel` (in-memory, scriptable, like `FakeBackend`) ships with the code, and one reusable contract suite runs against any
+  implementation with a fake transport: inbound delivered once and in order; unauthorised senders dropped; `send` reports failure honestly; replies stay in
+  their conversation; no replay after a restart; `typing` only if declared; secrets never in `repr` or events. A channel is done when it passes.
+- **Photos:** the interface carries `images` and a capability flag, and the Matrix channel implements it (upload + `m.image`) so Pip's drawings
+  can arrive later. Nothing in the core needs changing when the art tools exist. (Inbound photos are ignored for now.)
+
+## Matrix, self-hosted
+### What the research says (sources are community posts and docs, partly unverified; confirm at build time)
+- **Homeserver.** Synapse is the full-featured reference but sits at roughly 1-2 GB RAM. The lightweight Rust line (Conduit, now continued as
+  **Tuwunel** and **Continuwuity**) is a single small container with an embedded database and a few hundred MB at most; the landscape moved
+  quickly in 2025-26 (Conduwuit was discontinued), so pick whichever has a current release and Docker image when we build.
+  Dendrite is in maintenance mode. For one bot and one human, a lightweight homeserver is plenty.
+- **Bot library.** The Python options are awkward right now: `matrix-nio`'s upstream is quiet, its E2EE depends on libolm (deprecated by
+  Matrix) and wheels lag Python versions; the nio-based bot framework `nio-bot` is archived. Rather than depend on that, speak the **Client-Server API
+  directly over `httpx`** (login, `/sync` long-poll, send event, threads, typing, read receipts, media upload). That is a few hundred lines, no native
+  dependency, and fits the plug-in interface.
+- **End-to-end encryption.** The simplest robust choice is an **unencrypted room on your own server** (TLS in transit; messages at rest only on
+  your homeserver). E2EE would pull in olm/vodozemac and device verification for a bot, which is real maintenance for little gain on a private
+  homelab. It can be revisited. (This is the main trade against Telegram, where Telegram sees everything.)
+- **Phone and push.** Element X (Android) syncs from your homeserver and gets push through a push gateway; the homeserver makes *outbound* calls to the
+  gateway, so no inbound port for push. Unverified here, and worth confirming: Element X fetches the message body from the homeserver on notification,
+  so the **phone must be able to reach the homeserver**. UnifiedPush (ntfy as distributor) is an FCM-free alternative.
+
+### Reachability: the one real decision
+The phone needs the homeserver whenever it is away from home, but everything else here is internal-only (IP whitelist, WireGuard for remote).
+| Option | For | Against |
+|---|---|---|
+| **Public hostname** (`matrix.example.io` via Traefik/Let's Encrypt), federation off, registration off | works from anywhere with the native app | a login surface on the internet (mitigate: no federation, no registration, strong passwords, rate limits, keep it updated) |
+| **Internal only + always-on WireGuard on the phone** | nothing exposed | VPN must be on to chat; any lapse = no messages |
+
+The recommendation is a public hostname with federation and registration disabled and the accounts created once by script, because "chat from the phone
+anywhere" is the point; the internal-only route stays available (same code).
+
+### Deployment (new `matrix/` service, hll-defined like the others)
+A lightweight homeserver container on the `docker_default` network, one volume (included in restic), env for `server_name`, `allow_federation=false`,
+registration closed (a one-time registration token to create the two accounts, then removed). Traefik routes `/_matrix` (and `/.well-known/matrix/client`
+if the server name differs from the host). Optional: Element Web at its own internal hostname for chatting from a desktop browser. A `matrix/bootstrap`
+script creates `@pip` (the bot) and your account and an invite-only, unencrypted room; Pip's `.env` gets the bot's access token.
+
+### The Matrix channel
+- **Identity and room:** the bot `@pip:...` and the owner in one private, invite-only, unencrypted room. The channel listens to that room only and
+  declines every other invite; `on_message` fires only for events from allowed user ids.
+- **Threads:** `conversation` = the thread root's event id. A postcard is a top-level message (its event id becomes the conversation); a reply is sent
+  with `m.relates_to: {rel_type: m.thread, event_id: root}` (plus the in-reply-to fallback for clients that don't render threads). A human message in a thread
+  keeps that conversation; a top-level human message starts one.
+- **Receiving:** `/sync` long-poll with a stored `since` token (restart-safe, no replay), a filter limited to the room and to message events, backoff on errors.
+- **Typing and receipts:** `PUT /rooms/{id}/typing/{user}` while Pip is thinking (the same cue as the web UI) and a read receipt when a message reaches Pip.
+- **Images:** `POST /_matrix/media/v3/upload` then an `m.image` event, when Pip has something to show.
+
+## Web UI
+The web chat stays what it is: Pip's own interface, backed by the same inbox. It is conceptually just another channel, so both can run side by side, with the
+event log as the one history. Matrix is deliberately **not** embedded in our page (a Matrix client in the browser means login, tokens and a heavy SDK). If a
+browser Matrix view is wanted, host **Element Web** next to it. A reply to something typed in the web UI is not sent to Matrix (they stay separate); messages that arrive
+through Matrix do appear in the web chat as yours, labelled with their source.
 
 ## The tool: `send_postcard(text)` (anywhere, awake only)
-- **What Pip sees:** "Send a short postcard to a friend outside. Rarely; for something worth telling: a thing you finished, a specific thing you
+- **What Pip sees:** "Start a conversation with a friend outside (a short postcard). Rarely; for something worth telling: a thing you finished, a specific thing you
   need, something you found out. Plain text, at most 240 characters."
-- **The recipient is fixed** (the first allowed chat). No `to`. Text only: no URLs (refused), no attachments, control characters stripped,
-  sent without Markdown so the words can't format themselves.
-- **Rate limits** (engine, not prompt) apply to *unprompted* postcards only: `OUTREACH_PER_DAY` (default 2), `OUTREACH_MIN_GAP_HOURS` (3),
-  none during quiet hours (the night window), nothing too like one of the last five. Replies to your messages are not limited (you started
-  it), only length-capped, and Pip can't send a reply to a message that doesn't exist.
-- **Pip sees its allowance** only when it can send: "You can send 1 more postcard today (next after 2:30 pm)." Otherwise the tool isn't offered.
-- **Honest delivery:** a failure is reported to Pip ("it couldn't be sent") and not retried; failures are capped per day.
-- **Modes:** `OUTREACH=off | log | on`. `log` records what Pip would send (feed, `pipchat outreach`, `GET /outreach`) and delivers nothing, for a dry
-  run; `off` removes the tool and stops the bridge. In `log` the bridge still *receives* nothing, so enable `on` only after you've checked.
+- **Fixed recipient, no `to`.** Text only: no URLs (refused), control characters stripped, sent as plain text so words can't format themselves. A picture is a later
+  `images` argument, subject to the same limits.
+- **Limits (engine, not prompt), for unprompted postcards only:** `OUTREACH_PER_DAY` = 2 new threads (local day), `OUTREACH_MIN_GAP_HOURS` = 3, none in quiet hours,
+  nothing too like one of the last five. Replies are not limited; they can only answer a message that exists, are length-capped, and Pip may stay silent.
+- **Pip sees its allowance** only when it can send: "You can start 1 more conversation today (next after 2:30 pm)." Otherwise the tool isn't offered.
+- **Honest delivery:** a failure is reported to Pip and not retried; failures are capped per day so a dead server isn't hammered.
+- **Modes:** `OUTREACH=off | on` (live by default, as decided); `log` remains available for a dry run. `off` removes the tool and stops the channel.
 
 ## Records and visibility
-Events `outreach` `{id, text, delivered, error?, channel, mode}` and `inbox` events labelled `source: telegram`. They appear in the feed and
-chat ("via Telegram"), `recall`, the nightly reflection, the day counts (postcards sent, messages received), and a firsts facet ("the first
-time you sent something out into the world"; "the first time you heard from outside"). `GET /outreach`, `pipchat outreach`, `pipchat telegram`.
+Events `outreach` `{id, text, delivered, error?, channel, conversation, kind}` and `inbox` events with `source`. They appear in the feed and chat ("via Matrix"),
+`recall`, the nightly reflection, the day counts (conversations started, messages received), and firsts ("the first time you sent something out into the world",
+"the first time someone answered from outside"). `GET /outreach`, `pipchat outreach`, `pipchat channels` (status and, for setup, unknown senders seen).
 
 ## Safety
-- The destination is fixed in `.env` and the allowed ids are an allow-list; strangers who find the bot are ignored.
-- The token is never sent to the model, never logged, never in events. Incoming text is untrusted like any visitor's.
-- A prompt-injected page or visitor message can at most make Pip say something short to you, within the cap and logged.
-- Outbound text is plain, short, link-free; inbound is capped (2000 chars like the web UI).
-- Telegram sees the conversation (cloud chat). That is the trade for a native, two-way app with no exposed port.
+- The destination is fixed in `.env`; allowed ids are an allow-list; strangers and other rooms are ignored. Inbound text is untrusted like any visitor's, capped at 2000 characters.
+- Tokens are never shown to the model, never logged, never in events. A prompt-injected page or visitor message can at most make Pip say something short to the owner,
+  within the daily cap, in a logged event.
+- The homeserver is a new internet-facing service if public: federation and registration off, rate limits on, restic-backed, monitored in Uptime Kuma, and updated (watchtower is already here).
 
 ## Persona
-One short paragraph: you have a way to send a short postcard to a friend outside; use it rarely, for what is worth telling. Not for
-status updates, not to ask for something you already asked for.
-
-## Receiving side for the webhook channel (documented, not code)
-A Home Assistant automation: trigger `webhook` (`webhook_id` a long random string, local only), action
-`notify.mobile_app_pixel_11_pro` with `message: "{{ trigger.json.text }}"`, `title: "Pip"`, and `data.url` pointing at
-`https://agent-world.internal.example.io/ui/` so tapping opens the UI. The same payload works for an n8n Webhook node.
+One short paragraph: you have a way to message a friend outside, in a thread; start a conversation rarely, for what is worth telling; you may answer replies or not. Not for status updates.
 
 ## Build order
-1. Shared `deliver_visitor_message` (extracted from `POST /inbox`; `inbox` gains `source` and `conversation`), the `Channel` interface and
-   registry, `FakeChannel` and the contract test suite, then the Telegram channel (long poll, allow-list, offset, typing) and the webhook and log
-   channels, each passing the contract (Telegram against a fake Telegram API).
-2. `send_postcard`, limits and quiet hours, events, `GET /outreach`, `pipchat outreach`/`telegram`, feed and chat labels, firsts, day counts.
-3. Persona paragraph, the prompt allowance line, README setup steps.
-4. (Later) photos of what Pip makes or draws, once the art tools exist; `reply_to` marking; other backends.
+1. **Core, channel-agnostic:** extract `deliver_visitor_message` from `POST /inbox`; `inbox` gains `source` and `conversation`; the `Channel` interface and registry; `FakeChannel` and the
+   contract suite; the policy (limits, quiet hours, checks), `send_postcard`, reply routing, events, `GET /outreach`, `pipchat outreach`, firsts, day counts, persona line.
+2. **Matrix channel** (httpx over the Client-Server API) passing the contract against a fake homeserver, with `typing`, threads, receipts and image upload.
+3. **The service:** `matrix/matrix.hll` (homeserver, Traefik route, restic entry, bootstrap script), accounts and room, Element X on the phone.
+4. Later: Element Web, E2EE, a Telegram or webhook channel, inbound photos.
 
-## Open questions
-1. Telegram is OK with you (cloud chat, not end-to-end encrypted), or do you want to look at self-hosted Matrix instead?
-2. Should Pip's reply to a message you typed in the **web UI** also go to Telegram, or only replies to Telegram messages (recommended)?
-3. Name: `send_postcard` or something plainer?
-4. Limits: 2 unprompted a day, 3 hours apart, none at night. Too tight, or too loose?
-5. Start in `log` mode first (recommended), then `on`?
-6. Anything the `Channel` interface above is missing for a channel you'd want later (attachments/photos, groups, message edits)? Photos are the
-   likely first extension, once Pip can draw (a `send_image` capability).
+## Decisions made / needed
+- Made: pluggable; the web UI chat stays separate; the name `send_postcard`; 2 new threads a day with replies free inside a thread; live from the start; photos supported by the interface.
+- Needed: homeserver choice at build time (Tuwunel/Continuwuity vs Synapse); **public hostname or internal + VPN** (recommended: public, federation and registration off);
+  **unencrypted room** for the first version (recommended); whether to host Element Web too.
