@@ -48,6 +48,12 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [x] Belongings and garden views; give-item form; wake button
 - [x] Verified in a real browser (in daily use)
 - [ ] Decide whether Authentik is wanted in front of it (currently internal-only, IP whitelisted)
+- [ ] **Rework the layout** (2026-10-30; too much scrolling: 12 stacked sections in a side column). Ideas so far:
+  chat becomes a hideable bubble (bottom-right, unread badge, remembers open/closed); usage moves into the header with a
+  hover tooltip (tokens, cost, budget bar); the rest is regrouped into tabs/sections instead of one long column, e.g.
+  *Now* (state, activity feed), *Journal* (diary/todo/wishlist/ambitions/learned), *World* (belongings, garden,
+  neighbors & letters), *Work* (projects, made by Pip), *Mind* (memory, beliefs, changes, firsts); the give-Pip form
+  tucked beside the chat or under World. Design before building; needs a browser check on phone width.
 
 ## M2b - Visual world
 - [ ] Decide 2D (pixel canvas: a room, a sprite, activity -> animation) vs 3D; default 2D
@@ -155,7 +161,8 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [x] Cited reflections: ids in the material, insights cite evidence, validation + nightly support check, hunches
       block, `recall` shows the evidence, deterministic event importance decides what survives the budget
 - [x] Versioned self-portrait (all versions kept), `changed` claims with citations, daily counts as evidence
-- [ ] Next from RESEARCH-self.md: expectations/surprise, turning-point detector, capabilities table, a night pass
+- [ ] Expectations and surprise: designed (DESIGN-expectations.md), not built
+- [ ] Next from RESEARCH-self.md: turning-point detector, capabilities table, a night pass
       that can change goals, recall frame (Pip's state then), delayed-self recognition test
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one
