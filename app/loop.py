@@ -7,6 +7,7 @@ import time
 from . import companions as comp
 from . import creations as cr
 from . import expectations as exp
+from . import gathering
 from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
@@ -148,6 +149,8 @@ class Agent:
                 return bool(await places.arrive(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "read":
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
+            if sess["kind"] == "gather":
+                return bool(await gathering.resolve(self.state, self.s, self.gm, self.rng))
             if sess["kind"] == "experiment":
                 work = await proj.resolve_experiment(self.state, self.s, self.gm, self.rng)
             else:
@@ -190,7 +193,7 @@ class Agent:
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         here = places.here(self.state, self.s, self.library)
-        specs = specs_for(self.tools, here.key, here)  # what can be done where Pip is, described for this place
+        specs = specs_for(self.tools, here.key, here, places.open_now(here, self.s))  # what can be done here, described for here
 
         for step in range(max(1, self.s.max_calls_per_tick)):
             if self.state.budget_exceeded():
@@ -292,8 +295,12 @@ class Agent:
                     if st["started"]:
                         line += f" (its {needs} are already in hand)"
                     else:
-                        _, missing = proj.missing_materials(self.state, st)
-                        line += f" (needs {needs}" + (f"; missing {', '.join(missing)})" if missing else "; you have them)")
+                        take, missing = proj.missing_materials(self.state, st)
+                        have = {t["name"] for t, _ in take}
+                        hints = [f"you found {n} at {places.label(f['place'])}" for n in st["materials"] if n not in have
+                                 for f in self.state.found_where(n)[:1]]
+                        line += f" (needs {needs}" + (f"; missing {', '.join(missing)}" if missing else "; you have them")
+                        line += (f" - {'; '.join(hints)}" if hints else "") + ")"
                 later = proj.upcoming_needs(p, i + 1)
                 if later:
                     line += "; later stages need " + ", ".join(
@@ -484,6 +491,8 @@ class Agent:
                 elif e["kind"] == "creation":
                     lines.append(f"- {d['text']}" if d["what"] in ("stopped", "helper", "used")
                                  else f"- your {d['name']}: {d['text']}")
+                elif e["kind"] == "gathered":
+                    lines.append(f"- {d['text']}" + (" (you cut it short)" if d.get("interrupted") else ""))
                 elif e["kind"] == "woke":
                     lines.append(f"- {sleepmod.woke_text(d)}")
                 elif e["kind"] == "reading":

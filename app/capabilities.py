@@ -7,7 +7,7 @@ not judgments. Computed from the event log each night and kept as dated snapshot
 from .toolnames import canonical
 
 SKIP_TOOLS = {"set_activity", "say"}
-GOOD_PHRASE = {"recall": "found something", "web_search": "found something", "browse": "found something"}
+GOOD_PHRASE = {"recall": "found something", "web_search": "found something", "browse": "found something", "gather": "found something"}
 MIN_SHOWN = 3        # tries before an entry is shown
 MAX_LINES = 8        # per group
 
@@ -34,7 +34,9 @@ def collect(events, crafts: dict | None = None, stage_abilities: dict | None = N
 
     for e in events:
         k, d = e["kind"], e["data"]
-        if k == "tool" and d.get("tool") not in SKIP_TOOLS and not d.get("noop"):
+        if k == "gathered" and not d.get("interrupted"):
+            hit("tool", "gather", "good" if d.get("items") else "bad")
+        elif k == "tool" and d.get("tool") not in SKIP_TOOLS and d.get("tool") != "gather" and not d.get("noop"):
             hit("tool", canonical(d["tool"]), _tool_verdict(canonical(d["tool"]), str(d.get("result", ""))))
         elif k == "work" and not d.get("interrupted") and d.get("result"):
             v = {"breakthrough": "good", "good": "good", "slow": "neutral"}.get(d["result"], "bad")

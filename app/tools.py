@@ -10,6 +10,7 @@ import httpx
 
 from . import companions as comp
 from . import expectations as exp
+from . import gathering
 from . import creations as cr
 from . import memory as mem
 from . import library as lib
@@ -44,6 +45,9 @@ async def stop_working(ctx: "ToolContext") -> str:
     if sess["kind"] == "read":
         r = await lib.finish_reading(ctx.state, ctx.settings, ctx.gm, ctx.library, interrupted=True)
         return f" (you put {r['title']} down early)" if r else ""
+    if sess["kind"] == "gather":
+        g = await gathering.resolve(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
+        return f" (you cut your time at {g['label']} short)" if g else ""
     if sess["kind"] == "experiment":
         e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
         return f" (you cut the experiment on {e['project']} short)" if e else ""
@@ -64,6 +68,8 @@ def busy(ctx: "ToolContext") -> str:
         return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
     if sess["kind"] == "read":
         return f"you're reading {sess['target']} (about {left} min left); rest stops early"
+    if sess["kind"] == "gather":
+        return f"you're out {gathering.VERB.get(sess['target'], 'gathering')} at {places.label(sess['target'])} (about {left} min left); rest stops early"
     cur = ctx.state.project(sess["project_id"])
     if sess["kind"] == "experiment":
         return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
@@ -89,23 +95,29 @@ def is_here(scope: tuple[str, ...], location: str) -> bool:
     return ANYWHERE in scope or places.scope_of(location) in scope
 
 
-def out_of_place(state, name: str) -> str:
+def out_of_place(ctx, name: str) -> str:
     """Why `name` can't be used where Pip is, or '' if it can."""
     scope = SCOPES.get(name, (ANYWHERE,))
-    here = state.agent()["location"]
-    if is_here(scope, here):
-        return ""
-    if scope[0] == "home":
-        return f"you're at {places.label(here)}; go_to home first"
-    return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
+    here = ctx.state.agent()["location"]
+    if not is_here(scope, here):
+        if scope[0] == "home":
+            return f"you're at {places.label(here)}; go_to home first"
+        return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
+    place = places.here(ctx.state, ctx.settings, ctx.library)
+    if ANYWHERE not in scope and place.scope in scope and not places.open_now(place, ctx.settings):
+        return f"{places.label(here)} is closed for now (it's dark); it opens in the morning"
+    return ""
 
 
-def specs_for(tools: dict, location: str, place=None) -> list[ToolSpec]:
+def specs_for(tools: dict, location: str, place=None, open_: bool = True) -> list[ToolSpec]:
     """The tools to offer at `location`: everything that works anywhere plus what belongs to this place. A place can
     describe a verb its own way (`place.verbs[name][1]`), so the same tool reads differently in different places."""
     out = []
     for name, (spec, _) in tools.items():
-        if is_here(SCOPES.get(name, (ANYWHERE,)), location):
+        scope = SCOPES.get(name, (ANYWHERE,))
+        if not open_ and place and ANYWHERE not in scope and place.scope in scope:
+            continue  # a closed place offers nothing of its own
+        if is_here(scope, location):
             full = place.verbs.get(name, (None, None))[1] if place else None
             out.append(ToolSpec(spec.name, full, spec.parameters) if full else spec)
     return out
@@ -118,7 +130,7 @@ def tool(name: str, description: str, parameters: dict, where: str | tuple[str, 
 
     def deco(fn: Handler) -> Handler:
         async def guarded(ctx, args):
-            if why := out_of_place(ctx.state, name):
+            if why := out_of_place(ctx, name):
                 return ToolResult(why, followup=True)
             return await fn(ctx, args)
         SCOPES[name] = scope
@@ -664,14 +676,22 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(why, followup=True)
     if place == ctx.state.agent()["location"]:
         return ToolResult(f"you're already at {places.label(place)}", followup=True)
-    minutes = places.start_walk(ctx.state, ctx.settings, place)
-    return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min")
+    record = places.registry(ctx.state, ctx.settings, ctx.library).get(place)
+    minutes = places.start_walk(ctx.state, ctx.settings, place, record.walk_minutes if record else None)
+    closed = (" It's closed right now (it's dark), so there will be nothing to do there until morning."
+              if record and not places.open_now(record, ctx.settings, time.time() + minutes * 60) else "")
+    return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min.{closed}")
 
 
 @tool("browse", "Look through what is on offer where you are. At the library: look for books - give a query (a subject, "
       "title or author), or leave it out to wander the shelves and see what's there.",
-      _obj({"query": {"type": "string", "description": "optional"}}, []), where="library")
+      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
+    here = ctx.state.agent()["location"]
+    if here in gathering.LOOT:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
+        seen = gathering.glimpse(ctx.rng, here)
+        return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
+                          + ". gather to dig for what you need.", followup=True)
     q = str(args.get("query") or "").strip()
     if q:
         books, where = ctx.library.search(q), f"Looking for {q!r}, you find"
@@ -742,3 +762,51 @@ async def resume_project(ctx: ToolContext, args: dict) -> ToolResult:
                           followup=True)
     ctx.state.update_project(p["id"], status="active")
     return ToolResult(f"{p['name']} is active again", followup=True)
+
+
+@tool("gather", "Spend a while gathering what this place offers (15-60 minutes). What you find is down to luck and how "
+      "picked-over the place is; you'll see it when the time is up. Resting stops early.",
+      _obj({"minutes": {"type": "integer", "description": "15-60, default 30"}}, []), where=("woods", "junkyard"))
+async def gather(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := busy(ctx):
+        return ToolResult(why, followup=True)
+    place = ctx.state.agent()["location"]
+    if place not in gathering.LOOT:
+        return ToolResult("there's nothing to gather here", followup=True)
+    minutes = proj.clamp_int(args.get("minutes"), *gathering.SESSION_MINUTES, 30)
+    ctx.state.start_session(0, 0, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="gather", target=place)
+    ctx.state.update_agent(activity="gathering", description=f"{gathering.VERB[place]} at {places.label(place)}")
+    real = max(1, round(minutes / ctx.settings.work_speed))
+    note = " The ground looks well picked over." if gathering.stock(ctx.state, place) < gathering.FULL_YIELD_AT else ""
+    return ToolResult(f"you set about {gathering.VERB[place]} at {places.label(place)} for {minutes} min.{note} "
+                      f"You'll see what you found in about {real} min.")
+
+
+@tool("where_to", "Ask yourself where you could find or do something: it checks the places you know and what you've "
+      "already found where. Use it when you need a material or want to do something and don't remember where.",
+      _obj({"what": {"type": "string", "description": "what you're after, in a few words"}}, ["what"]))
+async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
+    what = str(args.get("what") or "").strip()[:120]
+    words = content_words(what) | {w for w in re.findall(r"[a-z]+", what.lower()) if len(w) >= 3 and w not in STOP_WORDS}
+    if not words:
+        return ToolResult("error: say what you're after", followup=True)
+    lines = []
+    for key, p in places.registry(ctx.state, ctx.settings, ctx.library).items():
+        if key == places.HOME:
+            continue
+        finds = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
+        knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))))
+        if not (finds or knows):
+            continue
+        line = f"- {places.label(key)}: {p.blurb.split(':')[0]}"
+        if finds:
+            f = finds[0]
+            line += f"; you've found {f['item']} there {f['times']} time{'s' if f['times'] != 1 else ''}" \
+                    f" (last {mem.ago(f['last_ts'])})"
+        elif key in gathering.LOOT:
+            line += "; you haven't found any yet, but it's the kind of place"
+        lines.append(line)
+    if not lines:
+        return ToolResult(f"you can't think of anywhere you'd find {what}. Try asking a neighbor, looking in a book, "
+                          "or having a look around somewhere new.", followup=True)
+    return ToolResult(f"For {what}, you think of:\n" + "\n".join(lines), followup=True)

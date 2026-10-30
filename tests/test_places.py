@@ -17,7 +17,7 @@ def neighbor(st, s):
 
 
 def test_the_registry_lists_home_the_library_and_neighbors_as_records(tmp_path):
-    s, st, *_ = make(tmp_path)
+    s, st, *_ = make(tmp_path, wild_places=[])
     assert list(P.registry(st, s, None)) == [P.HOME]                         # no library mounted, no neighbor
     neighbor(st, s)
     reg = P.registry(st, s, FakeLibrary())
@@ -29,7 +29,7 @@ def test_the_registry_lists_home_the_library_and_neighbors_as_records(tmp_path):
 
 
 def test_the_directory_says_where_to_go_and_what_each_place_is_for(tmp_path):
-    s, st, *_ = make(tmp_path)
+    s, st, *_ = make(tmp_path, wild_places=[])
     neighbor(st, s)
     lines = P.directory(st, s, FakeLibrary())
     assert lines[0] == "Places you can go (go_to):"

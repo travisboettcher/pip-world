@@ -367,6 +367,18 @@ class GameMaster:
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "describe_place")
         return clip(out["text"], 500) if out else None
 
+    async def narrate_haul(self, place: str, minutes: int, found: list[tuple[str, int]], depleted: bool) -> str | None:
+        got = ", ".join(f"{q} {n}" for n, q in found) or "nothing"
+        task = (
+            f"Pip spent about {minutes} minutes gathering at {place}. What it found (already decided; mention only these, "
+            f"invent no other finds): {got}."
+            + (" The place is getting picked over, so there was little to find." if depleted else "")
+            + " Describe the outing in 1-2 short concrete sentences (under 40 words), second person ('You ...'), in the "
+            "manner of someone poking around in this kind of place. No numbers."
+        )
+        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "narrate_haul")
+        return clip(out["text"], 300) if out else None
+
     async def read_summary(self, title: str, authors: str, text: str, percent: int) -> dict | None:
         task = (
             f"Pip just read a stretch of {title!r} by {authors} (it's now about {percent}% through). The text it read:\n"

@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -50,6 +50,8 @@ def recall_text(kind: str, d: dict) -> str | None:
             f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"
             + (f" You learned: {d['finding']}" if d.get("finding") else "")
             + (f" ({d['expectation']})" if d.get("expectation") else ""))
+    if kind == "gathered":
+        return None if d.get("interrupted") and not d.get("items") else d["text"]
     if kind == "creation_made":
         return f"You finished making {d['name']}: {d['description']}"
     if kind == "companion":

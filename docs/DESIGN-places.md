@@ -1,7 +1,7 @@
 # Design: more places, and tools that belong to places
 
-Status: **steps 1 (tool scoping) and 2 (place records, `browse`, the directory) built 2026-10-30; `gather`, the woods and the junkyard are
-designed, not built.** Decisions (owner: "go with your
+Status: **steps 1-3 built 2026-10-30** (tool scoping; place records, `browse`, the directory; `gather`, the woods and the junkyard,
+depletion, hours, `place_finds`, `where_to`, the missing-material hint). Not built: `places.json`, the market and coins. Decisions (owner: "go with your
 recommendations"): shared verbs (`browse`, `gather`); woods + junkyard first, market and coins later; `places.json` waits for
 the public-repo extraction; woods/junkyard daylight-only, library always open; every built-in place known from the start. Builds on [DESIGN-library.md](DESIGN-library.md) (places, `go_to`, the library) and
 [DESIGN-neighbor.md](DESIGN-neighbor.md) (neighbors' homes).
@@ -147,8 +147,11 @@ Interrupting (resting, a visitor) ends early with a proportional, smaller haul.
    name still works in `TOOLS` and calls; `toolnames.py` carries history, firsts and capability counts over, `FIRSTS_VERSION` 5
    rebuilds the facets); the prompt directory ("Places you can go": walk time, "closed now", what each is for) and a "Here you can:"
    line from the place's verbs; a place can describe a verb its own way. `open_now` (hours, daylight) exists for step 3.
-3. `gather` engine (loot, depletion, narration, events), woods and junkyard, hours/daylight, `place_finds` and `where_to`,
-   the "(you found X at ...)" hint on missing materials.
+3. **(built)** `gather` engine (`gathering.py`: loot tables in code, a stock of 120 gathering-minutes that sessions draw down and
+   time refills at 15 per hour, yield scaling from full at 60 down to 20%, one draw per ten minutes, rare finds helped by
+   handiness and patience; the GM only narrates), woods (8 min) and junkyard (15 min), daylight only, `place_finds` and
+   `where_to`, the "(you found X at ...)" hint on missing materials, per-place walk times and a "closed" note on `go_to`,
+   `browse` at the junkyard shows what's worth digging for, `WILD_PLACES` to switch them off.
 4. Optional `places.json`; docs; roadmap.
 Later: market and coins; more places.
 

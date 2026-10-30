@@ -176,3 +176,10 @@ a tool used from the wrong place ("you're at the library; go_to home first"). Ho
 [DESIGN-places.md](DESIGN-places.md).
 Places are records (`places.py`: home, the library, each neighbor's home); the prompt lists where Pip can go, how long it takes, whether it is
 closed, and what each place is for.
+
+## Gathering
+The woods (8 min away) and the junkyard (15 min) are open in daylight. `gather` is a timed session (15-60 min) that rolls a haul from the
+place's loot table (sticks, bark, berries, seeds; scrap brass, wire, gears, the odd tool); the place's stock runs down and refills with
+time, so camping there yields less. The GM only narrates what the engine found. Finds are remembered per place; `where_to` answers
+"where could I get brass?" from the directory and what Pip has found, and a project step missing a material says where it was found.
+`WILD_PLACES` chooses which places exist. See [DESIGN-places.md](DESIGN-places.md).

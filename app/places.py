@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from . import sleep as sleepmod
 from .text import clip
 
+FORAGE_HELP = ("Forage in the woods for 15-60 minutes: sticks, bark, resin, feathers, berries, nuts, and now and then "
+               "seeds. What you find is down to luck and how picked-over the place is. You'll see what you found when "
+               "the time is up; resting stops early.")
+SCAVENGE_HELP = ("Scavenge through the junkyard's heaps for 15-60 minutes: scrap metal, wire, springs, gears, odd parts, "
+                 "and now and then a tool. What you find is down to luck and how picked-over the heaps are. You'll see "
+                 "what you found when the time is up; resting stops early.")
 HOME = "workshop"
 HOME_SUFFIX = "'s home"
 
@@ -77,6 +83,16 @@ def registry(state, settings, library) -> dict[str, Place]:
                                offers=("browse", "read"),
                                verbs={"browse": ("look for books, by subject, title or author, or wander the shelves", None),
                                       "read": ("settle in and read a book for a while", None)})
+    wild = settings.wild_places if settings else ["woods", "junkyard"]
+    if "woods" in wild:
+        out["woods"] = Place("woods", "a patch of woods past the garden: sticks, bark, resin, berries and nuts, birdsong", 8,
+                             offers=("gather",), daylight_only=True,
+                             verbs={"gather": ("forage for sticks, bark, berries and nuts", FORAGE_HELP)})
+    if "junkyard" in wild:
+        out["junkyard"] = Place("junkyard", "a scrapyard over the hill: heaps of scrap metal, wire, springs and old machine parts",
+                                15, offers=("gather", "browse"), daylight_only=True,
+                                verbs={"gather": ("scavenge through the heaps", SCAVENGE_HELP),
+                                       "browse": ("look over the heaps to see what's worth digging for", None)})
     for c in state.characters("neighbor"):
         out[home_of(c)] = Place(home_of(c), f"where your neighbor {c['name']} lives" + (f" ({c['about']})" if c["about"] else ""),
                                 walk, offers=("talk",))
@@ -106,8 +122,8 @@ def find(state, library, query) -> str | None:
     return hit[0] if len(hit) == 1 else None
 
 
-def start_walk(state, settings, place: str) -> int:
-    minutes = settings.walk_minutes
+def start_walk(state, settings, place: str, minutes: float | None = None) -> int:
+    minutes = settings.walk_minutes if minutes is None else minutes
     state.start_session(0, 0, minutes, time.time() + minutes * 60 / settings.work_speed, kind="walk", target=place)
     state.update_agent(activity="walking", description="walking home" if place == HOME else f"on the way to {label(place)}")
     return max(1, round(minutes / settings.work_speed))
@@ -120,13 +136,14 @@ async def arrive(state, settings, gm, library) -> dict | None:
         return None
     state.end_session()
     place = sess["target"]
+    here_record = registry(state, settings, library).get(place)
     first = state.meta(f"place:{place}") is None
     if first:
         desc = None
         if gm and place != HOME:
             host = neighbor_at(state, place)
             hints = (f"this is where {host['name']} lives. Who they are: {host['persona']}" if host else
-                     library.overview() if place == "library" and library else "")
+                     library.overview() if place == "library" and library else here_record.blurb if here_record else "")
             desc = await gm.describe_place(label(place), hints)
         state.set_meta(**{f"place:{place}": clip(desc, 500) if desc else ""})
     state.update_agent(location=place, activity="idle",
@@ -157,11 +174,12 @@ def perception(state, settings, library) -> list[str]:
         return []
     desc = state.meta(f"place:{here_key}")
     where = f"home ({HOME})" if here_key == HOME else label(here_key)
-    lines = [f"You are at: {where}" + (f" - {desc}" if desc else "")]
+    here_place = places.get(here_key)
+    closed = ", closed for now (it's dark; it opens in the morning)" if here_place and not open_now(here_place, settings) else ""
+    lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
     host = neighbor_at(state, here_key)
     if host:
         lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}.")
-    here_place = places.get(here_key)
-    if here_place and here_place.verbs:
+    if here_place and here_place.verbs and not closed:
         lines.append("Here you can: " + ", ".join(f"{v} ({short})" for v, (short, _) in here_place.verbs.items()) + ".")
     return lines + directory(state, settings, library)

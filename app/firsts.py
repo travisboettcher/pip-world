@@ -80,6 +80,9 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
             _surprise(add, d)
         if not d.get("interrupted") and d.get("outcome") in ("insight", "surprise"):
             add(f"experiment:{d['outcome']}", you(f"had an experiment give you {'an insight' if d['outcome'] == 'insight' else 'a surprise'}"))
+    elif kind == "gathered":
+        for it in d.get("items", []):
+            add(f"found:{it['name']}", you(f"found {it['name']}"))
     elif kind == "creation_made":
         add("creation", you("finished making a thing"), MAJOR)
     elif kind == "reading":

@@ -45,6 +45,7 @@ class Settings:
     firsts_shown: int = 5              # most firsts listed at once
     night_pass: str = "apply"          # off | log (decide and record, don't act) | apply
     max_night_ops: int = 3
+    wild_places: list[str] = field(default_factory=lambda: ["woods", "junkyard"])  # places to gather at
     sleep: bool = True                 # day/night rhythm and the sleep tool
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
@@ -101,6 +102,7 @@ class Settings:
             firsts_shown=_int("FIRSTS_SHOWN", 5),
             night_pass=(e("NIGHT_PASS") or "apply").lower() if (e("NIGHT_PASS") or "apply").lower() in ("off", "log", "apply") else "apply",
             max_night_ops=_int("MAX_NIGHT_OPS", 3),
+            wild_places=[w.strip() for w in (e("WILD_PLACES") if e("WILD_PLACES") is not None else "woods,junkyard").split(",") if w.strip()],
             sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
@@ -114,6 +116,6 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,experiment,revise_plan,sleep,undo_decision,resume_project").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

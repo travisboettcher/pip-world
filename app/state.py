@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS expectations (
   surprising INTEGER NOT NULL DEFAULT 0, direction TEXT, event_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS day_stats (day TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS place_finds (
+  place TEXT NOT NULL, item TEXT NOT NULL, times INTEGER NOT NULL DEFAULT 0, last_ts REAL NOT NULL,
+  PRIMARY KEY (place, item)
+);
 CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
 );
@@ -137,7 +141,7 @@ def clean_sender(name) -> str:
     return " ".join(str(name or "").split())[:40] or "A visitor"
 
 
-FIRSTS_VERSION = "5"
+FIRSTS_VERSION = "6"
 RETURN_GAP_HOURS = 36  # a facet seen again after this long counts as a return  # bump to rebuild facets from the log when firsts.py changes
 SHOWINGS_DONE = 99  # backfilled history is never presented as new
 
@@ -222,7 +226,7 @@ class State:
                 else self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
             )
             sess = self.session()
-            if sess and sess["kind"] in ("work", "experiment"):
+            if sess and sess["kind"] in ("work", "experiment", "gather"):
                 energy_rate -= self.s.work_energy_per_hour
             hunger_rate = self.s.hunger_per_hour * (0.5 if a["activity"] == "sleeping" else 1)
             hunger = clamp(a["hunger"] + hunger_rate * hours)
@@ -949,6 +953,24 @@ class State:
             self.db.execute("UPDATE focus SET status = ?, reviewed_at = ?, note = ? WHERE id = ?",
                             (status, time.time(), note[:200], focus_id))
             self.db.commit()
+
+    def add_find(self, place: str, item: str, ts: float | None = None) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO place_finds (place, item, times, last_ts) VALUES (?, ?, 1, ?) "
+                            "ON CONFLICT(place, item) DO UPDATE SET times = times + 1, last_ts = excluded.last_ts",
+                            (place, item.lower(), ts or time.time()))
+            self.db.commit()
+
+    def finds_at(self, place: str) -> list[dict]:
+        with self.lock:
+            return [dict(r) for r in self.db.execute(
+                "SELECT * FROM place_finds WHERE place = ? ORDER BY times DESC, last_ts DESC", (place,))]
+
+    def found_where(self, item_name: str) -> list[dict]:
+        """Places Pip has found something like `item_name` (shares a meaningful word), most often first."""
+        with self.lock:
+            rows = [dict(r) for r in self.db.execute("SELECT * FROM place_finds ORDER BY times DESC, last_ts DESC")]
+        return [r for r in rows if self.related(item_name, r["item"])]
 
     def add_turning(self, score: int, signals: list, start: float, end: float) -> int:
         with self.lock:
