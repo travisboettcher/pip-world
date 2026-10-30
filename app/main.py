@@ -47,6 +47,9 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
+logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request (every 30 s for Matrix sync) is just noise
+
+
 def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     settings = settings or Settings.from_env()
 
