@@ -115,13 +115,7 @@ time you sent something out into the world"; "the first time you heard from outs
 One short paragraph: you have a way to send a short postcard to a friend outside; use it rarely, for what is worth telling. Not for
 status updates, not to ask for something you already asked for.
 
-## Safety
-- The destination is fixed in `.env`; the model chooses only the words. A prompt-injected page or visitor message can at most make Pip
-  say something short to the owner, within the daily cap and logged.
-- The secret (webhook URL/token) is never sent to the model, never logged, never in events.
-- Failure modes are quiet: caps, `off`, and `log` all stop messages without code changes.
-
-## What the receiving side needs (documented, not code)
+## Receiving side for the webhook channel (documented, not code)
 A Home Assistant automation: trigger `webhook` (`webhook_id` a long random string, local only), action
 `notify.mobile_app_pixel_11_pro` with `message: "{{ trigger.json.text }}"`, `title: "Pip"`, and `data.url` pointing at
 `https://agent-world.internal.example.io/ui/` so tapping opens the UI. The same payload works for an n8n Webhook node.
