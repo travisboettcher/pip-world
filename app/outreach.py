@@ -12,6 +12,7 @@ import re
 import time
 from datetime import datetime
 
+from . import matrix  # noqa: F401  (registers the 'matrix' channel)
 from . import sleep as sleepmod
 from .channels import Inbound, Outbound, build_channels
 from .text import clip

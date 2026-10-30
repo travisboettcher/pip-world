@@ -120,7 +120,7 @@ is in my notes, not in the gears".
 - [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
 
 ### Social
-- [ ] **Pip can reach out** (designed: DESIGN-outreach.md, a pluggable two-way channel with self-hosted Matrix first; the channel-agnostic core is built, the Matrix channel and service are next) -- `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
+- [ ] **Pip can reach out** (designed: DESIGN-outreach.md, a pluggable two-way channel with self-hosted Matrix first; the channel-agnostic core and the Matrix channel are built; the homeserver service and bootstrap are next) -- `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
       Pip can only talk when spoken to
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
 - [x] **A neighbor** (built; DESIGN-neighbor.md; deploy: add `write_letter` to `TOOLS`): a second creature with its own persona exchanging letters with delivery delays, so Pip has

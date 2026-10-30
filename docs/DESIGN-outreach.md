@@ -1,6 +1,6 @@
 # Design: reaching out (a two-way, pluggable channel; Matrix first)
 
-Status: **step 1 (the channel-agnostic core) built 2026-10-30; the Matrix channel and service are next.** Built: `channels.py` (the `Channel`
+Status: **steps 1 (the channel-agnostic core) and 2 (the Matrix channel, `matrix.py`) built 2026-10-30; the homeserver service is next.** Built: `channels.py` (the `Channel`
 interface, `ChannelStore`, registry, `FakeChannel`), `outreach.py` (policy, `send_postcard`, reply routing, typing), a shared `Agent.receive`
 (also used by `POST /inbox`), `inbox` source/conversation/external id, `GET /outreach`, `pipchat outreach`, events, firsts, day counts, and the
 contract test suite (`tests/channel_contract.py`). With no `OUTREACH_CHANNELS` configured the tool is not offered and nothing changes. Event field
@@ -142,3 +142,12 @@ One short paragraph: you have a way to message a friend outside, in a thread; st
 - Made: pluggable; the web UI chat stays separate; the name `send_postcard`; 2 new threads a day with replies free inside a thread; live from the start; photos supported by the interface.
 - Made (2026-10-30): **public hostname** for the homeserver (federation and registration off), **unencrypted room** for the first version.
 - Still to settle at build time: the homeserver (Tuwunel/Continuwuity vs Synapse, whichever is current and healthy) and whether to host Element Web too.
+
+## Matrix channel: as built
+`matrix.py` talks to the Client-Server API over httpx (`MATRIX_HOMESERVER`, `MATRIX_USER_ID`, `MATRIX_ACCESS_TOKEN`, `MATRIX_ROOM_ID`, `MATRIX_ALLOWED`). It takes
+the room's current position on first start (no history replay), long-polls `/sync` with a persisted `since` token, delivers text from allowed users in the one room
+(a thread keeps its root; a plain reply to one of Pip's postcards maps to it; a top-level message opens a conversation), ignores its own events, notices, images and other
+rooms, leaves every other invite and joins its own, backs off on errors, and keeps a persisted list of delivered event ids so a re-offered event is never delivered twice.
+It sends text into a thread (with the in-reply-to fallback pointing at the thread's latest message), starts a thread with a top-level message, shows typing, sends read
+receipts, and uploads and sends images in the thread (a failed upload still delivers the words and says so). It passes the shared contract suite against an in-process fake
+homeserver. An unconfigured channel never breaks Pip: it reports "not configured" and the error shows in `pipchat outreach`.

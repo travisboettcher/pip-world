@@ -6,6 +6,16 @@ def _int(name: str, default: int) -> int:
     return int(os.environ.get(name) or default)
 
 
+def _parse_people(raw: str) -> dict:
+    """'@morgan:example.org=Morgan, @jade:example.org' -> {'@morgan:example.org': 'Morgan', '@jade:example.org': 'Jade'}"""
+    out = {}
+    for part in (raw or "").split(","):
+        uid, _, name = part.strip().partition("=")
+        if uid.strip():
+            out[uid.strip()] = name.strip() or uid.strip().lstrip("@").split(":")[0].capitalize()
+    return out
+
+
 def _float(name: str, default: float) -> float:
     return float(os.environ.get(name) or default)
 
@@ -67,6 +77,12 @@ class Settings:
     read_chars_per_minute: int = 700   # how much text a reading session covers
     tools: list[str] = field(default_factory=list)
     tavily_api_key: str = ""
+    # Matrix channel (see matrix.py): the homeserver, Pip's account and token, the one room, and who may talk to Pip
+    matrix_homeserver: str = ""
+    matrix_user_id: str = ""
+    matrix_access_token: str = field(default="", repr=False)
+    matrix_room_id: str = ""
+    matrix_allowed: dict = field(default_factory=dict)   # {"@morgan:server": "Morgan"}
 
     # Stat dynamics, per hour
     hunger_per_hour: float = 0.08
@@ -132,4 +148,9 @@ class Settings:
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
             tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
+            matrix_homeserver=e("MATRIX_HOMESERVER", ""),
+            matrix_user_id=e("MATRIX_USER_ID", ""),
+            matrix_access_token=e("MATRIX_ACCESS_TOKEN", ""),
+            matrix_room_id=e("MATRIX_ROOM_ID", ""),
+            matrix_allowed=_parse_people(e("MATRIX_ALLOWED", "")),
         )

@@ -196,3 +196,6 @@ receives messages from allowed people into Pip's inbox (shown in the web chat as
 into the same thread; `send_postcard` starts a new thread, at most `OUTREACH_PER_DAY` (2) a day, `OUTREACH_MIN_GAP_HOURS` (3) apart, never at night, plain
 short text without links, never twice alike. `pipchat outreach` shows channels, today's allowance and what was sent. New channels implement the small `Channel`
 interface in `channels.py` and pass `tests/channel_contract.py`.
+
+The Matrix channel (`OUTREACH_CHANNELS=matrix`, settings `MATRIX_*` in `.env.tpl`) uses one private, unencrypted room on the owner's own homeserver; the homeserver
+service and account/room bootstrap are separate (see the design).
