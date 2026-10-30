@@ -138,7 +138,8 @@ def test_a_short_owner_password_and_a_missing_token_are_refused(world, monkeypat
 def test_the_one_time_token_is_read_from_the_servers_log(monkeypatch):
     class R:
         stdout = ("\x1b[1mWelcome\x1b[0m\nregister an account on \x1b[1;32mm.example\x1b[0m using the registration token "
-                  "\x1b[1;32mFsXub4SNDyGgpAM2\x1b[0m . Pick your own\n")
+                  "\x1b[1;32mFsXub4SNDyGgpAM2\x1b[0m . Pick your own username and password!\n"
+                  "\x1b[31mThe registration token you set in your configuration will not function\x1b[0m until you create an account.\n")
         stderr = ""
     monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: R())
     assert B.first_account_token() == "FsXub4SNDyGgpAM2"
