@@ -151,3 +151,8 @@ See [DESIGN-expectations.md](DESIGN-expectations.md). `work_on` and `experiment`
 (`well`/`slowly`/`badly`, `works`/`partly`/`fails`); the engine compares it with the outcome and Pip sees the plain comparison.
 Step durations are compared with Pip's own minutes guess. Big misses are flagged as surprises (better/worse/longer/shorter), feed
 the first-surprise facts, the nightly reflection and a small calibration block; `GET /memory` lists the records.
+
+## Turning points
+At each reflection the engine looks for signals that the day changed more than usual (major firsts, surprises, counts far
+from Pip's own usual, goal changes, a new main conversation partner, returns after a long gap). Three or more make a
+candidate that the reflection is asked about as facts; Pip may mark at most one day as mattering, with cited evidence.

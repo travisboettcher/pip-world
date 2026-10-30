@@ -153,3 +153,19 @@ the Narrative Continuity Test's style/goal drift).
 - This is the mechanism behind a thought like "I used to check before cutting; now I rush": the counts give it
   something checkable, and a wrong claim gets demoted rather than believed.
 Not done yet: Pip's state at the time of a recalled memory (a "recall frame"), and a delayed-self recognition test.
+
+## 5. Turning-point detector (built 2026-10-30)
+Mechanism 5 of RESEARCH-self.md (McAdams' turning points; Ricoeur's discordance; the reminiscence-bump's novelty and
+consequence; surprise as prediction error). Deterministic and facts-only, run at reflection time over the stretch since
+the last reflection. It never decides that something mattered: it only makes a *candidate* and asks.
+- **Signals**, each with event ids where there are any (capped per kind so one busy thing can't swamp the list):
+  major firsts (<= 2); surprises (<= 2); counts far from Pip's own usual (<= 2: at least 2 sd and 2 counts from the mean
+  of the previous days, needing 3 prior days); a goal change (project finished, started or abandoned, or a plan
+  changed); a change in who Pip talks with most; and a return to something after a long gap (>= 36 h; new `returns`
+  field on events, computed with the facets).
+- **Candidate** when at least 3 signals fire (`TURNING_MIN`). It is stored in `turning_points` and listed in the
+  reflection prompt as "Things that changed more than usual (facts, not verdicts)", with citable ids.
+- **Pip's claim**: an optional `turning_points` (at most one; most days are not turning points), cited and verified like
+  insights and stored as kind `turning`. Supported ones show in the prompt as "Days that mattered to you" (max 2),
+  are found by `recall` ("a day that mattered"), and appear in `GET /memory`.
+- **No extra LLM calls.** Not done: grouping days into "chapters" (life periods) and a mid-day detector.

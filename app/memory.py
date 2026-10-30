@@ -9,6 +9,7 @@ import re
 import time
 from datetime import datetime
 
+from . import turning
 from .text import clip
 
 RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading")
@@ -208,7 +209,14 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         state.set_meta(**done)  # a quiet day: nothing to go over
         return None
     stats = compute_day_stats(state, since, now)
-    state.save_day_stats(datetime.fromtimestamp(now).date().isoformat(), stats)
+    today = datetime.fromtimestamp(now).date().isoformat()
+    state.save_day_stats(today, stats)
+    candidate = turning.detect(state, since, now, stats, today, STAT_LABELS)
+    if candidate["flagged"]:
+        state.add_turning(candidate["score"], candidate["signals"], since, now)
+        for sg in candidate["signals"]:  # evidence Pip can cite even if the budget cut the line from the material
+            for ev in sg["events"]:
+                shown.setdefault(ev, clip(state.event_text(ev) or sg["text"], 300))
     firsts = state.firsts_between(since, now)
     surprises = [x for x in reversed(state.expectations(limit=20, since=since, surprising=True)) if x["event_id"] in shown]
     portraits = list(reversed(state.reflections("portrait", limit=PORTRAITS_SHOWN)))
@@ -225,6 +233,9 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         + (f"Your recent days in plain counts (not judgments):\n{numbers}\n\n" if (numbers := format_stats(state.day_stats(4))) else "")
         + ("What you thought of people so far:\n" + "\n".join(f"- {n}: {p['notes']}" for n, p in known.items()) + "\n\n"
            if known else "")
+        + (("Things that changed more than usual (facts, not verdicts):\n"
+            + "\n".join("- " + (f"[e{sg['events'][0]}] " if sg["events"] else "") + sg["text"]
+                         for sg in candidate["signals"]) + "\n\n") if candidate["flagged"] else "")
         + (("Things that did not go as you expected (cite their ids):\n"
             + "\n".join(f"- [e{x['event_id']}] {x['subject']}: you expected {x['expected']}; {x['actual']}"
                          if x["kind"] != "step" else f"- [e{x['event_id']}] {x['subject']}: you guessed {x['expected']}; "
@@ -249,7 +260,10 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         "- `changed`: only if you see yourself differently than in the earlier descriptions - what you do, care "
         "about or believe differently now. Each has `text`, `importance`, and `because` (ids of the lines or "
         "beliefs, as above; the counts above are fair evidence too - name them in `text`). Leave it empty if "
-        "you're much the same; most nights you are."
+        "you're much the same; most nights you are.\n"
+        "- `turning_points`: at most one, and only if this stretch genuinely changed something for you - what "
+        "changed, in your words (`text`, `importance`, `because` as above). Most days are not turning points; "
+        "leave it empty."
     )
     insight = {"type": "object", "properties": {"text": {"type": "string"}, "importance": {"type": "integer"},
                                                 "because": {"type": "array", "items": {"type": "string"}}},
@@ -260,7 +274,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     out = await gm.ask(task, {
         "summary": {"type": "string"}, "insights": {"type": "array", "items": insight},
         "people": {"type": "array", "items": person}, "self": {"type": "string"},
-        "changed": {"type": "array", "items": insight},
+        "changed": {"type": "array", "items": insight}, "turning_points": {"type": "array", "items": insight},
     }, ["summary", "self"], "reflect", system=system, max_tokens=REFLECT_MAX_TOKENS) if gm else None
     if not out or not clip(out.get("summary"), 10):
         state.set_meta(reflection_failed_at=str(now))
@@ -271,6 +285,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     insights = await cited_insights(state, settings, gm, out.get("insights"), shown, earlier_text, since, now)
     changes = await cited_insights(state, settings, gm, out.get("changed"), shown, earlier_text, since, now,
                                    kind="change", limit=MAX_CHANGES)
+    turns = await cited_insights(state, settings, gm, out.get("turning_points"), shown, earlier_text, since, now,
+                                 kind="turning", limit=1)
     updated = []
     allowed = {n.lower(): n for n in names}
     for p in out.get("people") or []:
@@ -284,7 +300,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         state.set_meta(self_portrait=portrait)
         state.add_reflection("portrait", portrait, 5, since, now, support="n/a")  # append-only: every version is kept
     state.set_meta(**done, reflection_failed_at="0")
-    data = {"summary": summary, "insights": insights, "changes": changes, "people": updated, "lines": len(lines),
+    data = {"summary": summary, "insights": insights, "changes": changes, "turning": turns, "candidate": candidate if candidate["flagged"] else None,
+            "people": updated, "lines": len(lines),
             "stats": stats}
     state.log("reflection", **data)
     return data
@@ -302,6 +319,7 @@ HUNCHES_SHOWN = 2
 PORTRAITS_SHOWN = 3
 MAX_CHANGES = 2
 CHANGES_SHOWN = 2
+TURNING_SHOWN = 2
 MAX_CITES = 6
 CITE = re.compile(r"^\s*\[?([ei])\s*#?(\d+)\]?\s*$", re.I)
 
@@ -364,6 +382,10 @@ def perception(state, now: float | None = None) -> list[str]:
     if changed:
         lines.append("How you've changed:")
         lines += [f"- {c['text']}" for c in changed]
+    mattered = state.reflections("turning", limit=TURNING_SHOWN, grounded=True)
+    if mattered:
+        lines.append("Days that mattered to you:")
+        lines += [f"- {ago(t['period_end'], now)}: {t['text']}" for t in mattered]
     people = state.people()[:5]
     if people:
         lines.append("People you know:")
@@ -385,7 +407,7 @@ def perception(state, now: float | None = None) -> list[str]:
 
 def format_recall(hits: list[dict], now: float | None = None, because: dict | None = None) -> str:
     labels = {"day": "a day you remember", "insight": "something you came to believe", "person": "what you think of them",
-              "portrait": "how you described yourself", "change": "something you noticed changing in yourself"}
+              "portrait": "how you described yourself", "change": "something you noticed changing in yourself", "turning": "a day that mattered"}
     out = []
     for h in hits:
         src = h["source"]

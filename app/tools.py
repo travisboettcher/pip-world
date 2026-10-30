@@ -586,7 +586,7 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult("nothing comes to mind", followup=True)
     because = {}
     for h in hits:
-        if h["source"] in ("insight", "change"):  # show what a belief rests on, so Pip can check it
+        if h["source"] in ("insight", "change", "turning"):  # show what a belief rests on, so Pip can check it
             texts = [ctx.state.event_text(i) if k == "event" else ctx.state.reflection_text(i)
                      for k, i in ctx.state.reflection_cites(int(h["ref"]))]
             because[(h["source"], str(h["ref"]))] = [t for t in texts if t][:2]

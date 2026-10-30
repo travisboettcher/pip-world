@@ -163,7 +163,8 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [x] Versioned self-portrait (all versions kept), `changed` claims with citations, daily counts as evidence
 - [x] Expectations and surprise (DESIGN-expectations.md): optional `expect` on `work_on`/`experiment`, step-duration
       guesses, facts-only comparison, surprise firsts, calibration block, learning progress
-- [ ] Next from RESEARCH-self.md: turning-point detector, capabilities table, a night pass
+- [x] Turning-point detector (DESIGN-self.md section 5)
+- [ ] Next from RESEARCH-self.md: life periods/chapters, capabilities table, a night pass
       that can change goals, recall frame (Pip's state then), delayed-self recognition test
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one

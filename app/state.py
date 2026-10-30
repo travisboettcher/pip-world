@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS turning_points (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, period_start REAL NOT NULL, period_end REAL NOT NULL,
+  score INTEGER NOT NULL, signals TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS expectations (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, project_id INTEGER, craft TEXT NOT NULL DEFAULT '',
   subject TEXT NOT NULL DEFAULT '', expected TEXT NOT NULL, actual TEXT NOT NULL, error REAL NOT NULL,
@@ -121,7 +125,8 @@ def clean_sender(name) -> str:
     return " ".join(str(name or "").split())[:40] or "A visitor"
 
 
-FIRSTS_VERSION = "3"  # bump to rebuild facets from the log when firsts.py changes
+FIRSTS_VERSION = "4"
+RETURN_GAP_HOURS = 36  # a facet seen again after this long counts as a return  # bump to rebuild facets from the log when firsts.py changes
 SHOWINGS_DONE = 99  # backfilled history is never presented as new
 
 
@@ -231,9 +236,10 @@ class State:
                 "INSERT INTO events (ts, kind, data) VALUES (?, ?, ?)",
                 (now, kind, json.dumps(data)),
             )
-            new = self._note_facets(kind, data, now, cur.lastrowid)
+            new, back = self._note_facets(kind, data, now, cur.lastrowid)
+            extra = {**({"firsts": new} if new else {}), **({"returns": back} if back else {})}
             self.db.execute("UPDATE events SET data = ?, importance = ? WHERE id = ?",
-                            (json.dumps({**data, "firsts": new} if new else data),
+                            (json.dumps({**data, **extra}),
                              event_importance(kind, data, new), cur.lastrowid))
             if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
                 self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
@@ -241,18 +247,23 @@ class State:
             return cur.lastrowid
 
     # --- firsts (see firsts.py, DESIGN-self.md) -------------------------------------
-    def _note_facets(self, kind: str, data: dict, ts: float, event_id: int, shown: int = 0) -> list[dict]:
-        """Count this event's facets; returns the ones seen for the first time ({key, label, tier})."""
-        new = []
+    def _note_facets(self, kind: str, data: dict, ts: float, event_id: int,
+                     shown: int = 0) -> tuple[list[dict], list[dict]]:
+        """Count this event's facets. Returns (firsts, returns): facets seen for the first time ({key, label, tier}),
+        and facets seen again after a long gap ({key, label, days})."""
+        new, back = [], []
         for key, label, tier in firstsmod.facets(kind, data, self.s, ts):
-            row = self.db.execute("SELECT 1 FROM facets WHERE key = ?", (key,)).fetchone()
+            row = self.db.execute("SELECT last_ts, label FROM facets WHERE key = ?", (key,)).fetchone()
             if row:
+                gap = (ts - row["last_ts"]) / 86400
+                if gap * 24 >= RETURN_GAP_HOURS and not key.startswith("period:") and row["label"].startswith("the first time "):
+                    back.append({"key": key, "label": row["label"], "days": round(gap, 1)})
                 self.db.execute("UPDATE facets SET count = count + 1, last_ts = ? WHERE key = ?", (ts, key))
             else:
                 self.db.execute("INSERT INTO facets (key, label, tier, first_event_id, first_ts, last_ts, shown) "
                                 "VALUES (?, ?, ?, ?, ?, ?, ?)", (key, label, tier, event_id, ts, ts, shown))
                 new.append({"key": key, "label": label, "tier": tier})
-        return new
+        return new, back
 
     def _backfill_firsts(self) -> None:
         """One-time: replay the existing log so history gets its true first dates (silently: nothing is 'new')."""
@@ -260,10 +271,11 @@ class State:
             return
         self.db.execute("DELETE FROM facets")
         for row in self.db.execute("SELECT id, ts, kind, data FROM events ORDER BY id").fetchall():
-            data = {k: v for k, v in json.loads(row["data"]).items() if k != "firsts"}
-            new = self._note_facets(row["kind"], data, row["ts"], row["id"], shown=SHOWINGS_DONE)
+            data = {k: v for k, v in json.loads(row["data"]).items() if k not in ("firsts", "returns")}
+            new, back = self._note_facets(row["kind"], data, row["ts"], row["id"], shown=SHOWINGS_DONE)
+            extra = {**({"firsts": new} if new else {}), **({"returns": back} if back else {})}
             self.db.execute("UPDATE events SET data = ?, importance = ? WHERE id = ?",
-                            (json.dumps({**data, **({"firsts": new} if new else {})}),
+                            (json.dumps({**data, **extra}),
                              event_importance(row["kind"], data, new), row["id"]))
         self.set_meta(firsts_v=FIRSTS_VERSION)
 
@@ -823,6 +835,19 @@ class State:
             q += " WHERE " + " AND ".join(where)
         with self.lock:
             return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
+
+    def add_turning(self, score: int, signals: list, start: float, end: float) -> int:
+        with self.lock:
+            cur = self.db.execute("INSERT INTO turning_points (ts, period_start, period_end, score, signals) "
+                                  "VALUES (?, ?, ?, ?, ?)", (time.time(), start, end, score, json.dumps(signals)))
+            self.db.commit()
+            return cur.lastrowid
+
+    def turning_points(self, limit: int = 20) -> list[dict]:
+        """Flagged candidates, newest first."""
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM turning_points ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**dict(r), "signals": json.loads(r["signals"])} for r in rows]
 
     def save_day_stats(self, day: str, stats: dict) -> None:
         with self.lock:

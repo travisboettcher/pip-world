@@ -166,6 +166,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 "portraits": st.reflections("portrait", limit=20), "changes": st.reflections("change", limit=20),
                 "stats": [{"day": d, **v} for d, v in st.day_stats(14)],
                 "expectations": st.expectations(limit=50),
+                "turning": st.reflections("turning", limit=20), "turning_candidates": st.turning_points(20),
                 "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
 
     @app.get("/recall")

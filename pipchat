@@ -438,6 +438,10 @@ def cmd_memory(pip: Pip, a) -> None:
         print(bold("People"))
         for p in m["people"]:
             print(f"  {p['name']}: {p['notes']}" + dim(f"  (last seen {fmt_time(p['last_seen'])})"))
+    if m.get("turning"):
+        print(bold("Days that mattered"))
+        for t in m["turning"][:a.n]:
+            print(f"  {dim(fmt_time(t['period_end']))} {t['text']}" + ("" if t["grounded"] else dim(" (hunch)")))
     if m.get("changes"):
         print(bold("How Pip has changed"))
         for c in m["changes"][:a.n]:

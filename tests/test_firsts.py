@@ -77,7 +77,7 @@ def test_backfill_gives_history_its_true_first_dates_silently(tmp_path):
     assert set(again) == set(first) and all(again[k]["first_ts"] == pytest.approx(first[k]) for k in first)
     assert st2.recent_firsts(24, 3, 10) == []                      # nothing from history is presented as new
     assert any("firsts" in e["data"] for e in st2.events(10))      # but the events are marked again
-    assert st2.meta("firsts_v") == "3"
+    assert st2.meta("firsts_v") == "4"
     State(s)                                                       # idempotent
     assert st2.db.execute("SELECT count FROM facets WHERE key = 'tool:plant'").fetchone()["count"] == 1
 
