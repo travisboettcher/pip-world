@@ -39,7 +39,9 @@ def recall_text(kind: str, d: dict) -> str | None:
     if kind == "gift":
         return f"{d['sender']} gave you {d['qty']} x {d['item']}"
     if kind == "work":
-        return None if d.get("interrupted") else f"Working on {d['project']} ({d['stage']}), {d['result']}: {d['text']}"
+        return None if d.get("interrupted") else (
+            f"Working on {d['project']} ({d['stage']}), {d['result']}: {d['text']}"
+            + (f" You learned: {d['learned']}" if d.get("learned") else ""))
     if kind == "experiment":
         return None if d.get("interrupted") else (
             f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"

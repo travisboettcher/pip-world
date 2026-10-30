@@ -18,6 +18,7 @@ from . import projects as proj
 from .config import Settings
 from .llm.base import ToolSpec
 from .state import RESOLVABLE, SECTIONS, State, clamp
+from .text import clip
 from .world import FOOD_DEFAULT
 
 
@@ -337,17 +338,30 @@ def describe_stage(project: dict, i: int) -> str:
             + (f"; uses {mats}" if mats and not st["started"] else "") + ")")
 
 
+STEP_SCHEMA = {"type": "array", "description": "your steps, in order", "items": {"type": "object", "properties": {
+    "name": {"type": "string"}, "minutes": {"type": "integer", "description": "your guess, 15-240"},
+    "materials": {"type": "object", "additionalProperties": {"type": "integer"},
+                  "description": "things you expect this step to use up, e.g. {\"brass wire\": 2}"}},
+    "required": ["name"]}}
+
+
 @tool("start_project",
-      "Start making something - anything you'd like to exist. The world works out its stages, any materials they "
-      "need and how hard it is. Then work_on it. Some things you make will work or act on their own; many are "
-      "simply themselves, and that's just as good.",
+      "Start making something - anything you'd like to exist. The plan is yours: give the steps you think it "
+      "takes (you can start with just the first few; you'll learn more as you go). The world checks your plan "
+      "and tells you what you can't know yet. Then work_on it. Some things you make will work or act on their "
+      "own; many are simply themselves, and that's just as good.",
       _obj({"name": {"type": "string", "description": "short name"},
-            "goal": {"type": "string", "description": "what it should be, look like or do, one sentence"}}, ["name"]))
+            "goal": {"type": "string", "description": "what it should be, look like or do, one sentence"},
+            "steps": STEP_SCHEMA}, ["name", "steps"]))
 async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
     name = str(args["name"]).strip()[:60]
     goal = str(args.get("goal") or "").strip()[:300]
     if not name:
         return ToolResult("error: a project needs a name", followup=True)
+    steps = proj.sanitize_stages(args.get("steps"), proj.MAX_STAGES)
+    if not steps:
+        return ToolResult("error: sketch at least the first step or two of how you'd do it. If you don't know how "
+                          "to begin, look it up (web_search, the library) or ask a visitor, then start", followup=True)
     active = ctx.state.projects("active")
     if any(p["name"].lower() == name.lower() for p in active):
         return ToolResult(f"you're already working on {name!r}; use work_on", followup=True)
@@ -355,27 +369,30 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"you already have {len(active)} projects going ({', '.join(p['name'] for p in active)}); "
                           "finish or abandon_project one first", followup=True)
     belongings = [f"{i['name']} x{i['qty']} ({i['kind']})" for i in ctx.state.items()]
-    skills = {c: proj.level(xp) for c, xp in ctx.state.skills().items()}
-    raw = await ctx.gm.plan(name, goal, belongings, skills) if ctx.gm else None
-    plan = proj.sanitize_plan(raw)
+    review = await ctx.gm.review_start(name, goal, steps, belongings, proj.feel(ctx.state)) if ctx.gm else None
+    plan = proj.build_plan(steps, review)
     p = ctx.state.add_project(name, goal, plan["craft"], plan["difficulty"], proj.new_stages(plan), plan["tools"])
-    stages = "; ".join(f"{i + 1}. {s['name']} (~{s['minutes']} min"
-                       + (", needs " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
-                       + ")" for i, s in enumerate(p["stages"]))
-    tools = f" Helpful tools: {', '.join(p['tools'])}." if p["tools"] else ""
     ctx.state.update_project(p["id"], questions=plan["questions"], hidden=plan["hidden"])
-    unknown = (" That's as far as you can see for now. What you don't know yet: " + "; ".join(plan["questions"])
-               + ". Work out what you can, then experiment or look things up (and revise_plan) to find the way."
+    listing = "; ".join(f"{i + 1}. {s['name']} (~{s['minutes']} min"
+                        + (", needs " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
+                        + ")" for i, s in enumerate(plan["stages"]))
+    tools = f" Helpful tools: {', '.join(plan['tools'])}." if plan["tools"] else ""
+    concern = f" A thought on your plan: {clip((review or {}).get('concerns'), 200)}" if (review or {}).get("concerns") else ""
+    unknown = (" What you don't know yet: " + "; ".join(plan["questions"])
+               + ". Work out what you can, then experiment or look things up, and revise_plan as you learn."
                if plan["questions"] else "")
-    return ToolResult(f"started project #{p['id']} {p['name']} ({p['craft']}, difficulty {p['difficulty']}/5). "
-                      f"Stages: {stages}.{tools}{unknown}", followup=True)
+    return ToolResult(f"started project #{p['id']} {p['name']} ({plan['craft']}, difficulty {plan['difficulty']}/5). "
+                      f"Your plan: {listing}.{tools}{concern}{unknown}", followup=True)
 
 
 @tool("work_on",
       "Spend a block of focused time (15-120 minutes) on one of your projects. You'll find out how it went when "
       "the time is up - you don't need to do anything meanwhile (or set_activity). Resting stops early.",
       _obj({"project": {"type": "string", "description": "name or #id"},
-            "minutes": {"type": "integer", "description": "15-120, default 60"}}, ["project"]))
+            "minutes": {"type": "integer", "description": "15-120, default 60"},
+            "approach": {"type": "string", "description": "how you'll go about it this time - the world judges what "
+                                                          "you actually try, so a thoughtful approach counts"}},
+           ["project"]))
 async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
     p, err = st.find_project(args["project"])
@@ -405,7 +422,8 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
         stage["started"] = True
         st.update_project(p["id"], stages=p["stages"])
     minutes = proj.clamp_int(args.get("minutes"), *proj.SESSION_MINUTES, 60)
-    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed)
+    approach = str(args.get("approach") or "").strip()[:240]
+    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, target=approach)
     st.update_agent(activity="working", description=f"{p['name']}: {stage['name']}")
     real = max(1, round(minutes / ctx.settings.work_speed))
     return ToolResult(f"you settle in to work on {p['name']}, {describe_stage(p, i)}, for {minutes} min. "
@@ -439,31 +457,33 @@ async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("revise_plan",
-      "Change a project's plan because of something you learned elsewhere (a search, a book, a visitor). Say what "
-      "you learned. The world decides whether it changes anything. Needs some work or an experiment since your "
-      "last revision.",
-      _obj({"project": {"type": "string", "description": "name or #id"},
-            "because": {"type": "string", "description": "what you learned, and from where"}}, ["project", "because"]))
+      "Change a project's plan: add steps (they come after the ones you have), or drop steps you haven't begun. "
+      "It's your plan, so this is up to you. If you learned something elsewhere (a search, a book, a visitor) that "
+      "might settle something you didn't know, say what in `because` - the world decides whether it does, and only "
+      "after you've worked or experimented again since the last time.",
+      _obj({"project": {"type": "string", "description": "name or #id"}, "steps": STEP_SCHEMA,
+            "drop": {"type": "array", "items": {"type": "string"}, "description": "names of steps to drop"},
+            "because": {"type": "string", "description": "what you learned, and from where"}}, ["project"]))
 async def revise_plan(ctx: ToolContext, args: dict) -> ToolResult:
     p, err = ctx.state.find_project(args["project"])
     if not p:
         return ToolResult(f"error: {err}", followup=True)
+    steps = proj.sanitize_stages(args.get("steps"), proj.MAX_STAGES_REVISED)
+    drop = args.get("drop") if isinstance(args.get("drop"), list) else []
     because = str(args.get("because") or "").strip()[:400]
-    if len(because) < 8:
-        return ToolResult("error: say what you learned", followup=True)
-    changes, msg = await proj.revise(ctx.state, ctx.gm, p, because)
-    if changes is None:
-        return ToolResult(f"the plan stays as it is: {msg}", followup=True)
+    if not (steps or drop or because):
+        return ToolResult("error: give steps to add, steps to drop, or what you learned", followup=True)
+    changes, msg = await proj.revise(ctx.state, ctx.gm, p, steps, drop, because)
     bits = []
+    if changes["added"]:
+        bits.append("added: " + ", ".join(changes["added"]))
+    if changes["dropped"]:
+        bits.append("dropped: " + ", ".join(changes["dropped"]))
     if changes["finding"]:
         bits.append(f"you now know: {changes['finding']}")
     if changes["answered"]:
-        bits.append(f"answered: {changes['answered']}")
-    if changes["added"]:
-        bits.append("new steps: " + ", ".join(changes["added"]))
-    if changes["dropped"]:
-        bits.append("no longer needed: " + ", ".join(changes["dropped"]))
-    return ToolResult(f"{msg} " + "; ".join(bits), followup=True)
+        bits.append(f"settled: {changes['answered']}")
+    return ToolResult(" ".join(x for x in (msg, "; ".join(bits) or "the plan stays as it is") if x), followup=True)
 
 
 @tool("abandon_project", "Give up on one of your projects (materials already used are gone).",

@@ -309,9 +309,11 @@ class Agent:
         if k == "work" and not d.get("interrupted"):
             if d["project_done"]:
                 return f"You finished {d['project']}! {d['text']}"
-            if d["result"] in ("breakthrough", "setback") or d["finished_stage"]:
+            if d["result"] in ("breakthrough", "setback", "blowup") or d["finished_stage"] or d.get("learned"):
                 done = " (that stage is done)" if d["finished_stage"] else ""
-                return f"Working on {d['project']}: {d['text']}{done}"
+                lost = f" You lost some {', '.join(d['lost'])}." if d.get("lost") else ""
+                learned = f" You learned: {d['learned']}" if d.get("learned") else ""
+                return f"Working on {d['project']}: {d['text']}{done}{lost}{learned}"
         if k == "experiment" and not d.get("interrupted"):
             extra = (f" You now know: {d['finding']}" if d.get("finding") else "") + (
                 " New steps opened up: " + ", ".join(d["added"]) + "." if d.get("added") else "")
@@ -441,6 +443,7 @@ class Agent:
                 elif e["kind"] == "work":
                     lines.append(f"- work on {d['project']} ({d['stage']}): {d['result']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")
+                                 + (f" [learned: {d['learned']}]" if d.get("learned") else "")
                                  + (" [project finished!]" if d["project_done"] else
                                     " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
         if inbox:

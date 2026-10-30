@@ -55,14 +55,16 @@ HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`.
 ## Projects and creations
 Design and rationale: [DESIGN-creations.md](DESIGN-creations.md). Pip chooses what to make; the engine decides how it
 goes; a "game master" LLM call (same backend and budget) only writes flavor and picks from a fixed vocabulary.
-- `start_project(name, goal)`: the GM plans stages, materials, difficulty and craft. `work_on(project, minutes)` runs a
+- `start_project(name, goal, steps)`: **Pip writes the plan**; the GM reviews it (tags abilities, sets craft and
+  difficulty, holds the truth about what Pip can't know yet) and never rewrites it. `work_on(project, minutes, approach)` runs a
   real-time session (`WORK_SPEED` speeds it up), and Pip isn't woken by the heartbeat until it ends. Then a dice roll
-  (skill, owned helpful tools, difficulty, fatigue) decides setback / slow / good / breakthrough and the GM narrates
-  it. Resting cuts a session short at half credit; `set_activity` only re-describes it. `abandon_project` gives up.
+  (skill, owned helpful tools, difficulty, fatigue) sets the odds; if Pip described an approach the GM judges it and
+  may move the result one step either way (up to a blowup that costs progress, energy and a material); otherwise the
+  GM only narrates. Resting cuts a session short at half credit; `set_activity` only re-describes it. `abandon_project` gives up.
 - **Discovery** ([DESIGN-discovery.md](DESIGN-discovery.md)): plans are partial. The GM lists what Pip doesn't know yet
   (and writes hidden facts it never sees); `experiment(project, hypothesis)` is a timed session whose outcome the engine
-  rolls and the GM narrates, revealing facts, answering questions and adding stages. `revise_plan(project, because)`
-  brings in what Pip learned from searches, books or visitors. Abilities (precision, patience, ingenuity, knowledge,
+  rolls and the GM narrates, revealing facts and answering questions. `revise_plan(project, steps, drop, because)`
+  lets Pip edit its own plan freely, and bring in what it learned from searches, books or visitors (the GM judges that). Abilities (precision, patience, ingenuity, knowledge,
   handiness) transfer between crafts; Pip sees them as words, `pipchat projects` shows the numbers.
 - A finished project becomes a creation. Most (art, writing, keepsakes) have no behaviour and simply exist. Ones that
   genuinely work get up to 3 generic capabilities (`timekeeper`, `upkeep`, `periodic`, `sensor`, `helper`,

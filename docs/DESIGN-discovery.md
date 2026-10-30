@@ -15,24 +15,39 @@ Problem: the GM hands Pip a complete stage list up front, so a project is a chec
 - Pip is told in words ("your hands are steady", "patient"), never numbers. The API and pipchat still show numbers
   for the owner.
 
+## Who does what
+The plan is **Pip's**. The GM is the world: it reviews, judges and describes, and holds the truth. The engine
+owns the numbers and bounds what the GM can do.
+
+- **Pip** writes the steps (`start_project(name, goal, steps)`), says how it will go about each session
+  (`work_on(..., approach)`), proposes hypotheses (`experiment`), and edits its plan whenever it likes
+  (`revise_plan(steps, drop)`). If Pip has no steps it is told to look things up first.
+- **GM** (never rewrites, adds or removes Pip's steps):
+  - *reviews* the plan at the start: tags each step with abilities, sets craft/difficulty/tools, may offer one
+    "concern" if the plan is plainly unworkable, and writes the **open questions** and **hidden facts** (how the thing
+    really works) that Pip can't know yet;
+  - *arbitrates* work: given Pip's approach, the die and the hidden facts, it picks a verdict (blowup, setback, slow,
+    good, breakthrough) and writes what happened, plus an optional lesson or revealed fact;
+  - *judges* experiments (relevance, what was observed) and knowledge Pip brings from elsewhere.
+- **Engine**: rolls the die (skill, tools, difficulty, fatigue), clamps the GM's verdict to **one step** either way of
+  the die (so a blowup needs a bad roll *and* a reckless approach, and the GM can't hand out breakthroughs),
+  applies consequences from a fixed vocabulary (blowup: -25% of the stage's progress, -0.1 energy, one unit of a
+  material lost), enforces caps, and keeps the pity timer.
+
 ## Discovery
-- **Partial plans.** The GM plans only what Pip could know to do now (1-3 firm stages) and lists up to 3
-  `open_questions` (what Pip doesn't yet know). It also writes 1-3 `hidden` facts about how the thing really works,
-  which Pip never sees until discovered. A project with open questions is not finished when its known stages are:
-  it is at a crossroads.
-- **`experiment(project, hypothesis, minutes)`** is a real-time session (kind `experiment`). When it ends, the
-  engine rolls (ingenuity + knowledge, difficulty, fatigue) for an outcome: `nothing`, `clue`, `insight`,
-  `surprise`. The GM only judges relevance and narrates: if the hypothesis has nothing to do with the hidden facts it
-  says `relevant: false` and the engine downgrades to a clue at best. On insight the engine reveals one hidden
-  fact (becoming a finding), may answer an open question, and adds the follow-on stages the GM proposes (capped,
-  sanitized). A surprise also lets the GM add one new open question or need.
-- **Pity timer.** After two dry experiments (nothing/clue) on a project the next relevant one is an insight, so a
-  project can't be stuck forever. Irrelevant hypotheses don't count as dry.
-- **`revise_plan(project, because)`** is for what Pip learned elsewhere (web_search, the library, a visitor). The
-  GM accepts or declines; if accepted it may add stages, drop *unstarted* stages, answer a question or confirm a
-  hidden fact the source plausibly covers. Needs some work or an experiment since the last revision.
-- The engine owns every number and the rolls; the GM invents within constraints and never decides success.
-  Everything it returns is validated (stage caps, material caps, vocabulary).
+- **Partial plans.** Pip plans what it knows; the GM adds open questions and hidden facts. A project with open
+  questions is not finished when its steps are: it is at a crossroads, and Pip has to find the way.
+- **Failure teaches.** A session's ruling may include a lesson (a finding) or reveal a hidden fact, so trying and
+  failing is also how Pip learns.
+- **`experiment(project, hypothesis, minutes)`** is a real-time session. The engine rolls
+  `nothing`/`clue`/`insight`/`surprise` (ingenuity + knowledge, difficulty, fatigue); the GM says whether the
+  hypothesis was relevant (irrelevant ones teach nothing) and describes what Pip saw. Insight/surprise reveal a hidden
+  fact and may answer a question; a surprise can add a new question. Pip decides what to do next; experiments add no
+  steps (except a plain "put it all together" step when the last question is settled and nothing is left).
+- **Pity timer.** After two dry experiments the next relevant one is an insight.
+- **Research.** `revise_plan(..., because)` brings in what Pip learned from `web_search`, the library or a visitor.
+  The GM accepts it only if it plausibly settles an open question or matches a hidden fact, and only once per bit of
+  new experience (work or an experiment since the last claim). Editing steps never needs this.
 
 ## Prior art
 - Voyager: iterative prompting with a growing skill library; AutoDiscovery: surprise-driven hypothesis search;

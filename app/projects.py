@@ -21,7 +21,11 @@ DEFAULT_ABILITIES = ["handiness"]
 FAMILIARITY = 0.5  # weight of craft-specific experience next to the transferable abilities
 DRY_LIMIT = 2      # dry experiments in a row before the next relevant one is an insight
 MAX_MATERIAL_UNITS = 8
-CREDIT = {"setback": 0.0, "slow": 0.5, "good": 1.0, "breakthrough": 1.5}
+CREDIT = {"blowup": 0.0, "setback": 0.0, "slow": 0.5, "good": 1.0, "breakthrough": 1.5}
+VERDICTS = ("blowup", "setback", "slow", "good", "breakthrough")  # worst to best; the die allows one step either way
+BLOWUP_LOSS = 0.25   # share of the stage's minutes lost when a try blows up
+BLOWUP_ENERGY = 0.1
+LESSONS_KEPT = 8
 QUALITIES = ("rough", "sound", "fine", "masterwork")
 
 
@@ -32,14 +36,6 @@ def clamp_int(v, lo: int, hi: int, default: int) -> int:
         return default
 
 
-def fallback_plan() -> dict:
-    return {"craft": "tinkering", "difficulty": 2, "tools": [], "questions": [], "hidden": [], "stages": [
-        {"name": "gather and shape the pieces", "minutes": 45, "materials": {}, "abilities": ["handiness"]},
-        {"name": "put it together", "minutes": 60, "materials": {}, "abilities": ["handiness", "precision"]},
-        {"name": "finish and test", "minutes": 45, "materials": {}, "abilities": ["precision"]},
-    ]}
-
-
 def sanitize_abilities(raw) -> list[str]:
     names = [str(a).strip().lower() for a in (raw if isinstance(raw, list) else [])]
     out = [a for a in dict.fromkeys(names) if a in ABILITIES][:2]
@@ -47,9 +43,12 @@ def sanitize_abilities(raw) -> list[str]:
 
 
 def sanitize_stages(raw, limit: int, units: int = 0) -> list[dict]:
-    """GM stages -> engine stages (names, minutes, capped materials, known abilities); junk is dropped."""
+    """Steps (Pip's, or annotated by the GM) -> engine stages: names, minutes, capped materials, known abilities.
+    A bare string is a step with default minutes. Junk is dropped."""
     stages = []
     for st in (raw if isinstance(raw, list) else [])[:limit]:
+        if isinstance(st, str):
+            st = {"name": st}
         if not isinstance(st, dict) or not str(st.get("name") or "").strip():
             continue
         mats = {}
@@ -68,19 +67,26 @@ def sanitize_strings(raw, limit: int, size: int = 160) -> list[str]:
     return [clip(x, size) for x in (raw if isinstance(raw, list) else []) if str(x).strip()][:limit]
 
 
-def sanitize_plan(raw: dict | None) -> dict:
-    """Turn a GM plan into something the engine trusts (or the fallback if it's unusable)."""
-    if not raw or not isinstance(raw.get("stages"), list):
-        return fallback_plan()
-    stages = sanitize_stages(raw["stages"], MAX_STAGES)
-    if not stages:
-        return fallback_plan()
-    tools = [str(t).strip().lower()[:40] for t in (raw.get("tools") or []) if str(t).strip()][:3]
-    craft = craft_name(raw.get("craft"))
-    questions = sanitize_strings(raw.get("open_questions"), MAX_QUESTIONS)
-    hidden = [{"fact": f, "found": False} for f in sanitize_strings(raw.get("hidden"), MAX_HIDDEN, 240)] if questions else []
-    return {"craft": craft, "difficulty": clamp_int(raw.get("difficulty"), 1, 5, 2), "tools": tools, "stages": stages,
-            "questions": questions, "hidden": hidden}
+def annotate(steps: list[dict], notes) -> list[dict]:
+    """Merge the GM's per-step notes (same order as Pip's steps) into Pip's own steps: the GM tags abilities and may
+    correct a duration, but never renames, adds or removes a step."""
+    notes = notes if isinstance(notes, list) else []
+    out = []
+    for i, st in enumerate(steps):
+        n = notes[i] if i < len(notes) and isinstance(notes[i], dict) else {}
+        out.append({**st, "abilities": sanitize_abilities(n.get("abilities")),
+                    "minutes": clamp_int(n.get("minutes"), *STAGE_MINUTES, st["minutes"])})
+    return out
+
+
+def build_plan(steps: list[dict], review: dict | None) -> dict:
+    """A project plan from Pip's steps plus the GM's review (craft, difficulty, tools, what Pip can't know yet)."""
+    review = review or {}
+    questions = sanitize_strings(review.get("open_questions"), MAX_QUESTIONS)
+    hidden = [{"fact": f, "found": False} for f in sanitize_strings(review.get("hidden"), MAX_HIDDEN, 240)] if questions else []
+    tools = [str(t).strip().lower()[:40] for t in (review.get("tools") or []) if str(t).strip()][:3]
+    return {"craft": craft_name(review.get("craft")), "difficulty": clamp_int(review.get("difficulty"), 1, 5, 2),
+            "tools": tools, "stages": annotate(steps, review.get("steps")), "questions": questions, "hidden": hidden}
 
 
 def new_stages(plan: dict) -> list[dict]:
@@ -142,6 +148,14 @@ def roll(rng: random.Random, skill_level: int, tools_owned: int, difficulty: int
     return "setback" if r < 0.15 else "slow" if r < 0.40 else "good" if r < 0.90 else "breakthrough"
 
 
+def clamp_verdict(rolled: str, verdict) -> str:
+    """The GM arbitrates an attempt, but the die bounds it: one step better or worse than the roll, no more."""
+    if verdict not in VERDICTS:
+        return rolled
+    i = VERDICTS.index(rolled)
+    return VERDICTS[max(i - 1, min(i + 1, VERDICTS.index(verdict)))]
+
+
 def quality(project: dict, skill_level: int) -> str:
     results = [h["result"] for h in project["history"]]
     pts = results.count("breakthrough") - results.count("setback") + skill_level / 2
@@ -171,7 +185,8 @@ def tools_owned(state, project: dict) -> int:
 
 
 def fallback_narration(stage: str, result: str) -> str:
-    return {"setback": f"Something went wrong on {stage}, and you'll have to redo part of it.",
+    return {"blowup": f"It went badly wrong on {stage}, and you lost ground.",
+            "setback": f"Something went wrong on {stage}, and you'll have to redo part of it.",
             "slow": f"Work on {stage} was slow and fiddly, but it moved forward.",
             "good": f"You made steady progress on {stage}.",
             "breakthrough": f"Something clicked on {stage}, and it came together faster than expected."}[result]
@@ -190,27 +205,54 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
         return None
     stage = project["stages"][sess["stage"]]
     minutes = sess["minutes"]
+    approach = (sess.get("target") or "").strip()
+    lesson, lost = None, []
     if interrupted:
         minutes = min(minutes, max(0.0, now - sess["started_at"]) * settings.work_speed / 60)
         result = "slow"  # cut short: half credit, no dice
     else:
         lvl = skill_for(state, project, stage_abilities(stage))
         result = roll(rng, lvl, tools_owned(state, project), project["difficulty"], state.agent()["energy"])
-    remaining = stage["minutes"] - stage["progress"]
-    stage["progress"] += min(remaining, minutes * CREDIT[result])
-    finished_stage = stage["progress"] >= stage["minutes"] - 1e-6
-    grant_xp(state, project, stage_abilities(stage), minutes)
     text = None
     if not interrupted:
         mats = list(stage["materials"]) + [i["name"] for i in state.items() if i["kind"] == "tool"]
         earlier = [h["text"] for h in project["history"] if not h.get("interrupted")][-3:]
+        if approach and gm:  # the GM arbitrates what Pip tried; the die bounds how far it can go either way
+            ruling = await gm.adjudicate(project, stage, approach, result, round(minutes), mats, earlier,
+                                         feel(state))
+            if ruling:
+                result = clamp_verdict(result, ruling.get("verdict"))
+                text = clip(ruling.get("text"), 300) if ruling.get("text") else None
+                lesson = ruling
+    remaining = stage["minutes"] - stage["progress"]
+    if result == "blowup":
+        stage["progress"] = max(0.0, stage["progress"] - BLOWUP_LOSS * stage["minutes"])
+        state.update_agent(energy=max(0.0, state.agent()["energy"] - BLOWUP_ENERGY))
+        owned = [state.find_item(n)[0] for n in stage["materials"]]
+        owned = [i for i in owned if i and i["kind"] == "material"]
+        if owned:
+            item = rng.choice(owned)
+            state.take_item(item["id"], 1)
+            lost.append(item["name"])
+    else:
+        stage["progress"] += min(remaining, minutes * CREDIT[result])
+    finished_stage = stage["progress"] >= stage["minutes"] - 1e-6
+    grant_xp(state, project, stage_abilities(stage), minutes)
+    learned = None
+    if lesson:  # trying (and failing) can teach: a lesson, or even a hidden fact
+        ch = apply_changes(project, {**lesson, "new_question": None}, reveal=lesson.get("reveal") is not None,
+                           may_answer=True)
+        learned = ch["finding"]
+        project["findings"] = project["findings"][-LESSONS_KEPT:]
+    if not interrupted and not text:
         text = await gm.narrate(project["name"], project["goal"], stage["name"], mats, result, round(minutes),
                                 finished_stage, earlier) if gm else None
     text = text or fallback_narration(stage["name"], result)
     project["history"].append({"ts": now, "stage": stage["name"], "result": result, "minutes": round(minutes),
                                "text": text, "interrupted": interrupted})
     done = current_stage(project) is None and not project["questions"]
-    fields = {"stages": project["stages"], "history": project["history"]}
+    fields = {"stages": project["stages"], "history": project["history"], "findings": project["findings"],
+              "questions": project["questions"], "hidden": project["hidden"]}
     if done:
         fields.update(status="done", finished_at=now)
     state.update_project(project["id"], **fields)
@@ -218,8 +260,8 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
         state.update_agent(activity="idle", description=f"just finished working on {project['name']}")
     data = {"project": project["name"], "project_id": project["id"], "stage": stage["name"], "result": result,
             "minutes": round(minutes), "text": text, "finished_stage": finished_stage, "project_done": done,
-            "interrupted": interrupted, "percent": percent(project),
-            "crossroads": crossroads({**project, "status": "active"}) and not done}
+            "interrupted": interrupted, "percent": percent(project), "approach": approach, "lost": lost,
+            "learned": learned, "crossroads": crossroads({**project, "status": "active"}) and not done}
     state.log("work", **data)
     return data
 
@@ -234,11 +276,10 @@ def roll_experiment(rng: random.Random, skill_level: float, difficulty: int, ene
     return "nothing" if r < 0.30 else "clue" if r < 0.60 else "insight" if r < 0.90 else "surprise"
 
 
-def apply_changes(project: dict, data: dict, reveal: bool, new_question: bool = False, max_new: int = 2,
-                  may_answer: bool = True) -> dict:
-    """Apply a validated GM proposal to `project` (in place): reveal a hidden fact, answer a question, add or
-    drop unstarted stages, nudge difficulty. Returns what changed. The GM proposes; this decides what's allowed."""
-    out = {"finding": None, "answered": None, "added": [], "dropped": []}
+def apply_changes(project: dict, data: dict, reveal: bool, new_question: bool = False, may_answer: bool = True) -> dict:
+    """Apply what the GM found out to `project` (in place): reveal a hidden fact, answer an open question, add a
+    new question, nudge difficulty. Never adds or removes steps - the plan is Pip's. Returns what changed."""
+    out = {"finding": None, "answered": None, "added": []}
     unfound = [i for i, h in enumerate(project["hidden"]) if not h["found"]]
     finding = clip(data.get("finding"), 240) if data.get("finding") else None
     revealed = False
@@ -248,30 +289,38 @@ def apply_changes(project: dict, data: dict, reveal: bool, new_question: bool = 
         i = i if isinstance(i, int) and i in unfound else unfound[0]
         project["hidden"][i]["found"] = True
         finding = finding or project["hidden"][i]["fact"]
-    if finding:
+    if finding and finding not in project["findings"]:
         project["findings"].append(finding)
         out["finding"] = finding
-    if may_answer and project["questions"] and (revealed or data.get("answers") is not None):
+    if may_answer and project["questions"] and (revealed or isinstance(data.get("answers"), int)):
         q = data.get("answers")
         q = q if isinstance(q, int) and 0 <= q < len(project["questions"]) else 0
         out["answered"] = project["questions"].pop(q)
-    room = max(0, min(max_new, MAX_STAGES_REVISED - len(project["stages"])))
-    added = sanitize_stages(data.get("new_stages"), room)
-    drop = {str(n).strip().lower() for n in (data.get("drop") if isinstance(data.get("drop"), list) else [])}
-    for st in list(project["stages"]):
-        if st["name"].lower() in drop and not st["started"] and st["progress"] == 0:
-            project["stages"].remove(st)
-            out["dropped"].append(st["name"])
-    if not added and out["answered"] and not project["questions"] and current_stage(project) is None:
-        added = [{"name": "put it all together", "minutes": 45, "materials": {}, "abilities": ["handiness", "precision"]}]
-    project["stages"] += new_stages({"stages": added})
-    out["added"] = [s["name"] for s in added]
+    if not project["questions"] and out["answered"] and current_stage(project) is None:
+        # the last unknown is settled and nothing is left to do: a plain final step, which Pip can replace
+        fin = {"name": "put it all together", "minutes": 45, "materials": {}, "abilities": ["handiness", "precision"]}
+        project["stages"] += new_stages({"stages": [fin]})
+        out["added"] = [fin["name"]]
     if new_question and data.get("new_question") and len(project["questions"]) < MAX_QUESTIONS:
         project["questions"].append(clip(data["new_question"], 160))
     delta = data.get("difficulty_delta")
     if isinstance(delta, int) and delta:
         project["difficulty"] = max(1, min(5, project["difficulty"] + max(-1, min(1, delta))))
     return out
+
+
+def edit_plan(project: dict, steps: list[dict], drop: list) -> tuple[list[str], list[str]]:
+    """Pip's own changes to its plan: drop steps it hasn't begun, add new ones after the rest."""
+    wanted = {str(n).strip().lower() for n in (drop if isinstance(drop, list) else [])}
+    dropped = []
+    for st in list(project["stages"]):
+        if st["name"].lower() in wanted and not st["started"] and st["progress"] == 0:
+            project["stages"].remove(st)
+            dropped.append(st["name"])
+    room = max(0, MAX_STAGES_REVISED - len(project["stages"]))
+    steps = steps[:room]
+    project["stages"] += new_stages({"stages": steps})
+    return [s["name"] for s in steps], dropped
 
 
 def save_changes(state, project: dict) -> None:
@@ -329,28 +378,43 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
         state.update_project(project["id"], status="done", finished_at=now)
     data = {"project": project["name"], "project_id": project["id"], "hypothesis": hypothesis, "outcome": outcome,
             "relevant": relevant, "minutes": round(minutes), "text": text, "finding": changes["finding"],
-            "answered": changes["answered"], "added": changes["added"], "dropped": changes["dropped"],
+            "answered": changes["answered"], "added": changes["added"],
             "interrupted": interrupted, "project_done": done, "percent": percent(project),
             "crossroads": crossroads(project)}
     state.log("experiment", **data)
     return data
 
 
-async def revise(state, gm, project: dict, because: str) -> tuple[dict | None, str]:
-    """Pip brings something it learned elsewhere to its plan. Returns (changes, message)."""
-    if len(project["history"]) <= project["revised_at"]:
-        return None, "do some work or run an experiment first; then you'll know what to change"
-    verdict = await gm.revise(project, because, [h["fact"] for h in project["hidden"] if not h["found"]]) if gm else None
-    if not verdict or verdict.get("accepted") is not True:
-        reason = clip((verdict or {}).get("text") or "that doesn't change what you need to do", 300)
+async def revise(state, gm, project: dict, steps: list[dict], drop: list, because: str) -> tuple[dict, str]:
+    """Pip edits its plan (free: it's Pip's plan), and may bring what it learned elsewhere to its open questions
+    (the GM judges that, and only after new experience). Returns (changes, message)."""
+    claim = bool(because)
+    fresh = len(project["history"]) > project["revised_at"]
+    note = ""
+    if claim and not fresh:
+        claim = False
+        note = " (what you learned will count once you've worked or experimented again)"
+    unknowns = bool(project["questions"] or any(not h["found"] for h in project["hidden"]))
+    verdict = None
+    if gm and (steps or (claim and unknowns)):
+        verdict = await gm.revise(project, steps, because if claim and unknowns else "")
+    verdict = verdict or {}
+    if steps:
+        steps = annotate(steps, verdict.get("steps"))
+    added, dropped = edit_plan(project, steps, drop)
+    changes = {"finding": None, "answered": None, "added": added, "dropped": dropped}
+    msg = clip(verdict.get("text"), 300) if verdict.get("text") else ""
+    if claim and unknowns and verdict.get("accepted") is True:
+        learned = apply_changes(project, verdict, reveal=verdict.get("reveal") is not None)
+        changes.update(finding=learned["finding"], answered=learned["answered"])
+        changes["added"] += learned["added"]
         project["revised_at"] = len(project["history"])
-        save_changes(state, project)
-        return None, reason
-    changes = apply_changes(project, verdict, reveal=bool(verdict.get("reveal") is not None), max_new=2)
-    project["revised_at"] = len(project["history"])
+    elif claim:
+        project["revised_at"] = len(project["history"])
+        msg = msg or "that doesn't change what you need to do"
     save_changes(state, project)
     state.log("plan_revised", project=project["name"], project_id=project["id"], because=clip(because, 200), **changes)
-    return changes, clip(verdict.get("text") or "you adjust the plan", 300)
+    return changes, (msg + note).strip()
 
 
 # --- how abilities feel (Pip never sees numbers) -------------------------------

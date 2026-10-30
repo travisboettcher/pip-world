@@ -132,7 +132,8 @@ async def test_finished_project_is_designed_into_a_creation(tmp_path):
                     capabilities=[{"type": "timekeeper"}, {"type": "upkeep", "verb": "turn", "hours": 24}])
     s, st, gm, agent = make(tmp_path, [LLMResponse("..."), *[report(text="Work.")] * 3, design],
                             rng=FixedRng(0.6), work_speed=1e6)
-    await call(agent, "start_project", name="hourglass")  # GM plan fails -> 3 generic stages
+    await call(agent, "start_project", name="hourglass", steps=[  # the GM review fails -> Pip's steps stand
+        {"name": "blow the glass", "minutes": 45}, {"name": "fill it", "minutes": 60}, {"name": "seal it", "minutes": 45}])
     for _ in range(3):
         await call(agent, "work_on", project="hourglass", minutes=60)
         time.sleep(0.01)

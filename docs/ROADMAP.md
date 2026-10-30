@@ -126,8 +126,9 @@ is in my notes, not in the gears".
 Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (links in the design docs).
 
 ### Discovery in projects (built; see DESIGN-discovery.md; deploy: add `experiment,revise_plan` to `TOOLS`)
-- [ ] Pip holds a *partial* plan: `start_project` takes an approach, not a full stage list; the GM flags only what is
-      infeasible and stages are revealed/revised as work proceeds
+- [x] The plan is Pip's: `start_project(name, goal, steps)`; the GM reviews (abilities, difficulty, open questions,
+      hidden facts) and never rewrites it; Pip edits it freely with `revise_plan`
+- [x] GM as arbiter: `work_on(..., approach)` is judged by the GM within one step of the die (blowups possible)
 - [ ] `experiment(project, hypothesis)`: the GM resolves it against hidden facts it wrote at project creation (the engine
       still rolls; the GM invents and narrates within constraints). Outcomes can add/replace stages, change the goal, or
       unlock a capability, so a plan evolves after each experiment

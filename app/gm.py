@@ -57,33 +57,69 @@ class GameMaster:
         return out
 
     # --- phase 1: projects ------------------------------------------------
-    async def plan(self, name: str, goal: str, belongings: list[str], skills: dict[str, int]) -> dict | None:
+    async def review_start(self, name: str, goal: str, steps: list[dict], belongings: list[str],
+                           feelings: list[str]) -> dict | None:
+        """Review Pip's own plan. The GM doesn't write the steps; it tags them, judges the project, and holds the
+        truth about what Pip can't know yet."""
+        listing = "\n".join(f"{i}. {s['name']} (Pip thinks ~{s['minutes']} min"
+                            + (", using " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
+                            + ")" for i, s in enumerate(steps))
         task = (
             f"Pip wants to start a project: {name!r}. What Pip has in mind: {goal or '(not said)'}\n"
+            f"Pip's own plan, in its own words:\n{listing}\n"
             f"Pip owns: {', '.join(belongings) or 'nothing'}\n"
-            f"Pip's skills (level 0-5): {json.dumps(skills) if skills else 'none yet'}\n\n"
-            "Plan only what Pip could know to do right now: 1-3 stages of work that fit what this project really is. If "
-            "Pip couldn't honestly know the whole way yet (anything involving finding out, tuning or unknowns), list up "
-            "to 3 `open_questions` Pip will have to find out (short questions) and 1-3 `hidden` facts: how the thing "
-            "really works, what the answers actually are, consistent with each other. Pip never sees the hidden facts "
-            "until it discovers them. If the whole path is plain, leave both empty. For each stage give a short name, "
-            "how many minutes of focused work it takes (15-240), and the physical materials it uses up, if any (name "
-            "-> quantity, at most 8 units across the whole project; many projects need few or none; reuse the names "
-            "of things Pip owns when they fit, but it's fine to need something Pip doesn't have), and the 1-2 `abilities` "
-            "it exercises, from: precision, patience, ingenuity, knowledge, handiness. Also give the craft "
-            "(the skill this practises, a word or two), difficulty 1-5 (1 = simple, 5 = very demanding), and up to 3 "
-            "tools or instruments that would help, if any."
+            + ("About Pip: " + " ".join(feelings) + "\n" if feelings else "")
+            + "\nThis is Pip's plan: do not rewrite, add or remove steps. Review it. For each step (same order, same "
+            "count) give the 1-2 `abilities` it exercises, from: precision, patience, ingenuity, knowledge, handiness, "
+            "and correct `minutes` only if Pip's guess is badly off (15-240). Give the project's `craft` (a word or "
+            "two), `difficulty` 1-5, and up to 3 `tools` or instruments that would help. Then decide what Pip "
+            "cannot know yet: if there are real unknowns in making this (anything about finding out, tuning or how "
+            "the thing really behaves), list up to 3 `open_questions` (short) and 1-3 `hidden` facts: how the thing "
+            "really works, consistent with each other and plausibly able to trip up Pip's plan. Pip never sees "
+            "hidden facts until it discovers them. If the path is plain, leave both empty. Finally `concerns`: one "
+            "short sentence only if something in the plan is obviously unworkable to anyone with Pip's experience "
+            "(otherwise empty); don't hint at hidden facts."
         )
-        stage = {"type": "object", "properties": {
-            "name": {"type": "string"}, "minutes": {"type": "integer"},
-            "abilities": {"type": "array", "items": {"type": "string"}},
-            "materials": {"type": "object", "additionalProperties": {"type": "integer"}}}, "required": ["name", "minutes"]}
+        step = {"type": "object", "properties": {"abilities": {"type": "array", "items": {"type": "string"}},
+                                                  "minutes": {"type": "integer"}}}
         return await self.ask(task, {
-            "stages": {"type": "array", "items": stage}, "craft": {"type": "string"},
+            "steps": {"type": "array", "items": step}, "craft": {"type": "string"},
             "difficulty": {"type": "integer"}, "tools": {"type": "array", "items": {"type": "string"}},
             "open_questions": {"type": "array", "items": {"type": "string"}},
-            "hidden": {"type": "array", "items": {"type": "string"}},
-        }, ["stages", "craft", "difficulty"], "plan")
+            "hidden": {"type": "array", "items": {"type": "string"}}, "concerns": {"type": "string"},
+        }, ["craft", "difficulty"], "review")
+
+    async def adjudicate(self, project: dict, stage: dict, approach: str, rolled: str, minutes: int,
+                         materials: list[str], earlier: list[str], feelings: list[str]) -> dict | None:
+        """Judge what Pip tried in a work session. The die has already said how things went in general; the GM
+        weighs Pip's approach and may move the result one step either way (the engine enforces that)."""
+        hidden = [h["fact"] for h in project["hidden"] if not h["found"]]
+        meaning = {"blowup": "so badly it goes wrong in Pip's face", "setback": "poorly", "slow": "slowly but surely",
+                   "good": "well", "breakthrough": "unusually well"}[rolled]
+        task = (
+            f"Project {project['name']!r} ({project['craft']}, difficulty {project['difficulty']}/5): "
+            f"{project['goal'] or '(no stated goal)'}\n"
+            f"Stage: {stage['name']!r}. Pip worked {minutes} minutes and described its approach: {approach!r}\n"
+            + (f"It's working with: {', '.join(materials)}. " if materials else "")
+            + ("About Pip: " + " ".join(feelings) + "\n" if feelings else "")
+            + (f"Things Pip has found out so far: {'; '.join(project['findings'])}\n" if project["findings"] else "")
+            + (f"Hidden truths about this project (Pip cannot see them): {'; '.join(hidden)}\n" if hidden else "")
+            + f"The die says this kind of effort goes {meaning} on average. Decide the `verdict` for what Pip actually "
+            "did: blowup, setback, slow, good or breakthrough. A sound, clever approach that respects how the "
+            "thing really works may go one step better than the die says; a careless, wrong-headed or reckless one "
+            "one step worse (the world won't allow more than one step either way). Blowup means it goes wrong in "
+            "Pip's face (a snapped part, a burn, a spoiled piece): pick it only if the approach was reckless or "
+            "clearly flawed. Never decide that Pip is finished with the stage. Write `text`: 1-3 concrete "
+            "sentences, second person, under 50 words, true to this kind of work, using only what Pip has. If the "
+            "attempt taught Pip something, give `finding` (one plain sentence); if it exposed one of the hidden "
+            "truths, give its index in `reveal` (index = order listed, from 0)."
+            + ("\nEarlier sessions (something different happens this time):\n" + "\n".join(f"- {e}" for e in earlier)
+               if earlier else "")
+        )
+        return await self.ask(task, {
+            "verdict": {"type": "string", "enum": ["blowup", "setback", "slow", "good", "breakthrough"]},
+            "text": {"type": "string"}, "finding": {"type": "string"}, "reveal": {"type": "integer"},
+        }, ["verdict", "text"], "adjudicate")
 
     async def narrate(self, project: str, goal: str, stage: str, materials: list[str], result: str, minutes: int,
                       finished_stage: bool, earlier: list[str] = ()) -> str | None:
@@ -119,10 +155,6 @@ class GameMaster:
 
     _CHANGES = {
         "finding": {"type": "string"}, "reveal": {"type": "integer"}, "answers": {"type": "integer"},
-        "new_stages": {"type": "array", "items": {"type": "object", "properties": {
-            "name": {"type": "string"}, "minutes": {"type": "integer"},
-            "abilities": {"type": "array", "items": {"type": "string"}},
-            "materials": {"type": "object", "additionalProperties": {"type": "integer"}}}, "required": ["name"]}},
     }
 
     async def experiment(self, project: dict, hypothesis: str, outcome: str, unfound: list[str],
@@ -144,9 +176,8 @@ class GameMaster:
             "second person, under 60 words) describing what Pip observed. For a clue, insight or surprise give "
             "`finding`: what Pip now knows, in one plain sentence, based on the hidden fact (do not reveal facts the "
             "outcome doesn't show). For an insight or surprise give `reveal` (the index of the hidden fact it shows) "
-            "and, if it answers an open question, `answers` (that question's index). `new_stages` may add up to 2 "
-            "stages that the discovery makes possible or necessary (name, minutes 15-240, materials, abilities from "
-            "precision/patience/ingenuity/knowledge/handiness). For a surprise, `new_question` may name what Pip now "
+            "and, if it answers an open question, `answers` (that question's index). Pip decides what to do next; "
+            "you don't add steps. For a surprise, `new_question` may name what Pip now "
             "wonders about, and `difficulty_delta` (-1, 0 or 1) says if it made the project easier or harder. "
             "Never decide that Pip succeeded or failed at the project itself."
         )
@@ -154,24 +185,34 @@ class GameMaster:
                  "difficulty_delta": {"type": "integer"}, **self._CHANGES}
         return await self.ask(task, props, ["relevant", "text"], "experiment")
 
-    async def revise(self, project: dict, because: str, unfound: list[str]) -> dict | None:
-        task = (
-            self._project_brief(project) + "\nHidden facts (index: fact; Pip cannot see these): "
-            + ("; ".join(f"[{i}] {h['fact']}" + (" (already found)" if h["found"] else "")
-                         for i, h in enumerate(project["hidden"])) or "none") + "\n"
-            f"Pip wants to change its plan because of something it learned elsewhere (reading, searching, a visitor): "
-            f"{because!r}.\n"
-            "Decide `accepted`: true only if that knowledge plausibly bears on this project and would change what "
-            "Pip should do; otherwise false with `text` saying kindly why it doesn't. If accepted, `text` (1-2 "
-            "sentences, second person) says how the plan changes. You may add up to 2 `new_stages`, name stages to "
-            "`drop` (only ones not yet started), give `answers` (an open question's index) if the knowledge truly "
-            "answers it, and `reveal` (a hidden fact's index) only if the source would really contain it, with a "
-            "`finding`. Never decide success or failure."
-        )
+    async def revise(self, project: dict, steps: list[dict], because: str) -> dict | None:
+        """Annotate steps Pip just added to its plan, and judge whether knowledge Pip brings from elsewhere
+        (a search, a book, a visitor) settles something it didn't know. Pip's steps are never changed."""
+        parts = [self._project_brief(project)]
+        if steps:
+            parts.append("Pip added these steps to its own plan:\n" + "\n".join(
+                f"{i}. {s['name']} (~{s['minutes']} min)" for i, s in enumerate(steps)))
+        if because:
+            parts.append("Hidden facts (index: fact; Pip cannot see these): "
+                         + ("; ".join(f"[{i}] {h['fact']}" + (" (already found)" if h["found"] else "")
+                                      for i, h in enumerate(project["hidden"])) or "none")
+                         + f"\nPip says it learned, from elsewhere (reading, searching, a visitor): {because!r}.")
+        task = "\n".join(parts) + "\n"
+        if steps:
+            task += ("For each added step (same order and count) give `steps` notes: 1-2 `abilities` from precision, "
+                     "patience, ingenuity, knowledge, handiness, and `minutes` only if Pip's guess is badly off. "
+                     "Do not rename, add or remove steps. ")
+        if because:
+            task += ("Decide `accepted`: true only if what Pip learned plausibly settles one of its open questions or "
+                     "matches a hidden fact (otherwise false, and say kindly in `text` why it doesn't help). If "
+                     "accepted, give `answers` (the open question's index) and/or `reveal` (a hidden fact's index, "
+                     "only if the source would really contain it) with a `finding` (one plain sentence). ")
+        task += "`text`: one or two sentences, second person. Never decide success or failure."
+        step = {"type": "object", "properties": {"abilities": {"type": "array", "items": {"type": "string"}},
+                                                  "minutes": {"type": "integer"}}}
         props = {"accepted": {"type": "boolean"}, "text": {"type": "string"},
-                 "drop": {"type": "array", "items": {"type": "string"}}, "difficulty_delta": {"type": "integer"},
-                 **self._CHANGES}
-        return await self.ask(task, props, ["accepted", "text"], "revise")
+                 "steps": {"type": "array", "items": step}, **self._CHANGES}
+        return await self.ask(task, props, ["text"], "revise")
 
     # --- phase 2: creations -----------------------------------------------
     async def design(self, project: dict, quality: str, scars: list[str], allow_companion: bool) -> dict | None:
