@@ -10,6 +10,7 @@ from . import expectations as exp
 from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
+from . import nightpass as np
 from . import places
 from . import sleep as sleepmod
 from . import projects as proj
@@ -159,7 +160,16 @@ class Agent:
     async def reflect(self) -> dict | None:
         """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
         async with self._reflecting:
-            return await mem.reflect(self.state, self.s, self.gm, self._persona())
+            started, shown = time.time(), {}
+            result = await mem.reflect(self.state, self.s, self.gm, self._persona(), shown_out=shown)
+            if result:  # a reflection that found something to go over is followed by the night pass
+                try:
+                    await np.run(self.state, self.s, self.gm, self._persona(), result, shown, tuple(self.tools),
+                                 since_ts=started)
+                except Exception as e:  # never let it break the reflection
+                    log.exception("night pass failed")
+                    self.state.log("error", error=f"night pass: {type(e).__name__}: {e}")
+            return result
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
@@ -298,6 +308,9 @@ class Agent:
                 lines.append("  you've found out: " + "; ".join(p["findings"][-4:]))
         if not active:
             lines.append("- (none - start_project when you want to make something)")
+        held = self.state.projects("paused")
+        if held:
+            lines.append("On hold (resume_project to pick one back up): " + ", ".join(p["name"] for p in held))
         lines += proj.feel(self.state)
         made = self.state.creations()
         if made:
@@ -448,6 +461,7 @@ class Agent:
         lines += self._calibration()
         lines += places.perception(self.state, self.library)
         lines += mem.perception(self.state)
+        lines += np.perception(self.state, self.s)
         lines += self._belongings()
         lines += self._projects()
         lines += nb.perception(self.state)

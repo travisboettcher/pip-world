@@ -694,3 +694,25 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue  # no Calibre library mounted
         out[name] = REGISTRY[name]
     return out
+
+
+@tool("undo_decision",
+      "Take back something your sleeping self decided (an archived note, a paused project, a merge...). Use the "
+      "decision's number from 'While you slept you decided'.",
+      _obj({"id": {"type": "integer", "description": "the decision number"}}, ["id"]))
+async def undo_decision(ctx: ToolContext, args: dict) -> ToolResult:
+    from . import nightpass  # imported here: nightpass uses this module's note checks
+    return ToolResult(nightpass.undo(ctx.state, ctx.settings, int(args["id"])), followup=True)
+
+
+@tool("resume_project", "Pick a project that is on hold back up.",
+      _obj({"project": {"type": "string", "description": "name or #id"}}, ["project"]))
+async def resume_project(ctx: ToolContext, args: dict) -> ToolResult:
+    p, err = ctx.state.find_project(args["project"], status="paused")
+    if not p:
+        return ToolResult(f"error: {err}", followup=True)
+    if len(ctx.state.projects("active")) >= ctx.settings.max_active_projects:
+        return ToolResult("you already have as many projects going as you can; finish or abandon_project one first",
+                          followup=True)
+    ctx.state.update_project(p["id"], status="active")
+    return ToolResult(f"{p['name']} is active again", followup=True)

@@ -80,6 +80,17 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS night_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, op TEXT NOT NULL, target_kind TEXT NOT NULL DEFAULT '',
+  target_id INTEGER, args TEXT NOT NULL DEFAULT '{}', before TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '',
+  cites TEXT NOT NULL DEFAULT '[]', summary TEXT NOT NULL DEFAULT '', applied INTEGER NOT NULL DEFAULT 0,
+  undone INTEGER NOT NULL DEFAULT 0, shown INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS focus (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, text TEXT NOT NULL, ref_kind TEXT NOT NULL DEFAULT '',
+  ref_id INTEGER, status TEXT NOT NULL DEFAULT 'open', decided_at REAL NOT NULL, reviewed_at REAL,
+  note TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS capability_snapshots (day TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS turning_points (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, period_start REAL NOT NULL, period_end REAL NOT NULL,
@@ -856,6 +867,88 @@ class State:
         with self.lock:
             rows = self.db.execute("SELECT * FROM capability_snapshots ORDER BY day DESC LIMIT ?", (limit,)).fetchall()
         return [(r["day"], json.loads(r["data"])) for r in rows]
+
+    # --- the night pass: decisions and focus ----------------------------------------
+    def set_memory_status(self, memory_id: int, status: str, outcome: str | None = None) -> None:
+        with self.lock:
+            if outcome is None:
+                self.db.execute("UPDATE memories SET status = ? WHERE id = ?", (status, memory_id))
+            else:
+                self.db.execute("UPDATE memories SET status = ?, outcome = ? WHERE id = ?", (status, outcome, memory_id))
+            self.db.commit()
+
+    def memory(self, memory_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_decision(self, op: str, target_kind: str, target_id: int | None, args: dict, before: dict, reason: str,
+                     cites: list, summary: str, applied: bool) -> int:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO night_decisions (ts, op, target_kind, target_id, args, before, reason, cites, summary, applied)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), op, target_kind, target_id, json.dumps(args), json.dumps(before), reason,
+                 json.dumps(cites), summary, int(applied)))
+            self.db.commit()
+            return cur.lastrowid
+
+    @staticmethod
+    def _decision(row) -> dict:
+        return {**dict(row), "args": json.loads(row["args"]), "before": json.loads(row["before"]),
+                "cites": json.loads(row["cites"])}
+
+    def decision(self, decision_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM night_decisions WHERE id = ?", (decision_id,)).fetchone()
+        return self._decision(row) if row else None
+
+    def decisions(self, limit: int = 20, applied: bool | None = None) -> list[dict]:
+        """Newest first."""
+        q, args = "SELECT * FROM night_decisions", []
+        if applied is not None:
+            q += " WHERE applied = ?"
+            args.append(int(applied))
+        with self.lock:
+            return [self._decision(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
+
+    def mark_decision_undone(self, decision_id: int) -> None:
+        with self.lock:
+            self.db.execute("UPDATE night_decisions SET undone = 1 WHERE id = ?", (decision_id,))
+            self.db.commit()
+
+    def unseen_decisions(self, max_age_hours: float, showings: int) -> list[dict]:
+        """Applied, not undone decisions Pip hasn't been shown enough times yet."""
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM night_decisions WHERE applied = 1 AND undone = 0 AND shown < ? AND ts >= ? "
+                                   "ORDER BY id", (showings, time.time() - max_age_hours * 3600)).fetchall()
+        return [self._decision(r) for r in rows]
+
+    def mark_decisions_shown(self, ids: list[int]) -> None:
+        with self.lock:
+            self.db.executemany("UPDATE night_decisions SET shown = shown + 1 WHERE id = ?", [(i,) for i in ids])
+            self.db.commit()
+
+    def add_focus(self, day: str, text: str, ref_kind: str = "", ref_id: int | None = None) -> int:
+        with self.lock:
+            cur = self.db.execute("INSERT INTO focus (day, text, ref_kind, ref_id, decided_at) VALUES (?, ?, ?, ?, ?)",
+                                  (day, text, ref_kind, ref_id, time.time()))
+            self.db.commit()
+            return cur.lastrowid
+
+    def focus(self, status: str | None = "open", limit: int = 20) -> list[dict]:
+        q, args = "SELECT * FROM focus", []
+        if status:
+            q += " WHERE status = ?"
+            args.append(status)
+        with self.lock:
+            return [dict(r) for r in reversed(self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall())]
+
+    def close_focus(self, focus_id: int, status: str, note: str = "") -> None:
+        with self.lock:
+            self.db.execute("UPDATE focus SET status = ?, reviewed_at = ?, note = ? WHERE id = ?",
+                            (status, time.time(), note[:200], focus_id))
+            self.db.commit()
 
     def add_turning(self, score: int, signals: list, start: float, end: float) -> int:
         with self.lock:

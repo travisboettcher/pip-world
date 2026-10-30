@@ -161,3 +161,10 @@ candidate that the reflection is asked about as facts; Pip may mark at most one 
 Each night the engine counts how Pip's tools, crafts and abilities have actually gone (worked / didn't, went well / badly), keeps a
 dated snapshot, and shows the counts (with the change since last time) to the reflection so the self-portrait is grounded in what
 Pip really did. `GET /memory` exposes the latest snapshot.
+
+## The night pass
+See [DESIGN-nightpass.md](DESIGN-nightpass.md). After a nightly reflection that found something to go over, Pip's sleeping self gets a
+second call (once per sleep, at least 6 h apart). Using only cited evidence it may archive or merge old notes, mark one done, put a
+project on hold or take it off, add one goal, and choose up to three things to focus on tomorrow. Nothing is deleted; Pip is told what
+was decided and why and can `undo_decision`. Yesterday's focus is reviewed against the log (kept / carried / dropped) and counted.
+`NIGHT_PASS=off|log|apply` (default apply); `GET /memory` lists decisions and focus.

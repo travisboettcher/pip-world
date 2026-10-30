@@ -198,7 +198,8 @@ def due(state, settings, now: float) -> bool:
     return local.hour >= settings.reflect_hour and state.meta("last_reflection_day") != local.date().isoformat()
 
 
-async def reflect(state, settings, gm, persona: str, now: float | None = None) -> dict | None:
+async def reflect(state, settings, gm, persona: str, now: float | None = None,
+                  shown_out: dict | None = None) -> dict | None:
     """Reflect on everything since the last reflection. Returns the logged event data, or None."""
     now = now or time.time()
     since = float(state.meta("last_reflection_ts") or 0)
@@ -312,6 +313,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     data = {"summary": summary, "insights": insights, "changes": changes, "turning": turns, "candidate": candidate if candidate["flagged"] else None,
             "people": updated, "lines": len(lines),
             "stats": stats}
+    if shown_out is not None:
+        shown_out.update(shown)  # so the night pass can cite the same lines
     state.log("reflection", **data)
     return data
 
@@ -322,7 +325,8 @@ STAT_LABELS = [("work_sessions", "work sessions"), ("minutes_worked", "minutes w
                ("projects_finished", "projects finished"), ("visitor_messages", "messages from visitors"),
                ("notes_written", "journal entries"), ("letters_sent", "letters sent"), ("hours_slept", "hours slept"),
                ("tool_errors", "tool errors"),
-               ("predictions", "predictions made"), ("surprises", "surprises")]
+               ("predictions", "predictions made"), ("surprises", "surprises"),
+               ("focus_kept", "focus items kept"), ("focus_total", "focus items reviewed")]
 EARLIER_BELIEFS = 8
 HUNCHES_SHOWN = 2
 PORTRAITS_SHOWN = 3

@@ -43,6 +43,8 @@ class Settings:
     firsts_max_age_hours: float = 24   # a first older than this is no longer offered as new
     firsts_showings: int = 3           # how many ticks a first is shown
     firsts_shown: int = 5              # most firsts listed at once
+    night_pass: str = "apply"          # off | log (decide and record, don't act) | apply
+    max_night_ops: int = 3
     sleep: bool = True                 # day/night rhythm and the sleep tool
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
@@ -97,6 +99,8 @@ class Settings:
             firsts_max_age_hours=_float("FIRSTS_MAX_AGE_HOURS", 24),
             firsts_showings=_int("FIRSTS_SHOWINGS", 3),
             firsts_shown=_int("FIRSTS_SHOWN", 5),
+            night_pass=(e("NIGHT_PASS") or "apply").lower() if (e("NIGHT_PASS") or "apply").lower() in ("off", "log", "apply") else "apply",
+            max_night_ops=_int("MAX_NIGHT_OPS", 3),
             sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
@@ -110,6 +114,6 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse_library,read,experiment,revise_plan,sleep").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse_library,read,experiment,revise_plan,sleep,undo_decision,resume_project").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

@@ -167,6 +167,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 "stats": [{"day": d, **v} for d, v in st.day_stats(14)],
                 "expectations": st.expectations(limit=50),
                 "capabilities": (st.capability_snapshots(1) or [(None, None)])[0][1],
+                "night_decisions": st.decisions(20), "focus": st.focus(None, 20),
                 "turning": st.reflections("turning", limit=20), "turning_candidates": st.turning_points(20),
                 "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
 

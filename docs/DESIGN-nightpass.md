@@ -1,6 +1,8 @@
 # Design: the night pass (a reflection that can change goals)
 
-Status: **design only, not built.** Sources: [RESEARCH-self.md](RESEARCH-self.md) (MIDCA's meta-cycle that writes back
+Status: **built** (2026-10-30), default mode `apply` as decided. Decisions: ops list as proposed; focus capped at 3; `undo_decision`
+is the brake. Additions in the build: a `resume_project` tool for waking use, `focus_kept` / `focus_total` in the day counts, a 6-hour
+minimum between passes, and the support check also screens the pass's decisions. Sources: [RESEARCH-self.md](RESEARCH-self.md) (MIDCA's meta-cycle that writes back
 goal changes; BDI intention history and reconsideration; AIMA's learning agent: critic -> learning element ->
 performance element, and the problem generator; Sleep-time Compute's precomputed "tomorrow brief"; Ricoeur's *ipse*:
 what Pip committed to and whether it kept it).
@@ -62,7 +64,7 @@ these Pip turns out to be (stubborn, fickle, steady) is its to find out.
 ## Modes and rollout
 `NIGHT_PASS=off | log | apply`. **`log`** runs the call, validates, stores decisions (marked not applied) and shows nothing
 to Pip, so you can read what it *would* do via `pipchat memory` before giving it the power. **`apply`** executes them.
-Recommended: run `log` for a few nights, then switch to `apply`. Default `log`.
+The default is `apply` (chosen by the owner); `log` stays available for inspection.
 
 ## Risks and mitigations
 - **Over-pruning / loss aversion:** age floors, a 3-op cap, citations, the support check, "an unmet wish is not a
@@ -80,7 +82,7 @@ Recommended: run `log` for a few nights, then switch to `apply`. Default `log`.
 3. `apply` mode, waking block, focus block, kept/dropped review, firsts, day counts.
 4. Persona sentence and docs.
 
-## Open questions
+## Decisions made
 1. Default `log` first, then you flip to `apply` (recommended), or `apply` from the start?
 2. Is the op list right? In particular `adopt` (Pip adding goals from its sleep) and `pause_project`; anything you would
    remove, or anything you would add (e.g. reprioritizing)?

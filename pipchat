@@ -444,6 +444,16 @@ def cmd_memory(pip: Pip, a) -> None:
             top = sorted(((n, c) for n, c in rows.items() if c["tries"] >= 3), key=lambda r: -r[1]["tries"])[:5]
             if top:
                 print(f"  {group}s: " + ", ".join(f"{n} {c['good']}/{c['tries']}" for n, c in top))
+    if m.get("night_decisions"):
+        print(bold("Night decisions"))
+        for d in m["night_decisions"][:a.n]:
+            state = "undone" if d["undone"] else "applied" if d["applied"] else "logged only"
+            print(f"  #{d['id']} {dim(fmt_time(d['ts']))} {d['summary']}" + dim(f" - {d['reason']} [{state}]" if d["reason"] else f" [{state}]"))
+    open_focus = [f for f in (m.get("focus") or []) if f["status"] == "open"]
+    if open_focus:
+        print(bold("Focus"))
+        for f in open_focus:
+            print(f"  - {f['text']}")
     if m.get("turning"):
         print(bold("Days that mattered"))
         for t in m["turning"][:a.n]:
