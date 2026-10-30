@@ -48,6 +48,7 @@ class Settings:
     garden_speed: float = 1.0  # >1 grows crops faster (testing / impatience)
     work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
     max_active_projects: int = 3
+    max_active_projects_cap: int = 5   # most projects at once, however much workshop Pip builds
     companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
     reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs (fallback when it hasn't slept)
     verify_insights: bool = True       # one small GM call a night checks that insights follow from what they cite
@@ -121,6 +122,7 @@ class Settings:
             garden_speed=_float("GROW_SPEED", 1.0),
             work_speed=_float("WORK_SPEED", 1.0),
             max_active_projects=_int("MAX_ACTIVE_PROJECTS", 3),
+            max_active_projects_cap=_int("MAX_ACTIVE_PROJECTS_CAP", 5),
             companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
             reflect_hour=_int("REFLECT_HOUR", 3),
             verify_insights=(e("VERIFY_INSIGHTS") or "1") not in ("0", "false", "no"),

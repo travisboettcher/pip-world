@@ -484,6 +484,17 @@ class State:
             self.db.commit()
 
     # --- garden ----------------------------------------------------------
+    def project_limit(self) -> int:
+        """Projects Pip can keep going at once: the starting limit plus workshop it built, never above the cap."""
+        return min(self.s.max_active_projects_cap, self.s.max_active_projects + int(self.meta("extra_project_slots") or 0))
+
+    def add_project_slot(self) -> int | None:
+        with self.lock:
+            if self.project_limit() >= self.s.max_active_projects_cap:
+                return None
+            self.set_meta(extra_project_slots=int(self.meta("extra_project_slots") or 0) + 1)
+            return self.project_limit()
+
     def plot_count(self) -> int:
         """Plots Pip has: the starting number plus any it cleared, never above the cap."""
         return min(self.s.garden_plots_max, self.s.garden_plots + int(self.meta("extra_plots") or 0))

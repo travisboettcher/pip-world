@@ -201,9 +201,9 @@ The Matrix channel (`OUTREACH_CHANNELS=matrix`, settings `MATRIX_*` in `.env.tpl
 service and account/room bootstrap are separate (see the design).
 
 ## Changing the world
-A finished project can leave a lasting change. The GM may give it a `world` capability only if the work was clearing and preparing new ground; the engine
-then applies it once (a new garden plot) if the project's own words are about ground and the garden is below `GARDEN_PLOTS_MAX` (default 8). Pip is told in its
-persona that it can do this. Foraging in the woods now yields wild seeds and food.
+A finished project can leave a lasting change. The GM may give it a `world` capability naming one effect from the registry in `world_effects.py` (today a new
+garden plot, or a better workbench so more projects fit at once); the engine checks the project's own words, its difficulty and a hard cap, then applies it once.
+A new kind of change is one entry in that registry. Changes without an entry still exist as ordinary creations. Foraging in the woods yields wild seeds and food.
 
 ## Pictures and writing
 See [DESIGN-art.md](DESIGN-art.md). `draw(title, svg)` takes an SVG on a 400 x 300 canvas, which is parsed against a strict whitelist and re-serialised (scripts,

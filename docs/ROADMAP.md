@@ -119,11 +119,12 @@ is in my notes, not in the gears".
 - [ ] **LLM-free surprises**: a cheap random-event generator (storm flattens a plot, a mouse gets the tomatoes, a
       creation breaks) so the diary has things happen *to* Pip, not just things Pip decides
 - [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
-- [x] **Pip changes its world** (built 2026-10-30): a finished project can carry a `world` capability, decided by the GM only for work that plainly was
-      about making room to grow things, and applied once by the engine: a new garden plot, up to `GARDEN_PLOTS_MAX` (8). The engine gates it (a
-      land-related project of at least difficulty 2; the cap) so the GM can't hand out plots. Foraging gives wild seeds (sunflower, carrot, pea,
-      radish, bean) and food (berries, hazelnuts, mushrooms, apples). The capability list is the extension point for other lasting changes
-      (a pond, a path that shortens a walk).
+- [x] **Pip changes its world** (built 2026-10-30; generic registry): a finished project can carry a `world` capability naming an effect from
+      `world_effects.py`; the GM only proposes it for work that plainly made that kind of change, and the engine checks (the effect exists, difficulty
+      >= 2, the project's own words are about it, a hard cap) and applies it once. Today: `garden_plot` (up to `GARDEN_PLOTS_MAX`, 8) and `workbench`
+      (more projects at once, up to `MAX_ACTIVE_PROJECTS_CAP`, 5). Adding a kind of change is one registry entry. Changes with no entry (a pond, a path)
+      still exist as ordinary creations, just without a mechanical effect. Candidates when Pip asks for them: a path that shortens a walk, more
+      storage, a cellar that slows spoilage. Foraging gives wild seeds and food.
 
 ### Social
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free

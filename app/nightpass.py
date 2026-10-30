@@ -179,7 +179,7 @@ def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tupl
             p = projects.get(raw.get("id"))
             if not p or p["status"] != "paused":
                 reject("no such project on hold")
-            elif active >= settings.max_active_projects:
+            elif active >= state.project_limit():
                 reject("too many projects going")
             else:
                 ok.append({"op": op, "target_kind": "project", "target_id": p["id"], "args": {}, "reason": reason,
@@ -248,7 +248,7 @@ def undo(state, settings, decision_id: int) -> str:
         for i in before["archived"]:
             state.set_memory_status(i, "open")
     elif op == "pause_project":
-        if len(state.projects("active")) >= settings.max_active_projects:
+        if len(state.projects("active")) >= state.project_limit():
             return "you already have as many projects going as you can; finish or pause one first"
         state.update_project(tid, status="active")
     elif op == "resume_project":

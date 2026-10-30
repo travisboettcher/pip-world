@@ -225,3 +225,40 @@ async def test_a_new_plot_can_be_planted_and_shows_in_the_garden(tmp_path):
     assert "planted" in (await call(agent, "plant", seed="carrot seeds", plot=2)).text.lower()
     assert [g["state"] for g in st.garden()] == ["empty", "growing"]
     assert st.meta("extra_plots") == "1"
+
+
+# --- the world-effect registry is generic: a new kind of change is one entry ------------------------------
+@pytest.mark.asyncio
+async def test_a_workbench_raises_the_number_of_projects_pip_can_keep_going(tmp_path):
+    from app import creations as C
+    s, st, gm, agent = make(tmp_path, [], max_active_projects=1, max_active_projects_cap=2)
+    agent.tools.update({n: tools_mod.REGISTRY[n] for n in ("start_project",)})
+    st.add_project("kite", "g", "kitemaking", 2, [], [])
+    steps = [{"name": "first step"}]
+    assert "projects going" in (await call(agent, "start_project", name="boat", steps=steps)).text         # at the limit of 1
+    p = st.add_project("Build a proper workbench", "a bench and shelves so I can keep more going", "carpentry", 3,
+                       [{"name": "frame the bench", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
+    gm.script[:] = [report(name="Workbench", description="a sturdy bench with shelves", quirks=[],
+                           capabilities=[{"type": "world", "effect": "workbench"}])]
+    st.update_project(p["id"], status="done")                                                              # a finished project
+    c = await C.make(st, agent.gm, agent.rng, p, 0)
+    assert c["spec"]["capabilities"] == {"world": {"effect": "workbench"}} and st.project_limit() == 2
+    assert "started project" in (await call(agent, "start_project", name="boat", steps=steps)).text         # room for a second
+    ev = [e for e in st.events(20) if e["kind"] == "world_changed"][0]["data"]
+    assert ev["effect"] == "workbench" and "2 projects going at once" in ev["text"]
+    p2 = st.add_project("Another bench", "more shelves for the bench", "carpentry", 3,
+                        [{"name": "more shelves", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
+    gm.script[:] = [report(name="Shelves", description="more shelves", quirks=[], capabilities=[{"type": "world", "effect": "workbench"}])]
+    c2 = await C.make(st, agent.gm, agent.rng, p2, 0)
+    assert st.project_limit() == 2 and "world" not in c2["spec"]["capabilities"]                          # capped: no claim, no change
+
+
+def test_the_registry_drives_the_gm_prompt_and_the_checks():
+    from app import world_effects as W
+    line = W.gm_lines()
+    assert "garden_plot" in line and "workbench" in line and "a pond, a painting or a gift is just itself" in line
+    bench = {"name": "Make a workbench", "goal": "", "difficulty": 2, "stages": [{"name": "saw the boards"}]}
+    assert W.allowed("workbench", bench) and not W.allowed("garden_plot", bench) and not W.allowed("moon_base", bench)
+    assert not W.allowed("workbench", {**bench, "difficulty": 1})
+    spec = {"capabilities": {"world": {"effect": "moon_base"}}}
+    assert W.apply(None, spec) is None and "world" not in spec["capabilities"]                              # unknown effects do nothing

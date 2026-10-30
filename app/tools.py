@@ -464,7 +464,7 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
     active = ctx.state.projects("active")
     if any(p["name"].lower() == name.lower() for p in active):
         return ToolResult(f"you're already working on {name!r}; use work_on", followup=True)
-    if len(active) >= ctx.settings.max_active_projects:
+    if len(active) >= ctx.state.project_limit():
         return ToolResult(f"you already have {len(active)} projects going ({', '.join(p['name'] for p in active)}); "
                           "finish or abandon_project one first", followup=True)
     belongings = [f"{i['name']} x{i['qty']} ({i['kind']})" for i in ctx.state.items()]
@@ -763,7 +763,7 @@ async def resume_project(ctx: ToolContext, args: dict) -> ToolResult:
     p, err = ctx.state.find_project(args["project"], status="paused")
     if not p:
         return ToolResult(f"error: {err}", followup=True)
-    if len(ctx.state.projects("active")) >= ctx.settings.max_active_projects:
+    if len(ctx.state.projects("active")) >= ctx.state.project_limit():
         return ToolResult("you already have as many projects going as you can; finish or abandon_project one first",
                           followup=True)
     ctx.state.update_project(p["id"], status="active")
