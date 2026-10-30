@@ -209,7 +209,9 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Briar's letters are getting repetitive (owner, 2026-10-30). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
       repeating openings/topics, each letter shares one `life_update` sentence so Briar's life barely moves, and the prompt shows only the
-      correspondence so far. Ideas: list recent openings/topics to avoid, give Briar a small evolving agenda (events with a due date, things
+      correspondence so far. Owner likes the storytelling; the specific problem is a verbatim recurring line ("If you come over the marsh, the blue
+      door is the one that rattles") that reads as forgetful, not as a deliberate motif. Fix target: no verbatim repeat of a sentence from recent
+      letters (deterministic check + one retry); a recurring *motif* is fine if varied or acknowledged. Ideas: list recent openings/topics to avoid, give Briar a small evolving agenda (events with a due date, things
       they ask Pip), a deterministic repeat check (shared opening words / topic overlap) with one retry, and letters that react to Pip's world facts
 - [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state
 - [x] `rest(minutes)`: timed rest; the heartbeat sleeps through it (Pip was resting every 60 s tick)
