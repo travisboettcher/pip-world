@@ -6,7 +6,10 @@ import time
 
 from . import companions as comp
 from . import creations as cr
+from . import library as lib
 from . import memory as mem
+from . import neighbors as nb
+from . import places
 from . import projects as proj
 from .config import Settings
 from .gm import GameMaster
@@ -31,7 +34,9 @@ class Agent:
         self.tools = enabled_tools(settings)
         self.rng = rng or random.Random()
         self.gm = GameMaster(gm_backend or backend, state)
-        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng)
+        library = lib.Library(settings.library_path)
+        self.library = library if library.available() else None
+        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library)
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
@@ -39,6 +44,7 @@ class Agent:
         self.ticks = 0
         self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
         self._reflecting = asyncio.Lock()
+        self._finishing = asyncio.Lock()  # the monitor and a tick may both try to resolve the same session
 
     # --- wake control ------------------------------------------------
     def request_wake(self, force: bool = False) -> None:
@@ -105,19 +111,33 @@ class Agent:
 
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
-        sess = self.state.session()
-        if sess and sess["ends_at"] <= time.time():
-            work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
-            if work:
-                if work["project_done"]:
-                    p = self.state.project(work["project_id"])
-                    c = await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
-                    comp.add_for_creation(self.state, self.rng, c)
-                self.request_wake()
+        if await self.finish_work():
+            self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
+            self.request_wake()
+        await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
+        if await nb.step(self.state, self.s, self.gm, self.rng):
             self.request_wake()
         if mem.due(self.state, self.s, time.time()):
             await self.reflect()
+
+    async def finish_work(self) -> bool:
+        """Resolve whatever Pip was busy with once its time is up: work (a finished project becomes a creation),
+        a walk (Pip arrives), or reading (Pip takes in what it read)."""
+        async with self._finishing:
+            sess = self.state.session()
+            if not sess or sess["ends_at"] > time.time():
+                return False
+            if sess["kind"] == "walk":
+                return bool(await places.arrive(self.state, self.s, self.gm, self.library))
+            if sess["kind"] == "read":
+                return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
+            work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
+            if work and work["project_done"]:
+                p = self.state.project(work["project_id"])
+                c = await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
+                comp.add_for_creation(self.state, self.rng, c)
+            return bool(work)
 
     async def reflect(self) -> dict | None:
         """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
@@ -135,6 +155,7 @@ class Agent:
         """
         self.last_tick = time.time()
         self.state.apply_decay()
+        await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
         inbox = self.state.pending_inbox()
         self.ctx.visitor_ids = [m["id"] for m in inbox]
@@ -247,7 +268,7 @@ class Agent:
                     line += "; later stages need " + ", ".join(
                         f"{q} {n} (you have {self.state.find_item(n)[0]['qty'] if self.state.find_item(n)[0] else 0})"
                         for n, q in later.items())
-            if sess and sess["project_id"] == p["id"]:
+            if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
                 line += f" - you're working on it now, about {max(1, round((sess['ends_at'] - time.time()) / 60))} min left"
             lines.append(line)
         if not active:
@@ -269,6 +290,10 @@ class Agent:
             return f"{d['sender']} gave you {d['qty']} x {d['item']}"
         if k == "garden":
             return f"Your {d['crop']} in plot {d['plot']} ripened"
+        if k == "reading" and d.get("finished"):
+            return f"You finished reading {d['title']}"
+        if k == "arrived" and d.get("first_time") and d["place"] != places.HOME:
+            return f"You went to {places.label(d['place'])} for the first time"
         if k == "creation_made":
             return f"Your {d['project']} became {d['name']}: {d['description']}"
         if k == "work" and not d.get("interrupted"):
@@ -302,7 +327,9 @@ class Agent:
         for e in self.state.events_since(since):  # oldest first
             if self._moment_shown.get(e["id"], 0) >= self.s.moment_showings:
                 continue
-            if e["kind"] == "inbox":
+            if e["kind"] == "inbox" and e["data"].get("letter"):
+                moments.append(([e["id"]], f"A letter came from {e['data']['sender']}"))
+            elif e["kind"] == "inbox":
                 visit_ids.append(e["id"])  # never quote visitor text here: Pip would answer it again
                 who = e["data"].get("sender") or "A visitor"
                 if who not in visitors:
@@ -359,9 +386,12 @@ class Agent:
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
         ]
+        lines += places.perception(self.state, self.library)
         lines += mem.perception(self.state)
         lines += self._belongings()
         lines += self._projects()
+        lines += nb.perception(self.state)
+        lines += lib.perception(self.state, self.library)
         lines += self._journal()
         events = [e for e in reversed(self.state.events(EVENT_CONTEXT * 2)) if e["kind"] not in HIDDEN_EVENT_KINDS]
         if events:
@@ -376,6 +406,16 @@ class Agent:
                 elif e["kind"] == "creation":
                     lines.append(f"- {d['text']}" if d["what"] in ("stopped", "helper", "used")
                                  else f"- your {d['name']}: {d['text']}")
+                elif e["kind"] == "reading":
+                    lines.append(f"- you read {d['title']}" + (f" (now {d['percent']}% through)" if not d["finished"]
+                                                                else " (and finished it)") + f": {d['summary']}"
+                                 + "".join(f' "{q}"' for q in d.get("quotes", [])))
+                elif e["kind"] == "arrived":
+                    lines.append(f"- you arrived at {places.label(d['place'])}" if d["place"] != places.HOME
+                                 else "- you got home")
+                elif e["kind"] == "letter_sent":
+                    lines.append(f"- you wrote to {d['to']}: {d['text'][:200]}"
+                                 + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
                 elif e["kind"] == "companion":  # model-written, so quoted like a visitor's words
                     lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
                 elif e["kind"] == "creation_made":

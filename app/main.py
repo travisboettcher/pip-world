@@ -108,7 +108,8 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         for p in st.projects(status):
             i = proj.current_stage(p)
             out.append({**p, "percent": proj.percent(p), "current_stage": i,
-                        "working_until": sess["ends_at"] if sess and sess["project_id"] == p["id"] else None})
+                        "working_until": sess["ends_at"] if sess and sess["kind"] == "work"
+                        and sess["project_id"] == p["id"] else None})
         return {"projects": out, "skills": {c: {"xp": xp, "level": proj.level(xp)} for c, xp in st.skills().items()}}
 
     @app.get("/creations")
@@ -171,6 +172,25 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     async def post_reflect():
         """Reflect now instead of waiting for the night (covers everything since the last reflection)."""
         return {"reflection": await app.state.agent.reflect()}
+
+    @app.get("/letters")
+    def get_letters(limit: int = 50):
+        st = app.state.agent.state
+        return {"neighbors": [{k: c[k] for k in ("name", "about", "life", "next_chatter_at")}
+                              for c in st.characters("neighbor")],
+                "letters": st.letters(limit=min(limit, 500))}
+
+    @app.get("/library/search")
+    def library_search(q: str = "", limit: int = 10):
+        agent: Agent = app.state.agent
+        if not agent.library:
+            raise HTTPException(status_code=404, detail="no Calibre library mounted")
+        return [{k: b[k] for k in ("id", "title", "authors", "tags", "series", "description", "formats", "format")}
+                for b in agent.library.search(q, min(limit, 50))]
+
+    @app.get("/library/bookmarks")
+    def library_bookmarks():
+        return app.state.agent.state.bookmarks()
 
     @app.post("/tick")
     def post_tick():

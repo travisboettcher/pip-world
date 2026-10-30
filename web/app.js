@@ -86,7 +86,12 @@ function describe(e) {
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
     case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
-    case 'inbox': return d.gift ? null : { group: 'chat', text: `${d.sender || 'Visitor'}: ${d.text}` };
+    case 'inbox': return d.letter ? { group: 'world', cls: 'world', text: d.text }
+      : d.gift ? null : { group: 'chat', text: `${d.sender || 'Visitor'}: ${d.text}` };
+    case 'arrived': return { group: 'world', cls: 'world', text: d.place === 'workshop' ? 'Pip gets home' : `Pip arrives at ${d.label || d.place}` + (d.first_time && d.description ? ` — ${d.description}` : '') };
+    case 'reading': return { group: 'world', cls: 'world', text: `Pip reads ${d.title}${d.finished ? ' (finished!)' : ` (${d.percent}%)`}: ${d.summary}` };
+    case 'letter_sent': return { group: 'world', cls: 'world', text: `Pip wrote to ${d.to}: ${d.text}` + (d.enclosed ? ` (enclosed: ${d.enclosed})` : '') };
+    case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
     case 'alert': return { group: 'world', cls: 'warn', text: `Pip's ${d.stat} needs attention` };
@@ -161,7 +166,7 @@ function showVisitor(id, text, ts) {
 }
 function chatFromEvent(e, live) {
   const d = e.data;
-  if (e.kind === 'inbox' && !d.gift) showVisitor(d.id, d.text, e.ts);
+  if (e.kind === 'inbox' && !d.gift && !d.letter) showVisitor(d.id, d.text, e.ts);
   else if (e.kind === 'gift') bubble('sys', `${d.sender} gave Pip ${d.qty} × ${d.item}`);
   else if (e.kind === 'say' && !d.to_name) {
     if (d.text) bubble('pip', d.text, e.ts); else if (live) bubble('sys', 'Pip says nothing.');
@@ -302,6 +307,19 @@ async function refreshMemory() {
     ...sec('Days', m.days.slice(0, 5).map((d) => h('li', {}, d.text, h('small', {}, fmtDay(d.period_end))))));
 }
 
+async function refreshLetters() {
+  const r = await api('/letters?limit=30');
+  const now = Date.now() / 1000;
+  $('letters').replaceChildren(
+    ...r.neighbors.map((n) => h('p', {}, h('b', {}, n.name), ` — ${n.about}`)),
+    h('ul', { class: 'plain' }, ...(r.letters.length ? r.letters.slice().reverse().map((l) => {
+      const transit = l.delivered_at ? fmtDay(l.ts) : `on its way, arrives in ~${Math.max(1, Math.round((l.deliver_at - now) / 60))} min`;
+      const extra = [l.enclosed && `enclosed: ${l.enclosed}`, l.parcel && `parcel: ${l.parcel.qty} × ${l.parcel.name}`].filter(Boolean);
+      return h('li', {}, h('b', {}, `${l.sender} → ${l.recipient}`), `: ${l.text}`,
+        h('small', {}, [transit, ...extra].join(' · ')));
+    }) : [h('li', { class: 'empty' }, 'no letters yet')])));
+}
+
 async function refreshCreations() {
   const made = await api('/creations');
   $('creations').replaceChildren(...(made.length ? made.map((c) => {
@@ -367,6 +385,7 @@ function handleEvent(e, live) {
   if (e.kind === 'garden') debounce('garden', refreshGarden);
   if (e.kind === 'work' || (e.kind === 'tool' && ['start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
   if (e.kind === 'reflection') debounce('memory', refreshMemory);
+  if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
   if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (['tick', 'alert', 'tool'].includes(e.kind)) debounce('state', refreshState, 1200);
@@ -383,7 +402,7 @@ renderFilters();
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]);
+    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {

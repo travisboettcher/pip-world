@@ -179,3 +179,89 @@ class GameMaster:
         )
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "speak")
         return clip(out["text"], 300) if out else None
+
+    # --- the neighbor -----------------------------------------------------------
+    async def invent_neighbor(self, pip_world: str) -> dict | None:
+        task = (
+            f"Pip's world so far: {pip_world}\n\n"
+            "Someone lives near Pip and is about to write to it for the first time. Invent them freely - any kind of "
+            "creature or person that fits this small world, with their own life, work, worries and way of writing. "
+            "Make their life genuinely different from Pip's (not another maker of the same kinds of things), so they "
+            "have their own world to share. Give:\n"
+            "- `name`: what they're called\n"
+            "- `persona`: 3-5 sentences, private: who they are, what their days are like, what they care about, how "
+            "they write letters\n"
+            "- `about`: one short line of what Pip would know about them from a distance (where they live, what "
+            "they're known for)\n"
+            "- `letter`: their first letter to Pip, introducing themselves (2-5 sentences, in their voice). Pip may walk "
+            "over and visit them at home some day; they don't go out visiting themselves."
+        )
+        return await self.ask(task, {
+            "name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
+            "letter": {"type": "string"},
+        }, ["name", "persona", "about", "letter"], "invent_neighbor")
+
+    async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
+                              received: str | None, enclosed: str, parcel_allowed: bool) -> dict | None:
+        task = (
+            f"Write as {name}, Pip's neighbor. Who {name} is: {persona}\n"
+            + (f"What's been happening in {name}'s life lately: {' '.join(life)}\n" if life else "")
+            + ("Your letters with Pip so far (oldest first):\n" + "\n".join(correspondence) + "\n" if correspondence
+               else "")
+            + (f"\nPip's letter just arrived:\n{received}\n" if received else
+               f"\nNo letter is waiting; {name} decides to write to Pip anyway.\n")
+            + (f"Pip enclosed something with it: {enclosed}. React to it honestly.\n" if enclosed else "")
+            + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what Pip said if anything, and "
+            f"sharing something from their own life. Pip can walk over to visit {name} at home (you can invite it), "
+            f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Optional:\n"
+            "- `life_update`: one sentence on what's newly happening in their life (it carries into later letters)\n"
+            + ("- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food "
+               "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
+        )
+        parcel = {"type": "object", "properties": {
+            "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
+            "description": {"type": "string"}}, "required": ["name", "kind"]}
+        return await self.ask(task, {
+            "text": {"type": "string"}, "life_update": {"type": "string"},
+            **({"parcel": parcel} if parcel_allowed else {}),
+        }, ["text"], "neighbor_letter")
+
+    # --- places and the library ---------------------------------------------------
+    async def describe_place(self, place: str, details: str) -> str | None:
+        task = (
+            f"Pip has just arrived at {place} for the first time." + (f" What's actually there: {details}." if details
+                                                                      else "")
+            + " Describe the place as Pip finds it in 2-3 sentences: what it looks and feels like, true to what's "
+            "there. This description will be kept and shown whenever Pip is here."
+        )
+        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "describe_place")
+        return clip(out["text"], 500) if out else None
+
+    async def read_summary(self, title: str, authors: str, text: str, percent: int) -> dict | None:
+        task = (
+            f"Pip just read a stretch of {title!r} by {authors} (it's now about {percent}% through). The text it read:\n"
+            f"<<<\n{text}\n>>>\n\n"
+            "Report what Pip took in from this stretch:\n"
+            "- `summary`: 2-4 sentences, second person ('You read ...'), concrete and accurate about what this part "
+            "covers - ideas, events, how-tos, characters - so Pip could remember and use it. If the stretch is mostly "
+            "front matter, tables or fragments, say so plainly.\n"
+            "- `quotes`: 0-2 short passages Pip might remember, copied exactly from the text, each under 25 words."
+        )
+        return await self.ask(task, {"summary": {"type": "string"}, "quotes": {"type": "array", "items": {"type": "string"}}},
+                              ["summary"], "read_summary", max_tokens=1024)
+
+    async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
+                              heard: list[str], greeting: bool, situation: str) -> str | None:
+        task = (
+            f"Voice {name}, Pip's neighbor. Who {name} is: {persona}\n"
+            + (f"Lately in {name}'s life: {' '.join(life)}\n" if life else "")
+            + ("What's passed between them recently (letters and talk, oldest first):\n" + "\n".join(conversation)
+               + "\n" if conversation else "")
+            + f"Right now Pip is visiting {name} at home. {situation}\n"
+            + (f"Pip just said: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}, face to face."
+               if heard else f"Pip has just arrived at the door; greet it as {name} would.")
+            + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
+            f"{name} stays at home and can't do more than they plausibly could."
+        )
+        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "speak_in_person")
+        return clip(out["text"], 400) if out else None

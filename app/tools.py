@@ -11,6 +11,9 @@ import httpx
 from . import companions as comp
 from . import creations as cr
 from . import memory as mem
+from . import library as lib
+from . import neighbors as nb
+from . import places
 from . import projects as proj
 from .config import Settings
 from .llm.base import ToolSpec
@@ -25,14 +28,42 @@ class ToolContext:
     visitor_ids: list[int] = field(default_factory=list)  # inbox items being answered this tick
     gm: Any = None  # GameMaster, or None (world content falls back to templates)
     rng: random.Random = field(default_factory=random.Random)
+    library: Any = None  # library.Library, or None when no Calibre library is mounted
+
+
+def away_from_home(ctx: "ToolContext") -> str:
+    here = ctx.state.agent()["location"]
+    return "" if here == places.HOME else f"you're at {places.label(here)}; go_to home first"
+
+
+def not_at_library(ctx: "ToolContext") -> str:
+    return "" if ctx.state.agent()["location"] == "library" else "you're not at the library; go_to library first"
 
 
 async def stop_working(ctx: "ToolContext") -> str:
-    """Cut a running work session short (when Pip switches to something else). Returns a note for the result."""
-    if not ctx.state.session():
+    """Cut work or reading short (when Pip rests instead). Returns a note for the result."""
+    sess = ctx.state.session()
+    if not sess:
         return ""
+    if sess["kind"] == "read":
+        r = await lib.finish_reading(ctx.state, ctx.settings, ctx.gm, ctx.library, interrupted=True)
+        return f" (you put {r['title']} down early)" if r else ""
     w = await proj.resolve_session(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
     return f" (you stopped working on {w['project']} early)" if w else ""
+
+
+def busy(ctx: "ToolContext") -> str:
+    """Why Pip can't start something new right now, or '' if it can."""
+    sess = ctx.state.session()
+    if not sess:
+        return ""
+    left = max(1, round((sess["ends_at"] - time.time()) / 60))
+    if sess["kind"] == "walk":
+        return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
+    if sess["kind"] == "read":
+        return f"you're reading {sess['target']} (about {left} min left); rest stops early"
+    cur = ctx.state.project(sess["project_id"])
+    return f"you're in the middle of working on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
 
 
 @dataclass
@@ -80,6 +111,9 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
+        if ch and ch["kind"] == "neighbor" and ctx.state.agent()["location"] != places.home_of(ch):
+            return ToolResult(f"{ch['name']} can't hear you from here; write_letter, or go_to their home to visit",
+                              followup=True)
         if ch:
             comp.hear(ctx.state, ch, text)
             ctx.state.log("say", text=text, to=[], to_name=ch["name"])
@@ -105,8 +139,7 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
         if not fields["description"]:
             fields.pop("description")
         ctx.state.update_agent(**fields)
-        left = max(1, round((sess["ends_at"] - time.time()) / 60))
-        return ToolResult(f"you're still working (about {left} min left); rest if you want to stop early")
+        return ToolResult(f"(still busy) {busy(ctx)}")
     ctx.state.update_agent(**fields)
     return ToolResult(f"now {activity}")
 
@@ -133,6 +166,9 @@ async def eat(ctx: ToolContext, args: dict) -> ToolResult:
 
 @tool("rest", "Rest to recover energy until you choose another activity.", _obj({}, []))
 async def rest(ctx: ToolContext, args: dict) -> ToolResult:
+    sess = ctx.state.session()
+    if sess and sess["kind"] == "walk":
+        return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can rest once you get there")
     note = await stop_working(ctx)
     ctx.state.update_agent(activity="resting", description="")
     return ToolResult(f"resting{note}")
@@ -217,6 +253,8 @@ def _plot_arg(args: dict):
       _obj({"seed": {"type": "string"}, "plot": {"type": "integer", "description": "optional; default first empty plot"}},
            ["seed"]))
 async def plant(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := away_from_home(ctx):
+        return ToolResult(why, followup=True)
     item, err = ctx.state.find_item(args["seed"], kind="seed")
     if not item:
         return ToolResult(f"error: {err}", followup=True)
@@ -241,6 +279,8 @@ async def plant(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("harvest", "Harvest a ripe crop from the garden. Gives you food to eat.",
       _obj({"plot": {"type": "integer", "description": "optional; default the first ripe plot"}}, []))
 async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := away_from_home(ctx):
+        return ToolResult(why, followup=True)
     plots = ctx.state.garden()
     plot = _plot_arg(args)
     if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
@@ -321,13 +361,11 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     if not p:
         return ToolResult(f"error: {err}", followup=True)
     sess = st.session()
-    if sess:
+    if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
         left = max(1, round((sess["ends_at"] - time.time()) / 60))
-        cur = st.project(sess["project_id"])
-        if cur and cur["id"] == p["id"]:
-            return ToolResult(f"you're already working on {p['name']}; about {left} min to go")
-        return ToolResult(f"you're in the middle of working on {cur['name'] if cur else 'something'} "
-                          f"(about {left} min left); set_activity or rest stops it", followup=True)
+        return ToolResult(f"you're already working on {p['name']}; about {left} min to go")
+    if why := busy(ctx) or away_from_home(ctx):
+        return ToolResult(why, followup=True)
     i = proj.current_stage(p)
     if i is None:
         return ToolResult(f"{p['name']} is already finished", followup=True)
@@ -356,7 +394,7 @@ async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
     if not p:
         return ToolResult(f"error: {err}", followup=True)
     sess = ctx.state.session()
-    if sess and sess["project_id"] == p["id"]:
+    if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
         ctx.state.end_session()
         ctx.state.update_agent(activity="idle", description="")
     ctx.state.update_project(p["id"], status="abandoned", outcome=str(args.get("reason") or "")[:300],
@@ -384,6 +422,94 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult("You remember:\n" + mem.format_recall(hits), followup=True)
 
 
+@tool("write_letter", "Write a letter to one of your neighbors. It takes a few hours to arrive, and they'll write "
+      "back in their own time. You can enclose one thing you own or made as a gift (it leaves your belongings).",
+      _obj({"to": {"type": "string"}, "text": {"type": "string", "description": "the letter"},
+            "enclose": {"type": "string", "description": "optional: one item or creation to send along"}},
+           ["to", "text"]))
+async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
+    st = ctx.state
+    ch = st.find_character(args["to"])
+    if not ch or ch["kind"] != "neighbor":
+        names = ", ".join(c["name"] for c in st.characters("neighbor")) or "nobody yet"
+        return ToolResult(f"error: you don't have a neighbor called {args['to']!r} (you know: {names})", followup=True)
+    text = str(args.get("text") or "").strip()
+    if not text:
+        return ToolResult("error: the letter is empty", followup=True)
+    if st.letters_since(nb.PIP, time.time() - nb.DAY) >= ctx.settings.letters_per_day:
+        return ToolResult("you've written plenty of letters today; wait for the post to catch up", followup=True)
+    enclosed = ""
+    if args.get("enclose"):
+        item, err = st.find_item(args["enclose"])
+        made = None if item else st.find_creation(args["enclose"])[0]
+        if item:
+            st.take_item(item["id"])
+            enclosed = f"1 x {item['name']}" + (f" ({item['description']})" if item["description"] else "")
+        elif made:
+            st.give_creation(made["id"], ch["name"])
+            enclosed = f"{made['name']}, something Pip made: {made['description']}"
+        else:
+            return ToolResult(f"error: {err} (nothing was sent)", followup=True)
+    nb.send(st, ctx.settings, ctx.rng, ch, text, enclosed)
+    gift = f", with {enclosed.split(',')[0].split(' (')[0]} tucked inside" if enclosed else ""
+    return ToolResult(f"your letter to {ch['name']} is on its way{gift}; it'll take a few hours to arrive")
+
+
+# --- places and the library ---------------------------------------------------------
+@tool("go_to", "Walk somewhere: home, the library, a neighbor's home (to visit them) - any place you know. It "
+      "takes a little while.",
+      _obj({"place": {"type": "string"}}, ["place"]))
+async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
+    place = places.find(ctx.state, ctx.library, args["place"])
+    if not place:
+        known = ", ".join(places.available(ctx.state, ctx.library))
+        return ToolResult(f"error: you don't know a place called {args['place']!r} (you know: {known})", followup=True)
+    if why := busy(ctx):  # first: mid-walk, the location is still where Pip set off from
+        return ToolResult(why, followup=True)
+    if place == ctx.state.agent()["location"]:
+        return ToolResult(f"you're already at {places.label(place)}", followup=True)
+    minutes = places.start_walk(ctx.state, ctx.settings, place)
+    return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min")
+
+
+@tool("browse_library", "At the library: look for books. Give a query (a subject, title or author), or leave it "
+      "out to wander the shelves and see what's there.",
+      _obj({"query": {"type": "string", "description": "optional"}}, []))
+async def browse_library(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := not_at_library(ctx):
+        return ToolResult(why, followup=True)
+    q = str(args.get("query") or "").strip()
+    if q:
+        books, where = ctx.library.search(q), f"Looking for {q!r}, you find"
+    else:
+        shelf, books = ctx.library.wander(ctx.rng)
+        where = f"Wandering along {shelf}, you see"
+    if not books:
+        return ToolResult(f"nothing on the shelves matches {q!r}", followup=True)
+    return ToolResult(f"{where}:\n" + "\n".join(f"- {lib.line(b, ctx.state)}" for b in books), followup=True)
+
+
+@tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "
+      "read when the time is up, and next time you pick up where you left off.",
+      _obj({"book": {"type": "string"}, "minutes": {"type": "integer", "description": "15-90, default 45"}},
+           ["book"]))
+async def read(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := not_at_library(ctx) or busy(ctx):
+        return ToolResult(why, followup=True)
+    b, err = ctx.library.find(args["book"])
+    if not b:
+        return ToolResult(f"error: {err}", followup=True)
+    if not b["format"]:
+        return ToolResult(f"{b['title']} is bound in a way you can't open ({', '.join(b['formats'])})", followup=True)
+    mark = ctx.state.bookmark(b["id"])
+    if mark and mark["finished"]:
+        return ToolResult(f"you've already finished {b['title']}", followup=True)
+    if mark and mark["unreadable"]:
+        return ToolResult(f"{b['title']} is almost all pictures; there's nothing more to read", followup=True)
+    minutes = proj.clamp_int(args.get("minutes"), *lib.READ_MINUTES, 45)
+    return ToolResult(lib.start_reading(ctx.state, ctx.settings, b, minutes))
+
+
 def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
     out = {}
     for name in settings.tools:
@@ -391,5 +517,7 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             raise ValueError(f"unknown tool {name!r}; options: {sorted(REGISTRY)}")
         if name == "web_search" and not settings.tavily_api_key:
             continue  # silently unavailable without a key
+        if name in ("browse_library", "read") and not lib.Library(settings.library_path).available():
+            continue  # no Calibre library mounted
         out[name] = REGISTRY[name]
     return out

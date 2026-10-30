@@ -8,6 +8,7 @@ from datetime import date
 
 from .config import Settings
 from .memory import RECALL_EVENT_KINDS, STOP_WORDS, recall_text
+from .text import craft_name
 from .world import KINDS, STARTER_ITEMS, normalize_attrs
 
 SCHEMA = """
@@ -67,6 +68,16 @@ CREATE TABLE IF NOT EXISTS characters (
   persona TEXT NOT NULL, chatter_minutes REAL NOT NULL, next_chatter_at REAL NOT NULL,
   heard TEXT NOT NULL DEFAULT '[]', replies TEXT NOT NULL DEFAULT '[]', ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS letters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, sender TEXT NOT NULL, recipient TEXT NOT NULL,
+  text TEXT NOT NULL, enclosed TEXT NOT NULL DEFAULT '', parcel TEXT, deliver_at REAL NOT NULL,
+  delivered_at REAL, attempts INTEGER NOT NULL DEFAULT 0, reply_to INTEGER
+);
+CREATE TABLE IF NOT EXISTS bookmarks (
+  book_id INTEGER PRIMARY KEY, title TEXT NOT NULL, section INTEGER NOT NULL DEFAULT 0,
+  offset INTEGER NOT NULL DEFAULT 0, percent INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0,
+  finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
+);
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reflections (
@@ -84,6 +95,7 @@ CREATE TABLE IF NOT EXISTS usage (
 """
 
 STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
+RECALL_INDEX_VERSION = "2"  # bump to rebuild the recall index from stored data on the next start
 SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
 RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
 EDITABLE = tuple(sec for sec in SECTIONS if sec != "diary")  # the diary is a record: never rewritten
@@ -114,6 +126,11 @@ class State:
                 ("memories", "edited_at", "REAL"),
                 ("inbox", "sender", "TEXT NOT NULL DEFAULT 'A visitor'"),
                 ("inbox", "gift", "INTEGER NOT NULL DEFAULT 0"),
+                ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
+                ("characters", "life", "TEXT NOT NULL DEFAULT '[]'"),
+                ("creations", "given_to", "TEXT"),
+                ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
+                ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -123,7 +140,8 @@ class State:
                     "VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', ?)",
                     (time.time(),),
                 )
-            if not self.meta("recall_indexed"):
+            self._normalize_crafts()
+            if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
                 for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
@@ -153,7 +171,8 @@ class State:
             energy_rate = (
                 self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
             )
-            if self.session():
+            sess = self.session()
+            if sess and sess["kind"] == "work":
                 energy_rate -= self.s.work_energy_per_hour
             hunger = clamp(a["hunger"] + self.s.hunger_per_hour * hours)
             energy = clamp(a["energy"] + energy_rate * hours)
@@ -441,10 +460,13 @@ class State:
             row = self.db.execute("SELECT * FROM work_session WHERE id = 1").fetchone()
         return dict(row) if row else None
 
-    def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float) -> None:
+    def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float, kind: str = "work",
+                      target: str = "") -> None:
+        """The one thing Pip is busy with in real time: work on a project, a walk, or reading (project_id = book)."""
         with self.lock:
-            self.db.execute("INSERT OR REPLACE INTO work_session VALUES (1, ?, ?, ?, ?, ?)",
-                            (project_id, stage, minutes, time.time(), ends_at))
+            self.db.execute("INSERT OR REPLACE INTO work_session (id, project_id, stage, minutes, started_at, ends_at, "
+                            "kind, target) VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
+                            (project_id, stage, minutes, time.time(), ends_at, kind, target))
             self.db.commit()
 
     def end_session(self) -> None:
@@ -483,9 +505,16 @@ class State:
             row = self.db.execute("SELECT * FROM creations WHERE id = ?", (creation_id,)).fetchone()
         return self._creation(row) if row else None
 
-    def creations(self) -> list[dict]:
+    def creations(self, include_given: bool = False) -> list[dict]:
+        """Things Pip has made (and still has, unless include_given)."""
+        q = "SELECT * FROM creations" + ("" if include_given else " WHERE given_to IS NULL") + " ORDER BY id"
         with self.lock:
-            return [self._creation(r) for r in self.db.execute("SELECT * FROM creations ORDER BY id")]
+            return [self._creation(r) for r in self.db.execute(q)]
+
+    def give_creation(self, creation_id: int, to: str) -> None:
+        with self.lock:
+            self.db.execute("UPDATE creations SET given_to = ? WHERE id = ?", (to, creation_id))
+            self.db.commit()
 
     def set_runtime(self, creation_id: int, runtime: dict) -> None:
         with self.lock:
@@ -506,24 +535,25 @@ class State:
     # --- characters (companions; later neighbors) ----------------------------
     @staticmethod
     def _character(row) -> dict:
-        return {**dict(row), "heard": json.loads(row["heard"]), "replies": json.loads(row["replies"])}
+        return {**dict(row), **{k: json.loads(row[k]) for k in ("heard", "replies", "life")}}
 
     def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
-                      next_chatter_at: float) -> dict:
+                      next_chatter_at: float, about: str = "") -> dict:
         with self.lock:
             cur = self.db.execute(
-                "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes, next_chatter_at,
-                                                  time.time()))
+                "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts, about) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes, next_chatter_at,
+                                                     time.time(), about))
             self.db.commit()
             return self._character(self.db.execute("SELECT * FROM characters WHERE id = ?", (cur.lastrowid,)).fetchone())
 
-    def characters(self) -> list[dict]:
+    def characters(self, kind: str | None = None) -> list[dict]:
         with self.lock:
-            return [self._character(r) for r in self.db.execute("SELECT * FROM characters ORDER BY id")]
+            rows = self.db.execute("SELECT * FROM characters ORDER BY id").fetchall()
+        return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     def update_character(self, character_id: int, **fields) -> None:
-        vals = {k: json.dumps(v) if k in ("heard", "replies") else v for k, v in fields.items()}
+        vals = {k: json.dumps(v) if k in ("heard", "replies", "life") else v for k, v in fields.items()}
         with self.lock:
             self.db.execute(f"UPDATE characters SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?",
                             (*vals.values(), character_id))
@@ -535,6 +565,70 @@ class State:
         hit = [c for c in rows if c["name"].lower() == q] or \
               [c for c in rows if q and (q in c["name"].lower() or c["name"].lower() in q)]
         return hit[0] if len(hit) == 1 else None
+
+    # --- bookmarks (the library) -----------------------------------------------------
+    def bookmark(self, book_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM bookmarks WHERE book_id = ?", (book_id,)).fetchone()
+        return dict(row) if row else None
+
+    def bookmarks(self, include_finished: bool = True) -> list[dict]:
+        """Books Pip has read in, most recently read first."""
+        q = "SELECT * FROM bookmarks" + ("" if include_finished else " WHERE finished = 0 AND unreadable = 0")
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q + " ORDER BY last_read DESC")]
+
+    def set_bookmark(self, book_id: int, title: str, **fields) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR IGNORE INTO bookmarks (book_id, title) VALUES (?, ?)", (book_id, title))
+            if fields:
+                self.db.execute(f"UPDATE bookmarks SET {', '.join(f'{k} = ?' for k in fields)} WHERE book_id = ?",
+                                (*fields.values(), book_id))
+            self.db.commit()
+
+    # --- letters ----------------------------------------------------------------------
+    @staticmethod
+    def _letter(row) -> dict:
+        return {**dict(row), "parcel": json.loads(row["parcel"]) if row["parcel"] else None}
+
+    def add_letter(self, sender: str, recipient: str, text: str, deliver_at: float, enclosed: str = "",
+                   parcel: dict | None = None, reply_to: int | None = None) -> dict:
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO letters (ts, sender, recipient, text, enclosed, parcel, deliver_at, reply_to) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (time.time(), sender, recipient, text, enclosed,
+                                                    json.dumps(parcel) if parcel else None, deliver_at, reply_to))
+            self.db.commit()
+            return self._letter(self.db.execute("SELECT * FROM letters WHERE id = ?", (cur.lastrowid,)).fetchone())
+
+    def letters(self, between: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict]:
+        """Newest `limit` letters (optionally only to/from one name, or only those still on the way), oldest first."""
+        q, args = "SELECT * FROM letters WHERE 1=1", []
+        if between:
+            q += " AND (sender = ? OR recipient = ?)"
+            args += [between, between]
+        if undelivered:
+            q += " AND delivered_at IS NULL"
+        with self.lock:
+            rows = self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+        return [self._letter(r) for r in reversed(rows)]
+
+    def update_letter(self, letter_id: int, **fields) -> None:
+        with self.lock:
+            self.db.execute(f"UPDATE letters SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                            (*fields.values(), letter_id))
+            self.db.commit()
+
+    def letters_since(self, sender: str, since: float) -> int:
+        """How many letters `sender` has written since `since` (for the per-day cap)."""
+        with self.lock:
+            return self.db.execute("SELECT COUNT(*) FROM letters WHERE sender = ? AND ts > ?", (sender, since)).fetchone()[0]
+
+    def letters_since_parcel(self, since: float) -> int:
+        """How many parcels have been sent to Pip since `since`."""
+        with self.lock:
+            return self.db.execute("SELECT COUNT(*) FROM letters WHERE parcel IS NOT NULL AND ts > ?",
+                                   (since,)).fetchone()[0]
 
     def hurry_garden(self, fraction: float, now: float | None = None) -> int:
         """Cut the remaining growing time of every unripe crop by `fraction`. Returns how many were helped."""
@@ -597,8 +691,20 @@ class State:
         if commit:
             self.db.commit()
 
+    def _normalize_crafts(self) -> None:
+        """Older plans stored long craft names ('clockmaking (gear train, escap'); fold them into the core skill."""
+        for r in self.db.execute("SELECT id, craft FROM projects").fetchall():
+            if craft_name(r["craft"]) != r["craft"]:
+                self.db.execute("UPDATE projects SET craft = ? WHERE id = ?", (craft_name(r["craft"]), r["id"]))
+        for r in self.db.execute("SELECT craft, xp FROM skills").fetchall():
+            if craft_name(r["craft"]) != r["craft"]:
+                self.db.execute("DELETE FROM skills WHERE craft = ?", (r["craft"],))
+                self.db.execute("INSERT INTO skills VALUES (?, ?) ON CONFLICT(craft) DO UPDATE SET xp = xp + excluded.xp",
+                                (craft_name(r["craft"]), r["xp"]))
+
     def _backfill_recall(self) -> None:
-        """Index everything written before recall existed (runs once)."""
+        """(Re)build the recall index from everything stored. Runs when RECALL_INDEX_VERSION changes."""
+        self.db.execute("DELETE FROM recall_index")
         for r in self.db.execute("SELECT * FROM memories").fetchall():
             text = r["text"] + (f" (done: {r['outcome']})" if r["status"] == "done" and r["outcome"] else "")
             self._index(f"note:{r['section']}", r["id"], r["ts"], text, commit=False)
@@ -606,7 +712,11 @@ class State:
         for r in self.db.execute(f"SELECT * FROM events WHERE kind IN ({marks})", RECALL_EVENT_KINDS).fetchall():
             if text := recall_text(r["kind"], json.loads(r["data"])):
                 self._index(f"event:{r['kind']}", r["id"], r["ts"], text, commit=False)
-        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('recall_indexed', '1')")
+        for r in self.db.execute("SELECT * FROM reflections").fetchall():
+            self._index(r["kind"], r["id"], r["period_end"], r["text"], commit=False)
+        for r in self.db.execute("SELECT * FROM people").fetchall():
+            self._index("person", r["name"], r["last_seen"], f"{r['name']}: {r['notes']}", commit=False)
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('recall_indexed', ?)", (RECALL_INDEX_VERSION,))
 
     def recall(self, query: str, limit: int = 5) -> list[dict]:
         """The best matches for `query` (BM25 over plain words, prefix-matched), returned oldest first."""

@@ -12,7 +12,9 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 | M2a | Web dashboard + chat (same info as `pipchat`) | **Built, needs a browser check** |
 | M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | **Built, not deployed** |
 | M2b | Visual world (2D) | Not started |
-| M3 | Long-term memory ([design](DESIGN-memory.md)) | **Steps 1-2 built, not deployed** |
+| M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-2 deployed |
+| M3.5 | A neighbor and slow letters ([design](DESIGN-neighbor.md)) | **Built, not deployed** |
+| M3.6 | Places + the library (Calibre) ([design](DESIGN-library.md)) | **Built, not deployed** |
 | M4 | Richer tools, optional exposure | Not started |
 
 ## M1 - Headless brain (done)
@@ -54,7 +56,7 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [ ] Optional: evaluate a16z AI Town on the side (Convex-based, probably too heavy)
 
 ## M3 - Long-term memory (see DESIGN-memory.md)
-- [ ] Deploy: add `recall` to `TOOLS` in `.env`, rebuild; the first reflection runs right away
+- [x] Deploy: add `recall` to `TOOLS` in `.env`, rebuild; the first reflection runs right away
 - [x] Visitor identity: inbox `sender`, shown in perception, moments and the feed
 - [x] Nightly reflection in Pip's voice: day summaries, insights with importance, people notes, self-portrait
 - [x] `recall(query)` over journal, events, reflections and people (SQLite FTS5)
@@ -101,7 +103,7 @@ is in my notes, not in the gears".
 ### World mechanics
 - [ ] **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
       reflection (M3) already exists; tie it to Pip actually going to bed
-- [ ] **Places**: `location` exists but never changes. A few places (junkyard, woods, market) and `go_to` / `forage`
+- [ ] **More places** (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
       with random finds, so materials don't only come from visitors
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
@@ -113,14 +115,13 @@ is in my notes, not in the gears".
 - [ ] **Pip can reach out**: `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
       Pip can only talk when spoken to
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
-- [ ] **A neighbor** (designed as phase 4 in DESIGN-creations.md): a second creature with its own persona exchanging letters with delivery delays, so Pip has
+- [x] **A neighbor** (built; DESIGN-neighbor.md; deploy: add `write_letter` to `TOOLS`): a second creature with its own persona exchanging letters with delivery delays, so Pip has
       relationships beyond Morgan. Build multi-agent support once and reuse it for `companion` creations
 - [x] Visitor identity: remember who visited and what they talked about, per person (M3 people notes)
 
 ### Homelab tie-ins
 - [ ] Real weather / daylight from Home Assistant (harmless sensors only): cloudy days slow the garden, sunset means bed
-- [ ] A bookshelf: `read` a chapter at a time from the Calibre library instead of web snippets; slow reading that feeds
-      the `learned` section
+- [x] A bookshelf: the Calibre library is a place Pip walks to and reads in (M3.6, DESIGN-library.md)
 
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged

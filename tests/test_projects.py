@@ -33,6 +33,7 @@ class FixedRng(random.Random):
 
 def make(tmp_path, gm_script=None, rng=None, **kw):
     kw.setdefault("reflect_hour", 99)  # no nightly reflection unless a test asks for one
+    kw.setdefault("neighbor", False)    # no neighbor unless a test asks for one
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/nonexistent", persona_default_path="/nonexistent",
                  tools=["set_activity", "eat", "rest", "note_to_self", "use_item", "start_project", "work_on",
                         "abandon_project"], min_tick_interval=0, **kw)
@@ -153,7 +154,7 @@ async def test_set_activity_while_working_only_describes_it(tmp_path):
     await call(agent, "start_project", name="kite")
     await call(agent, "work_on", project="kite")
     r = await call(agent, "set_activity", activity="careful sewing", description="Stitching slowly.", mood="calm")
-    assert "still working" in r.text and st.session()
+    assert r.text.startswith("(still busy) you're in the middle of working on kite") and st.session()
     a = st.agent()
     assert (a["activity"], a["description"], a["mood"]) == ("working", "Stitching slowly.", "calm")
 
@@ -241,3 +242,28 @@ async def test_perception_lists_later_stage_needs_against_belongings(tmp_path):
     st.add_item("brass wire", 1, "material")
     await call(agent, "start_project", name="gear clock")
     assert "later stages need 2 brass wire (you have 1)" in agent._perception("event", [])
+
+
+@pytest.mark.asyncio
+async def test_tick_resolves_a_session_that_just_ended_before_looking(tmp_path):
+    s, st, gm, agent = make(tmp_path, rng=FixedRng(0.6), work_speed=1e6)
+    await call(agent, "start_project", name="kite")
+    await call(agent, "work_on", project="kite")
+    time.sleep(0.01)  # time is up, but the monitor hasn't run yet
+    await agent.tick("timer")
+    assert not st.session() and st.project(1)["history"][0]["result"] == "good"
+    prompt = agent.backend.calls[0]["messages"][0]["content"]
+    assert "work on kite (gather and shape the pieces): good" in prompt and "you're working on it now" not in prompt
+
+
+def test_craft_names_are_the_core_skill_and_old_ones_are_folded_in(tmp_path):
+    from app.text import craft_name
+    assert craft_name("Clockmaking (gear train, escapement)") == "clockmaking"
+    assert craft_name("rough carpentry and tying") == "rough carpentry"  # at most 3 words, no dangling "and"
+    assert craft_name("Poetry writing") == "poetry writing" and craft_name("") == "tinkering"
+    s, st, *_ = make(tmp_path)
+    st.add_project("clock", "", "clockmaking (gear train, escap", 5, [], [])
+    st.add_xp("clockmaking (gear train, escap", 60)
+    st.add_xp("clockmaking", 30)
+    st2 = State(s)  # restart
+    assert st2.project(1)["craft"] == "clockmaking" and st2.skills() == {"clockmaking": 90}

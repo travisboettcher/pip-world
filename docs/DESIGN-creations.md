@@ -146,7 +146,7 @@ is doing, the last few lines exchanged). That keeps a chatty companion cheap.
 - A stopped creation's companion is silent (tending it is how Pip keeps a friend going).
 - Companion lines are untrusted model text in Pip's prompt, framed the same way as visitor text.
 
-## Phase 4 (designed, not built): a neighbor
+## Phase 4: a neighbor (built; see DESIGN-neighbor.md for the version that was built)
 Same `characters` table with `kind = neighbor`, no creation behind it. `write_letter(to, text)` queues a letter
 delivered after `LETTER_DELAY_MINUTES`; the neighbor's reply is generated on delivery and arrives after another
 delay, then wakes Pip like a visitor. Occasionally the neighbor writes first, or sends a small parcel (seeds), capped

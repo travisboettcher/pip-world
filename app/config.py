@@ -40,6 +40,14 @@ class Settings:
     companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
     reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs
     reflect_max_chars: int = 12000     # how much of the day a reflection reads (newest kept)
+    neighbor: bool = True              # invent a neighbor who writes letters
+    letter_delay_minutes: float = 120  # how long a letter takes each way (+-30%)
+    neighbor_writes_every_hours: float = 30
+    letters_per_day: int = 3           # Pip's letters per 24 h
+    parcels_per_day: int = 1           # parcels the neighbor may send per 24 h
+    library_path: str = "/library"     # a Calibre library (read-only); the library place exists only if it's there
+    walk_minutes: float = 10           # how long it takes to walk between places
+    read_chars_per_minute: int = 700   # how much text a reading session covers
     tools: list[str] = field(default_factory=list)
     tavily_api_key: str = ""
 
@@ -78,6 +86,14 @@ class Settings:
             companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
             reflect_hour=_int("REFLECT_HOUR", 3),
             reflect_max_chars=_int("REFLECT_MAX_CHARS", 12000),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall").split(",") if t.strip()],
+            neighbor=(e("NEIGHBOR") or "1") not in ("0", "false", "no"),
+            letter_delay_minutes=_float("LETTER_DELAY_MINUTES", 120),
+            neighbor_writes_every_hours=_float("NEIGHBOR_WRITES_EVERY_HOURS", 30),
+            letters_per_day=_int("LETTERS_PER_DAY", 3),
+            parcels_per_day=_int("PARCELS_PER_DAY", 1),
+            library_path=e("LIBRARY_PATH") or "/library",
+            walk_minutes=_float("WALK_MINUTES", 10),
+            read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse_library,read").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

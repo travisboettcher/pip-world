@@ -40,7 +40,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
         if ch["kind"] != "creation":
             continue
         c = state.creation(ch["creation_id"])
-        if not c or not running(c, now):
+        if not c or c.get("given_to") or not running(c, now):
             continue
         recent = [t for t in ch["replies"] if now - t < 3600]
         answering = bool(ch["heard"]) and len(recent) < settings.companion_replies_per_hour

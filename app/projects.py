@@ -8,6 +8,8 @@ import math
 import random
 import time
 
+from .text import craft_name
+
 STAGE_MINUTES = (15, 240)
 SESSION_MINUTES = (15, 120)
 MAX_STAGES = 5
@@ -51,7 +53,7 @@ def sanitize_plan(raw: dict | None) -> dict:
     if not stages:
         return fallback_plan()
     tools = [str(t).strip().lower()[:40] for t in (raw.get("tools") or []) if str(t).strip()][:3]
-    craft = str(raw.get("craft") or "tinkering").strip().lower()[:30] or "tinkering"
+    craft = craft_name(raw.get("craft"))
     return {"craft": craft, "difficulty": clamp_int(raw.get("difficulty"), 1, 5, 2), "tools": tools, "stages": stages}
 
 
@@ -131,7 +133,7 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
                           interrupted: bool = False) -> dict | None:
     """Finish the current work session (on time, or cut short). Returns the logged `work` event data."""
     sess = state.session()
-    if not sess:
+    if not sess or sess["kind"] != "work":
         return None
     now = now or time.time()
     state.end_session()

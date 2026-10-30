@@ -5,16 +5,18 @@ reflection into a day summary, a few insights with importance, notes on the peop
 self-portrait. Those go into every prompt at a fixed size. Everything worth remembering is also indexed for the
 `recall` tool (SQLite FTS5, BM25 ranking).
 """
+import re
 import time
 from datetime import datetime
 
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "creation_made", "companion")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "creation_made", "companion", "letter_sent", "reading")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
 RETRY_AFTER = 3600
+LEGACY_GIFT = re.compile(r"^.{1,40} gave you \d+ x ")  # gifts logged before inbox events were flagged
 STOP_WORDS = set("""a an and are as at be but by did do does for from had has have how i if in into is it its me my
 of on or so that the their them then there these they this to was we were what when where which who why will with
 you your about did any can could would should just""".split())
@@ -22,8 +24,16 @@ you your about did any can could would should just""".split())
 
 def recall_text(kind: str, d: dict) -> str | None:
     """The searchable text for an event, or None if it isn't worth remembering on its own."""
+    if kind == "inbox" and d.get("letter"):
+        return d["text"]  # "A letter from X: ..."
+    if kind == "reading":
+        return f"You read {d['title']}: {d['summary']}" + "".join(f' "{q}"' for q in d.get("quotes", []))
+    if kind == "letter_sent":
+        return f"You wrote to {d['to']}: {d['text']}" + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else "")
     if kind == "inbox":
-        return None if d.get("gift") else f"{d.get('sender') or 'A visitor'} said to you: {d['text']}"
+        if d.get("gift") or LEGACY_GIFT.match(d["text"]):  # a gift has its own `gift` event
+            return None
+        return f"{d.get('sender') or 'A visitor'} said to you: {d['text']}"
     if kind == "say":
         return f"You said to {d['to_name']}: {d['text']}" if d.get("to_name") else f"You said: {d['text']}"
     if kind == "gift":

@@ -7,6 +7,8 @@
   pipchat give "tiny needle file" [--kind tool|material|food|seed] [-q N] [--message "for the clock!"]
   pipchat items | garden | projects | creations
   pipchat memory | reflect | recall "what Morgan said about the clock"
+  pipchat letters               the neighbor and the letters between them and Pip
+  pipchat library [query]       books Pip is reading, or search the library
   pipchat notes [section] [--status open|done] [-n N]
   pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
   pipchat tick                  wake Pip now
@@ -123,6 +125,14 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
                 dim(f"  * Pip settles in to work on {a.get('project')}" + (f" for {a['minutes']} min" if a.get("minutes") else ""))
         if t == "abandon_project":
             return dim(f"  * Pip gives up on {a.get('project')}" + (f": {a['reason']}" if a.get("reason") else ""))
+        if t == "write_letter":
+            return None  # shown via the letter_sent event
+        if t == "browse_library":
+            return dim("  * Pip browses the library" + (f" for {a['query']!r}" if a.get("query") else ""))
+        if t in ("go_to", "read"):
+            return dim(f"  * Pip: {d.get('result')}")
+        if t == "recall":
+            return dim(f"  * Pip tries to remember: {a.get('query')}")
         if t == "tend":
             return dim(f"  * Pip {d.get('result')}")
         return dim(f"  * Pip uses {t}")
@@ -144,6 +154,18 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return dim(f"  ~ {d['text']}") if d["what"] in ("stopped", "helper", "used") else dim(f"  ~ {d['name']}: {d['text']}")
     if k == "companion":
         return cyan(f"{d['name'].lower()}> ") + d["text"]
+    if k == "inbox" and d.get("letter"):
+        return cyan(f"  @ {d['text']}")
+    if k == "arrived":
+        return dim(f"  * Pip arrives at {d.get('label') or d['place']}" if d["place"] != "workshop" else "  * Pip gets home") + \
+            (dim(f" - {d['description']}") if d.get("first_time") and d.get("description") else "")
+    if k == "reading":
+        tail = " - finished it!" if d.get("finished") else f" ({d['percent']}%)"
+        return green(f"  ~ Pip reads {d['title']}{tail}") + dim(f" - {d['summary']}")
+    if k == "letter_sent":
+        return dim(f"  @ Pip writes to {d['to']}: {d['text']}") + (dim(f" (enclosed: {d['enclosed']})") if d.get("enclosed") else "")
+    if k == "neighbor":
+        return green(f"  + A neighbor: {d['name']} - {d['about']}")
     if k == "reflection":
         return green(f"  z Pip slept on it: {d['summary']}")
     if k == "reflection_error":
@@ -157,7 +179,7 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
     if k == "alert":
         return dim(f"  * Pip's {d['stat']} needs attention")
     if verbose:
-        if k == "inbox":
+        if k == "inbox" and not d.get("letter"):
             return dim(f"  < {d.get('sender') or 'visitor'}: {d['text']}")
         if k == "inbox_read":
             return dim(f"  . Pip read visitor message(s) {d['ids']}")
@@ -438,6 +460,46 @@ def cmd_recall(pip: Pip, a) -> None:
         print(dim("  nothing comes to mind"))
 
 
+def cmd_letters(pip: Pip, a) -> None:
+    r = pip.call(f"/letters?limit={a.n}")
+    if JSON_MODE:
+        return out_json(r)
+    for n in r["neighbors"]:
+        print(bold(n["name"]) + f" - {n['about']}")
+        for line in n["life"]:
+            print(dim(f"  lately: {line}"))
+    if not r["neighbors"]:
+        print(dim("No neighbor yet (one is invented on start unless NEIGHBOR=0)."))
+    for lt in r["letters"]:
+        when = fmt_time(lt["ts"]) if lt["delivered_at"] else yellow(
+            f"on its way, ~{max(1, round((lt['deliver_at'] - time.time()) / 60))} min")
+        extra = (f" [enclosed: {lt['enclosed']}]" if lt["enclosed"] else "") + \
+                (f" [parcel: {lt['parcel']['qty']} x {lt['parcel']['name']}]" if lt["parcel"] else "")
+        print(f"  {dim(when)} {bold(lt['sender'] + ' -> ' + lt['recipient'])}: {lt['text']}" + dim(extra))
+
+
+def cmd_library(pip: Pip, a) -> None:
+    if a.query:
+        books = pip.call("/library/search?" + urllib.parse.urlencode({"q": " ".join(a.query)}))
+        if JSON_MODE:
+            return out_json(books)
+        for b in books:
+            print(f"  #{b['id']} {bold(b['title'])} - {b['authors']}" + dim(f" [{b['tags']}] {b['format'] or 'unreadable'}"))
+        if not books:
+            print(dim("  nothing matches"))
+        return
+    marks = pip.call("/library/bookmarks")
+    if JSON_MODE:
+        return out_json(marks)
+    print(bold("Pip's reading"))
+    for m in marks:
+        state = "finished" if m["finished"] else "pictures only" if m["unreadable"] else f"{m['percent']}%"
+        print(f"  #{m['book_id']} {m['title']} " + dim(f"({state}, {m['sessions']} sessions"
+                                                      + (f", last {fmt_time(m['last_read'])})" if m["last_read"] else ")")))
+    if not marks:
+        print(dim("  (nothing yet)"))
+
+
 def cmd_chat(pip: Pip, a) -> None:
     try:
         import readline  # noqa: F401  (line editing + history)
@@ -523,6 +585,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("memory", cmd_memory, "Pip's long-term memory: self-portrait, people, beliefs, days")
     p.add_argument("-n", type=int, default=10, help="beliefs and days to show (default 10)")
     add("reflect", cmd_reflect, "make Pip reflect now instead of waiting for the night")
+    p = add("library", cmd_library, "books Pip is reading, or search the library")
+    p.add_argument("query", nargs="*")
+    p = add("letters", cmd_letters, "Pip's neighbor and their letters")
+    p.add_argument("-n", type=int, default=20, help="letters to show (default 20)")
     p = add("recall", cmd_recall, "search Pip's memory the way its recall tool does")
     p.add_argument("query", nargs="+")
     p.add_argument("-n", type=int, default=8)
@@ -548,7 +614,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

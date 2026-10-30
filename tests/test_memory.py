@@ -179,3 +179,12 @@ def test_memory_api(tmp_path):
         m = c.get("/memory").json()
         assert m["self"].startswith("I'm Pip") and m["people"][0]["name"] == "Morgan" and len(m["insights"]) == 2
         assert c.get("/recall", params={"q": "garden"}).json()[0]["text"] == "Morgan said to you: how's the garden?"
+
+
+def test_legacy_gift_messages_are_not_indexed_twice(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.log("gift", sender="Morgan", item="tiny needle file", qty=1, item_kind="tool")
+    st.log("inbox", id=1, text="Morgan gave you 1 x tiny needle file (tool). For the clock!")  # pre-flag era
+    assert [h["text"] for h in st.recall("needle file")] == ["Morgan gave you 1 x tiny needle file"]
+    st.set_meta(recall_indexed="1")
+    assert len(State(s).recall("needle file")) == 1  # an old index is rebuilt on start, without the duplicate

@@ -88,3 +88,29 @@ Design: [DESIGN-memory.md](DESIGN-memory.md).
 ./pipchat recall "first gift"         # search Pip's memory like its recall tool does
 ```
 HTTP: `GET /memory`, `GET /recall?q=`, `POST /reflect`; `POST /inbox` takes `sender`.
+
+## The neighbor
+Design: [DESIGN-neighbor.md](DESIGN-neighbor.md). On first start (`NEIGHBOR=1`, the default) the GM invents a
+neighbor - name, private persona, a public one-liner - whose first letter arrives soon after. Pip writes back with
+`write_letter(to, text, enclose?)` (up to `LETTERS_PER_DAY`; `enclose` gives away one item or creation). Letters take
+`LETTER_DELAY_MINUTES` each way; the neighbor answers on delivery, writes first every `NEIGHBOR_WRITES_EVERY_HOURS`,
+may send a small parcel (`PARCELS_PER_DAY`), and has a life that moves on between letters. Letters arrive in Pip's
+inbox with the neighbor as sender, so memory, recall and the nightly reflection pick them up. Pip can also
+`go_to` the neighbor's home: they greet it and talk in person (`say` with `to`).
+```sh
+./pipchat letters      # the neighbor, what's new with them, and every letter (in transit too)
+```
+HTTP: `GET /letters`.
+
+## Places and the library
+Design: [DESIGN-library.md](DESIGN-library.md). Pip lives in its `workshop` (projects and garden happen there) and
+can `go_to` the **library**: the homelab's Calibre library (`../calibre/library`, the folder calibre-web serves),
+mounted **read-only** at `/library`. A walk takes `WALK_MINUTES`. At the library Pip can `browse_library` (search or
+wander the shelves) and `read(book, minutes)`: when the session ends, the next stretch of the book (EPUB or PDF
+text, from Pip's bookmark) is condensed by the GM into what Pip read, which feeds memory, recall and reflection.
+No library mounted = no library place and no library tools.
+```sh
+./pipchat library                 # what Pip is reading, and how far in
+./pipchat library numenera        # search the catalogue
+```
+HTTP: `GET /library/search?q=`, `GET /library/bookmarks`.
