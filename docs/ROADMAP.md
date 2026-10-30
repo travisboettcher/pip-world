@@ -188,7 +188,9 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 
 ### Writing and drawing (built 2026-10-30; DESIGN-art.md)
 - [x] `draw` (sanitised SVG on a fixed canvas) and `write_piece`; a gallery (API, Work tab, `pipchat gallery`); drawings travel with postcards as PNGs
-- [ ] Let Pip see its own picture (image blocks in the LLM message format) so it can draw, look and revise; drawing as a timed session; inbound pictures
+- [x] Pip sees its own pictures (built 2026-10-30): tool results can carry images (Anthropic image blocks; a user message for OpenAI-compatible models, `LLM_VISION=1`);
+      `draw` shows the result and `replaces=<id>` redoes it (3 times at most); `look(drawing)` shows any of them (`LOOKS_PER_DAY`)
+- [ ] Drawing as a timed session; inbound pictures from the owner
 
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged

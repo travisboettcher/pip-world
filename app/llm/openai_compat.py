@@ -1,4 +1,5 @@
 """Backend for any OpenAI-style /v1/chat/completions server (OpenAI, Ollama, vLLM, LM Studio)."""
+import base64
 import json
 
 import httpx
@@ -18,16 +19,24 @@ def _to_api(m: dict) -> list[dict]:
             ]
         return [out]
     if m["role"] == "tool":
-        return [{"role": "tool", "tool_call_id": r["id"], "content": r["content"]} for r in m["results"]]
+        out = [{"role": "tool", "tool_call_id": r["id"], "content": r["content"]} for r in m["results"]]
+        pictures = [(r["name"], mime, data) for r in m["results"] for mime, data in r.get("images", [])]
+        if pictures:  # tool messages are text-only here, so the pictures follow as a user message
+            out.append({"role": "user", "content": [{"type": "text", "text": "(the picture from the tool result above)"}] + [
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}}
+                for _, mime, data in pictures]})
+        return out
     return [{"role": m["role"], "content": m["content"]}]
 
 
 class OpenAICompatBackend:
     name = "openai_compat"
+    vision = False  # set from LLM_VISION=1 in __init__ (depends on the model)
 
     def __init__(self, s: Settings):
         if not s.llm_base_url:
             raise ValueError("LLM_BASE_URL is required for the openai_compat backend")
+        self.vision = s.llm_vision == "1"
         self.model = s.llm_model
         self.url = s.llm_base_url.rstrip("/") + "/chat/completions"
         self.headers = {"Authorization": f"Bearer {s.llm_api_key}"} if s.llm_api_key else {}

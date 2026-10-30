@@ -1,5 +1,6 @@
 """Tool registry. Tools are declared once in a provider-neutral schema; enable by name via TOOLS."""
 import difflib
+from datetime import datetime
 import random
 import re
 import time
@@ -37,6 +38,7 @@ class ToolContext:
     rng: random.Random = field(default_factory=random.Random)
     library: Any = None  # library.Library, or None when no Calibre library is mounted
     outreach: Any = None  # outreach.Outreach, or None
+    vision: bool = False  # can the model look at pictures this turn?
 
 
 async def stop_working(ctx: "ToolContext") -> str:
@@ -83,6 +85,7 @@ class ToolResult:
     text: str
     followup: bool = False  # the model should see this result and respond (e.g. fresh information)
     noop: bool = False      # nothing changed; kept out of the feeds and out of Pip's recent-event list
+    images: list = field(default_factory=list)  # [(mime, bytes)] the model looks at in this turn (never stored in events)
 
 
 Handler = Callable[[ToolContext, dict], Awaitable[ToolResult]]
@@ -843,17 +846,37 @@ async def send_postcard(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(msg, followup=not ok)
 
 
+MAX_REVISIONS = 3
+LOOK_WIDTH = 480  # 400x300 canvas rendered a little larger: enough to read, cheap in tokens
+
+
+def _picture(w: dict) -> list:
+    return [("image/png", art.render_png(w["body"], LOOK_WIDTH))]
+
+
 @tool("draw", "Draw a picture, by writing it as SVG on a 400 x 300 canvas (viewBox 0 0 400 300; the canvas is blank, paint a background "
       "if you want one). You may use rect, circle, ellipse, line, polyline, polygon, path, text, g, and linear/radial gradients. "
       "No scripts, images, links or styles; keep it under about 8 KB. It's kept in your gallery where visitors can see it, and you can "
-      "send one with a postcard. If something isn't allowed you'll be told what to change.",
+      "send one with a postcard. When it's done you SEE how it came out; if it isn't what you meant, draw it again with `replaces` set to its "
+      "number (up to 3 times). If something isn't allowed you'll be told what to change.",
       _obj({"title": {"type": "string", "description": "a short title"},
             "svg": {"type": "string", "description": "the whole <svg>...</svg> element"},
-            "caption": {"type": "string", "description": "optional: a line about it"}}, ["title", "svg"]))
+            "caption": {"type": "string", "description": "optional: a line about it"},
+            "replaces": {"type": "integer", "description": "optional: the number of your drawing this one redoes"}}, ["title", "svg"]))
 async def draw(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := art.pace(ctx.state, ctx.settings):
+    old = None
+    if args.get("replaces") not in (None, ""):
+        try:
+            old = ctx.state.work(int(args["replaces"]))
+        except (TypeError, ValueError):
+            old = None
+        if not old or old["kind"] != "drawing":
+            return ToolResult(f"you have no drawing #{args['replaces']} to redo", followup=True)
+        if old["revisions"] >= MAX_REVISIONS:
+            return ToolResult(f"you've redone #{old['id']} {MAX_REVISIONS} times already; make a new one, or leave it as it is", followup=True)
+    elif why := art.pace(ctx.state, ctx.settings):
         return ToolResult(why, followup=True)
-    title = art.clean_title(args.get("title"))
+    title = art.clean_title(args.get("title")) or (old["title"] if old else "")
     if not title:
         return ToolResult("give your picture a title", followup=True)
     try:
@@ -864,9 +887,41 @@ async def draw(ctx: ToolContext, args: dict) -> ToolResult:
     except Exception:
         return ToolResult("your drawing couldn't be rendered: check that every shape and path is complete, then try again.", followup=True)
     caption = clip(args.get("caption"), 200)
-    wid = ctx.state.add_work("drawing", title, svg, caption, ctx.state.agent()["location"])
-    ctx.state.log("made_work", id=wid, what="drawing", title=title, caption=caption)
-    return ToolResult(f"you finish a drawing, #{wid}: {title}. It's in your gallery; you can send it with a postcard.")
+    if old:
+        n = ctx.state.revise_work(old["id"], svg, title, caption or None)
+        ctx.state.log("revised_work", id=old["id"], title=title, revision=n)
+        wid = old["id"]
+        text = f"you redo #{wid}: {title} (version {n + 1})."
+    else:
+        wid = ctx.state.add_work("drawing", title, svg, caption, ctx.state.agent()["location"])
+        ctx.state.log("made_work", id=wid, what="drawing", title=title, caption=caption)
+        text = f"you finish a drawing, #{wid}: {title}. It's in your gallery; you can send it with a postcard."
+    if not ctx.vision:
+        return ToolResult(text)
+    # Pip sees what it made, and can answer with a redo in the same breath
+    return ToolResult(text + " Here is how it came out. If it isn't what you meant, draw it again with replaces=" + str(wid)
+                      + "; if you like it, you're done.", followup=True, images=_picture(ctx.state.work(wid)))
+
+
+@tool("look", "Look at one of your drawings by number (you see the picture itself). Use it to remember what you made, to judge it, or to "
+      "decide what to change or send.",
+      _obj({"drawing": {"type": "integer", "description": "the number of the drawing"}}, ["drawing"]))
+async def look(ctx: ToolContext, args: dict) -> ToolResult:
+    if not ctx.vision:
+        return ToolResult("you can't look at pictures right now", followup=True)
+    try:
+        w = ctx.state.work(int(args["drawing"]))
+    except (TypeError, ValueError):
+        w = None
+    if not w or w["kind"] != "drawing":
+        return ToolResult(f"you have no drawing #{args['drawing']}", followup=True)
+    day0 = datetime.fromtimestamp(time.time()).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    looked = sum(1 for e in ctx.state.events_since(day0) if e["kind"] == "tool" and e["data"].get("tool") == "look"
+                 and str(e["data"].get("result", "")).startswith("you look"))
+    if looked >= ctx.settings.looks_per_day:
+        return ToolResult(f"you've looked at your pictures {ctx.settings.looks_per_day} times today; that's enough for now", followup=True)
+    return ToolResult(f"you look at #{w['id']}, {w['title']}" + (f" ({w['caption']})" if w["caption"] else "") + ".",
+                      followup=True, images=_picture(w))
 
 
 @tool("write_piece", "Write something to keep and share - a poem, a story, a letter you won't send, a description - as a titled piece (up to "

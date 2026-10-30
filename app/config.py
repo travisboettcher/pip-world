@@ -30,6 +30,8 @@ class Settings:
     llm_model: str = "claude-haiku-5-5"
     llm_base_url: str = ""
     llm_api_key: str = ""
+    llm_vision: str = ""              # '' = the backend's default; '0' off, '1' on (can the model look at pictures?)
+    looks_per_day: int = 20
     llm_effort: str = "low"
     llm_max_tokens: int = 2048
     max_calls_per_tick: int = 3
@@ -108,6 +110,8 @@ class Settings:
             llm_base_url=e("LLM_BASE_URL", ""),
             llm_api_key=e("LLM_API_KEY", ""),
             llm_effort=e("LLM_EFFORT", "low"),
+            llm_vision=e("LLM_VISION", ""),
+            looks_per_day=_int("LOOKS_PER_DAY", 20),
             llm_max_tokens=_int("LLM_MAX_TOKENS", 2048),
             max_calls_per_tick=_int("MAX_CALLS_PER_TICK", 3),
             pacing=e("PACING") or "heartbeat_events",
@@ -154,7 +158,7 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),
             matrix_user_id=e("MATRIX_USER_ID", ""),

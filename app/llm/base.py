@@ -3,7 +3,7 @@
 Messages are plain dicts, translated by each backend:
   {"role": "user", "content": str}
   {"role": "assistant", "content": str, "tool_calls": [ToolCall], "raw": <opaque>}
-  {"role": "tool", "results": [{"id", "name", "content", "is_error"}]}
+  {"role": "tool", "results": [{"id", "name", "content", "is_error", "images": [(mime, bytes)]}]}
 `raw` is whatever the backend returned in LLMResponse.raw; backends replay it
 verbatim (e.g. Anthropic content blocks incl. thinking) when present.
 """
@@ -41,6 +41,7 @@ class LLMResponse:
 
 class LLMBackend(Protocol):
     name: str
+    vision: bool  # can the model look at images in tool results?
 
     async def complete(
         self, system: str, messages: list[dict], tools: list[ToolSpec], max_tokens: int

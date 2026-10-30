@@ -43,7 +43,8 @@ class Agent:
         library = lib.Library(settings.library_path)
         self.library = library if library.available() else None
         self.outreach = Outreach(settings, state, receive=self.receive)
-        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach)
+        self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
+                               vision=bool(getattr(self.backend, "vision", False)))
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
@@ -233,6 +234,8 @@ class Agent:
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         here = places.here(self.state, self.s, self.library)
         specs = specs_for(self.tools, here.key, here, places.open_now(here, self.s))  # what can be done here, described for here
+        if not self.ctx.vision:  # nothing to look with
+            specs = [sp for sp in specs if sp.name != "look"]
         if not self.outreach.can_send():  # a postcard is only offered when one could actually go out
             specs = [sp for sp in specs if sp.name != "send_postcard"]
 
@@ -295,7 +298,8 @@ class Agent:
             else:
                 self.state.log("tool", tool=call.name, args=call.arguments, result=result.text,
                                **({"noop": True} if result.noop else {}))
-                out.update(content=result.text, followup=result.followup)
+                out.update(content=result.text, followup=result.followup,
+                           **({"images": result.images} if result.images and self.backend.vision else {}))
         return out
 
     def _persona(self) -> str:

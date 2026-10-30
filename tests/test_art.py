@@ -68,7 +68,7 @@ async def drawer(tmp_path, **kw):
 async def test_pip_draws_and_the_picture_is_stored_sanitised_and_remembered(tmp_path):
     s, st, agent = await drawer(tmp_path)
     r = await call(agent, "draw", title="The gear clock", svg=GOOD, caption="at dusk")
-    assert "you finish a drawing, #1: The gear clock" in r.text and not r.followup
+    assert "you finish a drawing, #1: The gear clock" in r.text and r.followup and r.images[0][0] == "image/png"   # Pip sees it
     w = st.work(1)
     assert (w["kind"], w["title"], w["caption"]) == ("drawing", "The gear clock", "at dusk") and 'width="400"' in w["body"]
     ev = [e for e in st.events(5) if e["kind"] == "made_work"][0]["data"]

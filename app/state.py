@@ -182,6 +182,7 @@ class State:
                 ("inbox", "source", "TEXT NOT NULL DEFAULT 'web'"),           # 'web' or the channel it came through
                 ("inbox", "conversation", "TEXT NOT NULL DEFAULT ''"),        # the channel's thread reference
                 ("inbox", "external_id", "TEXT NOT NULL DEFAULT ''"),         # the channel's message id (replay guard)
+                ("works", "revisions", "INTEGER NOT NULL DEFAULT 0"),           # times Pip redrew it after looking
                 ("events", "importance", "INTEGER NOT NULL DEFAULT 0"),
                 ("reflections", "grounded", "INTEGER NOT NULL DEFAULT 1"),     # 0 = a hunch: nothing cited / unsupported
                 ("reflections", "support", "TEXT NOT NULL DEFAULT 'legacy'"),  # supported|partly|unsupported|unchecked|none|legacy
@@ -1019,6 +1020,18 @@ class State:
             self._index(f"work:{kind}", cur.lastrowid, now, text.strip(), commit=False)
             self.db.commit()
             return cur.lastrowid
+
+    def revise_work(self, work_id: int, body: str, title: str | None = None, caption: str | None = None) -> int:
+        """Replace a drawing with Pip's redrawing of it; returns how many times it has been redrawn."""
+        with self.lock:
+            row = self.db.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
+            title = title or row["title"]
+            caption = row["caption"] if caption is None else caption
+            self.db.execute("UPDATE works SET body = ?, title = ?, caption = ?, revisions = revisions + 1 WHERE id = ?",
+                            (body, title, caption, work_id))
+            self._index(f"work:{row['kind']}", work_id, row["ts"], f"{title}. {caption}".strip(), commit=False)
+            self.db.commit()
+            return row["revisions"] + 1
 
     def work(self, work_id: int) -> dict | None:
         with self.lock:

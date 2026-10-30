@@ -5,6 +5,7 @@ class FakeBackend:
     """Scripted responses for tests and zero-cost dry runs."""
 
     name = "fake"
+    vision = True
 
     def __init__(self, script: list[LLMResponse] | None = None):
         self.script = list(script or [])

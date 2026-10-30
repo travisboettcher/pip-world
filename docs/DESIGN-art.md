@@ -28,8 +28,13 @@ cost is that it is **untrusted text that reaches a browser and a chat room**, so
 - PNGs for chat are rendered by `resvg-py` (a self-contained renderer); the image installs DejaVu fonts so text draws.
 
 ## Not in v1
-- **Pip looking at its own picture.** Pip knows only what it wrote. Letting it *see* a render needs image blocks in the LLM message format and
-  backend; an obvious next step (draw, look, revise) and a good test of whether drawing improves with feedback.
 - Drawing as a timed session with the dice (like work), colour/skill progression, a canvas Pip can continue over several sessions.
 - Inbound pictures from the owner.
 - Other media (music as notation, pixel art).
+
+## Pip sees its pictures (built 2026-10-30)
+A tool result can carry pictures: the neutral message format gains `images` on a result, the Anthropic backend sends them as image blocks inside the
+`tool_result`, and an OpenAI-compatible backend sends them as a user message right after the tool messages (only if `LLM_VISION=1`). Pictures are only ever
+rendered by the engine from sanitised SVG (480 px wide, a few hundred tokens), live for the turn, and are never stored in events. `draw` returns the render and
+asks whether to redo it; `draw(replaces=<id>)` redraws in place (3 times at most, not held back by the gap between new pictures); `look(drawing)` shows any
+drawing again (`LOOKS_PER_DAY`, 20). A backend without vision is never sent a picture, and `look` isn't offered.
