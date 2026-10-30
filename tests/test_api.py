@@ -145,3 +145,18 @@ def test_projects_and_creations_endpoints(tmp_path):
         assert r["skills"] == {"sewing": {"xp": 120, "level": 1}}
         (made,) = c.get("/creations").json()
         assert made["running"] and made["clock"]["minutes_off"] == 0 and made["summary"].startswith("clock (fine)")
+
+
+def test_ui_files_are_revalidated_not_cached_blindly(tmp_path, monkeypatch):
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<p>hi</p>")
+    (web / "style.css").write_text("p{}")
+    monkeypatch.setenv("WEB_DIR", str(web))
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        for path in ("/ui/", "/ui/style.css"):
+            r = c.get(path)
+            assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and r.headers["etag"], path
+        again = c.get("/ui/style.css", headers={"if-none-match": r.headers["etag"]})
+        assert again.status_code == 304

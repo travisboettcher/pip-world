@@ -37,6 +37,16 @@ class Gift(BaseModel):
     message: str = ""
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """The UI is three small files that change together; make browsers revalidate (cheap, ETag) instead of
+    pairing a stale stylesheet with new markup."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     settings = settings or Settings.from_env()
 
@@ -206,7 +216,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     web_dir = Path(os.environ.get("WEB_DIR") or Path(__file__).resolve().parent.parent / "web")
     if web_dir.is_dir():
-        app.mount("/ui", StaticFiles(directory=web_dir, html=True), name="ui")
+        app.mount("/ui", NoCacheStaticFiles(directory=web_dir, html=True), name="ui")
 
         @app.get("/", include_in_schema=False)
         def root():
