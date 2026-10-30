@@ -10,6 +10,7 @@ import httpx
 
 from . import companions as comp
 from . import creations as cr
+from . import memory as mem
 from . import projects as proj
 from .config import Settings
 from .llm.base import ToolSpec
@@ -371,6 +372,16 @@ async def tend(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"error: {err}", followup=True)
     r = cr.tend(ctx.state, c)
     return ToolResult(r, followup=r.startswith("error"))
+
+
+@tool("recall", "Search your memory: your journal, what visitors said and gave you, your work, the days you've "
+      "reflected on, and what you think of people. Use it when you want to remember something from before.",
+      _obj({"query": {"type": "string", "description": "what you're trying to remember, in a few words"}}, ["query"]))
+async def recall(ctx: ToolContext, args: dict) -> ToolResult:
+    hits = ctx.state.recall(str(args["query"])[:200])
+    if not hits:
+        return ToolResult("nothing comes to mind", followup=True)
+    return ToolResult("You remember:\n" + mem.format_recall(hits), followup=True)
 
 
 def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:

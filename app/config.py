@@ -38,6 +38,8 @@ class Settings:
     work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
     max_active_projects: int = 3
     companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
+    reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs
+    reflect_max_chars: int = 12000     # how much of the day a reflection reads (newest kept)
     tools: list[str] = field(default_factory=list)
     tavily_api_key: str = ""
 
@@ -74,6 +76,8 @@ class Settings:
             work_speed=_float("WORK_SPEED", 1.0),
             max_active_projects=_int("MAX_ACTIVE_PROJECTS", 3),
             companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend").split(",") if t.strip()],
+            reflect_hour=_int("REFLECT_HOUR", 3),
+            reflect_max_chars=_int("REFLECT_MAX_CHARS", 12000),
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

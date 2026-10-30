@@ -72,3 +72,19 @@ goes; a "game master" LLM call (same backend and budget) only writes flavor and 
 ./pipchat creations                                         # what Pip has made and what it's doing
 ```
 HTTP: `GET /projects`, `GET /creations`. New tools must be listed in `TOOLS` in `.env` (see `.env.tpl`).
+
+## Long-term memory
+Design: [DESIGN-memory.md](DESIGN-memory.md).
+- **Sleep**: once a day after `REFLECT_HOUR` (local, default 3; the first one runs right away) Pip reflects in its
+  own voice on everything since the last time: a day summary, up to 5 insights with importance, notes on the people
+  involved, and a fresh self-portrait. These sit at the top of every prompt at a fixed size (~500-900 tokens).
+- **`recall(query)`**: Pip searches its journal, visitor messages, gifts, work, reflections and people notes
+  (SQLite FTS5).
+- **Who's talking**: visitor messages carry a sender (`pipchat --from`, default `$PIP_NAME` or Morgan; the web UI
+  uses the name from the gift form), so Pip can remember people.
+```sh
+./pipchat memory                      # self-portrait, people, beliefs, recent days
+./pipchat reflect                     # reflect now instead of at night
+./pipchat recall "first gift"         # search Pip's memory like its recall tool does
+```
+HTTP: `GET /memory`, `GET /recall?q=`, `POST /reflect`; `POST /inbox` takes `sender`.

@@ -7,6 +7,7 @@ import time
 from datetime import date
 
 from .config import Settings
+from .memory import RECALL_EVENT_KINDS, STOP_WORDS, recall_text
 from .world import KINDS, STARTER_ITEMS, normalize_attrs
 
 SCHEMA = """
@@ -25,7 +26,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE TABLE IF NOT EXISTS inbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL,
-  text TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0
+  text TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0,
+  sender TEXT NOT NULL DEFAULT 'A visitor', gift INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, text TEXT NOT NULL,
@@ -67,6 +69,14 @@ CREATE TABLE IF NOT EXISTS characters (
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reflections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
+  importance INTEGER NOT NULL DEFAULT 5, period_start REAL NOT NULL, period_end REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS people (
+  name TEXT PRIMARY KEY COLLATE NOCASE, notes TEXT NOT NULL, first_seen REAL NOT NULL, last_seen REAL NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS recall_index USING fts5(text, source UNINDEXED, ref UNINDEXED, ts UNINDEXED);
 CREATE TABLE IF NOT EXISTS usage (
   day TEXT PRIMARY KEY, input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0
@@ -77,6 +87,10 @@ STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
 SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
 RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
 EDITABLE = tuple(sec for sec in SECTIONS if sec != "diary")  # the diary is a record: never rewritten
+
+
+def clean_sender(name) -> str:
+    return " ".join(str(name or "").split())[:40] or "A visitor"
 
 
 def clamp(x: float) -> float:
@@ -98,6 +112,8 @@ class State:
                 ("memories", "status", "TEXT NOT NULL DEFAULT 'open'"),
                 ("memories", "outcome", "TEXT NOT NULL DEFAULT ''"),
                 ("memories", "edited_at", "REAL"),
+                ("inbox", "sender", "TEXT NOT NULL DEFAULT 'A visitor'"),
+                ("inbox", "gift", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -107,6 +123,8 @@ class State:
                     "VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', ?)",
                     (time.time(),),
                 )
+            if not self.meta("recall_indexed"):
+                self._backfill_recall()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
                 for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
                     self.add_item(it["name"], it["qty"], it["kind"], it["description"], it["attrs"])
@@ -154,11 +172,14 @@ class State:
 
     # --- events ------------------------------------------------------
     def log(self, kind: str, **data) -> int:
+        now = time.time()
         with self.lock:
             cur = self.db.execute(
                 "INSERT INTO events (ts, kind, data) VALUES (?, ?, ?)",
-                (time.time(), kind, json.dumps(data)),
+                (now, kind, json.dumps(data)),
             )
+            if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
+                self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
             return cur.lastrowid
 
@@ -185,9 +206,11 @@ class State:
         return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
 
     # --- inbox -------------------------------------------------------
-    def add_inbox(self, text: str) -> int:
+    def add_inbox(self, text: str, sender: str = "A visitor", gift: bool = False) -> int:
+        sender = clean_sender(sender)
         with self.lock:
-            cur = self.db.execute("INSERT INTO inbox (ts, text) VALUES (?, ?)", (time.time(), text))
+            cur = self.db.execute("INSERT INTO inbox (ts, text, sender, gift) VALUES (?, ?, ?, ?)",
+                                  (time.time(), text, sender, int(gift)))
             self.db.commit()
             return cur.lastrowid
 
@@ -205,8 +228,10 @@ class State:
         if section not in SECTIONS:
             raise ValueError(f"unknown section {section!r}; options: {list(SECTIONS)}")
         with self.lock:
+            now = time.time()
             cur = self.db.execute(
-                "INSERT INTO memories (ts, text, section) VALUES (?, ?, ?)", (time.time(), text, section))
+                "INSERT INTO memories (ts, text, section) VALUES (?, ?, ?)", (now, text, section))
+            self._index(f"note:{section}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
             return cur.lastrowid
 
@@ -237,6 +262,8 @@ class State:
             if row["section"] not in RESOLVABLE:
                 return f"note #{memory_id} is in {row['section']}; only {'/'.join(RESOLVABLE)} items can be resolved"
             self.db.execute("UPDATE memories SET status = 'done', outcome = ? WHERE id = ?", (outcome, memory_id))
+            self._index(f"note:{row['section']}", memory_id, row["ts"],
+                        row["text"] + (f" (done: {outcome})" if outcome else " (done)"), commit=False)
             self.db.commit()
             return ""
 
@@ -343,6 +370,7 @@ class State:
             if row["status"] != "open":
                 return f"note #{memory_id} is already {row['status']}", ""
             self.db.execute("UPDATE memories SET text = ?, edited_at = ? WHERE id = ?", (text, time.time(), memory_id))
+            self._index(f"note:{row['section']}", memory_id, row["ts"], text, commit=False)
             self.db.commit()
             return "", row["text"]
 
@@ -516,6 +544,80 @@ class State:
                                 (now, fraction, now)).rowcount
             self.db.commit()
         return n
+
+    # --- meta (small key/value facts) ------------------------------------------
+    def meta(self, key: str) -> str | None:
+        with self.lock:
+            row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, **values) -> None:
+        with self.lock:
+            self.db.executemany("INSERT OR REPLACE INTO meta VALUES (?, ?)", [(k, str(v)) for k, v in values.items()])
+            self.db.commit()
+
+    # --- long-term memory: reflections, people, recall ---------------------------
+    def add_reflection(self, kind: str, text: str, importance: int, period_start: float, period_end: float) -> int:
+        now = time.time()
+        with self.lock:
+            cur = self.db.execute("INSERT INTO reflections (ts, kind, text, importance, period_start, period_end) "
+                                  "VALUES (?, ?, ?, ?, ?, ?)", (now, kind, text, importance, period_start, period_end))
+            self._index(kind, cur.lastrowid, period_end, text, commit=False)
+            self.db.commit()
+            return cur.lastrowid
+
+    def reflections(self, kind: str | None = None, limit: int = 20, by_importance: bool = False) -> list[dict]:
+        """Newest first, or most important first (newest breaking ties)."""
+        q, args = "SELECT * FROM reflections", []
+        if kind:
+            q += " WHERE kind = ?"
+            args.append(kind)
+        q += " ORDER BY " + ("importance DESC, id DESC" if by_importance else "id DESC") + " LIMIT ?"
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q, (*args, limit))]
+
+    def people(self) -> list[dict]:
+        """Everyone Pip has notes on, most recently seen first."""
+        with self.lock:
+            return [dict(r) for r in self.db.execute("SELECT * FROM people ORDER BY last_seen DESC")]
+
+    def upsert_person(self, name: str, notes: str, seen: float) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO people VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
+                            "notes = excluded.notes, last_seen = MAX(last_seen, excluded.last_seen)",
+                            (name, notes, seen, seen))
+            self._index("person", name, seen, f"{name}: {notes}", commit=False)
+            self.db.commit()
+
+    def _index(self, source: str, ref, ts: float, text: str, commit: bool = True) -> None:
+        """(Re)index one remembered thing for recall. Caller holds the lock."""
+        self.db.execute("DELETE FROM recall_index WHERE source = ? AND ref = ?", (source, str(ref)))
+        self.db.execute("INSERT INTO recall_index (text, source, ref, ts) VALUES (?, ?, ?, ?)",
+                        (text, source, str(ref), ts))
+        if commit:
+            self.db.commit()
+
+    def _backfill_recall(self) -> None:
+        """Index everything written before recall existed (runs once)."""
+        for r in self.db.execute("SELECT * FROM memories").fetchall():
+            text = r["text"] + (f" (done: {r['outcome']})" if r["status"] == "done" and r["outcome"] else "")
+            self._index(f"note:{r['section']}", r["id"], r["ts"], text, commit=False)
+        marks = ",".join("?" * len(RECALL_EVENT_KINDS))
+        for r in self.db.execute(f"SELECT * FROM events WHERE kind IN ({marks})", RECALL_EVENT_KINDS).fetchall():
+            if text := recall_text(r["kind"], json.loads(r["data"])):
+                self._index(f"event:{r['kind']}", r["id"], r["ts"], text, commit=False)
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('recall_indexed', '1')")
+
+    def recall(self, query: str, limit: int = 5) -> list[dict]:
+        """The best matches for `query` (BM25 over plain words, prefix-matched), returned oldest first."""
+        terms = [w for w in re.findall(r"[a-z0-9]+", str(query).lower()) if len(w) > 1 and w not in STOP_WORDS][:12]
+        if not terms:
+            return []
+        match = " OR ".join(f'"{t}"*' for t in dict.fromkeys(terms))
+        with self.lock:
+            rows = self.db.execute("SELECT text, source, ref, ts FROM recall_index WHERE recall_index MATCH ? "
+                                   "ORDER BY bm25(recall_index) LIMIT ?", (match, limit)).fetchall()
+        return sorted((dict(r) for r in rows), key=lambda r: float(r["ts"]))
 
     # --- usage / budget ----------------------------------------------
     def add_usage(self, input_tokens: int, output_tokens: int) -> None:

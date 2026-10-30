@@ -9,7 +9,7 @@ pass without any LLM. New primitive = one entry in each of `sanitize_spec`, `tic
 import random
 import time
 
-from .gm import clip
+from .text import clip
 from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
 

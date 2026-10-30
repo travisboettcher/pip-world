@@ -84,7 +84,9 @@ function describe(e) {
     case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
-    case 'inbox': return d.gift ? null : { group: 'chat', text: `Visitor: ${d.text}` };
+    case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
+    case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
+    case 'inbox': return d.gift ? null : { group: 'chat', text: `${d.sender || 'Visitor'}: ${d.text}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
     case 'alert': return { group: 'world', cls: 'warn', text: `Pip's ${d.stat} needs attention` };
@@ -184,7 +186,7 @@ $('chat-form').addEventListener('submit', async (ev) => {
   if (!text) return;
   $('chat-input').value = '';
   try {
-    const r = await post('/inbox', { text });
+    const r = await post('/inbox', { text, sender: store.get('giver', 'Morgan') });
     showVisitor(r.id, text, Date.now() / 1000);
     trackPending(r.id);
   } catch (err) {
@@ -289,6 +291,17 @@ function renderProjects() {
 }
 const refreshProjects = async () => { projectData = await api('/projects'); renderProjects(); };
 
+async function refreshMemory() {
+  const m = await api('/memory');
+  if (!m.last_reflection_ts) { $('memory').replaceChildren(h('p', { class: 'hint' }, 'Pip reflects each night; nothing yet.')); return; }
+  const sec = (title, items) => items.length ? [h('h3', {}, title), h('ul', { class: 'plain' }, ...items)] : [];
+  $('memory').replaceChildren(
+    h('p', {}, m.self || ''),
+    ...sec('People', m.people.map((p) => h('li', {}, h('b', {}, p.name), ` — ${p.notes}`))),
+    ...sec('Beliefs', m.insights.slice(0, 8).map((i) => h('li', {}, i.text, h('small', {}, `importance ${i.importance}`)))),
+    ...sec('Days', m.days.slice(0, 5).map((d) => h('li', {}, d.text, h('small', {}, fmtDay(d.period_end))))));
+}
+
 async function refreshCreations() {
   const made = await api('/creations');
   $('creations').replaceChildren(...(made.length ? made.map((c) => {
@@ -353,6 +366,7 @@ function handleEvent(e, live) {
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
   if (e.kind === 'work' || (e.kind === 'tool' && ['start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
+  if (e.kind === 'reflection') debounce('memory', refreshMemory);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
   if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (['tick', 'alert', 'tool'].includes(e.kind)) debounce('state', refreshState, 1200);
@@ -369,7 +383,7 @@ renderFilters();
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations()]);
+    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {

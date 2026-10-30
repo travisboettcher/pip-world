@@ -13,6 +13,7 @@ import re
 
 from .llm.base import LLMBackend, ToolSpec
 from .state import State
+from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
 
 log = logging.getLogger("gm")
 
@@ -24,29 +25,20 @@ than it is. You never decide what Pip does and you never change a result you are
 the `report` tool."""
 
 
-def clip(text, limit: int) -> str:
-    """Collapse whitespace and shorten to `limit` chars, cutting at a sentence end when there is one."""
-    text = " ".join(str(text or "").split())
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "), cut.rfind("* "))
-    return cut[:end + 1] if end > limit // 3 else cut.rsplit(" ", 1)[0] + "..."
-
-
 class GameMaster:
     def __init__(self, backend: LLMBackend, state: State, max_tokens: int = 1024):
         self.backend, self.state, self.max_tokens = backend, state, max_tokens
 
-    async def ask(self, task: str, properties: dict, required: list[str], purpose: str) -> dict | None:
+    async def ask(self, task: str, properties: dict, required: list[str], purpose: str,
+                  system: str = SYSTEM, max_tokens: int | None = None) -> dict | None:
         """One structured call. Returns the report's arguments, or None (caller falls back)."""
         if self.state.budget_exceeded():
             return None
         spec = ToolSpec("report", "Report your answer.", {"type": "object", "properties": properties,
                                                             "required": required})
         try:
-            resp = await self.backend.complete(system=SYSTEM, messages=[{"role": "user", "content": task}],
-                                               tools=[spec], max_tokens=self.max_tokens)
+            resp = await self.backend.complete(system=system, messages=[{"role": "user", "content": task}],
+                                               tools=[spec], max_tokens=max_tokens or self.max_tokens)
         except Exception as e:
             log.warning("gm %s failed: %s", purpose, e)
             self.state.log("gm_error", purpose=purpose, error=f"{type(e).__name__}: {e}")

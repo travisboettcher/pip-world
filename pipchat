@@ -6,6 +6,7 @@
   pipchat status | usage | health
   pipchat give "tiny needle file" [--kind tool|material|food|seed] [-q N] [--message "for the clock!"]
   pipchat items | garden | projects | creations
+  pipchat memory | reflect | recall "what Morgan said about the clock"
   pipchat notes [section] [--status open|done] [-n N]
   pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
   pipchat tick                  wake Pip now
@@ -20,9 +21,11 @@ import shlex
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_URL = "https://agent-world.internal.example.io"
+DEFAULT_SENDER = os.environ.get("PIP_NAME") or "Morgan"  # who you are to Pip (it remembers people by name)
 SECTIONS = ["diary", "todo", "wishlist", "ambitions", "learned"]
 TTY = sys.stdout.isatty()
 REPLY_TIMEOUT = 120   # Pip wakes within ~MIN_TICK_INTERVAL of a message, then thinks
@@ -141,6 +144,10 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return dim(f"  ~ {d['text']}") if d["what"] in ("stopped", "helper", "used") else dim(f"  ~ {d['name']}: {d['text']}")
     if k == "companion":
         return cyan(f"{d['name'].lower()}> ") + d["text"]
+    if k == "reflection":
+        return green(f"  z Pip slept on it: {d['summary']}")
+    if k == "reflection_error":
+        return yellow("  ! Pip's nightly reflection failed; it will try again in an hour")
     if k == "tool_error":
         return yellow(f"  ! tool {d.get('tool')} failed: {d.get('error')}")
     if k == "error":
@@ -151,7 +158,7 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return dim(f"  * Pip's {d['stat']} needs attention")
     if verbose:
         if k == "inbox":
-            return dim(f"  < visitor: {d['text']}")
+            return dim(f"  < {d.get('sender') or 'visitor'}: {d['text']}")
         if k == "inbox_read":
             return dim(f"  . Pip read visitor message(s) {d['ids']}")
         if k == "tick":
@@ -266,13 +273,14 @@ def cmd_tick(pip: Pip, a) -> None:
 
 
 def cmd_say(pip: Pip, a) -> None:
-    send_and_wait(pip, " ".join(a.message))
+    send_and_wait(pip, " ".join(a.message), sender=a.sender)
 
 
-def send_and_wait(pip: Pip, text: str | None = None, path: str = "/inbox", body: dict | None = None) -> None:
+def send_and_wait(pip: Pip, text: str | None = None, path: str = "/inbox", body: dict | None = None,
+                  sender: str = DEFAULT_SENDER) -> None:
     """POST a message (or a gift via path/body) to Pip, then show its reaction as it happens."""
     cur = pip.cursor()
-    msg_id = pip.call(path, body if body is not None else {"text": text})["id"]
+    msg_id = pip.call(path, body if body is not None else {"text": text, "sender": sender})["id"]
     start, replied_at, spin, heard = time.time(), None, 0, False
     try:
         while True:
@@ -383,6 +391,53 @@ def cmd_creations(pip: Pip, a) -> None:
         print(dim("  (nothing yet)"))
 
 
+def cmd_memory(pip: Pip, a) -> None:
+    m = pip.call("/memory")
+    if JSON_MODE:
+        return out_json(m)
+    if not m["last_reflection_ts"]:
+        print(dim("Pip hasn't reflected yet (it does at night, or: pipchat reflect)."))
+        return
+    print(bold("Who Pip is") + dim(f"  (last reflection {fmt_time(m['last_reflection_ts'])})"))
+    print(f"  {m['self'] or dim('(no self-portrait yet)')}")
+    if m["people"]:
+        print(bold("People"))
+        for p in m["people"]:
+            print(f"  {p['name']}: {p['notes']}" + dim(f"  (last seen {fmt_time(p['last_seen'])})"))
+    if m["insights"]:
+        print(bold("Beliefs"))
+        for i in m["insights"][:a.n]:
+            print(f"  [{i['importance']:>2}] {i['text']}")
+    if m["days"]:
+        print(bold("Days"))
+        for d in reversed(m["days"][:a.n]):
+            print(f"  {dim(fmt_time(d['period_end']))} {d['text']}")
+
+
+def cmd_reflect(pip: Pip, a) -> None:
+    r = pip.call("/reflect", {})["reflection"]
+    if JSON_MODE:
+        return out_json(r)
+    if not r:
+        print(dim("Nothing new to reflect on (or the reflection failed - see pipchat log)."))
+        return
+    print(green("Pip reflected: ") + r["summary"])
+    for i in r["insights"]:
+        print(f"  [{i['importance']:>2}] {i['text']}")
+    if r["people"]:
+        print(dim("  updated notes on: " + ", ".join(r["people"])))
+
+
+def cmd_recall(pip: Pip, a) -> None:
+    hits = pip.call("/recall?" + urllib.parse.urlencode({"q": " ".join(a.query), "limit": a.n}))
+    if JSON_MODE:
+        return out_json(hits)
+    for h in hits:
+        print(f"  {dim(fmt_time(float(h['ts'])))} {dim('[' + h['source'] + ']')} {h['text']}")
+    if not hits:
+        print(dim("  nothing comes to mind"))
+
+
 def cmd_chat(pip: Pip, a) -> None:
     try:
         import readline  # noqa: F401  (line editing + history)
@@ -400,7 +455,7 @@ def cmd_chat(pip: Pip, a) -> None:
         if not line:
             continue
         if not line.startswith("/"):
-            send_and_wait(pip, line)
+            send_and_wait(pip, line, sender=getattr(a, "sender", DEFAULT_SENDER))
             continue
         try:
             argv = shlex.split(line[1:])
@@ -443,7 +498,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=func)
         return p
 
-    add("chat", cmd_chat, "interactive chat (default)")
+    p = add("chat", cmd_chat, "interactive chat (default)")
+    p.add_argument("--from", dest="sender", default=DEFAULT_SENDER, help="your name, as Pip will know you")
     add("status", cmd_status, "what Pip is doing, its stats, model, pacing and tools")
     add("usage", cmd_usage, "today's token usage against the daily budget")
     add("health", cmd_health, "check that the service is up")
@@ -464,6 +520,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", choices=["active", "done", "abandoned"])
     p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
     add("creations", cmd_creations, "things Pip has made, and what they're doing")
+    p = add("memory", cmd_memory, "Pip's long-term memory: self-portrait, people, beliefs, days")
+    p.add_argument("-n", type=int, default=10, help="beliefs and days to show (default 10)")
+    add("reflect", cmd_reflect, "make Pip reflect now instead of waiting for the night")
+    p = add("recall", cmd_recall, "search Pip's memory the way its recall tool does")
+    p.add_argument("query", nargs="+")
+    p.add_argument("-n", type=int, default=8)
     p = add("give", cmd_give, "give Pip something and see how it reacts")
     p.add_argument("name", help='e.g. "tiny needle file"')
     p.add_argument("-q", "--quantity", type=int, default=1)
@@ -471,7 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tool: kept; material: used up; food: eaten; seed: planted (default tool)")
     p.add_argument("--desc", help="short description Pip will see")
     p.add_argument("--message", help="something you say as you hand it over")
-    p.add_argument("--from", dest="sender", default="Morgan", help="who it's from (default Morgan)")
+    p.add_argument("--from", dest="sender", default=DEFAULT_SENDER, help="who it's from (default $PIP_NAME or Morgan)")
     p.add_argument("--crop", help="seeds: what grows (default: name minus 'seeds')")
     p.add_argument("--grow-minutes", type=float, help="seeds: minutes to ripen (default 60)")
     p.add_argument("--yield", dest="yield_", type=int, help="seeds: crops per harvest (default 3)")
@@ -479,13 +541,14 @@ def build_parser() -> argparse.ArgumentParser:
     add("tick", cmd_tick, "wake Pip now")
     p = add("say", cmd_say, "say something to Pip and wait for the reply")
     p.add_argument("message", nargs="+")
+    p.add_argument("--from", dest="sender", default=DEFAULT_SENDER, help="your name, as Pip will know you")
     return ap
 
 
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

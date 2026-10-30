@@ -32,6 +32,7 @@ class FixedRng(random.Random):
 
 
 def make(tmp_path, gm_script=None, rng=None, **kw):
+    kw.setdefault("reflect_hour", 99)  # no nightly reflection unless a test asks for one
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/nonexistent", persona_default_path="/nonexistent",
                  tools=["set_activity", "eat", "rest", "note_to_self", "use_item", "start_project", "work_on",
                         "abandon_project"], min_tick_interval=0, **kw)

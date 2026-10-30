@@ -12,7 +12,7 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 | M2a | Web dashboard + chat (same info as `pipchat`) | **Built, needs a browser check** |
 | M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | **Built, not deployed** |
 | M2b | Visual world (2D) | Not started |
-| M3 | Long-term memory | Not started |
+| M3 | Long-term memory ([design](DESIGN-memory.md)) | **Steps 1-2 built, not deployed** |
 | M4 | Richer tools, optional exposure | Not started |
 
 ## M1 - Headless brain (done)
@@ -53,9 +53,14 @@ Browser equivalent of `pipchat`, served by the existing service at `https://agen
 - [ ] Map `set_activity` labels and garden state to visuals; live push from the backend
 - [ ] Optional: evaluate a16z AI Town on the side (Convex-based, probably too heavy)
 
-## M3 - Long-term memory
-- [ ] Summarize old events/diary into compact memories; retrieve relevant ones into the prompt
-- [ ] Start with SQLite FTS or sqlite-vec; add Chroma only if retrieval quality demands it
+## M3 - Long-term memory (see DESIGN-memory.md)
+- [ ] Deploy: add `recall` to `TOOLS` in `.env`, rebuild; the first reflection runs right away
+- [x] Visitor identity: inbox `sender`, shown in perception, moments and the feed
+- [x] Nightly reflection in Pip's voice: day summaries, insights with importance, people notes, self-portrait
+- [x] `recall(query)` over journal, events, reflections and people (SQLite FTS5)
+- [ ] Step 3: "this reminds you of..." - situation-based retrieval into the prompt (recency x importance x relevance)
+- [ ] Step 4: forgetting - stop indexing raw events covered by summaries; unused insights lose rank
+- [ ] Embeddings (sqlite-vec) if FTS relevance proves too noisy; add Chroma only if retrieval quality demands it
 - [ ] Revisit LangGraph if the loop needs checkpointing or branching
 - [ ] Keep prompts well under 100k tokens (Haiku 5.5 pricing steps up 5x past that); prompts are ~3-5k today
 
@@ -94,8 +99,8 @@ is in my notes, not in the gears".
 - [x] A shelf of finished creations: perception, `GET /creations`, `pipchat creations`, "Made by Pip" UI panel
 
 ### World mechanics
-- [ ] **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). A nightly
-      "dream" pass condenses the day into memories, which makes this a natural home for M3
+- [ ] **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
+      reflection (M3) already exists; tie it to Pip actually going to bed
 - [ ] **Places**: `location` exists but never changes. A few places (junkyard, woods, market) and `go_to` / `forage`
       with random finds, so materials don't only come from visitors
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
@@ -110,7 +115,7 @@ is in my notes, not in the gears".
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
 - [ ] **A neighbor** (designed as phase 4 in DESIGN-creations.md): a second creature with its own persona exchanging letters with delivery delays, so Pip has
       relationships beyond Morgan. Build multi-agent support once and reuse it for `companion` creations
-- [ ] Visitor identity: remember who visited and what they talked about, per person
+- [x] Visitor identity: remember who visited and what they talked about, per person (M3 people notes)
 
 ### Homelab tie-ins
 - [ ] Real weather / daylight from Home Assistant (harmless sensors only): cloudy days slow the garden, sunset means bed

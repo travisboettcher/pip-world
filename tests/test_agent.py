@@ -12,6 +12,7 @@ from app.state import State
 
 
 def make(tmp_path, script=None, **kw):
+    kw.setdefault("reflect_hour", 99)  # no nightly reflection unless a test asks for one
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/nonexistent", persona_default_path="/nonexistent",
                  tools=["set_activity", "eat", "rest", "note_to_self", "resolve_note"], min_tick_interval=0, **kw)
     st = State(s)

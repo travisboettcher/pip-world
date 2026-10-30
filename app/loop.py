@@ -6,6 +6,7 @@ import time
 
 from . import companions as comp
 from . import creations as cr
+from . import memory as mem
 from . import projects as proj
 from .config import Settings
 from .gm import GameMaster
@@ -37,6 +38,7 @@ class Agent:
         self._budget_logged = False
         self.ticks = 0
         self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
+        self._reflecting = asyncio.Lock()
 
     # --- wake control ------------------------------------------------
     def request_wake(self, force: bool = False) -> None:
@@ -114,6 +116,13 @@ class Agent:
                 self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
             self.request_wake()
+        if mem.due(self.state, self.s, time.time()):
+            await self.reflect()
+
+    async def reflect(self) -> dict | None:
+        """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
+        async with self._reflecting:
+            return await mem.reflect(self.state, self.s, self.gm, self._persona())
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
@@ -289,17 +298,21 @@ class Agent:
             return []
         last = self.state.memories("diary", limit=1)
         since = max(time.time() - self.s.moment_window_minutes * 60, last[0]["ts"] if last else 0)
-        moments, visit_ids = [], []
+        moments, visit_ids, visitors = [], [], []
         for e in self.state.events_since(since):  # oldest first
             if self._moment_shown.get(e["id"], 0) >= self.s.moment_showings:
                 continue
             if e["kind"] == "inbox":
                 visit_ids.append(e["id"])  # never quote visitor text here: Pip would answer it again
+                who = e["data"].get("sender") or "A visitor"
+                if who not in visitors:
+                    visitors.append(who)
             elif text := self._moment_text(e):
                 moments.append(([e["id"]], text))
         if visit_ids:
             n = len(visit_ids)
-            moments.insert(0, (visit_ids, f"A visitor came by and talked with you ({n} message{'s' if n != 1 else ''}; "
+            who = " and ".join(visitors) if visitors else "A visitor"
+            moments.insert(0, (visit_ids, f"{who} came by and talked with you ({n} message{'s' if n != 1 else ''}; "
                                           "you already replied, don't answer again)"))
         moments = moments[-5:]
         for ids, _ in moments:
@@ -346,6 +359,7 @@ class Agent:
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
         ]
+        lines += mem.perception(self.state)
         lines += self._belongings()
         lines += self._projects()
         lines += self._journal()
@@ -373,6 +387,6 @@ class Agent:
                                     " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
         if inbox:
             lines.append("Inbox (visitors):")
-            lines += [f"- {m['text']}" for m in inbox]
+            lines += [f"- {m['text']}" if m["gift"] else f"- {m['sender']}: {m['text']}" for m in inbox]
         lines += self._moments()  # last, so it is the freshest thing in the prompt
         return "\n".join(lines)

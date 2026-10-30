@@ -16,7 +16,7 @@ from .config import Settings
 from .llm import get_backend
 from .loop import Agent
 from .pacing import get_policy
-from .state import SECTIONS, State
+from .state import SECTIONS, State, clean_sender
 from .stream import event_stream
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -24,6 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 class InboxItem(BaseModel):
     text: str
+    sender: str = "A visitor"
 
 
 class Gift(BaseModel):
@@ -139,19 +140,37 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             ids = ", ".join(f"#{m['id']}" for m in wishes)
             text += (f" (This may be something you wished for: {ids}. Cross it off with resolve_note if it is "
                      "fully met, or use edit_note to trim the wish down to what's still missing.)")
-        inbox_id = agent.state.add_inbox(text)
-        agent.state.log("gift", sender=g.sender, item=item["name"], qty=g.qty, item_kind=item["kind"])
-        agent.state.log("inbox", id=inbox_id, text=text, gift=True)
+        sender = clean_sender(g.sender)
+        inbox_id = agent.state.add_inbox(text, sender, gift=True)
+        agent.state.log("gift", sender=sender, item=item["name"], qty=g.qty, item_kind=item["kind"])
+        agent.state.log("inbox", id=inbox_id, text=text, gift=True, sender=sender)
         agent.request_wake()
         return {"queued": True, "id": inbox_id, "item": item}
 
     @app.post("/inbox")
     def post_inbox(item: InboxItem):
         agent: Agent = app.state.agent
-        inbox_id = agent.state.add_inbox(item.text)
-        agent.state.log("inbox", id=inbox_id, text=item.text)
+        sender = clean_sender(item.sender)
+        inbox_id = agent.state.add_inbox(item.text, sender)
+        agent.state.log("inbox", id=inbox_id, text=item.text, sender=sender)
         agent.request_wake()
         return {"queued": True, "id": inbox_id}
+
+    @app.get("/memory")
+    def get_memory():
+        st = app.state.agent.state
+        return {"self": st.meta("self_portrait"), "people": st.people(),
+                "days": st.reflections("day", limit=30), "insights": st.reflections("insight", limit=50, by_importance=True),
+                "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
+
+    @app.get("/recall")
+    def get_recall(q: str, limit: int = 5):
+        return app.state.agent.state.recall(q, min(limit, 20))
+
+    @app.post("/reflect")
+    async def post_reflect():
+        """Reflect now instead of waiting for the night (covers everything since the last reflection)."""
+        return {"reflection": await app.state.agent.reflect()}
 
     @app.post("/tick")
     def post_tick():
