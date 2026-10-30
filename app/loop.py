@@ -10,6 +10,7 @@ from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
 from . import places
+from . import sleep as sleepmod
 from . import projects as proj
 from .config import Settings
 from .gm import GameMaster
@@ -40,6 +41,7 @@ class Agent:
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
+        self._urgent = False
         self._budget_logged = False
         self.ticks = 0
         self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
@@ -47,8 +49,10 @@ class Agent:
         self._finishing = asyncio.Lock()  # the monitor and a tick may both try to resolve the same session
 
     # --- wake control ------------------------------------------------
-    def request_wake(self, force: bool = False) -> None:
+    def request_wake(self, force: bool = False, urgent: bool = False) -> None:
+        """Ask for an early tick. While Pip sleeps only urgent wakes (a visitor) or a forced tick get through."""
         self._force = self._force or force
+        self._urgent = self._urgent or urgent
         self._wake.set()
 
     async def _sleep(self) -> str:
@@ -58,6 +62,8 @@ class Agent:
             sess = self.state.session()
             if delay is not None and sess:  # working: no heartbeat until the session ends (events still wake)
                 delay = max(delay, sess["ends_at"] - time.time())
+            if delay is not None and sleepmod.asleep(self.state):  # asleep: nothing until morning
+                delay = max(delay, float(self.state.meta("sleep_until") or 0) - time.time())
             until = self.state.meta("rest_until")
             if delay is not None and until and self.state.agent()["activity"] == "resting":  # resting: sleep through (events still wake)
                 delay = max(delay, float(until) - time.time())
@@ -65,8 +71,12 @@ class Agent:
                 self._wake.clear()
                 if self._force:
                     self._force = False
+                    self._urgent = False
                     return "forced"
                 if self.pacing.wakes_on_events:
+                    if sleepmod.asleep(self.state) and not self._urgent:
+                        continue  # only a visitor wakes a sleeper; the rest will be there in the morning
+                    self._urgent = False
                     wait = self.last_tick + self.s.min_tick_interval - time.time()
                     if wait > 0:
                         await asyncio.sleep(wait)
@@ -161,6 +171,7 @@ class Agent:
         """
         self.last_tick = time.time()
         self.state.apply_decay()
+        sleepmod.wake_up(self.state)
         await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
         inbox = self.state.pending_inbox()
@@ -402,6 +413,8 @@ class Agent:
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
         ]
+        if "sleep" in self.tools:
+            lines += sleepmod.perception(self.state, self.s, time.time())
         lines += places.perception(self.state, self.library)
         lines += mem.perception(self.state)
         lines += self._belongings()
@@ -422,6 +435,8 @@ class Agent:
                 elif e["kind"] == "creation":
                     lines.append(f"- {d['text']}" if d["what"] in ("stopped", "helper", "used")
                                  else f"- your {d['name']}: {d['text']}")
+                elif e["kind"] == "woke":
+                    lines.append(f"- {sleepmod.woke_text(d)}")
                 elif e["kind"] == "reading":
                     lines.append(f"- you read {d['title']}" + (f" (now {d['percent']}% through)" if not d["finished"]
                                                                 else " (and finished it)") + f": {d['summary']}"

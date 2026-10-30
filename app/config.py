@@ -38,7 +38,10 @@ class Settings:
     work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
     max_active_projects: int = 3
     companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
-    reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs
+    reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs (fallback when it hasn't slept)
+    sleep: bool = True                 # day/night rhythm and the sleep tool
+    bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
+    wake_hour: int = 6
     reflect_max_chars: int = 12000     # how much of the day a reflection reads (newest kept)
     neighbor: bool = True              # invent a neighbor who writes letters
     letter_delay_minutes: float = 120  # how long a letter takes each way (+-30%)
@@ -55,6 +58,7 @@ class Settings:
     hunger_per_hour: float = 0.08
     energy_per_hour: float = 0.05
     recover_per_hour: float = 0.30
+    sleep_recover_per_hour: float = 0.25
     work_energy_per_hour: float = 0.05  # extra drain during a work session
     hunger_alert: float = 0.8
     energy_alert: float = 0.2
@@ -85,6 +89,10 @@ class Settings:
             max_active_projects=_int("MAX_ACTIVE_PROJECTS", 3),
             companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
             reflect_hour=_int("REFLECT_HOUR", 3),
+            sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
+            bedtime_hour=_int("BEDTIME_HOUR", 22),
+            wake_hour=_int("WAKE_HOUR", 6),
+            sleep_recover_per_hour=_float("SLEEP_RECOVER_PER_HOUR", 0.25),
             reflect_max_chars=_int("REFLECT_MAX_CHARS", 12000),
             neighbor=(e("NEIGHBOR") or "1") not in ("0", "false", "no"),
             letter_delay_minutes=_float("LETTER_DELAY_MINUTES", 120),
@@ -94,6 +102,6 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse_library,read,experiment,revise_plan").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse_library,read,experiment,revise_plan,sleep").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
         )

@@ -146,7 +146,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         inbox_id = agent.state.add_inbox(text, sender, gift=True)
         agent.state.log("gift", sender=sender, item=item["name"], qty=g.qty, item_kind=item["kind"])
         agent.state.log("inbox", id=inbox_id, text=text, gift=True, sender=sender)
-        agent.request_wake()
+        agent.request_wake(urgent=True)
         return {"queued": True, "id": inbox_id, "item": item}
 
     @app.post("/inbox")
@@ -155,7 +155,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         sender = clean_sender(item.sender)
         inbox_id = agent.state.add_inbox(item.text, sender)
         agent.state.log("inbox", id=inbox_id, text=item.text, sender=sender)
-        agent.request_wake()
+        agent.request_wake(urgent=True)
         return {"queued": True, "id": inbox_id}
 
     @app.get("/memory")

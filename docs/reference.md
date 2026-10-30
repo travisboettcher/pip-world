@@ -121,3 +121,8 @@ No library mounted = no library place and no library tools.
 ./pipchat library numenera        # search the catalogue
 ```
 HTTP: `GET /library/search?q=`, `GET /library/bookmarks`.
+
+## Day, night and sleep
+See [DESIGN-sleep.md](DESIGN-sleep.md). Pip perceives the period of day and which day of its life it is. At night (`BEDTIME_HOUR`-`WAKE_HOUR`)
+it can `sleep` until morning: no ticks, faster recovery, slower hunger; the nightly reflection runs as it falls asleep.
+Only a visitor (or `pipchat tick`) wakes it early. `SLEEP=0` turns the rhythm off.

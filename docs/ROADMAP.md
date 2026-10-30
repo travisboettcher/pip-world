@@ -100,7 +100,7 @@ is in my notes, not in the gears".
 - [x] A shelf of finished creations: perception, `GET /creations`, `pipchat creations`, "Made by Pip" UI panel
 
 ### World mechanics
-- [ ] **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
+- [x] (built; DESIGN-sleep.md; deploy: add `sleep` to `TOOLS`) **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
       reflection (M3) already exists; tie it to Pip actually going to bed
 - [ ] **More places** (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
       with random finds, so materials don't only come from visitors
@@ -152,7 +152,7 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 ### Introspection and a sense of self
 - [ ] Engine-detected firsts (first night, first finished project, first visitor, first failure, first letter) given to
       Pip as facts; the thought itself stays Pip's (facts and occasion, never the sentence)
-- [ ] World/Pip age and time of day in perception (needs day/night, see World mechanics)
+- [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one
 - [ ] Rare open question prompts, not scripted performances
 - [ ] **Survey the full body of prior work before designing** (the list below is from memory, not yet read or verified):
@@ -178,7 +178,7 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       Consider per-moment coverage
 - [ ] Dollar-based budget cap (`DAILY_BUDGET_USD` + per-model prices) instead of tokens only; output tokens cost 5x input
 - [ ] Healthcheck delays Traefik registration by ~30 s after a recreate (404s meanwhile); tighten interval/start period
-- [ ] Verify `restic/backup-agent-world.sh` against the live container and restore a snapshot once
+- [x] Verified `restic/backup-agent-world.sh` against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state

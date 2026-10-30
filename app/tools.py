@@ -15,6 +15,7 @@ from . import library as lib
 from . import neighbors as nb
 from . import places
 from . import projects as proj
+from . import sleep as sleepmod
 from .config import Settings
 from .llm.base import ToolSpec
 from .state import RESOLVABLE, SECTIONS, State, clamp
@@ -190,6 +191,29 @@ async def rest(ctx: ToolContext, args: dict) -> ToolResult:
     minutes = max(1, min(minutes, MAX_REST_MINUTES)) if minutes else round(max(15, min(full, MAX_REST_MINUTES)))
     ctx.state.set_meta(rest_until=str(time.time() + minutes * 60))
     return ToolResult(f"resting for about {minutes} min{note}")
+
+
+@tool("sleep",
+      "Go to bed for the night (only when it's night, and at home). You sleep until morning, recover more than "
+      "resting, and your day settles into memory while you sleep. A visitor can still wake you.",
+      _obj({}, []))
+async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
+    now = time.time()
+    if sleepmod.asleep(ctx.state):
+        return ToolResult("you're already asleep")
+    if not sleepmod.is_night(ctx.settings, now):
+        return ToolResult(f"it's {sleepmod.period(ctx.settings, now)}, not time for bed; rest if you're tired",
+                          followup=True)
+    sess = ctx.state.session()
+    if sess and sess["kind"] == "walk":
+        return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can sleep once you get there")
+    if why := away_from_home(ctx):
+        return ToolResult(why, followup=True)
+    note = await stop_working(ctx)
+    r = sleepmod.fall_asleep(ctx.state, ctx.settings, now)
+    wake = time.strftime("%-I %p", time.localtime(r["until"])).lower()
+    return ToolResult(f"you go to bed and fall asleep; you'll sleep until about {wake}{note}."
+                      + (" This is the first time you have ever gone to sleep." if r["first"] else ""))
 
 
 @tool("note_to_self",
@@ -616,6 +640,8 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             raise ValueError(f"unknown tool {name!r}; options: {sorted(REGISTRY)}")
         if name == "web_search" and not settings.tavily_api_key:
             continue  # silently unavailable without a key
+        if name == "sleep" and not settings.sleep:
+            continue
         if name in ("browse_library", "read") and not lib.Library(settings.library_path).available():
             continue  # no Calibre library mounted
         out[name] = REGISTRY[name]

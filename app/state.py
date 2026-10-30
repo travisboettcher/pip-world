@@ -176,12 +176,14 @@ class State:
             a = self.agent()
             hours = max(0.0, now - a["updated_at"]) / 3600
             energy_rate = (
-                self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
+                self.s.sleep_recover_per_hour if a["activity"] == "sleeping"
+                else self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
             )
             sess = self.session()
             if sess and sess["kind"] in ("work", "experiment"):
                 energy_rate -= self.s.work_energy_per_hour
-            hunger = clamp(a["hunger"] + self.s.hunger_per_hour * hours)
+            hunger_rate = self.s.hunger_per_hour * (0.5 if a["activity"] == "sleeping" else 1)
+            hunger = clamp(a["hunger"] + hunger_rate * hours)
             energy = clamp(a["energy"] + energy_rate * hours)
             new = []
             h_alert = hunger >= self.s.hunger_alert
@@ -666,6 +668,17 @@ class State:
                                 (now, fraction, now)).rowcount
             self.db.commit()
         return n
+
+    def born_at(self) -> float:
+        """When Pip's life here began: the first logged event (or now, for a brand-new world)."""
+        b = self.meta("born_at")
+        if b:
+            return float(b)
+        with self.lock:
+            first = self.db.execute("SELECT MIN(ts) AS t FROM events").fetchone()["t"]
+        b = first or time.time()
+        self.set_meta(born_at=b)
+        return b
 
     # --- meta (small key/value facts) ------------------------------------------
     def meta(self, key: str) -> str | None:

@@ -34,9 +34,10 @@ class FixedRng(random.Random):
 def make(tmp_path, gm_script=None, rng=None, **kw):
     kw.setdefault("reflect_hour", 99)  # no nightly reflection unless a test asks for one
     kw.setdefault("neighbor", False)    # no neighbor unless a test asks for one
+    kw.setdefault("sleep", False)       # no day/night rhythm unless a test asks for one
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/nonexistent", persona_default_path="/nonexistent",
                  tools=["set_activity", "eat", "rest", "note_to_self", "use_item", "start_project", "work_on",
-                        "abandon_project", "experiment", "revise_plan"], min_tick_interval=0, **kw)
+                        "abandon_project", "experiment", "revise_plan", "sleep"], min_tick_interval=0, **kw)
     st = State(s)
     gm = FakeBackend(gm_script)
     agent = Agent(s, st, FakeBackend(), get_policy(s), gm_backend=gm, rng=rng or FixedRng())

@@ -101,11 +101,17 @@ def material(state, since: float, until: float, max_chars: int) -> tuple[list[st
 
 
 def due(state, settings, now: float) -> bool:
-    local = datetime.fromtimestamp(now)
-    if local.hour < settings.reflect_hour or state.meta("last_reflection_day") == local.date().isoformat():
-        return False
     failed = float(state.meta("reflection_failed_at") or 0)
-    return now - failed >= RETRY_AFTER
+    if now - failed < RETRY_AFTER:
+        return False
+    if settings.sleep:
+        if state.agent()["activity"] == "sleeping":  # Pip reflects as it sleeps: once per sleep
+            return state.meta("reflected_sleep") != state.meta("sleep_started")
+        # fallback if Pip hasn't slept for a long while: the old fixed hour
+        if now - float(state.meta("last_reflection_ts") or 0) < 30 * 3600:
+            return False
+    local = datetime.fromtimestamp(now)
+    return local.hour >= settings.reflect_hour and state.meta("last_reflection_day") != local.date().isoformat()
 
 
 async def reflect(state, settings, gm, persona: str, now: float | None = None) -> dict | None:
@@ -114,6 +120,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     since = float(state.meta("last_reflection_ts") or 0)
     lines, appeared = material(state, since, now, settings.reflect_max_chars)
     done = {"last_reflection_ts": str(now), "last_reflection_day": datetime.fromtimestamp(now).date().isoformat()}
+    if state.agent()["activity"] == "sleeping":
+        done["reflected_sleep"] = state.meta("sleep_started")
     if not lines:
         state.set_meta(**done)  # a quiet day: nothing to go over
         return None
