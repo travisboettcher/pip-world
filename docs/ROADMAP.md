@@ -111,24 +111,26 @@ is in my notes, not in the gears".
 ### World mechanics
 - [x] (built; DESIGN-sleep.md; deploy: add `sleep` to `TOOLS`) **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
       reflection (M3) already exists; tie it to Pip actually going to bed
-- [ ] **More places and place-scoped tools** (designed: DESIGN-places.md; steps 1-3 built: tool scoping, place records, `browse`, the directory, `gather` at the woods and junkyard, `where_to`; market and coins, `places.json` later) -- original idea: (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
-      with random finds, so materials don't only come from visitors
+- [x] **Places and place-scoped tools** (DESIGN-places.md): tool scoping, place records, `browse`, the directory, `gather` at the woods and
+      junkyard (loot tables, depletion, daylight hours), `where_to`, the missing-material hint
+- [ ] Places, remaining: a user-editable `places.json` (places, hours, loot) and a place or two more (e.g. a market, once there are coins)
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
 - [ ] **LLM-free surprises**: a cheap random-event generator (storm flattens a plot, a mouse gets the tomatoes, a
       creation breaks) so the diary has things happen *to* Pip, not just things Pip decides
 - [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
-
-- [ ] **Pip changes its world** (idea, 2026-10-30): if Pip works out how to clear a new garden plot, the world should allow it. The
-      right shape is a project whose finished result is a bounded *world effect* the engine applies (a new plot first; later e.g. a
-      pond, a path that shortens a walk), limited by effort, tools and materials, with a hard cap (e.g. 8 plots), not by a hardcoded
-      number. Needs: a dynamic plot count in state (today `GARDEN_PLOTS` is fixed), a `plot`-style capability in creation design, and the
-      persona line. Foraging for food and seeds exists (woods: berries, hazelnuts, sunflower and carrot seeds, rare); consider making
-      seeds a little commoner and adding more wild varieties.
+- [x] **Pip changes its world** (built 2026-10-30): a finished project can carry a `world` capability, decided by the GM only for work that plainly was
+      about making room to grow things, and applied once by the engine: a new garden plot, up to `GARDEN_PLOTS_MAX` (8). The engine gates it (a
+      land-related project of at least difficulty 2; the cap) so the GM can't hand out plots. Foraging gives wild seeds (sunflower, carrot, pea,
+      radish, bean) and food (berries, hazelnuts, mushrooms, apples). The capability list is the extension point for other lasting changes
+      (a pond, a path that shortens a walk).
 
 ### Social
-- [ ] **Pip can reach out** (designed: DESIGN-outreach.md, a pluggable two-way channel with self-hosted Matrix first; the channel-agnostic core and the Matrix channel are built; the homeserver service and bootstrap are next) -- `send_postcard` via n8n / ntfy push ("the clock ticks! come see"), rate-limited. Today
-      Pip can only talk when spoken to
+- [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
+      in the thread, never at night), the Matrix channel, and the `matrix/` homeserver on `matrix.example.io` with `bootstrap.py` and a restic backup.
+      Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.
+- [ ] Outreach, remaining: Element Web for a desktop view; inbound photos; a Telegram or webhook channel if ever wanted; end-to-end encryption (later);
+      add the homeserver to Uptime Kuma
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
 - [x] **A neighbor** (built; DESIGN-neighbor.md; deploy: add `write_letter` to `TOOLS`): a second creature with its own persona exchanging letters with delivery delays, so Pip has
       relationships beyond Morgan. Build multi-agent support once and reuse it for `companion` creations

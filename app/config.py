@@ -42,6 +42,7 @@ class Settings:
 
     daily_token_budget: int = 5_000_000
     garden_plots: int = 3
+    garden_plots_max: int = 8           # most plots Pip can ever have (it can clear more than it starts with)
     moment_window_minutes: float = 60  # how far back a notable moment can be offered for the diary
     moment_showings: int = 3           # how many ticks a moment is offered before it's dropped
     garden_speed: float = 1.0  # >1 grows crops faster (testing / impatience)
@@ -112,6 +113,7 @@ class Settings:
             min_tick_interval=_float("MIN_TICK_INTERVAL", 15),
             daily_token_budget=_int("DAILY_TOKEN_BUDGET", 5_000_000),
             garden_plots=_int("GARDEN_PLOTS", 3),
+            garden_plots_max=_int("GARDEN_PLOTS_MAX", 8),
             moment_window_minutes=_float("MOMENT_WINDOW_MINUTES", 60),
             moment_showings=_int("MOMENT_SHOWINGS", 3),
             garden_speed=_float("GROW_SPEED", 1.0),

@@ -13,7 +13,11 @@ from .text import clip
 from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
 
-CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion")
+CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world")
+# Lasting changes to the world a finished project can make. Each is applied once, by the engine, when the creation is made,
+# only if the project plainly was about it and the world has room (a hard cap), never because the GM said so alone.
+WORLD_EFFECTS = {"garden_plot": ("plot", "bed", "garden", "soil", "ground", "dig", "clear", "till", "furrow", "patch", "earth")}
+WORLD_MIN_DIFFICULTY = 2
 SENSOR_CONDITIONS = ("crop_ripe", "visitor", "dawn", "dusk", "hungry", "tired")
 HELPER_EFFECTS = {"hurry_crops": 60, "find": 360, "comfort": 240}  # effect -> minimum minutes between runs
 MAX_CAPABILITIES = 3
@@ -68,6 +72,12 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
                 low = HELPER_EFFECTS[effect]
                 caps[t] = {"effect": effect, "line": line, "every_minutes": _num(c.get("every_minutes"), low, 1440, low * 2),
                            **({"finds": [f.lower() for f in finds]} if effect == "find" else {})}
+        elif t == "world":
+            effect = c.get("effect")
+            words = " ".join([project["name"], project.get("goal") or ""] + [st["name"] for st in project["stages"]]).lower()
+            if (effect in WORLD_EFFECTS and project["difficulty"] >= WORLD_MIN_DIFFICULTY
+                    and any(w in words for w in WORLD_EFFECTS[effect])):
+                caps[t] = {"effect": effect}
         elif t == "companion":
             if project["difficulty"] >= COMPANION_MIN_DIFFICULTY and _line(c.get("persona")):
                 caps[t] = {"persona": _line(c["persona"], 400),
@@ -225,7 +235,8 @@ def describe(c: dict, now: float | None = None) -> str:
         shown, off = clock_reading(c, now)
         skew = "about right" if abs(off) < 1 else f"about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
         parts.append(f"it shows {shown}" + (f" (it runs {skew}; use_item can set it)" if running(c, now) else ""))
-    for k, text in (("periodic", "does things on its own now and then"),
+    for k, text in (("world", "it made lasting room in your world"),
+                    ("periodic", "does things on its own now and then"),
                     ("sensor", f"reacts when: {caps.get('sensor', {}).get('condition', '')}"),
                     ("helper", f"helps: {caps.get('helper', {}).get('line', '')}"),
                     ("companion", "has a mind of its own (talk to it: say with `to`)")):
@@ -236,13 +247,31 @@ def describe(c: dict, now: float | None = None) -> str:
     return head + " - " + "; ".join(parts)
 
 
+def apply_world_effect(state, spec: dict) -> str | None:
+    """Carry out a finished project's lasting change to the world, if it has one and the world has room.
+    If it can't be done (the cap), the capability is dropped so the creation doesn't claim it."""
+    effect = spec["capabilities"].get("world", {}).get("effect")
+    if effect == "garden_plot":
+        n = state.add_plot()
+        if n is None:
+            spec["capabilities"].pop("world")
+            return None
+        return f"Your garden now has {n} plots: a new bed is ready for planting (plot {n})."
+    if effect:
+        spec["capabilities"].pop("world")
+    return None
+
+
 async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -> dict:
     """Turn a finished project into a creation (one GM design call, then the engine takes over)."""
     q, marks = project_quality(project, skill_level), project_scars(project)
     allow = project["difficulty"] >= COMPANION_MIN_DIFFICULTY
     raw = await gm.design(project, q, marks, allow) if gm else None
     name, description, spec = sanitize_spec(raw, project, q, marks, rng)
+    note = apply_world_effect(state, spec)
     c = state.add_creation(name, description, project["id"], q, spec, initial_runtime(spec, time.time()))
+    if note:
+        state.log("world_changed", effect=spec["capabilities"]["world"]["effect"], text=note, name=name)
     state.log("creation_made", id=c["id"], name=name, description=description, quality=q,
               capabilities=list(spec["capabilities"]), quirks=spec["quirks"], project=project["name"])
     return c

@@ -175,6 +175,8 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return dim(f"  @ Pip writes to {d['to']}: {d['text']}") + (dim(f" (enclosed: {d['enclosed']})") if d.get("enclosed") else "")
     if k == "neighbor":
         return green(f"  + A neighbor: {d['name']} - {d['about']}")
+    if k == "world_changed":
+        return green(f"  + {d['text']}")
     if k == "reflection":
         return green(f"  z Pip slept on it: {d['summary']}")
     if k == "reflection_error":

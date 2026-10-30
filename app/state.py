@@ -480,12 +480,24 @@ class State:
             self.db.commit()
 
     # --- garden ----------------------------------------------------------
+    def plot_count(self) -> int:
+        """Plots Pip has: the starting number plus any it cleared, never above the cap."""
+        return min(self.s.garden_plots_max, self.s.garden_plots + int(self.meta("extra_plots") or 0))
+
+    def add_plot(self) -> int | None:
+        """One more plot, or None if the garden is as big as the world allows. Returns the new plot's number."""
+        with self.lock:
+            if self.plot_count() >= self.s.garden_plots_max:
+                return None
+            self.set_meta(extra_plots=int(self.meta("extra_plots") or 0) + 1)
+            return self.plot_count()
+
     def garden(self, now: float | None = None) -> list[dict]:
         now = now or time.time()
         with self.lock:
             rows = {r["plot"]: dict(r) for r in self.db.execute("SELECT * FROM garden")}
         out = []
-        for n in range(1, self.s.garden_plots + 1):
+        for n in range(1, self.plot_count() + 1):
             r = rows.get(n)
             if not r:
                 out.append({"plot": n, "state": "empty"})

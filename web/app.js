@@ -91,6 +91,7 @@ function describe(e) {
     }
     case 'gathered': return { group: 'world', cls: 'world', text: d.text + (d.interrupted ? ' (cut short)' : '') };
     case 'woke': return { group: 'world', cls: 'world', text: `Pip wakes after about ${d.hours} hours of sleep` + (d.early ? ' (woken early)' : '') };
+    case 'world_changed': return { group: 'world', cls: 'world', text: d.text };
     case 'night_pass': {
       const bits = [...(d.decisions || []), ...(d.focus || []).map((f) => `focus: ${f}`)];
       if (!bits.length) return d.failed ? { group: 'system', cls: 'warn', text: 'The night pass failed' } : null;

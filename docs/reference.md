@@ -199,3 +199,8 @@ interface in `channels.py` and pass `tests/channel_contract.py`.
 
 The Matrix channel (`OUTREACH_CHANNELS=matrix`, settings `MATRIX_*` in `.env.tpl`) uses one private, unencrypted room on the owner's own homeserver; the homeserver
 service and account/room bootstrap are separate (see the design).
+
+## Changing the world
+A finished project can leave a lasting change. The GM may give it a `world` capability only if the work was clearing and preparing new ground; the engine
+then applies it once (a new garden plot) if the project's own words are about ground and the garden is below `GARDEN_PLOTS_MAX` (default 8). Pip is told in its
+persona that it can do this. Foraging in the woods now yields wild seeds and food.

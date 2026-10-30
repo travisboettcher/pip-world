@@ -246,6 +246,8 @@ class GameMaster:
             "(it turns up small useful things; give `finds`: 2-4 kinds of thing it would find), or comfort (Pip feels "
             "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
         ]
+        caps.append("world: ONLY if what Pip finished was clearing and preparing new ground for growing things (a new garden bed "
+                    "or plot) so the garden has more room; give `effect` = garden_plot. For anything else, never use it")
         if allow_companion:
             caps.append("companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: "
                         "who it is, how it expresses itself) and `chatter_minutes` (60-720) for how often it speaks up")
