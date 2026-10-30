@@ -23,6 +23,11 @@ def neighbor_at(state, place: str) -> dict | None:
     return next((c for c in state.characters("neighbor") if home_of(c) == place), None)
 
 
+def scope_of(location: str) -> str:
+    """The scope key tools use for a location: 'home', 'neighbor' (any neighbor's home), or the place itself."""
+    return "home" if location == HOME else "neighbor" if location.endswith(HOME_SUFFIX) else location
+
+
 def label(place: str) -> str:
     """How to say it: 'home', 'the library', "Marigold's home"."""
     return "home" if place == HOME else place if place.endswith(HOME_SUFFIX) else f"the {place}"

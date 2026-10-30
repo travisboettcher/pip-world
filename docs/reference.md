@@ -168,3 +168,9 @@ second call (once per sleep, at least 6 h apart). Using only cited evidence it m
 project on hold or take it off, add one goal, and choose up to three things to focus on tomorrow. Nothing is deleted; Pip is told what
 was decided and why and can `undo_decision`. Yesterday's focus is reviewed against the log (kept / carried / dropped) and counted.
 `NIGHT_PASS=off|log|apply` (default apply); `GET /memory` lists decisions and focus.
+
+## Tools belong to places
+Each tool is scoped (`anywhere`, `home`, or a place): the model is offered only the tools that work where Pip is, and the registry refuses
+a tool used from the wrong place ("you're at the library; go_to home first"). Home: `work_on`, `experiment`, `plant`, `harvest`, `tend`,
+`sleep`. Library: `browse_library`, `read`. Everything else works anywhere. Away from home Pip is told what the place offers. See
+[DESIGN-places.md](DESIGN-places.md).

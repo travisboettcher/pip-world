@@ -1,6 +1,8 @@
 # Design: more places, and tools that belong to places
 
-Status: **design only, not built.** Builds on [DESIGN-library.md](DESIGN-library.md) (places, `go_to`, the library) and
+Status: **step 1 (tool scoping) built 2026-10-30; the rest is designed, not built.** Decisions (owner: "go with your
+recommendations"): shared verbs (`browse`, `gather`); woods + junkyard first, market and coins later; `places.json` waits for
+the public-repo extraction; woods/junkyard daylight-only, library always open; every built-in place known from the start. Builds on [DESIGN-library.md](DESIGN-library.md) (places, `go_to`, the library) and
 [DESIGN-neighbor.md](DESIGN-neighbor.md) (neighbors' homes).
 
 ## Why
@@ -136,8 +138,10 @@ Interrupting (resting, a visitor) ends early with a proportional, smaller haul.
 - Existing events/logs are untouched.
 
 ## Build order
-1. Scoping: `where` on tools, filtered specs per tick, enforcement in `_run_tool`, perception line, aliases; remove
-   `away_from_home` / `not_at_library`. Behaviour-preserving, so it ships first.
+1. **(built)** Scoping: `where` on tools (`@tool(..., where="home"|"library"|...)`), enforcement in the registry wrapper so every
+   caller gets the same answer, the offered list filtered by location each tick (`specs_for`), a "Here you can also" line away from
+   home; `away_from_home` / `not_at_library` removed. One deliberate change: `tend` is now home-only. Aliases arrive with the
+   `browse` rename in step 2.
 2. Place records and registry (library and neighbors expressed as records); `browse` replaces `browse_library`; the directory
    line in the prompt and the arrival "Here you can" line.
 3. `gather` engine (loot, depletion, narration, events), woods and junkyard, hours/daylight, `place_finds` and `where_to`,

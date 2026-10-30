@@ -35,15 +35,6 @@ class ToolContext:
     library: Any = None  # library.Library, or None when no Calibre library is mounted
 
 
-def away_from_home(ctx: "ToolContext") -> str:
-    here = ctx.state.agent()["location"]
-    return "" if here == places.HOME else f"you're at {places.label(here)}; go_to home first"
-
-
-def not_at_library(ctx: "ToolContext") -> str:
-    return "" if ctx.state.agent()["location"] == "library" else "you're not at the library; go_to library first"
-
-
 async def stop_working(ctx: "ToolContext") -> str:
     """Cut work or reading short (when Pip rests instead). Returns a note for the result."""
     sess = ctx.state.session()
@@ -89,9 +80,42 @@ Handler = Callable[[ToolContext, dict], Awaitable[ToolResult]]
 REGISTRY: dict[str, tuple[ToolSpec, Handler]] = {}
 
 
-def tool(name: str, description: str, parameters: dict):
+ANYWHERE = "anywhere"
+SCOPES: dict[str, tuple[str, ...]] = {}   # tool name -> where it can be used: 'anywhere', 'home', or place keys
+
+
+def is_here(scope: tuple[str, ...], location: str) -> bool:
+    return ANYWHERE in scope or places.scope_of(location) in scope
+
+
+def out_of_place(state, name: str) -> str:
+    """Why `name` can't be used where Pip is, or '' if it can."""
+    scope = SCOPES.get(name, (ANYWHERE,))
+    here = state.agent()["location"]
+    if is_here(scope, here):
+        return ""
+    if scope[0] == "home":
+        return f"you're at {places.label(here)}; go_to home first"
+    return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
+
+
+def specs_for(tools: dict, location: str) -> list[ToolSpec]:
+    """The tools to offer at `location`: everything that works anywhere plus what belongs to this place."""
+    return [spec for name, (spec, _) in tools.items() if is_here(SCOPES.get(name, (ANYWHERE,)), location)]
+
+
+def tool(name: str, description: str, parameters: dict, where: str | tuple[str, ...] = ANYWHERE):
+    """Register a tool. `where` scopes it: 'anywhere' (default), 'home', or place keys; the engine enforces it here, so
+    every caller gets the same answer when a tool is used from the wrong place."""
+    scope = (where,) if isinstance(where, str) else tuple(where)
+
     def deco(fn: Handler) -> Handler:
-        REGISTRY[name] = (ToolSpec(name, description, parameters), fn)
+        async def guarded(ctx, args):
+            if why := out_of_place(ctx.state, name):
+                return ToolResult(why, followup=True)
+            return await fn(ctx, args)
+        SCOPES[name] = scope
+        REGISTRY[name] = (ToolSpec(name, description, parameters), guarded)
         return fn
     return deco
 
@@ -231,7 +255,7 @@ async def rest(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("sleep",
       "Go to bed for the night (only when it's night, and at home). You sleep until morning, recover more than "
       "resting, and your day settles into memory while you sleep. A visitor can still wake you.",
-      _obj({}, []))
+      _obj({}, []), where="home")
 async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
     now = time.time()
     if sleepmod.asleep(ctx.state):
@@ -242,8 +266,6 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
     sess = ctx.state.session()
     if sess and sess["kind"] == "walk":
         return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can sleep once you get there")
-    if why := away_from_home(ctx):
-        return ToolResult(why, followup=True)
     note = await stop_working(ctx)
     r = sleepmod.fall_asleep(ctx.state, ctx.settings, now)
     wake = time.strftime("%-I %p", time.localtime(r["until"])).lower()
@@ -327,10 +349,8 @@ def _plot_arg(args: dict):
 @tool("plant", "Plant a seed from your belongings in a garden plot. It grows over real time and you'll "
       "be told when it's ready to harvest.",
       _obj({"seed": {"type": "string"}, "plot": {"type": "integer", "description": "optional; default first empty plot"}},
-           ["seed"]))
+           ["seed"]), where="home")
 async def plant(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := away_from_home(ctx):
-        return ToolResult(why, followup=True)
     item, err = ctx.state.find_item(args["seed"], kind="seed")
     if not item:
         return ToolResult(f"error: {err}", followup=True)
@@ -353,10 +373,8 @@ async def plant(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("harvest", "Harvest a ripe crop from the garden. Gives you food to eat.",
-      _obj({"plot": {"type": "integer", "description": "optional; default the first ripe plot"}}, []))
+      _obj({"plot": {"type": "integer", "description": "optional; default the first ripe plot"}}, []), where="home")
 async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := away_from_home(ctx):
-        return ToolResult(why, followup=True)
     plots = ctx.state.garden()
     plot = _plot_arg(args)
     if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
@@ -452,7 +470,7 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
                                                           "you actually try, so a thoughtful approach counts"},
             "expect": {"type": "string", "enum": ["well", "slowly", "badly"],
                        "description": "optional: how you expect this session to go; you'll see how close you were"}},
-           ["project"]))
+           ["project"]), where="home")
 async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
     p, err = st.find_project(args["project"])
@@ -462,7 +480,7 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
         left = max(1, round((sess["ends_at"] - time.time()) / 60))
         return ToolResult(f"you're already working on {p['name']}; about {left} min to go")
-    if why := busy(ctx) or away_from_home(ctx):
+    if why := busy(ctx):
         return ToolResult(why, followup=True)
     i = proj.current_stage(p)
     if i is None:
@@ -501,7 +519,7 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
             "minutes": {"type": "integer", "description": "20-90, default 45"},
             "expect": {"type": "string", "enum": ["works", "partly", "fails"],
                        "description": "optional: how you expect it to turn out; you'll see how close you were"}},
-           ["project", "hypothesis"]))
+           ["project", "hypothesis"]), where="home")
 async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
     p, err = st.find_project(args["project"])
@@ -510,7 +528,7 @@ async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
     hypothesis = str(args.get("hypothesis") or "").strip()[:240]
     if len(hypothesis) < 8:
         return ToolResult("error: say what you think might be true or work, and how you'll test it", followup=True)
-    if why := busy(ctx) or away_from_home(ctx):
+    if why := busy(ctx):
         return ToolResult(why, followup=True)
     minutes = proj.clamp_int(args.get("minutes"), *proj.EXPERIMENT_MINUTES, 45)
     expect = str(args.get("expect") or "").strip().lower()
@@ -568,7 +586,7 @@ async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("tend", "Tend something you made that needs regular care to keep going (however that thing is tended).",
-      _obj({"creation": {"type": "string"}}, ["creation"]))
+      _obj({"creation": {"type": "string"}}, ["creation"]), where="home")
 async def tend(ctx: ToolContext, args: dict) -> ToolResult:
     c, err = ctx.state.find_creation(args["creation"])
     if not c:
@@ -645,10 +663,8 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
 
 @tool("browse_library", "At the library: look for books. Give a query (a subject, title or author), or leave it "
       "out to wander the shelves and see what's there.",
-      _obj({"query": {"type": "string", "description": "optional"}}, []))
+      _obj({"query": {"type": "string", "description": "optional"}}, []), where="library")
 async def browse_library(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := not_at_library(ctx):
-        return ToolResult(why, followup=True)
     q = str(args.get("query") or "").strip()
     if q:
         books, where = ctx.library.search(q), f"Looking for {q!r}, you find"
@@ -663,9 +679,9 @@ async def browse_library(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "
       "read when the time is up, and next time you pick up where you left off.",
       _obj({"book": {"type": "string"}, "minutes": {"type": "integer", "description": "15-90, default 45"}},
-           ["book"]))
+           ["book"]), where="library")
 async def read(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := not_at_library(ctx) or busy(ctx):
+    if why := busy(ctx):
         return ToolResult(why, followup=True)
     b, err = ctx.library.find(args["book"])
     if not b:

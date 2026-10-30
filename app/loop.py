@@ -19,7 +19,7 @@ from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
 from .state import State
-from .tools import ToolContext, enabled_tools
+from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
 
 log = logging.getLogger("agent")
 MAX_TOOL_CALLS = 4
@@ -188,7 +188,7 @@ class Agent:
         inbox = self.state.pending_inbox()
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
-        specs = [spec for spec, _ in self.tools.values()]
+        specs = specs_for(self.tools, self.state.agent()["location"])  # what can be done where Pip is
 
         for step in range(max(1, self.s.max_calls_per_tick)):
             if self.state.budget_exceeded():
@@ -360,6 +360,15 @@ class Agent:
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
 
+    def _here_tools(self) -> list[str]:
+        """Away from home, what belongs to this place (so Pip knows what the place is for)."""
+        here = self.state.agent()["location"]
+        scope = places.scope_of(here)
+        if scope == "home":
+            return []
+        own = [n for n in self.tools if scope in SCOPES.get(n, ())]
+        return ["Here you can also: " + ", ".join(own) + "."] if own else []
+
     def _calibration(self) -> list[str]:
         """How close Pip's predictions have been, in plain counts (only once there are enough to count)."""
         rows = self.state.expectations(limit=60)
@@ -460,6 +469,7 @@ class Agent:
         lines += self._firsts()
         lines += self._calibration()
         lines += places.perception(self.state, self.library)
+        lines += self._here_tools()
         lines += mem.perception(self.state)
         lines += np.perception(self.state, self.s)
         lines += self._belongings()
