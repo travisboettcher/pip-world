@@ -6,7 +6,7 @@ from app.llm.base import LLMResponse, ToolCall, Usage
 from tests.test_projects import call, make
 
 HOME_ONLY = {"work_on", "experiment", "plant", "harvest", "tend", "sleep"}
-LIBRARY_ONLY = {"browse_library", "read"}
+LIBRARY_ONLY = {"browse", "read"}
 
 
 def names(specs):
@@ -60,15 +60,22 @@ async def test_a_tick_offers_only_what_belongs_where_pip_is(tmp_path):
     assert HOME_ONLY & set(agent.backend.calls[-1]["tools"]) >= {"plant", "work_on"}
 
 
+class FakeLibrary:
+    def available(self):
+        return True
+
+
 @pytest.mark.asyncio
 async def test_away_from_home_pip_is_told_what_the_place_offers(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    agent.tools["browse_library"], agent.tools["read"] = T.REGISTRY["browse_library"], T.REGISTRY["read"]
-    assert "Here you can also" not in agent._perception("timer", [])
+    agent.library = FakeLibrary()
+    assert "Here you can:" not in agent._perception("timer", [])
     st.update_agent(location="library")
-    assert "Here you can also: browse_library, read." in agent._perception("timer", [])
+    p = agent._perception("timer", [])
+    assert "Here you can: browse (look for books, by subject, title or author, or wander the shelves), " \
+           "read (settle in and read a book for a while)." in p
     st.update_agent(location="Marigold's home")
-    assert "Here you can also" not in agent._perception("timer", [])
+    assert "Here you can:" not in agent._perception("timer", [])
 
 
 @pytest.mark.asyncio

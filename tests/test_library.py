@@ -140,7 +140,7 @@ def test_extract_epub_and_pdf_from_a_bookmark(world):
 
 
 def test_library_tools_are_off_without_a_library(tmp_path):
-    s = Settings(library_path=str(tmp_path / "nope"), tools=["go_to", "browse_library", "read", "rest"])
+    s = Settings(library_path=str(tmp_path / "nope"), tools=["go_to", "browse", "read", "rest"])
     assert list(tools_mod.enabled_tools(s)) == ["go_to", "rest"]  # go_to still visits neighbors
 
 
@@ -159,8 +159,8 @@ async def test_walking_to_the_library_and_location_rules(world):
     assert a["location"] == "library" and a["description"] == "just arrived at the library"
     assert "about 4 books" in gm.calls[0]["messages"][0]["content"]  # described from the real shelves
     p = agent._perception("event", [])
-    assert "You are at: the library - Tall shelves, a hush" in p and "Places you can go (go_to): workshop" in p
-    assert "You went to the library for the first time" in p and "At the library you can browse_library" in p
+    assert "You are at: the library - Tall shelves, a hush" in p and "Places you can go (go_to):\n- workshop, 10 min - your home: your workshop and garden [projects, garden, sleep]" in p
+    assert "You went to the library for the first time" in p and "Here you can: browse (look for books" in p and "read (settle in and read a book for a while)" in p
     assert "go_to home first" in (await call(agent, "plant", seed="tomato")).text
     assert "already at the library" in (await call(agent, "go_to", place="library")).text
     await call(agent, "go_to", place="home")
@@ -185,9 +185,9 @@ async def test_browse_and_read_with_a_bookmark(world):
     s, st, gm, agent = world([report(text="A library."),
                               report(summary="You read about bees waking.", quotes=["The bees wake at dawn."]),
                               report(summary="You read about honey and wax.")])
-    assert "not at the library" in (await call(agent, "browse_library")).text
+    assert "not at the library" in (await call(agent, "browse")).text
     await at_library(agent, st)
-    r = await call(agent, "browse_library", query="bees")
+    r = await call(agent, "browse", query="bees")
     assert r.text == "Looking for 'bees', you find:\n- #1 The Beekeeper's Year - Ada Comb [Nature]: All about bees."
     assert "can't open (MOBI)" in (await call(agent, "read", book="old sea tales")).text
     r = await call(agent, "read", book="#1", minutes=30)  # 30 min x 10 chars = 300 chars

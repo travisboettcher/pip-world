@@ -7,7 +7,9 @@ the place called "<Name>'s home"; while Pip is there, the neighbor greets it and
 neighbors.py). See DESIGN-library.md and DESIGN-neighbor.md.
 """
 import time
+from dataclasses import dataclass, field
 
+from . import sleep as sleepmod
 from .text import clip
 
 HOME = "workshop"
@@ -33,14 +35,63 @@ def label(place: str) -> str:
     return "home" if place == HOME else place if place.endswith(HOME_SUFFIX) else f"the {place}"
 
 
+@dataclass
+class Place:
+    """A place Pip can be. `verbs` maps a tool name to (short help for 'Here you can', full description of the verb
+    here or None to use the tool's own). `offers` are the short words shown in the directory."""
+    key: str
+    blurb: str
+    walk_minutes: float
+    offers: tuple[str, ...] = ()
+    verbs: dict = field(default_factory=dict)
+    hours: tuple[int, int] | None = None   # local open hours (start, end); None = always open
+    daylight_only: bool = False
+
+    @property
+    def label(self) -> str:
+        return label(self.key)
+
+    @property
+    def scope(self) -> str:
+        return scope_of(self.key)
+
+
+def open_now(place: Place, settings, now: float | None = None) -> bool:
+    """Is the place open (hours, and daylight if it needs it)? Closed places can be walked to, but offer no tools."""
+    now = now or time.time()
+    if place.daylight_only and sleepmod.is_night(settings, now):
+        return False
+    if place.hours:
+        hour = time.localtime(now).tm_hour
+        start, end = place.hours
+        return start <= hour < end if start < end else hour >= start or hour < end
+    return True
+
+
+def registry(state, settings, library) -> dict[str, Place]:
+    """Every place Pip can go, as records: home, the library (if mounted), each neighbor's home."""
+    walk = settings.walk_minutes if settings else 10.0
+    out = {HOME: Place(HOME, "your home: your workshop and garden", walk, offers=("projects", "garden", "sleep"))}
+    if library and library.available():
+        out["library"] = Place("library", "a library a short walk away, full of real books you can read", walk,
+                               offers=("browse", "read"),
+                               verbs={"browse": ("look for books, by subject, title or author, or wander the shelves", None),
+                                      "read": ("settle in and read a book for a while", None)})
+    for c in state.characters("neighbor"):
+        out[home_of(c)] = Place(home_of(c), f"where your neighbor {c['name']} lives" + (f" ({c['about']})" if c["about"] else ""),
+                                walk, offers=("talk",))
+    return out
+
+
+def here(state, settings, library) -> Place:
+    """The record for where Pip is (a bare one for a location the registry no longer lists)."""
+    loc = state.agent()["location"]
+    return registry(state, settings, library).get(loc) or Place(loc, "", settings.walk_minutes)
+
+
 def available(state, library) -> dict[str, str]:
     """place -> what it is, for every place Pip can go."""
-    out = {HOME: "your home: your workshop and garden"}
-    if library and library.available():
-        out["library"] = "a library a short walk away, full of real books you can read"
-    for c in state.characters("neighbor"):
-        out[home_of(c)] = f"where your neighbor {c['name']} lives" + (f" ({c['about']})" if c["about"] else "")
-    return out
+    return {k: p.blurb for k, p in registry(state, None, library).items()}
 
 
 def find(state, library, query) -> str | None:
@@ -86,16 +137,31 @@ async def arrive(state, settings, gm, library) -> dict | None:
     return data
 
 
-def perception(state, library) -> list[str]:
-    here = state.agent()["location"]
-    places = available(state, library)
+def directory(state, settings, library, now: float | None = None) -> list[str]:
+    """Where Pip can go and what each place is for, from the same records that decide which tools it is offered."""
+    loc = state.agent()["location"]
+    lines = []
+    for key, p in registry(state, settings, library).items():
+        if key == loc:
+            continue
+        closed = "" if open_now(p, settings, now) else ", closed now"
+        what = f" [{', '.join(p.offers)}]" if p.offers else ""
+        lines.append(f"- {key}, {max(1, round(p.walk_minutes))} min{closed} - {p.blurb}{what}")
+    return ["Places you can go (go_to):"] + lines if lines else []
+
+
+def perception(state, settings, library) -> list[str]:
+    here_key = state.agent()["location"]
+    places = registry(state, settings, library)
     if len(places) < 2:
         return []
-    desc = state.meta(f"place:{here}")
-    where = f"home ({HOME})" if here == HOME else label(here)
+    desc = state.meta(f"place:{here_key}")
+    where = f"home ({HOME})" if here_key == HOME else label(here_key)
     lines = [f"You are at: {where}" + (f" - {desc}" if desc else "")]
-    host = neighbor_at(state, here)
+    host = neighbor_at(state, here_key)
     if host:
         lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}.")
-    lines.append("Places you can go (go_to): " + "; ".join(f"{p} ({what})" for p, what in places.items() if p != here))
-    return lines
+    here_place = places.get(here_key)
+    if here_place and here_place.verbs:
+        lines.append("Here you can: " + ", ".join(f"{v} ({short})" for v, (short, _) in here_place.verbs.items()) + ".")
+    return lines + directory(state, settings, library)

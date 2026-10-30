@@ -6,6 +6,7 @@ engine never says what a first means - no mood words, no scripted reactions. Pip
 Add a new kind of first by extending `facets()`.
 """
 from . import sleep as sleepmod
+from .toolnames import canonical
 
 MAJOR, MINOR = "major", "minor"
 ROUTINE_TOOLS = {"set_activity", "say", "edit_note"}
@@ -13,7 +14,7 @@ TOOL_LABELS = {
     "plant": "planted something", "harvest": "harvested something", "eat": "ate something",
     "start_project": "started a project", "work_on": "worked on a project", "experiment": "ran an experiment",
     "revise_plan": "changed a plan", "write_letter": "wrote a letter", "read": "read a book",
-    "browse_library": "browsed the library", "web_search": "searched the web", "recall": "tried to remember something",
+    "browse": "browsed what was on offer", "web_search": "searched the web", "recall": "tried to remember something",
     "tend": "tended to something", "use_item": "used something", "rest": "rested", "resolve_note": "crossed something off",
     "sleep": "went to sleep", "abandon_project": "gave up on a project",
 }
@@ -43,7 +44,7 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
         return f"the first time you {what}"
 
     if kind == "tool":
-        t, a = d.get("tool"), d.get("args") or {}
+        t, a = canonical(d.get("tool")), d.get("args") or {}
         if not d.get("noop") and _ok(d.get("result")):
             if t == "note_to_self":
                 sec = a.get("section", "diary")

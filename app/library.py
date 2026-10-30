@@ -129,7 +129,7 @@ class Library:
         if exact or len(hits) == 1:
             return (exact or hits)[0], ""
         if not hits:
-            return None, f"you can't find a book like {query!r} (try browse_library)"
+            return None, f"you can't find a book like {query!r} (try browse)"
         return None, "which one? " + "; ".join(f"#{b['id']} {b['title']}" for b in hits)
 
     def overview(self) -> str:
@@ -254,7 +254,7 @@ async def finish_reading(state, settings, gm, library, interrupted: bool = False
 def perception(state, library) -> list[str]:
     if state.agent()["location"] != "library" or not library:
         return []
-    lines = ["At the library you can browse_library (search, or wander the shelves) and read books."]
+    lines = []
     reading = state.bookmarks(include_finished=False)[:5]
     if reading:
         lines.append("Books you're partway through:")

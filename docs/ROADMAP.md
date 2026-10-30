@@ -110,7 +110,7 @@ is in my notes, not in the gears".
 ### World mechanics
 - [x] (built; DESIGN-sleep.md; deploy: add `sleep` to `TOOLS`) **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
       reflection (M3) already exists; tie it to Pip actually going to bed
-- [ ] **More places and place-scoped tools** (designed: DESIGN-places.md; step 1, tool scoping, built; places and `gather` next) -- original idea: (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
+- [ ] **More places and place-scoped tools** (designed: DESIGN-places.md; steps 1-2 built: tool scoping, place records, `browse`, the directory; `gather`, woods and junkyard next) -- original idea: (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
       with random finds, so materials don't only come from visitors
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds

@@ -1,6 +1,7 @@
 # Design: more places, and tools that belong to places
 
-Status: **step 1 (tool scoping) built 2026-10-30; the rest is designed, not built.** Decisions (owner: "go with your
+Status: **steps 1 (tool scoping) and 2 (place records, `browse`, the directory) built 2026-10-30; `gather`, the woods and the junkyard are
+designed, not built.** Decisions (owner: "go with your
 recommendations"): shared verbs (`browse`, `gather`); woods + junkyard first, market and coins later; `places.json` waits for
 the public-repo extraction; woods/junkyard daylight-only, library always open; every built-in place known from the start. Builds on [DESIGN-library.md](DESIGN-library.md) (places, `go_to`, the library) and
 [DESIGN-neighbor.md](DESIGN-neighbor.md) (neighbors' homes).
@@ -142,8 +143,10 @@ Interrupting (resting, a visitor) ends early with a proportional, smaller haul.
    caller gets the same answer, the offered list filtered by location each tick (`specs_for`), a "Here you can also" line away from
    home; `away_from_home` / `not_at_library` removed. One deliberate change: `tend` is now home-only. Aliases arrive with the
    `browse` rename in step 2.
-2. Place records and registry (library and neighbors expressed as records); `browse` replaces `browse_library`; the directory
-   line in the prompt and the arrival "Here you can" line.
+2. **(built)** `Place` records and a registry (home, the library, each neighbor's home); `browse` replaces `browse_library` (the old
+   name still works in `TOOLS` and calls; `toolnames.py` carries history, firsts and capability counts over, `FIRSTS_VERSION` 5
+   rebuilds the facets); the prompt directory ("Places you can go": walk time, "closed now", what each is for) and a "Here you can:"
+   line from the place's verbs; a place can describe a verb its own way. `open_now` (hours, daylight) exists for step 3.
 3. `gather` engine (loot, depletion, narration, events), woods and junkyard, hours/daylight, `place_finds` and `where_to`,
    the "(you found X at ...)" hint on missing materials.
 4. Optional `places.json`; docs; roadmap.

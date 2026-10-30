@@ -4,8 +4,10 @@ A measured record - tries and how they went per tool, craft and ability - so the
 that happened rather than on what Pip would like to be true (Voyager's verified skills; Lipson's self-model). Counts,
 not judgments. Computed from the event log each night and kept as dated snapshots, so change over time is visible.
 """
+from .toolnames import canonical
+
 SKIP_TOOLS = {"set_activity", "say"}
-GOOD_PHRASE = {"recall": "found something", "web_search": "found something", "browse_library": "found something"}
+GOOD_PHRASE = {"recall": "found something", "web_search": "found something", "browse": "found something"}
 MIN_SHOWN = 3        # tries before an entry is shown
 MAX_LINES = 8        # per group
 
@@ -33,7 +35,7 @@ def collect(events, crafts: dict | None = None, stage_abilities: dict | None = N
     for e in events:
         k, d = e["kind"], e["data"]
         if k == "tool" and d.get("tool") not in SKIP_TOOLS and not d.get("noop"):
-            hit("tool", d["tool"], _tool_verdict(d["tool"], str(d.get("result", ""))))
+            hit("tool", canonical(d["tool"]), _tool_verdict(canonical(d["tool"]), str(d.get("result", ""))))
         elif k == "work" and not d.get("interrupted") and d.get("result"):
             v = {"breakthrough": "good", "good": "good", "slow": "neutral"}.get(d["result"], "bad")
             for name in filter(None, [d.get("craft") or crafts.get(d.get("project_id"))]):

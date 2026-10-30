@@ -137,7 +137,7 @@ def clean_sender(name) -> str:
     return " ".join(str(name or "").split())[:40] or "A visitor"
 
 
-FIRSTS_VERSION = "4"
+FIRSTS_VERSION = "5"
 RETURN_GAP_HOURS = 36  # a facet seen again after this long counts as a return  # bump to rebuild facets from the log when firsts.py changes
 SHOWINGS_DONE = 99  # backfilled history is never presented as new
 

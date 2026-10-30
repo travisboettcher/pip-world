@@ -172,5 +172,7 @@ was decided and why and can `undo_decision`. Yesterday's focus is reviewed again
 ## Tools belong to places
 Each tool is scoped (`anywhere`, `home`, or a place): the model is offered only the tools that work where Pip is, and the registry refuses
 a tool used from the wrong place ("you're at the library; go_to home first"). Home: `work_on`, `experiment`, `plant`, `harvest`, `tend`,
-`sleep`. Library: `browse_library`, `read`. Everything else works anywhere. Away from home Pip is told what the place offers. See
+`sleep`. Library: `browse` (was `browse_library`; the old name still works), `read`. Everything else works anywhere. Away from home Pip is told what the place offers. See
 [DESIGN-places.md](DESIGN-places.md).
+Places are records (`places.py`: home, the library, each neighbor's home); the prompt lists where Pip can go, how long it takes, whether it is
+closed, and what each place is for.

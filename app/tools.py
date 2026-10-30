@@ -17,6 +17,7 @@ from . import neighbors as nb
 from . import places
 from . import projects as proj
 from . import sleep as sleepmod
+from .toolnames import ALIASES, canonical
 from .config import Settings
 from .llm.base import ToolSpec
 from .memory import STOP_WORDS
@@ -99,9 +100,15 @@ def out_of_place(state, name: str) -> str:
     return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
 
 
-def specs_for(tools: dict, location: str) -> list[ToolSpec]:
-    """The tools to offer at `location`: everything that works anywhere plus what belongs to this place."""
-    return [spec for name, (spec, _) in tools.items() if is_here(SCOPES.get(name, (ANYWHERE,)), location)]
+def specs_for(tools: dict, location: str, place=None) -> list[ToolSpec]:
+    """The tools to offer at `location`: everything that works anywhere plus what belongs to this place. A place can
+    describe a verb its own way (`place.verbs[name][1]`), so the same tool reads differently in different places."""
+    out = []
+    for name, (spec, _) in tools.items():
+        if is_here(SCOPES.get(name, (ANYWHERE,)), location):
+            full = place.verbs.get(name, (None, None))[1] if place else None
+            out.append(ToolSpec(spec.name, full, spec.parameters) if full else spec)
+    return out
 
 
 def tool(name: str, description: str, parameters: dict, where: str | tuple[str, ...] = ANYWHERE):
@@ -661,10 +668,10 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min")
 
 
-@tool("browse_library", "At the library: look for books. Give a query (a subject, title or author), or leave it "
-      "out to wander the shelves and see what's there.",
+@tool("browse", "Look through what is on offer where you are. At the library: look for books - give a query (a subject, "
+      "title or author), or leave it out to wander the shelves and see what's there.",
       _obj({"query": {"type": "string", "description": "optional"}}, []), where="library")
-async def browse_library(ctx: ToolContext, args: dict) -> ToolResult:
+async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     q = str(args.get("query") or "").strip()
     if q:
         books, where = ctx.library.search(q), f"Looking for {q!r}, you find"
@@ -700,13 +707,16 @@ async def read(ctx: ToolContext, args: dict) -> ToolResult:
 def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
     out = {}
     for name in settings.tools:
+        name = canonical(name)  # an old name in TOOLS (browse_library) means its new one
+        if name in out:
+            continue
         if name not in REGISTRY:
             raise ValueError(f"unknown tool {name!r}; options: {sorted(REGISTRY)}")
         if name == "web_search" and not settings.tavily_api_key:
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue
-        if name in ("browse_library", "read") and not lib.Library(settings.library_path).available():
+        if name in ("browse", "read") and not lib.Library(settings.library_path).available():
             continue  # no Calibre library mounted
         out[name] = REGISTRY[name]
     return out

@@ -65,7 +65,7 @@ person with say (to: their name); they don't come visiting you. Otherwise you wr
 from them arrive in your inbox. You can tuck something you own or made into a letter as a gift.
 
 Home is your workshop and garden; your projects and garden work happen there. A short walk away
-(go_to) is a library full of real books. There you can browse_library and read - what you read
+(go_to) is a library full of real books. There you can browse and read - what you read
 is real, and it can teach you things, spark projects, or just be a pleasure. Reading happens at
 the library; come home to make things.
 
