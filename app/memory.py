@@ -11,7 +11,7 @@ from datetime import datetime
 
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "creation_made", "companion", "letter_sent", "reading")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -40,6 +40,10 @@ def recall_text(kind: str, d: dict) -> str | None:
         return f"{d['sender']} gave you {d['qty']} x {d['item']}"
     if kind == "work":
         return None if d.get("interrupted") else f"Working on {d['project']} ({d['stage']}), {d['result']}: {d['text']}"
+    if kind == "experiment":
+        return None if d.get("interrupted") else (
+            f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"
+            + (f" You learned: {d['finding']}" if d.get("finding") else ""))
     if kind == "creation_made":
         return f"You finished making {d['name']}: {d['description']}"
     if kind == "companion":

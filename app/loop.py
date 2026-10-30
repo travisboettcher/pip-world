@@ -135,7 +135,10 @@ class Agent:
                 return bool(await places.arrive(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "read":
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
-            work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
+            if sess["kind"] == "experiment":
+                work = await proj.resolve_experiment(self.state, self.s, self.gm, self.rng)
+            else:
+                work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
             if work and work["project_done"]:
                 p = self.state.project(work["project_id"])
                 c = await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
@@ -271,14 +274,18 @@ class Agent:
                     line += "; later stages need " + ", ".join(
                         f"{q} {n} (you have {self.state.find_item(n)[0]['qty'] if self.state.find_item(n)[0] else 0})"
                         for n, q in later.items())
-            if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
-                line += f" - you're working on it now, about {max(1, round((sess['ends_at'] - time.time()) / 60))} min left"
+            elif proj.crossroads(p):
+                line += ", all you know to do is done - the way forward isn't clear yet"
+            if sess and sess["kind"] in ("work", "experiment") and sess["project_id"] == p["id"]:
+                line += f" - you're {'experimenting on' if sess['kind'] == 'experiment' else 'working on'} it now, about {max(1, round((sess['ends_at'] - time.time()) / 60))} min left"
             lines.append(line)
+            if p["questions"]:
+                lines.append("  you don't know yet: " + "; ".join(p["questions"]))
+            if p["findings"]:
+                lines.append("  you've found out: " + "; ".join(p["findings"][-4:]))
         if not active:
             lines.append("- (none - start_project when you want to make something)")
-        skills = {c: proj.level(xp) for c, xp in self.state.skills().items()}
-        if skills:
-            lines.append("Your skills (0-5): " + ", ".join(f"{c} {lvl}" for c, lvl in skills.items()))
+        lines += proj.feel(self.state)
         made = self.state.creations()
         if made:
             lines.append("Things you've made:")
@@ -305,6 +312,10 @@ class Agent:
             if d["result"] in ("breakthrough", "setback") or d["finished_stage"]:
                 done = " (that stage is done)" if d["finished_stage"] else ""
                 return f"Working on {d['project']}: {d['text']}{done}"
+        if k == "experiment" and not d.get("interrupted"):
+            extra = (f" You now know: {d['finding']}" if d.get("finding") else "") + (
+                " New steps opened up: " + ", ".join(d["added"]) + "." if d.get("added") else "")
+            return f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}{extra}"
         if k == "tool":
             t, a, r = d["tool"], d["args"], str(d.get("result", ""))
             if t == "plant" and r.startswith("planted"):
@@ -423,6 +434,10 @@ class Agent:
                     lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
                 elif e["kind"] == "creation_made":
                     lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}")
+                elif e["kind"] == "experiment":
+                    lines.append(f"- experiment on {d['project']} ({d['hypothesis']}): {d['outcome']}"
+                                 + ("" if d.get("interrupted") else f" - {d['text']}")
+                                 + (f" [learned: {d['finding']}]" if d.get("finding") else ""))
                 elif e["kind"] == "work":
                     lines.append(f"- work on {d['project']} ({d['stage']}): {d['result']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")

@@ -125,7 +125,7 @@ is in my notes, not in the gears".
 ## Ideas to design (2026-10-30)
 Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (links in the design docs).
 
-### Discovery in projects
+### Discovery in projects (built; see DESIGN-discovery.md; deploy: add `experiment,revise_plan` to `TOOLS`)
 - [ ] Pip holds a *partial* plan: `start_project` takes an approach, not a full stage list; the GM flags only what is
       infeasible and stages are revealed/revised as work proceeds
 - [ ] `experiment(project, hypothesis)`: the GM resolves it against hidden facts it wrote at project creation (the engine
@@ -136,7 +136,7 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [ ] Prior art: Voyager (iterative prompting + skill library), AutoDiscovery (Bayesian-surprise-driven hypothesis search,
       NeurIPS 2025), Reflexion (verbal self-critique after failures)
 
-### Skills: generic and transferable
+### Skills: generic and transferable (built)
 - [ ] A few underlying abilities (precision, patience, ingenuity, measurement, ...) instead of per-craft xp; crafts and
       stages map to weighted blends so practice carries across projects
 - [ ] Narrated, not numeric: Pip sees "your hands are steadier", the engine keeps the numbers

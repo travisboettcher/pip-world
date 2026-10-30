@@ -224,6 +224,7 @@ async def finish_reading(state, settings, gm, library, interrupted: bool = False
     data = {"book_id": sess["project_id"], "title": sess["target"], "minutes": round(minutes),
             "interrupted": interrupted, "summary": "", "quotes": [], "percent": mark.get("percent", 0),
             "finished": False}
+    state.add_ability_xp({"knowledge": minutes})  # reading builds general knowledge
     chars = min(MAX_READ_CHARS, int(minutes * settings.read_chars_per_minute))
     got = None
     if b and b["format"] and chars > 0:

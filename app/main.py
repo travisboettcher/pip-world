@@ -108,9 +108,10 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         for p in st.projects(status):
             i = proj.current_stage(p)
             out.append({**p, "percent": proj.percent(p), "current_stage": i,
-                        "working_until": sess["ends_at"] if sess and sess["kind"] == "work"
+                        "working_until": sess["ends_at"] if sess and sess["kind"] in ("work", "experiment")
                         and sess["project_id"] == p["id"] else None})
-        return {"projects": out, "skills": {c: {"xp": xp, "level": proj.level(xp)} for c, xp in st.skills().items()}}
+        return {"projects": out, "skills": {c: {"xp": xp, "level": proj.level(xp)} for c, xp in st.skills().items()},
+                "abilities": {a: {"xp": xp, "level": proj.level(xp)} for a, xp in st.abilities().items()}}
 
     @app.get("/creations")
     def get_creations():

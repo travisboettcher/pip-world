@@ -59,6 +59,11 @@ goes; a "game master" LLM call (same backend and budget) only writes flavor and 
   real-time session (`WORK_SPEED` speeds it up), and Pip isn't woken by the heartbeat until it ends. Then a dice roll
   (skill, owned helpful tools, difficulty, fatigue) decides setback / slow / good / breakthrough and the GM narrates
   it. Resting cuts a session short at half credit; `set_activity` only re-describes it. `abandon_project` gives up.
+- **Discovery** ([DESIGN-discovery.md](DESIGN-discovery.md)): plans are partial. The GM lists what Pip doesn't know yet
+  (and writes hidden facts it never sees); `experiment(project, hypothesis)` is a timed session whose outcome the engine
+  rolls and the GM narrates, revealing facts, answering questions and adding stages. `revise_plan(project, because)`
+  brings in what Pip learned from searches, books or visitors. Abilities (precision, patience, ingenuity, knowledge,
+  handiness) transfer between crafts; Pip sees them as words, `pipchat projects` shows the numbers.
 - A finished project becomes a creation. Most (art, writing, keepsakes) have no behaviour and simply exist. Ones that
   genuinely work get up to 3 generic capabilities (`timekeeper`, `upkeep`, `periodic`, `sensor`, `helper`,
   `companion`), with the specifics (what it does, how it's tended, what it finds) written by the GM, plus quirks

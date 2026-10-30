@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS abilities (name TEXT PRIMARY KEY, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reflections (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
@@ -129,6 +130,11 @@ class State:
                 ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
                 ("characters", "life", "TEXT NOT NULL DEFAULT '[]'"),
                 ("creations", "given_to", "TEXT"),
+                ("projects", "questions", "TEXT NOT NULL DEFAULT '[]'"),   # open questions (strings)
+                ("projects", "hidden", "TEXT NOT NULL DEFAULT '[]'"),      # [{fact, found}], unseen until discovered
+                ("projects", "findings", "TEXT NOT NULL DEFAULT '[]'"),    # what Pip has learned (strings)
+                ("projects", "dry", "INTEGER NOT NULL DEFAULT 0"),         # dry experiments in a row
+                ("projects", "revised_at", "INTEGER NOT NULL DEFAULT 0"),  # len(history) at the last plan revision
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
                 ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
             ):
@@ -141,6 +147,7 @@ class State:
                     (time.time(),),
                 )
             self._normalize_crafts()
+            self._seed_abilities()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
@@ -172,7 +179,7 @@ class State:
                 self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
             )
             sess = self.session()
-            if sess and sess["kind"] == "work":
+            if sess and sess["kind"] in ("work", "experiment"):
                 energy_rate -= self.s.work_energy_per_hour
             hunger = clamp(a["hunger"] + self.s.hunger_per_hour * hours)
             energy = clamp(a["energy"] + energy_rate * hours)
@@ -404,7 +411,7 @@ class State:
         return [m for m in self.memories("wishlist", status="open", limit=50) if self.related(item_name, m["text"])]
 
     # --- projects, work sessions, skills -------------------------------------
-    PROJECT_JSON = ("stages", "tools", "history")
+    PROJECT_JSON = ("stages", "tools", "history", "questions", "hidden", "findings")
 
     def _project(self, row) -> dict:
         return {**dict(row), **{k: json.loads(row[k]) for k in self.PROJECT_JSON}}
@@ -479,6 +486,27 @@ class State:
             self.db.execute("INSERT INTO skills VALUES (?, ?) ON CONFLICT(craft) DO UPDATE SET xp = xp + excluded.xp",
                             (craft, minutes))
             self.db.commit()
+
+    def add_ability_xp(self, shares: dict[str, float]) -> None:
+        with self.lock:
+            for name, xp in shares.items():
+                self.db.execute("INSERT INTO abilities VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET xp = xp + excluded.xp",
+                                (name, xp))
+            self.db.commit()
+
+    def abilities(self) -> dict[str, float]:
+        """ability -> xp (minutes of practice)."""
+        with self.lock:
+            return {r["name"]: r["xp"] for r in self.db.execute("SELECT * FROM abilities ORDER BY xp DESC")}
+
+    def _seed_abilities(self) -> None:
+        """One-time: spread the old per-craft xp over a general blend so earlier practice isn't lost."""
+        if self.meta("abilities_seeded"):
+            return
+        total = sum(self.skills().values())
+        if total:
+            self.add_ability_xp({"handiness": total * 0.4, "precision": total * 0.3, "patience": total * 0.3})
+        self.set_meta(abilities_seeded="1")
 
     def skills(self) -> dict[str, float]:
         """craft -> xp (minutes of practice)."""

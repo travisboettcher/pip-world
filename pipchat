@@ -391,13 +391,23 @@ def cmd_projects(pip: Pip, a) -> None:
             mats = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
             mark = "x" if st["progress"] >= st["minutes"] else ">" if i == p["current_stage"] else " "
             print(dim(f"    [{mark}] {st['name']} ({round(st['progress'])}/{st['minutes']} min" + (f"; {mats}" if mats else "") + ")"))
+        for q in p.get("questions") or []:
+            print(f"    ? {q}")
+        for f in p.get("findings") or []:
+            print(green(f"    found: {f}"))
         if a.verbose:
+            for h in p.get("hidden") or []:
+                print(dim(f"      hidden ({'found' if h['found'] else 'unseen'}): {h['fact']}"))
             for h in p["history"]:
                 print(dim(f"      {fmt_time(h['ts'])} {h['result']}: {h['text']}"))
     if not r["projects"]:
         print(dim("  (none)"))
+    if r.get("abilities"):
+        print(bold("Abilities"))
+        for a_, v in r["abilities"].items():
+            print(f"  {a_}: level {v['level']} " + dim(f"({round(v['xp'])} min of practice)"))
     if r["skills"]:
-        print(bold("Skills"))
+        print(bold("Crafts (familiarity)"))
         for c, v in r["skills"].items():
             print(f"  {c}: level {v['level']} " + dim(f"({round(v['xp'])} min of practice)"))
 

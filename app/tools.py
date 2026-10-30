@@ -48,6 +48,9 @@ async def stop_working(ctx: "ToolContext") -> str:
     if sess["kind"] == "read":
         r = await lib.finish_reading(ctx.state, ctx.settings, ctx.gm, ctx.library, interrupted=True)
         return f" (you put {r['title']} down early)" if r else ""
+    if sess["kind"] == "experiment":
+        e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
+        return f" (you cut the experiment on {e['project']} short)" if e else ""
     w = await proj.resolve_session(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
     return f" (you stopped working on {w['project']} early)" if w else ""
 
@@ -66,6 +69,8 @@ def busy(ctx: "ToolContext") -> str:
     if sess["kind"] == "read":
         return f"you're reading {sess['target']} (about {left} min left); rest stops early"
     cur = ctx.state.project(sess["project_id"])
+    if sess["kind"] == "experiment":
+        return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
     return f"you're in the middle of working on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
 
 
@@ -358,8 +363,12 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
                        + (", needs " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
                        + ")" for i, s in enumerate(p["stages"]))
     tools = f" Helpful tools: {', '.join(p['tools'])}." if p["tools"] else ""
+    ctx.state.update_project(p["id"], questions=plan["questions"], hidden=plan["hidden"])
+    unknown = (" That's as far as you can see for now. What you don't know yet: " + "; ".join(plan["questions"])
+               + ". Work out what you can, then experiment or look things up (and revise_plan) to find the way."
+               if plan["questions"] else "")
     return ToolResult(f"started project #{p['id']} {p['name']} ({p['craft']}, difficulty {p['difficulty']}/5). "
-                      f"Stages: {stages}.{tools}", followup=True)
+                      f"Stages: {stages}.{tools}{unknown}", followup=True)
 
 
 @tool("work_on",
@@ -380,6 +389,10 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(why, followup=True)
     i = proj.current_stage(p)
     if i is None:
+        if p["questions"]:
+            return ToolResult(f"you've done everything you know to do on {p['name']}. Still open: "
+                              + "; ".join(p["questions"]) + ". Try an experiment, or learn more and revise_plan.",
+                              followup=True)
         return ToolResult(f"{p['name']} is already finished", followup=True)
     stage = p["stages"][i]
     if not stage["started"]:
@@ -399,6 +412,60 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
                       f"You'll hear how it went in about {real} min.")
 
 
+@tool("experiment",
+      "Try something to find out how it works: test an idea about one of your projects (a hypothesis) for 20-90 "
+      "minutes. What you learn is decided by the world, not you; a good guess teaches more. It can open up new "
+      "steps, answer what you didn't know, or surprise you. You'll hear how it went when the time is up.",
+      _obj({"project": {"type": "string", "description": "name or #id"},
+            "hypothesis": {"type": "string", "description": "what you think might be true or work, and how you'll test it"},
+            "minutes": {"type": "integer", "description": "20-90, default 45"}}, ["project", "hypothesis"]))
+async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
+    st = ctx.state
+    p, err = st.find_project(args["project"])
+    if not p:
+        return ToolResult(f"error: {err}", followup=True)
+    hypothesis = str(args.get("hypothesis") or "").strip()[:240]
+    if len(hypothesis) < 8:
+        return ToolResult("error: say what you think might be true or work, and how you'll test it", followup=True)
+    if why := busy(ctx) or away_from_home(ctx):
+        return ToolResult(why, followup=True)
+    minutes = proj.clamp_int(args.get("minutes"), *proj.EXPERIMENT_MINUTES, 45)
+    st.start_session(p["id"], -1, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="experiment",
+                     target=hypothesis)
+    st.update_agent(activity="working", description=f"experiment on {p['name']}: {hypothesis[:80]}")
+    real = max(1, round(minutes / ctx.settings.work_speed))
+    return ToolResult(f"you set up an experiment on {p['name']} ({hypothesis}) for {minutes} min. "
+                      f"You'll see what happens in about {real} min.")
+
+
+@tool("revise_plan",
+      "Change a project's plan because of something you learned elsewhere (a search, a book, a visitor). Say what "
+      "you learned. The world decides whether it changes anything. Needs some work or an experiment since your "
+      "last revision.",
+      _obj({"project": {"type": "string", "description": "name or #id"},
+            "because": {"type": "string", "description": "what you learned, and from where"}}, ["project", "because"]))
+async def revise_plan(ctx: ToolContext, args: dict) -> ToolResult:
+    p, err = ctx.state.find_project(args["project"])
+    if not p:
+        return ToolResult(f"error: {err}", followup=True)
+    because = str(args.get("because") or "").strip()[:400]
+    if len(because) < 8:
+        return ToolResult("error: say what you learned", followup=True)
+    changes, msg = await proj.revise(ctx.state, ctx.gm, p, because)
+    if changes is None:
+        return ToolResult(f"the plan stays as it is: {msg}", followup=True)
+    bits = []
+    if changes["finding"]:
+        bits.append(f"you now know: {changes['finding']}")
+    if changes["answered"]:
+        bits.append(f"answered: {changes['answered']}")
+    if changes["added"]:
+        bits.append("new steps: " + ", ".join(changes["added"]))
+    if changes["dropped"]:
+        bits.append("no longer needed: " + ", ".join(changes["dropped"]))
+    return ToolResult(f"{msg} " + "; ".join(bits), followup=True)
+
+
 @tool("abandon_project", "Give up on one of your projects (materials already used are gone).",
       _obj({"project": {"type": "string"}, "reason": {"type": "string"}}, ["project"]))
 async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
@@ -406,7 +473,7 @@ async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
     if not p:
         return ToolResult(f"error: {err}", followup=True)
     sess = ctx.state.session()
-    if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
+    if sess and sess["kind"] in ("work", "experiment") and sess["project_id"] == p["id"]:
         ctx.state.end_session()
         ctx.state.update_agent(activity="idle", description="")
     ctx.state.update_project(p["id"], status="abandoned", outcome=str(args.get("reason") or "")[:300],

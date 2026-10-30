@@ -62,19 +62,27 @@ class GameMaster:
             f"Pip wants to start a project: {name!r}. What Pip has in mind: {goal or '(not said)'}\n"
             f"Pip owns: {', '.join(belongings) or 'nothing'}\n"
             f"Pip's skills (level 0-5): {json.dumps(skills) if skills else 'none yet'}\n\n"
-            "Plan it as 2-5 stages of work that fit what this project really is. For each stage give a short name, "
+            "Plan only what Pip could know to do right now: 1-3 stages of work that fit what this project really is. If "
+            "Pip couldn't honestly know the whole way yet (anything involving finding out, tuning or unknowns), list up "
+            "to 3 `open_questions` Pip will have to find out (short questions) and 1-3 `hidden` facts: how the thing "
+            "really works, what the answers actually are, consistent with each other. Pip never sees the hidden facts "
+            "until it discovers them. If the whole path is plain, leave both empty. For each stage give a short name, "
             "how many minutes of focused work it takes (15-240), and the physical materials it uses up, if any (name "
             "-> quantity, at most 8 units across the whole project; many projects need few or none; reuse the names "
-            "of things Pip owns when they fit, but it's fine to need something Pip doesn't have). Also give the craft "
+            "of things Pip owns when they fit, but it's fine to need something Pip doesn't have), and the 1-2 `abilities` "
+            "it exercises, from: precision, patience, ingenuity, knowledge, handiness. Also give the craft "
             "(the skill this practises, a word or two), difficulty 1-5 (1 = simple, 5 = very demanding), and up to 3 "
             "tools or instruments that would help, if any."
         )
         stage = {"type": "object", "properties": {
             "name": {"type": "string"}, "minutes": {"type": "integer"},
+            "abilities": {"type": "array", "items": {"type": "string"}},
             "materials": {"type": "object", "additionalProperties": {"type": "integer"}}}, "required": ["name", "minutes"]}
         return await self.ask(task, {
             "stages": {"type": "array", "items": stage}, "craft": {"type": "string"},
             "difficulty": {"type": "integer"}, "tools": {"type": "array", "items": {"type": "string"}},
+            "open_questions": {"type": "array", "items": {"type": "string"}},
+            "hidden": {"type": "array", "items": {"type": "string"}},
         }, ["stages", "craft", "difficulty"], "plan")
 
     async def narrate(self, project: str, goal: str, stage: str, materials: list[str], result: str, minutes: int,
@@ -98,6 +106,72 @@ class GameMaster:
         )
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "narrate")
         return clip(out["text"], 300) if out else None
+
+    # --- discovery ---------------------------------------------------------
+    @staticmethod
+    def _project_brief(project: dict) -> str:
+        done = [s["name"] for s in project["stages"] if s["progress"] >= s["minutes"] - 1e-6]
+        todo = [s["name"] for s in project["stages"] if s["progress"] < s["minutes"] - 1e-6]
+        return (f"Project {project['name']!r} ({project['craft']}): {project['goal'] or '(no stated goal)'}\n"
+                f"Done stages: {', '.join(done) or 'none'}. Remaining: {', '.join(todo) or 'none'}.\n"
+                f"Open questions: " + ("; ".join(f"[{i}] {q}" for i, q in enumerate(project["questions"])) or "none")
+                + "\nWhat Pip has found out so far: " + ("; ".join(project["findings"]) or "nothing yet"))
+
+    _CHANGES = {
+        "finding": {"type": "string"}, "reveal": {"type": "integer"}, "answers": {"type": "integer"},
+        "new_stages": {"type": "array", "items": {"type": "object", "properties": {
+            "name": {"type": "string"}, "minutes": {"type": "integer"},
+            "abilities": {"type": "array", "items": {"type": "string"}},
+            "materials": {"type": "object", "additionalProperties": {"type": "integer"}}}, "required": ["name"]}},
+    }
+
+    async def experiment(self, project: dict, hypothesis: str, outcome: str, unfound: list[str],
+                         found: list[str]) -> dict | None:
+        meaning = {
+            "nothing": "it showed nothing useful; say what Pip saw, without hinting at the answer",
+            "clue": "it hinted at something, but nothing certain; the `finding` is only a partial, honest observation",
+            "insight": "it worked: it shows one of the hidden facts, and Pip understands something real it did not",
+            "surprise": "it showed one of the hidden facts and also something unexpected that opens a new direction",
+        }[outcome]
+        task = (
+            self._project_brief(project) + f"\nHidden facts (index: fact; Pip cannot see these): "
+            + ("; ".join(f"[{i}] {h['fact']}" + (" (already found)" if h["found"] else "")
+                         for i, h in enumerate(project["hidden"])) or "none") + "\n"
+            f"Pip ran an experiment. Its hypothesis: {hypothesis!r}.\n"
+            f"The engine already rolled the outcome ({outcome}): {meaning}.\n"
+            "Decide `relevant`: false if the hypothesis has nothing to do with the project or the hidden facts (then "
+            "the result is simply inconclusive and `text` should say so). Write `text` (1-3 concrete sentences, "
+            "second person, under 60 words) describing what Pip observed. For a clue, insight or surprise give "
+            "`finding`: what Pip now knows, in one plain sentence, based on the hidden fact (do not reveal facts the "
+            "outcome doesn't show). For an insight or surprise give `reveal` (the index of the hidden fact it shows) "
+            "and, if it answers an open question, `answers` (that question's index). `new_stages` may add up to 2 "
+            "stages that the discovery makes possible or necessary (name, minutes 15-240, materials, abilities from "
+            "precision/patience/ingenuity/knowledge/handiness). For a surprise, `new_question` may name what Pip now "
+            "wonders about, and `difficulty_delta` (-1, 0 or 1) says if it made the project easier or harder. "
+            "Never decide that Pip succeeded or failed at the project itself."
+        )
+        props = {"relevant": {"type": "boolean"}, "text": {"type": "string"}, "new_question": {"type": "string"},
+                 "difficulty_delta": {"type": "integer"}, **self._CHANGES}
+        return await self.ask(task, props, ["relevant", "text"], "experiment")
+
+    async def revise(self, project: dict, because: str, unfound: list[str]) -> dict | None:
+        task = (
+            self._project_brief(project) + "\nHidden facts (index: fact; Pip cannot see these): "
+            + ("; ".join(f"[{i}] {h['fact']}" + (" (already found)" if h["found"] else "")
+                         for i, h in enumerate(project["hidden"])) or "none") + "\n"
+            f"Pip wants to change its plan because of something it learned elsewhere (reading, searching, a visitor): "
+            f"{because!r}.\n"
+            "Decide `accepted`: true only if that knowledge plausibly bears on this project and would change what "
+            "Pip should do; otherwise false with `text` saying kindly why it doesn't. If accepted, `text` (1-2 "
+            "sentences, second person) says how the plan changes. You may add up to 2 `new_stages`, name stages to "
+            "`drop` (only ones not yet started), give `answers` (an open question's index) if the knowledge truly "
+            "answers it, and `reveal` (a hidden fact's index) only if the source would really contain it, with a "
+            "`finding`. Never decide success or failure."
+        )
+        props = {"accepted": {"type": "boolean"}, "text": {"type": "string"},
+                 "drop": {"type": "array", "items": {"type": "string"}}, "difficulty_delta": {"type": "integer"},
+                 **self._CHANGES}
+        return await self.ask(task, props, ["accepted", "text"], "revise")
 
     # --- phase 2: creations -----------------------------------------------
     async def design(self, project: dict, quality: str, scars: list[str], allow_companion: bool) -> dict | None:
