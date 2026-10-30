@@ -173,7 +173,7 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item
-- [ ] `set_activity` with an unchanged activity should be a no-op (Pip restates it every tick, adding noise and tokens)
+- [x] `set_activity` restating the same activity/description is a no-op (hidden from feeds and Pip's recent events)
 - [ ] Diary moments: any diary entry clears all offered moments, so a visit and a garden event may share one entry.
       Consider per-moment coverage
 - [ ] Dollar-based budget cap (`DAILY_BUDGET_USD` + per-model prices) instead of tokens only; output tokens cost 5x input
@@ -183,8 +183,8 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state
 - [x] `rest(minutes)`: timed rest; the heartbeat sleeps through it (Pip was resting every 60 s tick)
-- [ ] Todos pile up as near-duplicate restatements of the same step instead of being edited or resolved (projects
-      should largely replace these)
+- [x] Todos pile up as near-duplicate restatements: new open to-dos/wishes/ambitions that cover the same ground as an
+      open one (3+ shared content words, 60% of the shorter) are refused with a pointer to `edit_note`
 
 ## Key decisions
 - **Internal only**, safe tools only in v1; no code execution until M4.

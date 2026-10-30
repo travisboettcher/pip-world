@@ -92,6 +92,8 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return green("pip> ") + (d["text"] or dim("(says nothing)"))
     if k == "tool":
         t, a = d["tool"], d["args"]
+        if d.get("noop"):
+            return dim(f"  . (no change: {t})") if verbose else None
         if t == "say":
             return dim(f"  * Pip says: {a.get('text')}") if verbose else None  # shown via the "say" event
         if t == "set_activity":

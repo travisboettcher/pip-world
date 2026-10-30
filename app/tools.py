@@ -18,6 +18,7 @@ from . import projects as proj
 from . import sleep as sleepmod
 from .config import Settings
 from .llm.base import ToolSpec
+from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip
 from .world import FOOD_DEFAULT
@@ -80,6 +81,7 @@ def busy(ctx: "ToolContext") -> str:
 class ToolResult:
     text: str
     followup: bool = False  # the model should see this result and respond (e.g. fresh information)
+    noop: bool = False      # nothing changed; kept out of the feeds and out of Pip's recent-event list
 
 
 Handler = Callable[[ToolContext, dict], Awaitable[ToolResult]]
@@ -98,14 +100,38 @@ SIMILARITY_LIMIT = 0.6
 
 
 
+ACTIVITY_SAME = 0.9   # how alike two activity descriptions must be to count as restating the same thing
+EDITABLE_SECTIONS = RESOLVABLE + ("learned",)
+OVERLAP_SHARED = 3     # content words two to-dos must share before they can count as the same thing
+OVERLAP_RATIO = 0.6    # ...and the shared words must make up this much of the shorter one
+OPEN_NOTES_CHECKED = 40
+
+
+def content_words(text: str) -> set[str]:
+    """Meaningful words (4+ letters, plural-insensitive, no filler) - what a note is actually about."""
+    return {w.removesuffix("s") for w in re.findall(r"[a-z]+", text.lower()) if len(w) >= 4 and w not in STOP_WORDS}
+
+
+def overlapping(a: str, b: str) -> bool:
+    """Do two notes say substantially the same thing? Catches rewordings that edit distance misses."""
+    wa, wb = content_words(a), content_words(b)
+    shared = len(wa & wb)
+    return shared >= OVERLAP_SHARED and shared >= OVERLAP_RATIO * min(len(wa), len(wb))
+
+
 def check_note(ctx: "ToolContext", section: str, text: str) -> str:
     """Why this note shouldn't be written, or '' if it's fine. Guards against log-spam."""
     if STAT_NUMBERS.search(text):
         return "don't write hunger/energy numbers in notes - your stats are already tracked for you"
     st = ctx.state
-    for m in st.memories(section, status="open" if section in RESOLVABLE else None, limit=10):
+    openable = section in RESOLVABLE
+    for m in st.memories(section, status="open" if openable else None, limit=OPEN_NOTES_CHECKED if openable else 10):
         if difflib.SequenceMatcher(None, text.lower(), m["text"].lower()).ratio() >= SIMILARITY_LIMIT:
-            return f"too close to your note #{m['id']}; only write something new"
+            return f"too close to your note #{m['id']}; only write something new" + (
+                " (edit_note #%d to update it)" % m["id"] if section in EDITABLE_SECTIONS else "")
+        if openable and overlapping(text, m["text"]):
+            return (f"this is about the same thing as your open {section} #{m['id']} (\"{m['text'][:90]}\"): "
+                    f"edit_note #{m['id']} to update it, or resolve_note it first if it's done")
     return ""
 
 
@@ -143,6 +169,14 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     fields = {"activity": activity, "description": str(args.get("description") or "")[:200].strip()}
     if args.get("mood"):
         fields["mood"] = str(args["mood"])[:40]
+    a = ctx.state.agent()
+    same_label = activity == a["activity"]
+    if (same_label or ctx.state.session()) and fields["description"] and a["description"] and (
+            difflib.SequenceMatcher(None, fields["description"].lower(), a["description"].lower()).ratio()
+            >= ACTIVITY_SAME) and (not args.get("mood") or fields.get("mood") == a["mood"]):
+        return ToolResult(f"no change - you're already {a['activity']}: {a['description']}", noop=True)
+    if same_label and not fields["description"] and not args.get("mood"):
+        return ToolResult(f"no change - you're already {a['activity']}", noop=True)
     sess = ctx.state.session()
     if sess:  # describing the work doesn't stop it; rest (or finishing) does
         fields.pop("activity")

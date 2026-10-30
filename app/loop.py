@@ -233,7 +233,8 @@ class Agent:
                                error=f"{type(e).__name__}: {e}")
                 out.update(content=f"error: {type(e).__name__}: {e}", is_error=True, followup=True)
             else:
-                self.state.log("tool", tool=call.name, args=call.arguments, result=result.text)
+                self.state.log("tool", tool=call.name, args=call.arguments, result=result.text,
+                               **({"noop": True} if result.noop else {}))
                 out.update(content=result.text, followup=result.followup)
         return out
 
@@ -431,6 +432,8 @@ class Agent:
                     if d.get("text"):
                         lines.append(f"- you said/thought: {d['text']}")
                 elif e["kind"] == "tool":
+                    if d.get("noop"):
+                        continue
                     lines.append(f"- you used {d['tool']}({d['args']}) -> {d['result']}")
                 elif e["kind"] == "creation":
                     lines.append(f"- {d['text']}" if d["what"] in ("stopped", "helper", "used")

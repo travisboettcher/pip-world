@@ -282,6 +282,51 @@ async def test_note_guards(tmp_path):
     assert "too close" in await _note(agent, "todo", "Oil the clock hinges tomorrow!")
 
 
+@pytest.mark.asyncio
+async def test_reworded_todos_are_steered_to_edit_note(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    # real examples: the same task restated in new words, which edit distance alone let through
+    first = "Plots 1-3 are still empty; ask Morgan for tomato seeds on his next visit, and keep the gear train tick check for after rest."
+    assert await _note(agent, "todo", first) == "wrote in todo"
+    r = await _note(agent, "todo", "Ask Morgan for tomato seeds on his next visit so plots 1-3 can be replanted.")
+    assert "about the same thing as your open todo #1" in r and "edit_note #1" in r
+    # a genuinely different task sharing a word or two is fine
+    assert await _note(agent, "todo", "Oil the gear clock hinges before the frame goes in.") == "wrote in todo"
+    assert await _note(agent, "todo", "Write Morgan a letter about the pendulum.") == "wrote in todo"
+    # once resolved it no longer blocks a fresh one; the diary is exempt (entries naturally share words)
+    st.resolve_memory(1, "done")
+    assert await _note(agent, "todo", "Ask Morgan for tomato seeds so plots can be replanted again.") == "wrote in todo"
+    assert await _note(agent, "diary", "Morgan brought tomato seeds and the plots are planted again.") == "wrote in diary"
+    assert await _note(agent, "diary", "I spent the whole afternoon pressing seeds into the plots, thinking about tomato vines and Morgan.") == "wrote in diary"
+
+
+@pytest.mark.asyncio
+async def test_set_activity_restating_the_same_thing_is_a_no_op(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    act = lambda **a: tools_mod.REGISTRY["set_activity"][1](agent.ctx, a)  # noqa: E731
+    r = await act(activity="tinkering", description="Filing the pallets of the escape wheel.")
+    assert r.text == "now tinkering" and not r.noop
+    r = await act(activity="tinkering", description="Filing the pallets of the escape wheel.")
+    assert r.noop and "no change" in r.text
+    assert (await act(activity="Tinkering")).noop                        # same label, nothing added
+    assert (await act(activity="tinkering", description="Filing the pallets of the escape wheel!")).noop
+    r = await act(activity="tinkering", description="Easing a burr off the train pivot.")
+    assert not r.noop and st.agent()["description"] == "Easing a burr off the train pivot."
+    r = await act(activity="tinkering", description="Easing a burr off the train pivot.", mood="hopeful")
+    assert not r.noop and st.agent()["mood"] == "hopeful"                # a new mood is a change
+
+
+@pytest.mark.asyncio
+async def test_noop_tool_calls_stay_out_of_the_feed_and_perception(tmp_path):
+    s, st, backend, agent = make(tmp_path, [LLMResponse("", [ToolCall("1", "set_activity", {"activity": "tinkering", "description": "Filing."})], Usage(1, 1)),
+                                            LLMResponse("", [ToolCall("2", "set_activity", {"activity": "tinkering", "description": "Filing."})], Usage(1, 1))])
+    await agent.tick("test")
+    await agent.tick("test")
+    tool_events = [e["data"] for e in st.events(20) if e["kind"] == "tool"]
+    assert [bool(d.get("noop")) for d in reversed(tool_events)] == [False, True]
+    assert "-> no change" not in agent._perception("test", [])
+
+
 def test_archived_hidden_unless_asked(tmp_path):
     s, st, *_ = make(tmp_path)
     a = st.add_memory("keep me"); b = st.add_memory("hide me")

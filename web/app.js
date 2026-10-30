@@ -43,6 +43,7 @@ const debounce = (key, fn, ms = 800) => { clearTimeout(timers[key]); timers[key]
 // ---- describing events (mirrors pipchat's format_event) ---------------------
 function describeTool(d) {
   const a = d.args || {}, r = String(d.result ?? '');
+  if (d.noop) return null; // nothing changed (e.g. restating the same activity)
   switch (d.tool) {
     case 'say': return null; // shown via the 'say' event
     case 'set_activity': return { group: 'actions', text: `Pip is now ${a.activity}` + (a.description ? ` — ${a.description}` : '') };
