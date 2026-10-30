@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -52,6 +52,9 @@ def recall_text(kind: str, d: dict) -> str | None:
             + (f" ({d['expectation']})" if d.get("expectation") else ""))
     if kind == "world_changed":
         return d["text"]
+    if kind == "made_work":
+        return (f"You drew '{d['title']}'" + (f": {d['caption']}" if d.get("caption") else "") if d.get("what") == "drawing"
+                else f"You wrote '{d['title']}': {d.get('text', '')}")
     if kind == "outreach":
         if not d.get("delivered"):
             return None
@@ -90,6 +93,8 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
         base = 3
     elif kind == "world_changed":
         base = 6
+    elif kind == "made_work":
+        base = 5
     elif kind == "outreach":
         base = 5 if d.get("what") == "postcard" else 3
     elif kind == "reflection":
@@ -144,6 +149,9 @@ def compute_day_stats(state, since: float, until: float) -> dict:
             c["messages_from_outside"] += d.get("source", "web") != "web"
         elif k == "letter_sent":
             c["letters_sent"] += 1
+        elif k == "made_work":
+            c["pictures_drawn"] += d.get("what") == "drawing"
+            c["pieces_written"] += d.get("what") == "writing"
         elif k == "outreach" and d.get("what") == "postcard" and d.get("delivered"):
             c["postcards_sent"] += 1
         elif k == "woke":
@@ -343,7 +351,8 @@ STAT_LABELS = [("work_sessions", "work sessions"), ("minutes_worked", "minutes w
                ("tool_errors", "tool errors"),
                ("predictions", "predictions made"), ("surprises", "surprises"),
                ("focus_kept", "focus items kept"), ("focus_total", "focus items reviewed"),
-               ("postcards_sent", "postcards sent"), ("messages_from_outside", "messages from outside")]
+               ("postcards_sent", "postcards sent"), ("messages_from_outside", "messages from outside"),
+               ("pictures_drawn", "pictures drawn"), ("pieces_written", "pieces written")]
 EARLIER_BELIEFS = 8
 HUNCHES_SHOWN = 2
 PORTRAITS_SHOWN = 3

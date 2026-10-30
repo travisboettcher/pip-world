@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS expectations (
   surprising INTEGER NOT NULL DEFAULT 0, direction TEXT, event_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS day_stats (day TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS works (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+  body TEXT NOT NULL, caption TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS outreach (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, channel TEXT NOT NULL,
   conversation TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT ''
@@ -993,6 +997,36 @@ class State:
             self.db.execute("UPDATE focus SET status = ?, reviewed_at = ?, note = ? WHERE id = ?",
                             (status, time.time(), note[:200], focus_id))
             self.db.commit()
+
+    def add_work(self, kind: str, title: str, body: str, caption: str = "", location: str = "") -> int:
+        """A picture (SVG, already sanitised) or a piece of writing Pip made."""
+        now = time.time()
+        with self.lock:
+            cur = self.db.execute("INSERT INTO works (ts, kind, title, body, caption, location) VALUES (?, ?, ?, ?, ?, ?)",
+                                  (now, kind, title, body, caption, location))
+            text = f"{title}. {caption}" + (f" {body}" if kind == "writing" else "")
+            self._index(f"work:{kind}", cur.lastrowid, now, text.strip(), commit=False)
+            self.db.commit()
+            return cur.lastrowid
+
+    def work(self, work_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
+        return dict(row) if row else None
+
+    def works(self, kind: str | None = None, limit: int = 50, since: float | None = None) -> list[dict]:
+        """Newest first, without the bodies' weight for pictures (the SVG is fetched by id)."""
+        q, args, where = "SELECT id, ts, kind, title, caption, location, CASE WHEN kind = 'writing' THEN body ELSE '' END AS body FROM works", [], []
+        if kind:
+            where.append("kind = ?")
+            args.append(kind)
+        if since is not None:
+            where.append("ts >= ?")
+            args.append(since)
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
 
     def add_outreach(self, kind: str, channel: str, conversation: str, text: str, status: str, error: str = "",
                      ts: float | None = None) -> int:

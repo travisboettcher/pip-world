@@ -413,6 +413,14 @@ class Agent:
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
 
+    def _gallery(self) -> list[str]:
+        """The last few pictures and pieces, by number, so Pip can send or refer to them."""
+        if "draw" not in self.tools and "write_piece" not in self.tools:
+            return []
+        works = self.state.works(limit=4)
+        return (["Your gallery (latest):"] + [f"- #{w['id']} {w['title']} ({'drawing' if w['kind'] == 'drawing' else 'writing'})"
+                                              for w in works]) if works else []
+
     def _calibration(self) -> list[str]:
         """How close Pip's predictions have been, in plain counts (only once there are enough to count)."""
         rows = self.state.expectations(limit=60)
@@ -521,6 +529,7 @@ class Agent:
         lines += mem.perception(self.state)
         lines += np.perception(self.state, self.s)
         lines += self.outreach.perception()
+        lines += self._gallery()
         lines += self._belongings()
         lines += self._projects()
         lines += nb.perception(self.state)

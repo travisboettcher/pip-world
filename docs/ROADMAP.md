@@ -185,9 +185,9 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       Not the narration or Pip itself. Cost today is tiny (~$0.0003/call), so revisit only if cost or latency starts to
       matter; the seam would be a `DecisionBackend` beside `LLMBackend`.
 
-### Writing and drawing (idea, 2026-10-30)
-- [ ] Give Pip tools to write and draw: interact with visual media (a page/canvas it can compose on, that visitors can
-      see in the web UI and that becomes something it made and can look back at). Not designed yet.
+### Writing and drawing (built 2026-10-30; DESIGN-art.md)
+- [x] `draw` (sanitised SVG on a fixed canvas) and `write_piece`; a gallery (API, Work tab, `pipchat gallery`); drawings travel with postcards as PNGs
+- [ ] Let Pip see its own picture (image blocks in the LLM message format) so it can draw, look and revise; drawing as a timed session; inbound pictures
 
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged

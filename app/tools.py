@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
+from . import art
 from . import companions as comp
 from . import expectations as exp
 from . import gathering
@@ -820,9 +821,63 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("send_postcard", "Start a conversation with a friend outside your world: a short postcard. Do it rarely, for something worth "
       "telling - a thing you finished, something specific you need, something you found out. Plain words only (at most 240 "
       "characters, no links). If they write back you'll hear it, and you can answer.",
-      _obj({"text": {"type": "string", "description": "what you want to tell them"}}, ["text"]))
+      _obj({"text": {"type": "string", "description": "what you want to tell them"},
+            "drawing": {"type": "integer", "description": "optional: the number of one of your drawings to send with it"}}, ["text"]))
 async def send_postcard(ctx: ToolContext, args: dict) -> ToolResult:
     if not ctx.outreach:
         return ToolResult("you have no way to reach anyone outside right now", followup=True)
-    ok, msg = await ctx.outreach.send_postcard(str(args.get("text") or ""))
+    images, note = [], ""
+    if args.get("drawing") not in (None, ""):
+        try:
+            w = ctx.state.work(int(args["drawing"]))
+        except (TypeError, ValueError):
+            w = None
+        if not w or w["kind"] != "drawing":
+            return ToolResult(f"you have no drawing #{args['drawing']} to send", followup=True)
+        try:
+            images = [art.Image(data=art.render_png(w["body"]), mime="image/png", name=f"{art.slug(w['title'])}.png",
+                                caption=w["title"])]
+        except Exception:
+            return ToolResult("that drawing couldn't be prepared to send", followup=True)
+    ok, msg = await ctx.outreach.send_postcard(str(args.get("text") or ""), images=images)
     return ToolResult(msg, followup=not ok)
+
+
+@tool("draw", "Draw a picture, by writing it as SVG on a 400 x 300 canvas (viewBox 0 0 400 300; the canvas is blank, paint a background "
+      "if you want one). You may use rect, circle, ellipse, line, polyline, polygon, path, text, g, and linear/radial gradients. "
+      "No scripts, images, links or styles; keep it under about 8 KB. It's kept in your gallery where visitors can see it, and you can "
+      "send one with a postcard. If something isn't allowed you'll be told what to change.",
+      _obj({"title": {"type": "string", "description": "a short title"},
+            "svg": {"type": "string", "description": "the whole <svg>...</svg> element"},
+            "caption": {"type": "string", "description": "optional: a line about it"}}, ["title", "svg"]))
+async def draw(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := art.pace(ctx.state, ctx.settings):
+        return ToolResult(why, followup=True)
+    title = art.clean_title(args.get("title"))
+    if not title:
+        return ToolResult("give your picture a title", followup=True)
+    try:
+        svg = art.sanitize_svg(args.get("svg"))
+        art.render_png(svg, 200)  # if it can't be drawn, say so now rather than when someone looks
+    except art.SvgRejected as e:
+        return ToolResult(f"your drawing wasn't accepted: {e}. Fix it and try again.", followup=True)
+    except Exception:
+        return ToolResult("your drawing couldn't be rendered: check that every shape and path is complete, then try again.", followup=True)
+    caption = clip(args.get("caption"), 200)
+    wid = ctx.state.add_work("drawing", title, svg, caption, ctx.state.agent()["location"])
+    ctx.state.log("made_work", id=wid, what="drawing", title=title, caption=caption)
+    return ToolResult(f"you finish a drawing, #{wid}: {title}. It's in your gallery; you can send it with a postcard.")
+
+
+@tool("write_piece", "Write something to keep and share - a poem, a story, a letter you won't send, a description - as a titled piece (up to "
+      "2000 characters). It goes in your gallery, where visitors can read it. This is different from your private diary.",
+      _obj({"title": {"type": "string"}, "text": {"type": "string"}}, ["title", "text"]))
+async def write_piece(ctx: ToolContext, args: dict) -> ToolResult:
+    if why := art.pace(ctx.state, ctx.settings):
+        return ToolResult(why, followup=True)
+    title, text = art.clean_title(args.get("title")), art.clean_writing(args.get("text"))
+    if not title or len(text) < 20:
+        return ToolResult("a piece needs a title and at least a few lines", followup=True)
+    wid = ctx.state.add_work("writing", title, text, "", ctx.state.agent()["location"])
+    ctx.state.log("made_work", id=wid, what="writing", title=title, caption="", text=clip(text, 300))
+    return ToolResult(f"you finish a piece, #{wid}: {title}. It's in your gallery.")

@@ -91,6 +91,7 @@ function describe(e) {
     }
     case 'gathered': return { group: 'world', cls: 'world', text: d.text + (d.interrupted ? ' (cut short)' : '') };
     case 'woke': return { group: 'world', cls: 'world', text: `Pip wakes after about ${d.hours} hours of sleep` + (d.early ? ' (woken early)' : '') };
+    case 'made_work': return { group: 'world', cls: 'world', text: d.what === 'drawing' ? `Pip drew “${d.title}”${d.caption ? ` — ${d.caption}` : ''}` : `Pip wrote “${d.title}”` };
     case 'world_changed': return { group: 'world', cls: 'world', text: d.text };
     case 'night_pass': {
       const bits = [...(d.decisions || []), ...(d.focus || []).map((f) => `focus: ${f}`)];
@@ -451,6 +452,18 @@ async function refreshLetters() {
     }) : [h('li', { class: 'empty' }, 'no letters yet')])));
 }
 
+let worksData = [];
+function renderGallery() {
+  $('gallery').replaceChildren(...(worksData.length ? worksData.map((w) => w.kind === 'drawing'
+    ? h('figure', { class: 'work' },
+        h('a', { href: `/works/${w.id}.png?width=1200`, target: '_blank', rel: 'noopener' },
+          h('img', { src: `/works/${w.id}.svg`, alt: w.title, loading: 'lazy' })),
+        h('figcaption', {}, h('b', {}, `#${w.id} ${w.title}`), w.caption ? ` — ${w.caption}` : '', h('small', {}, fmtDay(w.ts))))
+    : h('article', { class: 'work' }, h('h3', {}, `#${w.id} ${w.title}`), h('p', { class: 'poem' }, w.body), h('small', {}, fmtDay(w.ts))))
+    : [h('p', { class: 'hint' }, 'Nothing drawn or written yet.')]));
+}
+const refreshWorks = async () => { worksData = await api('/works?limit=60'); renderGallery(); };
+
 async function refreshCreations() {
   const made = await api('/creations');
   $('creations').replaceChildren(...(made.length ? made.map((c) => {
@@ -515,6 +528,7 @@ function handleEvent(e, live) {
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
   if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
+  if (e.kind === 'made_work') debounce('works', refreshWorks);
   if (['reflection', 'night_pass', 'night_undo', 'woke'].includes(e.kind) || (e.kind === 'tool' && t === 'undo_decision')) debounce('memory', refreshMemory);
   if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
@@ -535,7 +549,7 @@ setChatOpen(store.get('chatOpen', false), false);
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters()]);
+    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters(), refreshWorks()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {

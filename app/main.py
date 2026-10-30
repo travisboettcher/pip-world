@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import art
 from . import creations as cr
 from . import projects as proj
 from .config import Settings
@@ -161,6 +162,38 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         agent.state.log("inbox", id=inbox_id, text=text, gift=True, sender=sender)
         agent.request_wake(urgent=True)
         return {"queued": True, "id": inbox_id, "item": item}
+
+    @app.get("/works")
+    def get_works(kind: str | None = None, limit: int = 50):
+        return app.state.agent.state.works(kind if kind in ("drawing", "writing") else None, min(limit, 200))
+
+    # A drawing is served only as the sanitised SVG stored at creation, with a policy that lets it paint and nothing else.
+    SVG_HEADERS = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                   "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache"}
+
+    @app.get("/works/{work_id}.svg")
+    def get_work_svg(work_id: int):
+        w = app.state.agent.state.work(work_id)
+        if not w or w["kind"] != "drawing":
+            raise HTTPException(status_code=404, detail="no such drawing")
+        return Response(w["body"], media_type="image/svg+xml", headers=SVG_HEADERS)
+
+    @app.get("/works/{work_id}.png")
+    def get_work_png(work_id: int, width: int = 800):
+        w = app.state.agent.state.work(work_id)
+        if not w or w["kind"] != "drawing":
+            raise HTTPException(status_code=404, detail="no such drawing")
+        try:
+            return Response(art.render_png(w["body"], max(100, min(width, 1600))), media_type="image/png", headers=SVG_HEADERS)
+        except Exception:
+            raise HTTPException(status_code=422, detail="that drawing can't be rendered") from None
+
+    @app.get("/works/{work_id}")
+    def get_work(work_id: int):
+        w = app.state.agent.state.work(work_id)
+        if not w:
+            raise HTTPException(status_code=404, detail="no such work")
+        return w
 
     @app.post("/inbox")
     def post_inbox(item: InboxItem):

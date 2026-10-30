@@ -204,3 +204,8 @@ service and account/room bootstrap are separate (see the design).
 A finished project can leave a lasting change. The GM may give it a `world` capability only if the work was clearing and preparing new ground; the engine
 then applies it once (a new garden plot) if the project's own words are about ground and the garden is below `GARDEN_PLOTS_MAX` (default 8). Pip is told in its
 persona that it can do this. Foraging in the woods now yields wild seeds and food.
+
+## Pictures and writing
+See [DESIGN-art.md](DESIGN-art.md). `draw(title, svg)` takes an SVG on a 400 x 300 canvas, which is parsed against a strict whitelist and re-serialised (scripts,
+images, links, styles and external references are refused with a reason Pip can fix); `write_piece(title, text)` keeps a public piece of writing. Both appear in the
+gallery (`GET /works`, the Work tab, `pipchat gallery`), are paced by `WORKS_PER_DAY`, and a drawing can go with a postcard as a PNG.

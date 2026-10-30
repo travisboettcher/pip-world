@@ -64,6 +64,8 @@ class Settings:
     outreach_max_chars: int = 240
     outreach_reply_max_chars: int = 1500
     outreach_failures_per_day: int = 3
+    works_per_day: int = 6              # pictures and pieces of writing Pip may finish per local day
+    works_min_gap_minutes: float = 10
     sleep: bool = True                 # day/night rhythm and the sleep tool
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
@@ -135,6 +137,8 @@ class Settings:
             outreach_max_chars=_int("OUTREACH_MAX_CHARS", 240),
             outreach_reply_max_chars=_int("OUTREACH_REPLY_MAX_CHARS", 1500),
             outreach_failures_per_day=_int("OUTREACH_FAILURES_PER_DAY", 3),
+            works_per_day=_int("WORKS_PER_DAY", 6),
+            works_min_gap_minutes=_float("WORKS_MIN_GAP_MINUTES", 10),
             sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
@@ -148,7 +152,7 @@ class Settings:
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece").split(",") if t.strip()],
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),
             matrix_user_id=e("MATRIX_USER_ID", ""),

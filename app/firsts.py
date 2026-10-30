@@ -98,6 +98,8 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
     elif kind == "arrived":
         if d.get("place"):
             add(f"place:{d['place']}", you(f"were at {d['place']}"))
+    elif kind == "made_work":
+        add(f"work_made:{d.get('what')}", you("finished a drawing" if d.get("what") == "drawing" else "finished a piece of writing to share"), MAJOR)
     elif kind == "world_changed":
         add(f"world:{d.get('effect')}", you("changed the world around you"), MAJOR)
     elif kind == "night_pass":

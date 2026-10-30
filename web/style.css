@@ -105,6 +105,12 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .give { display: grid; gap: .6rem; }
 .give label { display: grid; gap: .2rem; font-size: .85rem; color: var(--muted); }
 .give input, .give select { color: var(--ink); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.work { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--bg); min-width: 0; }
+.work img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; background: #fff; border-radius: 6px; }
+.work figcaption, .work small { color: var(--muted); font-size: .85rem; display: block; margin-top: .3rem; }
+.work h3 { margin: 0 0 .3rem; color: var(--ink); font-size: 1rem; }
+.work .poem { white-space: pre-wrap; margin: 0; overflow-wrap: anywhere; max-height: 14rem; overflow-y: auto; }
 .mind p { margin: .3rem 0; }
 .tag { font-size: .7rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 .4rem; color: var(--muted); margin-left: .3rem; }
 .caps { display: flex; flex-wrap: wrap; gap: .3rem; }

@@ -407,6 +407,22 @@ def cmd_outreach(pip: Pip, a) -> None:
         print(dim("  nothing yet"))
 
 
+def cmd_gallery(pip: Pip, a) -> None:
+    works = pip.call("/works?limit=%d" % a.n)
+    if JSON_MODE:
+        return out_json(works)
+    print(bold("Pictures and writing"))
+    for w in works:
+        kind = "drawing" if w["kind"] == "drawing" else "writing"
+        print(f"  #{w['id']} {fmt_time(w['ts'])} {kind:<8} {w['title']}" + (dim(f" - {w['caption']}") if w["caption"] else ""))
+        if w["kind"] == "writing":
+            print(dim("      " + w["body"][:160].replace("\n", " / ")))
+        else:
+            print(dim(f"      {pip.url}/works/{w['id']}.png"))
+    if not works:
+        print(dim("  nothing yet"))
+
+
 def cmd_projects(pip: Pip, a) -> None:
     r = pip.call("/projects" + (f"?status={a.status}" if a.status else ""))
     if JSON_MODE:
@@ -651,6 +667,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("garden", cmd_garden, "Pip's garden plots")
     p = add("outreach", cmd_outreach, "Pip's channels to the outside world, today's allowance, postcards and replies")
     p.add_argument("-n", type=int, default=15, help="how many to show (default 15)")
+    p = add("gallery", cmd_gallery, "Pip's drawings and pieces of writing")
+    p.add_argument("-n", type=int, default=15)
     p = add("projects", cmd_projects, "Pip's projects, their stages and Pip's skills")
     p.add_argument("--status", choices=["active", "done", "abandoned"])
     p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
@@ -687,7 +705,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "gallery", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

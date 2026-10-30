@@ -160,7 +160,7 @@ class Outreach:
         self.state.log("outreach", **data)
         return data
 
-    async def send_postcard(self, text: str, now: float | None = None) -> tuple[bool, str]:
+    async def send_postcard(self, text: str, now: float | None = None, images=()) -> tuple[bool, str]:
         """Start a conversation. Returns (ok, what Pip is told)."""
         now = now or time.time()
         if not self.enabled:
@@ -175,11 +175,15 @@ class Outreach:
         if self._too_like_recent(t):
             return False, "you've already told them something like this"
         ch = self.primary
-        ok, error, conv, status = await self._deliver(ch, Outbound(t, "postcard"), None)
-        self._record("postcard", ch, conv, t, status, error)
+        pictures = list(images) if "images" in ch.capabilities else []
+        ok, error, conv, status = await self._deliver(ch, Outbound(t, "postcard", images=pictures), None)
+        self._record("postcard", ch, conv, t + (f" [with a picture: {pictures[0].caption}]" if pictures else ""), status, error)
         if not ok:
             return False, "it couldn't be sent just now, so nothing went out"
-        return True, "your postcard is on its way; if they write back you'll hear it in the same thread"
+        extra = " (the picture can't travel this way, so only your words went)" if images and not pictures else ""
+        if error and pictures:
+            extra = f" ({error})"
+        return True, "your postcard is on its way; if they write back you'll hear it in the same thread" + extra
 
     async def route_reply(self, text: str, inbox_ids: list[int]) -> int:
         """Pip's `say` answered these visitor messages; send it back through any channel they came in on, into the same
