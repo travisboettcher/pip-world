@@ -15,6 +15,8 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 | M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-2 deployed; 3-4 open |
 | M3.5 | A neighbor and slow letters ([design](DESIGN-neighbor.md)) | Deployed |
 | M3.6 | Places + the library (Calibre) ([design](DESIGN-library.md)) | Deployed |
+| M3.7 | Day/night and sleep ([design](DESIGN-sleep.md)) | Deployed |
+| M3.8 | Sense of self: firsts, cited reflections, portraits, expectations, turning points, capabilities, night pass | Deployed (first night pending) |
 | M4 | Richer tools, optional exposure | Not started |
 
 ## M1 - Headless brain (done)
@@ -108,7 +110,7 @@ is in my notes, not in the gears".
 ### World mechanics
 - [x] (built; DESIGN-sleep.md; deploy: add `sleep` to `TOOLS`) **Day/night and real sleep**: Pip goes to bed at night and the loop pauses for hours (cost saving). The nightly
       reflection (M3) already exists; tie it to Pip actually going to bed
-- [ ] **More places** (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
+- [ ] **More places and place-scoped tools** (designed: DESIGN-places.md; not built) -- original idea: (the registry and `go_to` exist since M3.6; workshop and library so far): `location` used to never change. A few places (junkyard, woods, market) and `go_to` / `forage`
       with random finds, so materials don't only come from visitors
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
@@ -129,24 +131,15 @@ is in my notes, not in the gears".
 - [x] A bookshelf: the Calibre library is a place Pip walks to and reads in (M3.6, DESIGN-library.md)
 
 ## Ideas to design (2026-10-30)
-Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (links in the design docs).
+Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is noted in the design docs and RESEARCH-self.md.
 
-### Discovery in projects (built; see DESIGN-discovery.md; deploy: add `experiment,revise_plan` to `TOOLS`)
-- [x] The plan is Pip's: `start_project(name, goal, steps)`; the GM reviews (abilities, difficulty, open questions,
-      hidden facts) and never rewrites it; Pip edits it freely with `revise_plan`
-- [x] GM as arbiter: `work_on(..., approach)` is judged by the GM within one step of the die (blowups possible)
-- [ ] `experiment(project, hypothesis)`: the GM resolves it against hidden facts it wrote at project creation (the engine
-      still rolls; the GM invents and narrates within constraints). Outcomes can add/replace stages, change the goal, or
-      unlock a capability, so a plan evolves after each experiment
-- [ ] Research feeds the plan: `web_search`, library reading and (later) other tools can be cited when revising a plan;
-      a revision records what prompted it
-- [ ] Prior art: Voyager (iterative prompting + skill library), AutoDiscovery (Bayesian-surprise-driven hypothesis search,
-      NeurIPS 2025), Reflexion (verbal self-critique after failures)
-
-### Skills: generic and transferable (built)
-- [ ] A few underlying abilities (precision, patience, ingenuity, measurement, ...) instead of per-craft xp; crafts and
-      stages map to weighted blends so practice carries across projects
-- [ ] Narrated, not numeric: Pip sees "your hands are steadier", the engine keeps the numbers
+### Discovery in projects and transferable skills (built; DESIGN-discovery.md)
+- [x] The plan is Pip's (`start_project(name, goal, steps)`); the GM reviews and arbitrates, never rewrites; Pip edits freely
+      with `revise_plan`; `work_on(..., approach)` is judged within one step of the die (blowups possible)
+- [x] `experiment(project, hypothesis)` against hidden facts, with a pity timer; research (`web_search`, library, visitors)
+      feeds the plan through `revise_plan(..., because)`
+- [x] Five transferable abilities (precision, patience, ingenuity, knowledge, handiness) plus craft familiarity, narrated to Pip
+      in words and numeric only in the API and `pipchat`
 
 ### Extract to a public repo
 - [ ] Split `agent_world/` with history (`git subtree split` / `filter-repo`); audit history for secrets first
@@ -155,37 +148,25 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 - [ ] Consume it here as a **published artifact** (container image from the new repo's CI) rather than a copy or
       submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
 
-### Introspection and a sense of self
-- [x] Engine-detected firsts: facets computed from the log, shown as facts (DESIGN-self.md; sources in RESEARCH-self.md);
-      the thought stays Pip's
-- [x] Cited reflections: ids in the material, insights cite evidence, validation + nightly support check, hunches
-      block, `recall` shows the evidence, deterministic event importance decides what survives the budget
-- [x] Versioned self-portrait (all versions kept), `changed` claims with citations, daily counts as evidence
-- [x] Expectations and surprise (DESIGN-expectations.md): optional `expect` on `work_on`/`experiment`, step-duration
-      guesses, facts-only comparison, surprise firsts, calibration block, learning progress
-- [x] Turning-point detector (DESIGN-self.md section 5)
-- [x] Capabilities table (DESIGN-self.md section 6)
-- [x] Night pass that can change goals (DESIGN-nightpass.md): archive/merge/resolve notes, pause/resume projects, adopt a goal,
-      set a focus; cited, reversible (`undo_decision`), `NIGHT_PASS=off|log|apply`
-- [ ] Next from RESEARCH-self.md: life periods/chapters, a night pass
-      that can change goals, recall frame (Pip's state then), delayed-self recognition test
-- [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
-- [ ] Self-portrait diffs at reflection time: what changed since the last one
-- [ ] Rare open question prompts, not scripted performances
-- [ ] **Survey the full body of prior work before designing** (the list below is from memory, not yet read or verified):
-  - Russell & Norvig, *AIMA*: the agent-program ladder (simple reflex -> model-based -> goal-based -> utility-based),
-    the **learning agent** (critic, learning element, performance element, problem generator; maps onto our reflection
-    and experiments), belief states / world models, rationality and bounded optimality, metareasoning
-  - Cognitive architectures: Soar and ACT-R (episodic / semantic / procedural memory, chunking), BDI agents
-    (beliefs, desires, intentions), Global Workspace Theory, CoALA's mapping of these onto LLM agents
-  - Psychology and philosophy of self: Tulving (episodic memory, autonoetic awareness), Conway's self-memory system
-    (autobiographical memory grounded in goals), Neisser's five selves, Damasio's proto / core / autobiographical self,
-    Dennett's "center of narrative gravity", McAdams' narrative identity ("first night of my life" is a narrative
-    anchor)
-- [ ] Prior art: Generative Agents (reflections stored back as retrievable memories citing their sources), Reflexion,
-      MemGPT/Letta-style self-editing core memory, CoALA-style memory taxonomy. Introspection research (Lindsey 2026,
-      Introspect-Bench) says model self-reports are limited and unreliable, so ground Pip's self-model in logged
-      facts, not in its claims about its own internals
+### Day, night and sleep (built; DESIGN-sleep.md)
+- [x] Time of day and "day N of your life here"; the `sleep` tool; no ticks while asleep; the reflection runs as Pip sleeps
+
+### Introspection and a sense of self (RESEARCH-self.md; DESIGN-self.md, DESIGN-expectations.md, DESIGN-nightpass.md)
+- [x] Survey of the prior work (LLM agents, classic AI and cognitive architectures, psychology and philosophy of self),
+      with a verification status per source
+- [x] Firsts computed from the log and shown as facts
+- [x] Cited reflections: evidence ids, validation, nightly support check, hunches, `recall` shows the evidence, event importance
+- [x] Versioned self-portrait (all versions kept), cited `changed` claims, daily counts as evidence
+- [x] Expectations and surprise: optional `expect`, step-duration guesses, calibration, learning progress
+- [x] Turning-point detector; capabilities table
+- [x] Night pass: archive/merge/resolve notes, pause/resume projects, adopt a goal, set a focus; cited, reversible
+      (`undo_decision`), `NIGHT_PASS=off|log|apply`
+- [ ] Life periods / chapters: group days by place, people and goals
+- [ ] Recall frame: show Pip's state at the time of a recalled memory (Tulving)
+- [ ] Delayed-self recognition test: show Pip an old undated entry or portrait and see whether it recognizes its voice
+- [ ] Rare open-question prompts, not scripted performances
+- [ ] Watch the first nights (2026-10-30 onward): reflection prompt size and cost, the live shape of `changed`/`turning_points`,
+      the support check's verdicts, and what the night pass decides
 
 ### Typed-decision model (idea, 2026-10-30)
 - [ ] A fast "System One" model that returns typed decisions instead of text (TypeSafe's Jev is one; claims of 100x+ faster
