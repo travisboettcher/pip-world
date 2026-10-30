@@ -53,6 +53,41 @@ def recall_text(kind: str, d: dict) -> str | None:
     return None
 
 
+def event_importance(kind: str, d: dict, firsts=()) -> int:
+    """How much an event matters for what survives a long day's reflection (1-10; 0 = not worth keeping).
+    Deterministic, no LLM: visitors and finished things weigh most, routine tool use least; a first adds weight."""
+    if kind == "tick":
+        return 0
+    r = d.get("result") or d.get("outcome")
+    if kind == "inbox":
+        base = 6
+    elif kind == "gift":
+        base = 5
+    elif kind in ("letter_sent", "companion"):
+        base = 4 if kind == "letter_sent" else 3
+    elif kind == "work":
+        base = 7 if d.get("project_done") else 5 if r in ("blowup", "breakthrough") else 4 if r == "setback" else 2
+    elif kind == "experiment":
+        base = 6 if r == "surprise" else 5 if r == "insight" else 2
+    elif kind == "creation_made":
+        base = 7
+    elif kind == "reading":
+        base = 4 if d.get("finished") else 2
+    elif kind in ("woke", "alert"):
+        base = 3
+    elif kind == "reflection":
+        base = 2
+    elif kind == "say":
+        base = 3
+    elif kind == "tool":
+        base = {"note_to_self": 3 if (d.get("args") or {}).get("section") == "diary" else 2, "resolve_note": 3,
+                "start_project": 3, "write_letter": 4, "sleep": 3}.get(d.get("tool"), 1)
+    else:
+        base = 1
+    bonus = max((3 if f.get("tier") == "major" else 1 for f in firsts), default=0)
+    return max(1, min(10, base + bonus))
+
+
 def ago(ts: float, now: float | None = None) -> str:
     secs = max(0.0, (now or time.time()) - ts)
     if secs < 90:
@@ -67,9 +102,11 @@ def ago(ts: float, now: float | None = None) -> str:
 
 
 # --- reflection ---------------------------------------------------------------
-def material(state, since: float, until: float, max_chars: int) -> tuple[list[str], set[str]]:
-    """One line per notable event in (since, until], newest kept when over budget; plus who appeared."""
-    lines, people = [], set()
+def material(state, since: float, until: float, max_chars: int) -> tuple[list[str], set[str], dict[int, str]]:
+    """One line per notable event in (since, until], each tagged with its id so reflections can cite it. Over budget
+    the most important events are kept (newest breaking ties), shown in time order. Also: who appeared, and
+    {event id: text} for what was shown."""
+    cands, people = [], set()
     for e in state.events_since(since, limit=5000):
         if e["ts"] > until:
             break
@@ -90,14 +127,18 @@ def material(state, since: float, until: float, max_chars: int) -> tuple[list[st
         elif k == "creation" and d.get("what") in ("stopped", "used"):
             text = d["text"]
         if text:
-            lines.append(f"[{datetime.fromtimestamp(e['ts']).strftime('%a %H:%M')}] {clip(text, 300)}")
+            firsts = "; ".join(f["label"] for f in d.get("firsts", []))
+            body = clip(text, 300) + (f" (first: {firsts})" if firsts else "")
+            line = f"[e{e['id']} {datetime.fromtimestamp(e['ts']).strftime('%a %H:%M')}] {body}"
+            cands.append((e["importance"] or 1, e["id"], line, clip(text, 300)))
     total, keep = 0, []
-    for line in reversed(lines):
+    for imp, eid, line, text in sorted(cands, key=lambda c: (c[0], c[1]), reverse=True):
         total += len(line) + 1
         if total > max_chars:
             break
-        keep.append(line)
-    return list(reversed(keep)), people
+        keep.append((eid, line, text))
+    keep.sort()
+    return [l for _, l, _ in keep], people, {eid: t for eid, _, t in keep}
 
 
 def due(state, settings, now: float) -> bool:
@@ -118,7 +159,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     """Reflect on everything since the last reflection. Returns the logged event data, or None."""
     now = now or time.time()
     since = float(state.meta("last_reflection_ts") or 0)
-    lines, appeared = material(state, since, now, settings.reflect_max_chars)
+    lines, appeared, shown = material(state, since, now, settings.reflect_max_chars)
     done = {"last_reflection_ts": str(now), "last_reflection_day": datetime.fromtimestamp(now).date().isoformat()}
     if state.agent()["activity"] == "sleeping":
         done["reflected_sleep"] = state.meta("sleep_started")
@@ -126,6 +167,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         state.set_meta(**done)  # a quiet day: nothing to go over
         return None
     firsts = state.firsts_between(since, now)
+    earlier = state.reflections("insight", limit=EARLIER_BELIEFS, by_importance=True)
+    earlier_text = {r["id"]: r["text"] for r in earlier}
     known = {p["name"]: p for p in state.people()}
     names = sorted(appeared | set(known))
     portrait = state.meta("self_portrait")
@@ -138,19 +181,24 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
            if known else "")
         + (("Things that happened for the first time since you last slept:\n"
             + "\n".join(f"- {f['label']}" for f in firsts) + "\n\n") if firsts else "")
-        + "What happened (oldest first):\n" + "\n".join(lines) + "\n\n"
+        + ("What you already believed (cite as i<number> if a new insight builds on or revises one):\n"
+           + "\n".join(f"[i{r['id']}] {r['text']}" for r in earlier) + "\n\n" if earlier else "")
+        + "What happened (oldest first; each line starts with its id):\n" + "\n".join(lines) + "\n\n"
         "Report, all in your own first-person voice:\n"
         "- `summary`: 2-4 sentences: this stretch of time as you'll remember it - what mattered and how it felt, "
         "not a list.\n"
         f"- `insights`: up to {MAX_INSIGHTS} things you've come to understand or believe - about yourself, your work, "
-        "the world or others - each with `importance` 1-10 (10 = will shape you for a long time). Only real ones; "
-        "none is fine. Don't repeat what you already believed unless it changed.\n"
+        "the world or others - each with `importance` 1-10 (10 = will shape you for a long time) and `because`: "
+        "the ids (like e123 or i7) of the lines above it rests on. Only cite what truly shows it; an insight you "
+        "can't point to anything for is only a hunch (leave `because` empty). Only real ones; none is fine, and "
+        "so is a quiet day. Don't repeat what you already believed unless it changed.\n"
         "- `people`: for each person who mattered here, `name` and `notes` (1-3 sentences: who they are to you "
         f"now). Only these names: {', '.join(names) if names else '(nobody came by)'}.\n"
         "- `self`: describe yourself afresh in under 120 words - who you are, what you care about, what you're "
         "working toward - keeping what's still true from last time."
     )
-    insight = {"type": "object", "properties": {"text": {"type": "string"}, "importance": {"type": "integer"}},
+    insight = {"type": "object", "properties": {"text": {"type": "string"}, "importance": {"type": "integer"},
+                                                "because": {"type": "array", "items": {"type": "string"}}},
                "required": ["text"]}
     person = {"type": "object", "properties": {"name": {"type": "string"}, "notes": {"type": "string"}},
               "required": ["name", "notes"]}
@@ -165,16 +213,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
         return None
     summary = clip(out["summary"], 700)
     state.add_reflection("day", summary, 5, since, now)
-    insights = []
-    for i in (out.get("insights") or [])[:MAX_INSIGHTS]:
-        text = clip(i.get("text"), 240) if isinstance(i, dict) else ""
-        if text:
-            try:
-                imp = max(1, min(10, int(i.get("importance") or 5)))
-            except (TypeError, ValueError):
-                imp = 5
-            state.add_reflection("insight", text, imp, since, now)
-            insights.append({"text": text, "importance": imp})
+    insights = await cited_insights(state, settings, gm, out.get("insights"), shown, earlier_text, since, now)
     updated = []
     allowed = {n.lower(): n for n in names}
     for p in out.get("people") or []:
@@ -189,6 +228,58 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None) -
     data = {"summary": summary, "insights": insights, "people": updated, "lines": len(lines)}
     state.log("reflection", **data)
     return data
+
+
+EARLIER_BELIEFS = 8
+HUNCHES_SHOWN = 2
+MAX_CITES = 6
+CITE = re.compile(r"^\s*\[?([ei])\s*#?(\d+)\]?\s*$", re.I)
+
+
+def valid_cites(because, shown: dict, earlier: dict) -> list[tuple[str, int]]:
+    """Keep only citations that point at something Pip was actually shown tonight."""
+    out = []
+    for ref in because if isinstance(because, list) else []:
+        m = CITE.match(str(ref))
+        if not m:
+            continue
+        kind, n = ("event" if m.group(1).lower() == "e" else "reflection"), int(m.group(2))
+        if (n in shown if kind == "event" else n in earlier) and (kind, n) not in out:
+            out.append((kind, n))
+    return out[:MAX_CITES]
+
+
+async def cited_insights(state, settings, gm, raw, shown: dict, earlier: dict, since: float, now: float) -> list[dict]:
+    """Store a night's insights with the evidence they cite. Uncited ones are hunches; the optional support check
+    (one small GM call) demotes claims the cited lines don't show. Nothing is rewritten: history is append-only."""
+    items = []
+    for i in (raw if isinstance(raw, list) else [])[:MAX_INSIGHTS]:
+        text = clip(i.get("text"), 240) if isinstance(i, dict) else ""
+        if not text:
+            continue
+        try:
+            imp = max(1, min(10, int(i.get("importance") or 5)))
+        except (TypeError, ValueError):
+            imp = 5
+        cites = valid_cites(i.get("because"), shown, earlier)
+        items.append({"text": text, "importance": imp, "cites": cites,
+                      "support": "unchecked" if cites else "none", "grounded": bool(cites)})
+    if settings.verify_insights and gm and any(it["cites"] for it in items):
+        asked = [{"index": n, "claim": it["text"],
+                  "evidence": [shown[i] if k == "event" else earlier[i] for k, i in it["cites"]]}
+                 for n, it in enumerate(items) if it["cites"]]
+        for v in (await gm.verify_insights(asked)) or []:
+            n = v.get("index")
+            if isinstance(n, int) and 0 <= n < len(items) and items[n]["cites"] and v.get("verdict") in (
+                    "supported", "partly", "unsupported"):
+                items[n]["support"] = v["verdict"]
+                if v["verdict"] == "unsupported":  # the lines it cites don't show it: keep it, but as a hunch
+                    items[n].update(grounded=False, importance=min(items[n]["importance"], 3))
+    for it in items:
+        state.add_reflection("insight", it["text"], it["importance"], since, now, grounded=it["grounded"],
+                             support=it["support"], cites=it["cites"])
+    return [{"text": it["text"], "importance": it["importance"], "grounded": it["grounded"],
+             "support": it["support"], "cited": len(it["cites"])} for it in items]
 
 
 # --- prompt section -------------------------------------------------------------
@@ -206,18 +297,25 @@ def perception(state, now: float | None = None) -> list[str]:
     if days:
         lines.append("Recent days, as you remember them:")
         lines += [f"- {ago(d['period_end'], now)}: {d['text']}" for d in days]
-    beliefs = state.reflections("insight", limit=5, by_importance=True)
+    beliefs = state.reflections("insight", limit=5, by_importance=True, grounded=True)
     if beliefs:
         lines.append("Things you've come to believe:")
         lines += [f"- {b['text']}" for b in beliefs]
+    hunches = state.reflections("insight", limit=HUNCHES_SHOWN, grounded=False)
+    if hunches:
+        lines.append("Hunches (nothing you can point to yet):")
+        lines += [f"- {h['text']}" for h in hunches]
     return lines
 
 
-def format_recall(hits: list[dict], now: float | None = None) -> str:
+def format_recall(hits: list[dict], now: float | None = None, because: dict | None = None) -> str:
     labels = {"day": "a day you remember", "insight": "something you came to believe", "person": "what you think of them"}
     out = []
     for h in hits:
         src = h["source"]
         label = labels.get(src) or (src.split(":", 1)[1] if src.startswith("note:") else "")
-        out.append(f"- {ago(h['ts'], now)}" + (f" ({label})" if label else "") + f": {clip(h['text'], 260)}")
+        line = f"- {ago(h['ts'], now)}" + (f" ({label})" if label else "") + f": {clip(h['text'], 260)}"
+        if because and because.get((src, str(h.get("ref")))):
+            line += "\n    because: " + "; ".join(clip(t, 140) for t in because[(src, str(h["ref"]))])
+        out.append(line)
     return "\n".join(out)

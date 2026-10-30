@@ -121,6 +121,21 @@ class GameMaster:
             "text": {"type": "string"}, "finding": {"type": "string"}, "reveal": {"type": "integer"},
         }, ["verdict", "text"], "adjudicate")
 
+    async def verify_insights(self, items: list[dict]) -> list[dict] | None:
+        """Does the evidence Pip cited actually support each claim it drew? items: [{index, claim, evidence: [str]}].
+        Returns [{index, verdict}] with verdict supported | partly | unsupported, or None if the check failed."""
+        blocks = []
+        for it in items:
+            blocks.append(f"[{it['index']}] Claim: {it['claim']}\nEvidence:\n" + "\n".join(f"- {e}" for e in it["evidence"]))
+        task = ("Below are claims someone drew about their own life, each with the only evidence they cited. For each, "
+                "judge strictly from that evidence: `supported` (it clearly says this), `partly` (it points that way "
+                "but the claim goes further), or `unsupported` (it does not show this, or contradicts it). Don't "
+                "use outside knowledge and don't be generous.\n\n" + "\n\n".join(blocks))
+        verdict = {"type": "object", "properties": {"index": {"type": "integer"}, "verdict": {
+            "type": "string", "enum": ["supported", "partly", "unsupported"]}}, "required": ["index", "verdict"]}
+        out = await self.ask(task, {"verdicts": {"type": "array", "items": verdict}}, ["verdicts"], "verify_insights")
+        return [v for v in out["verdicts"] if isinstance(v, dict)] if out and isinstance(out.get("verdicts"), list) else None
+
     async def narrate(self, project: str, goal: str, stage: str, materials: list[str], result: str, minutes: int,
                       finished_stage: bool, earlier: list[str] = ()) -> str | None:
         meaning = {

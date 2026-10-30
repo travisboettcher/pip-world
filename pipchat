@@ -441,7 +441,8 @@ def cmd_memory(pip: Pip, a) -> None:
     if m["insights"]:
         print(bold("Beliefs"))
         for i in m["insights"][:a.n]:
-            print(f"  [{i['importance']:>2}] {i['text']}")
+            tag = "" if i.get("grounded", 1) else dim(" (hunch)")
+            print(f"  [{i['importance']:>2}] {i['text']}{tag}" + dim(f"  [{i['support']}]" if i.get("support") not in (None, "legacy") else ""))
     if m["days"]:
         print(bold("Days"))
         for d in reversed(m["days"][:a.n]):
@@ -457,7 +458,8 @@ def cmd_reflect(pip: Pip, a) -> None:
         return
     print(green("Pip reflected: ") + r["summary"])
     for i in r["insights"]:
-        print(f"  [{i['importance']:>2}] {i['text']}")
+        mark = "" if i.get("grounded", True) else dim(" (hunch)")
+        print(f"  [{i['importance']:>2}] {i['text']}{mark}" + dim(f"  [{i['support']}, {i['cited']} cited]" if "support" in i else ""))
     if r["people"]:
         print(dim("  updated notes on: " + ", ".join(r["people"])))
 

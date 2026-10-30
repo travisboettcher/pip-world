@@ -575,7 +575,13 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
     hits = ctx.state.recall(str(args["query"])[:200])
     if not hits:
         return ToolResult("nothing comes to mind", followup=True)
-    return ToolResult("You remember:\n" + mem.format_recall(hits), followup=True)
+    because = {}
+    for h in hits:
+        if h["source"] == "insight":  # show what a belief rests on, so Pip can check it
+            texts = [ctx.state.event_text(i) if k == "event" else ctx.state.reflection_text(i)
+                     for k, i in ctx.state.reflection_cites(int(h["ref"]))]
+            because[("insight", str(h["ref"]))] = [t for t in texts if t][:2]
+    return ToolResult("You remember:\n" + mem.format_recall(hits, because=because), followup=True)
 
 
 @tool("write_letter", "Write a letter to one of your neighbors. It takes a few hours to arrive, and they'll write "

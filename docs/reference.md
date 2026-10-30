@@ -132,3 +132,11 @@ See [DESIGN-self.md](DESIGN-self.md) and [RESEARCH-self.md](RESEARCH-self.md). E
 it is recorded (`facets` table), marked on the event, shown to Pip as plain fact under "New for you", and listed for the
 nightly reflection. Major firsts (first sleep, first visitor, first setback...) can also prompt a diary moment. The engine
 never says what a first means. Existing history was backfilled silently on first start.
+
+## Cited reflections
+The nightly reflection tags every event line with its id and lists Pip's earlier beliefs as `i<number>`. Each new insight
+lists the ids it rests on (`because`); unknown ids are dropped and an insight with nothing cited is a *hunch*, shown to Pip
+apart from its beliefs. A small GM call (`VERIFY_INSIGHTS`) checks that the cited lines support each claim and demotes
+unsupported ones to hunches. `recall` shows the moments behind a belief. Events carry a deterministic importance that
+decides what survives the reflection's character budget. Nothing is rewritten: a revised belief is a new insight that
+cites the old one.

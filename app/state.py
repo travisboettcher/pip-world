@@ -8,7 +8,7 @@ from datetime import date
 
 from .config import Settings
 from . import firsts as firstsmod
-from .memory import RECALL_EVENT_KINDS, STOP_WORDS, recall_text
+from .memory import RECALL_EVENT_KINDS, event_importance, STOP_WORDS, recall_text
 from .text import craft_name
 from .world import KINDS, STARTER_ITEMS, normalize_attrs
 
@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
 );
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS reflection_cites (
+  reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS reflection_cites_by_reflection ON reflection_cites (reflection_id);
 CREATE TABLE IF NOT EXISTS facets (
   key TEXT PRIMARY KEY, label TEXT NOT NULL, tier TEXT NOT NULL, first_event_id INTEGER,
   first_ts REAL NOT NULL, last_ts REAL NOT NULL, count INTEGER NOT NULL DEFAULT 1, shown INTEGER NOT NULL DEFAULT 0
@@ -111,7 +115,7 @@ def clean_sender(name) -> str:
     return " ".join(str(name or "").split())[:40] or "A visitor"
 
 
-FIRSTS_VERSION = "2"  # bump to rebuild facets from the log when firsts.py changes
+FIRSTS_VERSION = "3"  # bump to rebuild facets from the log when firsts.py changes
 SHOWINGS_DONE = 99  # backfilled history is never presented as new
 
 
@@ -139,6 +143,9 @@ class State:
                 ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
                 ("characters", "life", "TEXT NOT NULL DEFAULT '[]'"),
                 ("creations", "given_to", "TEXT"),
+                ("events", "importance", "INTEGER NOT NULL DEFAULT 0"),
+                ("reflections", "grounded", "INTEGER NOT NULL DEFAULT 1"),     # 0 = a hunch: nothing cited / unsupported
+                ("reflections", "support", "TEXT NOT NULL DEFAULT 'legacy'"),  # supported|partly|unsupported|unchecked|none|legacy
                 ("projects", "questions", "TEXT NOT NULL DEFAULT '[]'"),   # open questions (strings)
                 ("projects", "hidden", "TEXT NOT NULL DEFAULT '[]'"),      # [{fact, found}], unseen until discovered
                 ("projects", "findings", "TEXT NOT NULL DEFAULT '[]'"),    # what Pip has learned (strings)
@@ -216,9 +223,10 @@ class State:
                 "INSERT INTO events (ts, kind, data) VALUES (?, ?, ?)",
                 (now, kind, json.dumps(data)),
             )
-            if new := self._note_facets(kind, data, now, cur.lastrowid):
-                self.db.execute("UPDATE events SET data = ? WHERE id = ?",
-                                (json.dumps({**data, "firsts": new}), cur.lastrowid))
+            new = self._note_facets(kind, data, now, cur.lastrowid)
+            self.db.execute("UPDATE events SET data = ?, importance = ? WHERE id = ?",
+                            (json.dumps({**data, "firsts": new} if new else data),
+                             event_importance(kind, data, new), cur.lastrowid))
             if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
                 self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
@@ -246,8 +254,9 @@ class State:
         for row in self.db.execute("SELECT id, ts, kind, data FROM events ORDER BY id").fetchall():
             data = {k: v for k, v in json.loads(row["data"]).items() if k != "firsts"}
             new = self._note_facets(row["kind"], data, row["ts"], row["id"], shown=SHOWINGS_DONE)
-            self.db.execute("UPDATE events SET data = ? WHERE id = ?",
-                            (json.dumps({**data, **({"firsts": new} if new else {})}), row["id"]))
+            self.db.execute("UPDATE events SET data = ?, importance = ? WHERE id = ?",
+                            (json.dumps({**data, **({"firsts": new} if new else {})}),
+                             event_importance(row["kind"], data, new), row["id"]))
         self.set_meta(firsts_v=FIRSTS_VERSION)
 
     def recent_firsts(self, max_age_hours: float, showings: int, limit: int, now: float | None = None) -> list[dict]:
@@ -753,24 +762,51 @@ class State:
             self.db.commit()
 
     # --- long-term memory: reflections, people, recall ---------------------------
-    def add_reflection(self, kind: str, text: str, importance: int, period_start: float, period_end: float) -> int:
+    def add_reflection(self, kind: str, text: str, importance: int, period_start: float, period_end: float,
+                       grounded: bool = True, support: str = "legacy", cites=()) -> int:
+        """Store a reflection. `cites` is [(ref_kind, ref_id)], ref_kind 'event' or 'reflection'."""
         now = time.time()
         with self.lock:
-            cur = self.db.execute("INSERT INTO reflections (ts, kind, text, importance, period_start, period_end) "
-                                  "VALUES (?, ?, ?, ?, ?, ?)", (now, kind, text, importance, period_start, period_end))
+            cur = self.db.execute("INSERT INTO reflections (ts, kind, text, importance, period_start, period_end, "
+                                  "grounded, support) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (now, kind, text, importance, period_start, period_end, int(grounded), support))
+            self.db.executemany("INSERT INTO reflection_cites VALUES (?, ?, ?)",
+                                [(cur.lastrowid, k, i) for k, i in cites])
             self._index(kind, cur.lastrowid, period_end, text, commit=False)
             self.db.commit()
             return cur.lastrowid
 
-    def reflections(self, kind: str | None = None, limit: int = 20, by_importance: bool = False) -> list[dict]:
-        """Newest first, or most important first (newest breaking ties)."""
-        q, args = "SELECT * FROM reflections", []
+    def reflections(self, kind: str | None = None, limit: int = 20, by_importance: bool = False,
+                    grounded: bool | None = None) -> list[dict]:
+        """Newest first, or most important first (newest breaking ties). `grounded` filters beliefs from hunches."""
+        q, args, where = "SELECT * FROM reflections", [], []
         if kind:
-            q += " WHERE kind = ?"
+            where.append("kind = ?")
             args.append(kind)
+        if grounded is not None:
+            where.append("grounded = ?")
+            args.append(int(grounded))
+        if where:
+            q += " WHERE " + " AND ".join(where)
         q += " ORDER BY " + ("importance DESC, id DESC" if by_importance else "id DESC") + " LIMIT ?"
         with self.lock:
             return [dict(r) for r in self.db.execute(q, (*args, limit))]
+
+    def reflection_cites(self, reflection_id: int) -> list[tuple[str, int]]:
+        with self.lock:
+            return [(r["ref_kind"], r["ref_id"]) for r in self.db.execute(
+                "SELECT ref_kind, ref_id FROM reflection_cites WHERE reflection_id = ?", (reflection_id,))]
+
+    def event_text(self, event_id: int) -> str | None:
+        """What an event said, as Pip would remember it (the text recall indexes), or None."""
+        with self.lock:
+            row = self.db.execute("SELECT kind, data FROM events WHERE id = ?", (event_id,)).fetchone()
+        return recall_text(row["kind"], json.loads(row["data"])) if row else None
+
+    def reflection_text(self, reflection_id: int) -> str | None:
+        with self.lock:
+            row = self.db.execute("SELECT text FROM reflections WHERE id = ?", (reflection_id,)).fetchone()
+        return row["text"] if row else None
 
     def people(self) -> list[dict]:
         """Everyone Pip has notes on, most recently seen first."""

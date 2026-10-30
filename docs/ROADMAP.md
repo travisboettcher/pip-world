@@ -152,8 +152,10 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
 ### Introspection and a sense of self
 - [x] Engine-detected firsts: facets computed from the log, shown as facts (DESIGN-self.md; sources in RESEARCH-self.md);
       the thought stays Pip's
-- [ ] Cited reflections (designed, not built): ids in the material, insights cite evidence, validation + support check,
-      hunches block, `recall` evidence, event importance
+- [x] Cited reflections: ids in the material, insights cite evidence, validation + nightly support check, hunches
+      block, `recall` shows the evidence, deterministic event importance decides what survives the budget
+- [ ] Next from RESEARCH-self.md: versioned self-portrait with diffs and dated recall, expectations/surprise,
+      turning-point detector, capabilities table, a night pass that can change goals
 - [x] World/Pip age and time of day in perception (sleep work: "day N of your life here"; first sleep/wake as facts)
 - [ ] Self-portrait diffs at reflection time: what changed since the last one
 - [ ] Rare open question prompts, not scripted performances
@@ -171,6 +173,10 @@ Not scheduled; each needs a DESIGN doc first. Prior art noted where it applies (
       MemGPT/Letta-style self-editing core memory, CoALA-style memory taxonomy. Introspection research (Lindsey 2026,
       Introspect-Bench) says model self-reports are limited and unreliable, so ground Pip's self-model in logged
       facts, not in its claims about its own internals
+
+### Writing and drawing (idea, 2026-10-30)
+- [ ] Give Pip tools to write and draw: interact with visual media (a page/canvas it can compose on, that visitors can
+      see in the web UI and that becomes something it made and can look back at). Not designed yet.
 
 ## Backlog / known issues
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged

@@ -1,6 +1,6 @@
 # Design: firsts and cited reflections (the start of a sense of self)
 
-Status: **firsts (1) built; cited reflections (2) designed, not built.** Sources and rationale: [RESEARCH-self.md](RESEARCH-self.md) (mechanisms 1 and 2).
+Status: **both built** (firsts 2026-10-30; cited reflections 2026-10-30). Sources and rationale: [RESEARCH-self.md](RESEARCH-self.md) (mechanisms 1 and 2).
 Rule throughout: the engine records **facts** and creates the **occasion**; Pip writes the sentence. No mood words, no
 scripted reactions, and nothing here claims Pip is conscious: these are records and models.
 

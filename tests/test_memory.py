@@ -188,3 +188,113 @@ def test_legacy_gift_messages_are_not_indexed_twice(tmp_path):
     assert [h["text"] for h in st.recall("needle file")] == ["Morgan gave you 1 x tiny needle file"]
     st.set_meta(recall_indexed="1")
     assert len(State(s).recall("needle file")) == 1  # an old index is rebuilt on start, without the duplicate
+
+
+# --- cited reflections (DESIGN-self.md, mechanism 2) ---------------------------------------
+def eid(st, kind="inbox"):
+    return [e["id"] for e in st.events(50) if e["kind"] == kind][0]
+
+
+def verdicts(*pairs):
+    return report(verdicts=[{"index": i, "verdict": v} for i, v in pairs])
+
+
+def test_event_importance_is_deterministic_and_firsts_add_weight(tmp_path):
+    from app.memory import event_importance as imp
+    assert imp("tick", {}) == 0 and imp("tool", {"tool": "set_activity"}) == 1
+    assert imp("inbox", {}) == 6 and imp("work", {"result": "good", "project_done": True}) == 7
+    assert imp("inbox", {}, [{"tier": "major"}]) == 9 and imp("tool", {"tool": "plant"}, [{"tier": "minor"}]) == 2
+    assert imp("creation_made", {}, [{"tier": "major"}]) == 10  # clamped
+    s, st, *_ = make(tmp_path)
+    visit(st, "hi")
+    ev = st.events(5)[0]
+    assert ev["importance"] == 9 and ev["data"]["firsts"]  # a visitor, and the first one ever
+
+
+def test_material_tags_ids_and_keeps_what_matters_when_over_budget(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.log("tool", tool="note_to_self", args={"section": "todo", "text": "tidy"}, result="wrote in todo")  # importance 2
+    visit(st, "I brought you a present and a long story to go with it")
+    for n in range(6):  # newer, routine
+        st.log("tool", tool="note_to_self", args={"section": "todo", "text": f"routine thing number {n}"}, result="wrote in todo")
+    lines, people, shown = mem.material(st, 0, time.time() + 1, 400)
+    visit_id = eid(st)
+    assert any(l.startswith(f"[e{visit_id} ") and "present" in l for l in lines)        # the visit survived the budget
+    assert set(shown) == {int(l.split()[0][2:]) for l in lines} and shown[visit_id].startswith("Morgan said to you")
+    assert [int(l.split()[0][2:]) for l in lines] == sorted(shown)                       # shown in time order
+    assert "(first: " in "\n".join(mem.material(st, 0, time.time() + 1, 12000)[0])       # firsts annotate the line
+
+
+@pytest.mark.asyncio
+async def test_validation_hunches_and_the_support_check(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    visit(st, "I like your clock")
+    v = eid(st)
+    ref = dict(summary="A visit.", people=[], **{"self": "Pip."}, insights=[
+        {"text": "People like my work.", "importance": 7, "because": [f"e{v}", "e99999", "junk", f"e{v}"]},
+        {"text": "I might be getting better.", "importance": 5, "because": []},
+        {"text": "I am the best maker alive.", "importance": 9, "because": [f"e{v}"]},
+    ])
+    gm.queue(report(**ref), verdicts((0, "supported"), (2, "unsupported")))
+    d = await agent.reflect()
+    rows = {r["text"]: r for r in st.reflections("insight")}
+    a, b, c = rows["People like my work."], rows["I might be getting better."], rows["I am the best maker alive."]
+    assert st.reflection_cites(a["id"]) == [("event", v)]                       # junk and unknown ids dropped, deduped
+    assert (a["grounded"], a["support"]) == (1, "supported") and a["importance"] == 7
+    assert (b["grounded"], b["support"], st.reflection_cites(b["id"])) == (0, "none", [])
+    assert (c["grounded"], c["support"], c["importance"]) == (0, "unsupported", 3)   # demoted, not deleted
+    check = gm.calls[1]["messages"][0]["content"]
+    assert "Claim: People like my work." in check and "I like your clock" in check and "[1]" not in check
+    assert [i["support"] for i in d["insights"]] == ["supported", "none", "unsupported"]
+
+
+@pytest.mark.asyncio
+async def test_support_check_can_be_off_or_fail_without_losing_insights(tmp_path):
+    for verify, script in ((False, [None]), (True, [LLMResponse("no", [], Usage(1, 1))])):
+        sub = tmp_path / str(verify)
+        sub.mkdir()
+        s, st, gm, agent = make(sub, verify_insights=verify)
+        visit(st, "hello")
+        v = eid(st)
+        ref = dict(summary="A visit.", people=[], **{"self": "Pip."},
+                   insights=[{"text": "Visitors matter.", "importance": 6, "because": [f"e{v}"]}])
+        gm.queue(report(**ref), *[x for x in script if x])
+        await agent.reflect()
+        (r,) = st.reflections("insight")
+        assert (r["grounded"], r["support"]) == (1, "unchecked")                  # kept, just not checked
+        assert len(gm.calls) == (1 if not verify else 2)
+
+
+@pytest.mark.asyncio
+async def test_later_insights_can_build_on_earlier_ones_by_id(tmp_path):
+    s, st, gm, agent = make(tmp_path, verify_insights=False)
+    visit(st, "first visit")
+    gm.queue(report(summary="Day one.", people=[], **{"self": "Pip."},
+                    insights=[{"text": "Visitors bring what I need.", "importance": 8, "because": [f"e{eid(st)}"]}]))
+    await agent.reflect()
+    (old,) = st.reflections("insight")
+    visit(st, "second visit")
+    gm.queue(report(summary="Day two.", people=[], **{"self": "Pip."},
+                    insights=[{"text": "Morgan always comes through.", "importance": 7, "because": [f"i{old['id']}", f"e{eid(st)}"]}]))
+    await agent.reflect()
+    task = gm.calls[1]["messages"][0]["content"]
+    assert f"[i{old['id']}] Visitors bring what I need." in task
+    new = st.reflections("insight", limit=1)[0]
+    assert ("reflection", old["id"]) in st.reflection_cites(new["id"]) and len(st.reflection_cites(new["id"])) == 2
+
+
+@pytest.mark.asyncio
+async def test_hunches_are_shown_apart_from_beliefs_and_recall_shows_the_evidence(tmp_path):
+    s, st, gm, agent = make(tmp_path, verify_insights=False)
+    visit(st, "I really love the escapement you made")
+    ref = dict(summary="A visit.", people=[], **{"self": "Pip."}, insights=[
+        {"text": "Compliments follow careful escapements.", "importance": 8, "because": [f"e{eid(st)}"]},
+        {"text": "Maybe the garden likes me.", "importance": 5}])
+    gm.queue(report(**ref))
+    await agent.reflect()
+    p = agent._perception("timer", [])
+    belief = p.split("Things you've come to believe:\n")[1].split("\n")[0]
+    assert belief == "- Compliments follow careful escapements."
+    assert "Hunches (nothing you can point to yet):\n- Maybe the garden likes me." in p
+    r = await call(agent, "recall", query="escapements")
+    assert "Compliments follow careful escapements." in r.text and "because: Morgan said to you: I really love the escapement" in r.text

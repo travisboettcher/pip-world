@@ -39,6 +39,7 @@ class Settings:
     max_active_projects: int = 3
     companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
     reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs (fallback when it hasn't slept)
+    verify_insights: bool = True       # one small GM call a night checks that insights follow from what they cite
     firsts_max_age_hours: float = 24   # a first older than this is no longer offered as new
     firsts_showings: int = 3           # how many ticks a first is shown
     firsts_shown: int = 5              # most firsts listed at once
@@ -92,6 +93,7 @@ class Settings:
             max_active_projects=_int("MAX_ACTIVE_PROJECTS", 3),
             companion_replies_per_hour=_int("COMPANION_REPLIES_PER_HOUR", 4),
             reflect_hour=_int("REFLECT_HOUR", 3),
+            verify_insights=(e("VERIFY_INSIGHTS") or "1") not in ("0", "false", "no"),
             firsts_max_age_hours=_float("FIRSTS_MAX_AGE_HOURS", 24),
             firsts_showings=_int("FIRSTS_SHOWINGS", 3),
             firsts_shown=_int("FIRSTS_SHOWN", 5),
