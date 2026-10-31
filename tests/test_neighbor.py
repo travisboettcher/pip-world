@@ -171,3 +171,86 @@ async def test_visiting_the_neighbor_in_person(tmp_path):
     await agent.finish_work()
     await nb.step(st, s, agent.gm, FixedRng(), time.time())
     assert st.characters("neighbor")[0]["heard"] == [] and len(gm.calls) == 3  # left before she answered
+
+
+async def _visit(agent, st, s):
+    await call(agent, "go_to", place="Marigold")
+    time.sleep(0.01)
+    await agent.finish_work()
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())  # greeting
+
+
+@pytest.mark.asyncio
+async def test_setting_off_from_her_home_ends_the_conversation(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="A low cottage."), report(text="Pip! Come in.")], work_speed=1e6)
+    neighbor(st, s)
+    await _visit(agent, st, s)
+    await call(agent, "say", text="bye!", to="Marigold")
+    await call(agent, "go_to", place="home")  # still walking: the cottage is behind Pip
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False
+    assert st.characters("neighbor")[0]["heard"] == [] and len(gm.calls) == 2  # she doesn't call after Pip down the path
+    r = await call(agent, "say", text="thanks again!", to="Marigold")
+    assert "Marigold can't hear you from here" in r.text and st.characters("neighbor")[0]["heard"] == []
+    assert "You're visiting Marigold" not in agent._perception("timer", [])
+
+
+@pytest.mark.asyncio
+async def test_pip_is_told_she_hasnt_answered_yet(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="A low cottage."), report(text="Pip! Come in.")], work_speed=1e6)
+    neighbor(st, s)
+    await _visit(agent, st, s)
+    hint = "Marigold hasn't answered yet: give them a moment, no need to say it again."
+    assert hint not in agent._perception("timer", [])
+    await call(agent, "say", text="How are the bees?", to="Marigold")
+    assert hint in agent._perception("timer", [])
+
+
+@pytest.mark.asyncio
+async def test_a_visit_is_remembered_against_open_todos(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="A low cottage."), report(text="Pip! Come in.")], work_speed=1e6)
+    neighbor(st, s)
+    st.add_memory("Walk over to Marigold for some beeswax", section="todo")
+    st.add_memory("Plant the sunflower seeds", section="todo")
+    assert "you've since visited" not in agent._perception("timer", [])
+    await _visit(agent, st, s)
+    await call(agent, "go_to", place="home")
+    time.sleep(0.01)
+    await agent.finish_work()
+    p = agent._perception("timer", [])
+    assert ("Walk over to Marigold for some beeswax  [you've since visited Marigold - is this done? "
+            "resolve_note it, or edit_note it down to what's left]") in p
+    assert "Plant the sunflower seeds  [" not in p
+    assert "- Marigold: Lives past the hedge; keeps bees. (you last visited just now)" in p
+
+
+def _arrived(st, place, ts):
+    st.log("arrived", place=place, label=place, first_time=False, description="")
+    st.db.execute("UPDATE facets SET last_ts = ? WHERE key = ?", (ts, f"place:{place}"))
+
+
+def test_the_neighbor_line_says_how_long_since_the_last_visit(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    st.add_character("Bramble", "neighbor", None, "A hedgehog.", 60, time.time() + 99 * HOUR, about="Bakes.")
+    now = time.time()
+    _arrived(st, "Marigold's home", now - 2 * HOUR)
+    lines = nb.perception(st, now + 3 * HOUR)
+    assert "- Marigold: Lives past the hedge; keeps bees. (you last visited 5 hours ago)" in lines
+    assert "- Bramble: Bakes." in lines  # never visited: nothing added
+
+
+def test_a_todo_is_flagged_only_for_visits_after_it_was_written(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    st.add_character("Bramble", "neighbor", None, "A hedgehog.", 60, time.time() + 99 * HOUR, about="Bakes.")
+    both = st.add_memory("Take honey from Marigold over to Bramble", section="todo")
+    ts = st.memories("todo")[0]["ts"]
+    _arrived(st, "Marigold's home", ts)  # the same moment: not since
+    _arrived(st, "Bramble's home", ts + 1)
+    p = agent._perception("timer", [])
+    assert f"- #{both} Take honey from Marigold over to Bramble  [you've since visited Bramble - is this done?" in p
+    _arrived(st, "Marigold's home", ts + 2)
+    p = agent._perception("timer", [])
+    assert "[you've since visited Marigold, Bramble - is this done?" in p
+    st.add_memory("Plant the sunflower seeds", section="todo")
+    assert "Plant the sunflower seeds\nYour wishlist (open):" in agent._perception("timer", [])

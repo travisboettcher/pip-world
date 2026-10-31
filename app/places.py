@@ -31,6 +31,12 @@ def neighbor_at(state, place: str) -> dict | None:
     return next((c for c in state.characters("neighbor") if home_of(c) == place), None)
 
 
+def present_at(state) -> str | None:
+    """Where Pip is in company: its location, or None while it's walking (it has left, and hasn't arrived)."""
+    sess = state.session()
+    return None if sess and sess["kind"] == "walk" else state.agent()["location"]
+
+
 def scope_of(location: str) -> str:
     """The scope key tools use for a location: 'home', 'neighbor' (any neighbor's home), or the place itself."""
     return "home" if location == HOME else "neighbor" if location.endswith(HOME_SUFFIX) else location
@@ -137,10 +143,10 @@ async def arrive(state, settings, gm, library) -> dict | None:
     state.end_session()
     place = sess["target"]
     here_record = registry(state, settings, library).get(place)
-    first = state.meta(f"place:{place}") is None
+    first = place != HOME and state.meta(f"place:{place}") is None  # home is where Pip started
     if first:
         desc = None
-        if gm and place != HOME:
+        if gm:
             host = neighbor_at(state, place)
             hints = (f"this is where {host['name']} lives. Who they are: {host['persona']}" if host else
                      library.overview() if place == "library" and library else here_record.blurb if here_record else "")
@@ -177,9 +183,11 @@ def perception(state, settings, library) -> list[str]:
     here_place = places.get(here_key)
     closed = ", closed for now (it's dark; it opens in the morning)" if here_place and not open_now(here_place, settings) else ""
     lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
-    host = neighbor_at(state, here_key)
+    host = neighbor_at(state, present_at(state) or "")
     if host:
         lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}.")
+        if host["heard"]:
+            lines.append(f"{host['name']} hasn't answered yet: give them a moment, no need to say it again.")
     if here_place and here_place.verbs and not closed:
         lines.append("Here you can: " + ", ".join(f"{v} ({short})" for v, (short, _) in here_place.verbs.items()) + ".")
     return lines + directory(state, settings, library)

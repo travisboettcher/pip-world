@@ -324,6 +324,12 @@ class State:
                              event_importance(row["kind"], data, new), row["id"]))
         self.set_meta(firsts_v=FIRSTS_VERSION)
 
+    def last_arrived(self, place: str) -> float | None:
+        """When Pip last arrived at a place (from the facet count), or None if it never has."""
+        with self.lock:
+            row = self.db.execute("SELECT last_ts FROM facets WHERE key = ?", (f"place:{place}",)).fetchone()
+        return row["last_ts"] if row else None
+
     def recent_firsts(self, max_age_hours: float, showings: int, limit: int, now: float | None = None) -> list[dict]:
         """Firsts young enough and not yet shown enough times; majors first, then newest."""
         now = now or time.time()

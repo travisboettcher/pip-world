@@ -217,3 +217,14 @@ def test_wild_places_can_be_switched_off(tmp_path):
     (tmp_path / "x").mkdir()
     s2, st2, *_ = make(tmp_path / "x", wild_places=[])
     assert list(P.registry(st2, s2, None)) == ["workshop"]
+
+
+@pytest.mark.asyncio
+async def test_getting_home_is_never_a_first_visit(tmp_path):
+    s, st, gm, agent = setup(tmp_path, [report(text="Heaps of rusted things.")], where="junkyard")
+    await call(agent, "go_to", place="home")
+    time.sleep(0.05)
+    await agent.finish_work()
+    (arrived,) = st.events(1)
+    assert arrived["data"] == {"place": "workshop", "label": "home", "first_time": False, "description": ""}
+    assert gm.calls == []

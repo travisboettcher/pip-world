@@ -136,7 +136,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
 
 async def _visits(state, settings, gm, now: float) -> bool:
     """In person: a neighbor greets Pip once per visit and answers what Pip says (capped per hour)."""
-    here = state.agent()["location"]
+    here = places.present_at(state)
     wake = False
     for ch in state.characters("neighbor"):
         if here != places.home_of(ch):
@@ -176,7 +176,9 @@ def perception(state, now: float | None = None) -> list[str]:
     if not neighbors:
         return []
     lines = ["Your neighbors (they live nearby: visit them with go_to, or write with write_letter):"]
-    lines += [f"- {c['name']}: {c['about']}" for c in neighbors]
+    for c in neighbors:
+        visited = state.last_arrived(places.home_of(c))
+        lines.append(f"- {c['name']}: {c['about']}" + (f" (you last visited {ago(visited, now)})" if visited else ""))
     for lt in state.letters(undelivered=True, limit=20):
         if lt["sender"] == PIP:
             lines.append(f"- your letter to {lt['recipient']} (sent {ago(lt['ts'], now)}) is on its way")

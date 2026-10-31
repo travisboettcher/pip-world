@@ -53,6 +53,13 @@ home is a place, "<Name>'s home":
   and reflection see the conversation, and later letters remember it.
 - Neighbors don't move: they're told Pip may visit them but they don't go out visiting. Things Pip says to them
   while not there get "write_letter, or go_to their home to visit"; anything unanswered is dropped when Pip leaves.
+  Pip leaves when it *sets off*, not when it arrives elsewhere: on the walk home it can't be heard and gets no answers
+  (the first real visit, 2026-10-31, had Pip and the neighbor trading goodbyes all the way down the path).
+- While the neighbor hasn't answered yet, Pip is told so ("give them a moment"): replies take a GM call, and Pip
+  otherwise asked the same question three times in a minute.
+- A visit is remembered: the neighbor line says when Pip last visited, and an open to-do naming the neighbor that was
+  written before the latest visit gets "[you've since visited X - is this done? ...]" (like the wishlist's "you've since
+  received"). Without it the visit scrolled out of recent events and Pip did the same "walk over to X" to-do again.
 - Work and gardening still need Pip at home.
 
 ## Variety

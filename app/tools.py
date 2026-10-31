@@ -196,7 +196,7 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
-        if ch and ch["kind"] == "neighbor" and ctx.state.agent()["location"] != places.home_of(ch):
+        if ch and ch["kind"] == "neighbor" and places.present_at(ctx.state) != places.home_of(ch):
             return ToolResult(f"{ch['name']} can't hear you from here; write_letter, or go_to their home to visit",
                               followup=True)
         if ch:

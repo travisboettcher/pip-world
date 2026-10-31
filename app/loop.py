@@ -501,6 +501,17 @@ class Agent:
             note = (f"  [you've since received: {', '.join(got)} - is this wish met? resolve_note it, or "
                     "edit_note it down to what's still missing]") if got else ""
             return fmt(m) + note
+
+        visits = [(c["name"], ts) for c in self.state.characters("neighbor")
+                  if (ts := self.state.last_arrived(places.home_of(c)))]
+
+        def fmt_todo(m):
+            # a neighbor visited since the to-do was written: the visit may have been the to-do
+            since = m["edited_at"] or m["ts"]
+            went = [name for name, ts in visits if ts > since and State.related(name, m["text"])]
+            note = (f"  [you've since visited {', '.join(went)} - is this done? resolve_note it, or edit_note it down "
+                    "to what's left]") if went else ""
+            return fmt(m) + note
         lines: list[str] = []
         diary = self.state.memories("diary", limit=DIARY_SHOWN)
         lines += ["Your diary (latest entries):"] + [fmt(m) for m in diary] if diary else ["Your diary is empty."]
@@ -510,7 +521,7 @@ class Agent:
             ("ambitions", "Your ambitions (open)", "none yet - what would you like to achieve?"),
         ):
             items = self.state.memories(section, status="open", limit=LIST_SHOWN)
-            show = fmt_wish if section == "wishlist" else fmt
+            show = {"wishlist": fmt_wish, "todo": fmt_todo}.get(section, fmt)
             lines += [f"{label}:"] + ([show(m) for m in items] if items else [f"- ({hint})"])
         learned = self.state.memories("learned", limit=LEARNED_SHOWN)
         if learned:
