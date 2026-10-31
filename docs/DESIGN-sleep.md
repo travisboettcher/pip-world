@@ -7,9 +7,12 @@ fixed hour whether or not Pip was ever "asleep". This adds a day/night rhythm an
 - **Time of day** (local clock): morning / afternoon / evening / night, plus "day N of your life here" in the
   perception. Night is `BEDTIME_HOUR` (22) to `WAKE_HOUR` (6). Pip sees words, not clock time (a clock it makes
   can tell it the time).
-- **`sleep` tool**: at night, at home, Pip can go to bed. It sleeps until the next `WAKE_HOUR`. Sleeping stops any
+- **`sleep` tool**: at home, Pip can go to bed **whenever it likes** (changed 2026-10-31: it was night-only, and on its first day Pip tried
+  six times in the evening and was refused each time). It sleeps until the next `WAKE_HOUR`. Sleeping stops any
   work session, recovers energy faster (`SLEEP_RECOVER_PER_HOUR`) and slows hunger (half rate). Pip is never forced:
-  if it stays up, the perception just says it's night and it can go to bed.
+  if it stays up, the perception just says it's night and it can go to bed. By day the perception gives the *usual* bedtime ("You usually go
+  to bed around 10 pm, but you can sleep whenever you like") instead of a gate; Pip's energy, which it already sees, is what should steer it. No rule
+  forces or forbids an early night. Naps are `rest(minutes)`.
 - **No ticks while asleep.** The heartbeat sleeps until wake time, which also saves roughly a third of the token
   spend. Alerts, ripe crops, creations and the neighbor's letters do **not** wake Pip; they are there in the
   morning. A visitor's message or gift, or `POST /tick`, wakes it early (it's told so, and can go back to bed).

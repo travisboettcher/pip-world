@@ -29,17 +29,14 @@ def test_night_period_and_next_wake():
 
 
 @pytest.mark.asyncio
-async def test_sleep_tool_only_at_night_and_at_home(tmp_path):
+async def test_sleep_tool_works_any_time_but_only_at_home(tmp_path):
     s, st, gm, agent = make(tmp_path, sleep=True)
     s.bedtime_hour, s.wake_hour = (datetime.now().hour + 3) % 24, (datetime.now().hour + 8) % 24  # it's daytime
-    r = await call(agent, "sleep")
-    assert "not time for bed" in r.text and st.agent()["activity"] != "sleeping"
-    night_now(s)
     st.update_agent(location="library")
-    assert "go_to home first" in (await call(agent, "sleep")).text
+    assert "go_to home first" in (await call(agent, "sleep")).text and st.agent()["activity"] != "sleeping"
     st.update_agent(location="workshop")
-    r = await call(agent, "sleep")
-    assert "fall asleep" in r.text
+    r = await call(agent, "sleep")                    # no "not time for bed": Pip may go whenever it likes
+    assert "fall asleep" in r.text and "not time for bed" not in r.text
     a = st.agent()
     assert a["activity"] == "sleeping" and float(st.meta("sleep_until")) > time.time()
     assert "already asleep" in (await call(agent, "sleep")).text
@@ -117,4 +114,87 @@ def test_perception_gives_period_day_and_a_bed_hint(tmp_path):
     assert "It is night; day 1 of your life here. You can go to bed (sleep)" in p
     s.bedtime_hour, s.wake_hour = (datetime.now().hour + 3) % 24, (datetime.now().hour + 8) % 24
     p = agent._perception("timer", [])
-    assert "It is " in p and "go to bed" not in p
+    usual = datetime(2000, 1, 1, s.bedtime_hour).strftime("%-I %p").lower()
+    assert "It is " in p and f"You usually go to bed around {usual}" in p
+    assert "sleep" in p and "whenever" in p           # sleeping isn't forbidden by day, just not the habit
+
+
+# --- boundaries of the pure rules ------------------------------------------------
+def test_night_window_edges_and_degenerate_settings():
+    same = Settings(bedtime_hour=6, wake_hour=6)
+    assert not any(sl.is_night(same, at(h)) for h in range(24))               # no night at all
+    early = Settings(bedtime_hour=1, wake_hour=5)                              # a window that doesn't wrap midnight
+    assert [sl.is_night(early, at(h)) for h in (0, 1, 4, 5)] == [False, True, True, False]
+
+
+def test_period_edges():
+    s = Settings(bedtime_hour=22, wake_hour=6)
+    assert [sl.period(s, at(h)) for h in (11, 12, 16, 17)] == ["morning", "afternoon", "afternoon", "evening"]
+
+
+def test_next_wake_is_on_the_hour_and_strictly_in_the_future():
+    s = Settings(bedtime_hour=22, wake_hour=6)
+    mid = datetime(2026, 11, 2, 23, 15, 42, 500).timestamp()
+    assert sl.next_wake(s, mid) == datetime(2026, 11, 3, 6).timestamp()        # no stray seconds
+    exactly = datetime(2026, 11, 2, 6).timestamp()
+    assert sl.next_wake(s, exactly) == datetime(2026, 11, 3, 6).timestamp()    # at the wake hour: tomorrow's
+
+
+def test_day_number_counts_from_birth(tmp_path):
+    s, st, *_ = make(tmp_path, sleep=True)
+    st.set_meta(born_at=1000.0)
+    assert [sl.day_number(st, 1000.0 + x) for x in (-500, 0, 86399, 86400, 86400 * 3 + 5)] == [1, 1, 1, 2, 4]
+
+
+def test_fall_asleep_records_the_night(tmp_path):
+    s, st, *_ = make(tmp_path, sleep=True)
+    now = at(23)
+    r = sl.fall_asleep(st, s, now)
+    a = st.agent()
+    assert r == {"until": sl.next_wake(s, now)}
+    assert (a["activity"], a["description"]) == ("sleeping", "asleep")
+    assert float(st.meta("sleep_started")) == now and float(st.meta("sleep_until")) == r["until"]
+    t0 = time.time()
+    sl.fall_asleep(st, s)                                                      # no time given: now
+    assert float(st.meta("sleep_started")) >= t0
+
+
+def test_wake_up_reports_hours_and_clears_the_bed(tmp_path):
+    s, st, *_ = make(tmp_path, sleep=True)
+    assert sl.wake_up(st, at(6)) is None                                       # not asleep: nothing happens
+    st.update_agent(activity="sleeping", description="asleep")
+    st.set_meta(sleep_started=1000.0, sleep_until=1000.0 + 8 * 3600)
+    assert sl.wake_up(st, 1000.0 + 7.74 * 3600) == {"hours": 7.7, "early": True}
+    a = st.agent()
+    assert (a["activity"], a["description"]) == ("idle", "") and st.meta("sleep_until") == "0"
+    logged = [e["data"] for e in st.events(5) if e["kind"] == "woke"]
+    assert [(d["hours"], d["early"]) for d in logged] == [(7.7, True)]
+    for now, early in ((1000.0 + 8 * 3600 - 61, True), (1000.0 + 8 * 3600 - 60, False), (1000.0 + 8 * 3600, False)):
+        st.update_agent(activity="sleeping")
+        st.set_meta(sleep_started=1000.0, sleep_until=1000.0 + 8 * 3600)
+        assert sl.wake_up(st, now)["early"] is early                           # a minute's grace
+    st.update_agent(activity="sleeping")
+    st.set_meta(sleep_started=1000.0, sleep_until=1000.0 + 8 * 3600)
+    assert sl.wake_up(st, 1000.0 + 7 * 3600)["hours"] == 7.0
+
+
+def test_woke_text_wording():
+    assert sl.woke_text({"hours": 7.0, "early": False}) == "you woke after about 7 hours of sleep"
+    assert sl.woke_text({"hours": 2.5, "early": True}) == ("you woke after about 2.5 hours of sleep; "
+                                                           "you were woken early; you can go back to sleep")
+
+
+def test_usual_bedtime_wording(tmp_path):
+    s, st, *_ = make(tmp_path, sleep=True)
+    st.set_meta(born_at=at(0))
+    for bed, words in ((22, "10 pm"), (9, "9 am"), (0, "12 am"), (13, "1 pm")):
+        s.bedtime_hour, s.wake_hour = bed, (bed + 8) % 24
+        day = next(h for h in range(24) if not sl.is_night(s, at(h)))
+        assert sl.perception(st, s, at(day)) == [
+            f"It is {sl.period(s, at(day))}; day 1 of your life here. You usually go to bed around {words}, "
+            "but you can sleep whenever you like (you'd wake in the morning)."]
+
+
+def test_perception_is_empty_when_sleep_is_off(tmp_path):
+    s, st, *_ = make(tmp_path, sleep=False)
+    assert sl.perception(st, s, at(12)) == []

@@ -59,6 +59,9 @@ def perception(state, settings, now: float) -> list[str]:
     line = f"It is {period(settings, now)}; day {day_number(state, now)} of your life here."
     if is_night(settings, now):
         line += " You can go to bed (sleep); you'll wake in the morning."
+    else:
+        usual = datetime(2000, 1, 1, settings.bedtime_hour).strftime("%-I %p").lower()
+        line += f" You usually go to bed around {usual}, but you can sleep whenever you like (you'd wake in the morning)."
     return [line]
 
 

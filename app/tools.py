@@ -279,16 +279,13 @@ async def rest(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("sleep",
-      "Go to bed for the night (only when it's night, and at home). You sleep until morning, recover more than "
-      "resting, and your day settles into memory while you sleep. A visitor can still wake you.",
+      "Go to bed (at home, whenever you like; the usual bedtime is in your surroundings). You sleep until morning, "
+      "recover more than resting, and your day settles into memory while you sleep. A visitor can still wake you.",
       _obj({}, []), where="home")
 async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
     now = time.time()
     if sleepmod.asleep(ctx.state):
         return ToolResult("you're already asleep")
-    if not sleepmod.is_night(ctx.settings, now):
-        return ToolResult(f"it's {sleepmod.period(ctx.settings, now)}, not time for bed; rest if you're tired",
-                          followup=True)
     sess = ctx.state.session()
     if sess and sess["kind"] == "walk":
         return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can sleep once you get there")
@@ -513,24 +510,24 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
         if p["questions"]:
             return ToolResult(f"you've done everything you know to do on {p['name']}. Still open: "
                               + "; ".join(p["questions"]) + ". Try an experiment, or learn more and revise_plan.",
-    used_up = ""
                               followup=True)
         return ToolResult(f"{p['name']} is already finished", followup=True)
     stage = p["stages"][i]
+    used_up = ""
     if not stage["started"]:
-        built_in = proj.mentioned_materials(st, stage)
         take, missing = proj.missing_materials(st, stage)
         if missing:
             return ToolResult(f"can't start {describe_stage(p, i)} yet: it needs {', '.join(missing)}", followup=True)
-        for item in built_in:
-            st.take_item(item["id"])
+        built_in = proj.mentioned_materials(st, stage)
         for item, qty in take:
             if item["kind"] == "material":
-        if built_in:
-            used_up = f" You used up your {', '.join(i['name'] for i in built_in)} on it."
                 st.take_item(item["id"], qty)
+        for item in built_in:
+            st.take_item(item["id"])
         stage["started"] = True
         st.update_project(p["id"], stages=p["stages"])
+        if built_in:
+            used_up = f" You used up your {', '.join(i['name'] for i in built_in)} on it."
     minutes = proj.clamp_int(args.get("minutes"), *proj.SESSION_MINUTES, 60)
     approach = str(args.get("approach") or "").strip()[:240]
     expect = str(args.get("expect") or "").strip().lower()
