@@ -126,10 +126,19 @@ is in my notes, not in the gears".
       still exist as ordinary creations, just without a mechanical effect. Candidates when Pip asks for them: a path that shortens a walk, more
       storage, a cellar that slows spoilage. Foraging gives wild seeds and food.
 
+- [ ] **Objects that grant abilities** (owner idea, 2026-10-31): a creation or item can give Pip something it can't otherwise do, and the GM narrates the result. Examples:
+      a clock offers a `time` ability (today only the perception shows the time it keeps, with its drift), a radio brings news (a GM-written bulletin, perhaps seeded from real headlines
+      or Home Assistant). Open question: a new capability primitive (`provides`) with an engine-owned limit per day, versus a generic `use_item` outcome. Pip should only see
+      the ability while it owns a working object that provides it (a stopped clock gives no time).
+
 ### Social
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
       in the thread, never at night), the Matrix channel, and the `matrix/` homeserver on `matrix.example.io` with `bootstrap.py` and a restic backup.
       Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.
+- [ ] **Slash commands in the Matrix channel** (owner feedback, 2026-10-30): messages like `/status`, `/garden`, `/items` (and the like, mirroring `pipchat`) should be
+      answered by the engine with plain info straight from state, **not** passed to Pip, so no LLM call and no reply "from Pip". Needs a command hook in the
+      channel/inbound path before delivery to the inbox; the reply goes back into the room as a clearly engine-made message. Settle the command list and
+      whether it works in a thread or only top-level.
 - [ ] Outreach, remaining: Element Web for a desktop view; inbound photos; a Telegram or webhook channel if ever wanted; end-to-end encryption (later);
       add the homeserver to Uptime Kuma
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
@@ -197,6 +206,12 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       pace and memory; nightly emotional arc; optional `feel` self-report vs engine state. Awaiting owner answers on the emotion set and influence strength
 
 ## Backlog / known issues
+- [x] **Resources not used up** (owner feedback, 2026-10-30; fixed 2026-10-31). Findings: food *was* decremented (`eat` -> `take_item`), but `tomato` (harvest) and `tomatoes` (gift)
+      were separate stacks, so counts looked wrong: plural and case variants now stack (`name_key`), and existing duplicates merge at startup. The clock's stages never listed
+      the gifted `pendulum` (Pip writes the plan), so it was never used: a stage now also uses up owned materials its name plainly mentions (whole words, one unit, never tools),
+      and tells Pip. Tools named in a stage are checked but kept (pinned by a test). Still open: a stage that started before the gift (the finished clock) keeps its old plan.
+- [ ] Mutation testing baseline (2026-10-30): score 63.2% (13061 killed, 7614 survived of 20717), against the 95% cutoff in `agent_world/CLAUDE.md`. Worst: `gm` (prompt text),
+      `memory`, `state`, `nightpass`, `config`, `loop`, `projects`. Plan: raise it module by module when touching them; consider excluding prompt-text mutants in `gm`
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item
 - [x] `set_activity` restating the same activity/description is a no-op (hidden from feeds and Pip's recent events)
