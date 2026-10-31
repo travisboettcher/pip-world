@@ -9,6 +9,7 @@ import random
 import time
 
 from . import expectations as exp
+from .state import name_key
 from .text import clip, craft_name
 
 STAGE_MINUTES = (15, 240)
@@ -180,6 +181,15 @@ def missing_materials(state, stage: dict) -> tuple[list[tuple[dict, int]], list[
             have = item["qty"] if item and item["kind"] in ("material", "tool") else 0
             problems.append(f"{qty} {name} (you have {have})")
     return take, problems
+
+
+def mentioned_materials(state, stage: dict) -> list[dict]:
+    """Materials Pip owns that the stage is plainly about (its name says 'pendulum') but its plan doesn't list.
+    They are built into the stage like listed ones. Tools are never used up; whole words only."""
+    listed = {name_key(n) for n in stage["materials"]}
+    text = f" {name_key(stage['name'])} "
+    return [i for i in state.items()
+            if i["kind"] == "material" and name_key(i["name"]) not in listed and f" {name_key(i['name'])} " in text]
 
 
 def tools_owned(state, project: dict) -> int:

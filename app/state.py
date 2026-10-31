@@ -158,6 +158,21 @@ def clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
+def _singular(word: str) -> str:
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("oes") and len(word) > 4:
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+        return word[:-1]
+    return word
+
+
+def name_key(name: str) -> str:
+    """What makes two item names the same thing: case and plurals don't ('Tomatoes' = 'tomato')."""
+    return " ".join(_singular(w) for w in str(name).lower().split())
+
+
 class State:
     def __init__(self, settings: Settings, path: str | None = None):
         self.s = settings
@@ -209,6 +224,7 @@ class State:
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
+            self.merge_duplicate_items()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
                 for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
                     self.add_item(it["name"], it["qty"], it["kind"], it["description"], it["attrs"])
@@ -449,7 +465,8 @@ class State:
         if qty < 1:
             raise ValueError("qty must be at least 1")
         with self.lock:
-            row = self.db.execute("SELECT * FROM items WHERE name = ?", (name,)).fetchone()
+            row = next((r for r in self.db.execute("SELECT * FROM items ORDER BY id")
+                        if name_key(r["name"]) == name_key(name)), None)
             if row:  # same item again: stack it
                 self.db.execute("UPDATE items SET qty = qty + ?, description = COALESCE(NULLIF(?, ''), description) "
                                 "WHERE id = ?", (qty, description[:200], row["id"]))
@@ -458,7 +475,23 @@ class State:
                     "INSERT INTO items (name, description, kind, qty, attrs, ts) VALUES (?, ?, ?, ?, ?, ?)",
                     (name, description[:200], kind, qty, json.dumps(normalize_attrs(name, kind, attrs)), time.time()))
             self.db.commit()
-            return self._item(self.db.execute("SELECT * FROM items WHERE name = ?", (name,)).fetchone())
+            return self._item(self.db.execute("SELECT * FROM items WHERE name = ?", (row["name"] if row else name,)).fetchone())
+
+    def merge_duplicate_items(self) -> int:
+        """Fold stacks that differ only by case or plural into the oldest one. Returns how many stacks were folded away."""
+        merged = 0
+        with self.lock:
+            keeper: dict[str, int] = {}
+            for r in self.db.execute("SELECT * FROM items ORDER BY id").fetchall():
+                k = (name_key(r["name"]), r["kind"])
+                if k in keeper:
+                    self.db.execute("UPDATE items SET qty = qty + ? WHERE id = ?", (r["qty"], keeper[k]))
+                    self.db.execute("DELETE FROM items WHERE id = ?", (r["id"],))
+                    merged += 1
+                else:
+                    keeper[k] = r["id"]
+            self.db.commit()
+        return merged
 
     def items(self) -> list[dict]:
         with self.lock:
@@ -468,7 +501,7 @@ class State:
         """Resolve a loose name ('needle file') to one item. Returns (item, '') or (None, error)."""
         q = str(query).strip().lower()
         rows = [i for i in self.items() if not kind or i["kind"] == kind]
-        exact = [i for i in rows if i["name"].lower() == q]
+        exact = [i for i in rows if name_key(i["name"]) == name_key(q)]
         if exact:
             return exact[0], ""
         part = [i for i in rows if q and (q in i["name"].lower() or i["name"].lower() in q)]

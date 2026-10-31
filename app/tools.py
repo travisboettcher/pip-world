@@ -513,15 +513,21 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
         if p["questions"]:
             return ToolResult(f"you've done everything you know to do on {p['name']}. Still open: "
                               + "; ".join(p["questions"]) + ". Try an experiment, or learn more and revise_plan.",
+    used_up = ""
                               followup=True)
         return ToolResult(f"{p['name']} is already finished", followup=True)
     stage = p["stages"][i]
     if not stage["started"]:
+        built_in = proj.mentioned_materials(st, stage)
         take, missing = proj.missing_materials(st, stage)
         if missing:
             return ToolResult(f"can't start {describe_stage(p, i)} yet: it needs {', '.join(missing)}", followup=True)
+        for item in built_in:
+            st.take_item(item["id"])
         for item, qty in take:
             if item["kind"] == "material":
+        if built_in:
+            used_up = f" You used up your {', '.join(i['name'] for i in built_in)} on it."
                 st.take_item(item["id"], qty)
         stage["started"] = True
         st.update_project(p["id"], stages=p["stages"])
@@ -533,7 +539,7 @@ async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
     st.update_agent(activity="working", description=f"{p['name']}: {stage['name']}")
     real = max(1, round(minutes / ctx.settings.work_speed))
     return ToolResult(f"you settle in to work on {p['name']}, {describe_stage(p, i)}, for {minutes} min. "
-                      f"You'll hear how it went in about {real} min.")
+                      f"You'll hear how it went in about {real} min.{used_up}")
 
 
 @tool("experiment",
