@@ -6,6 +6,7 @@ import time
 
 from . import companions as comp
 from . import invented_places as invented
+from . import abilities
 from . import creations as cr
 from . import expectations as exp
 from . import gathering
@@ -15,6 +16,7 @@ from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
 from . import places
+from . import weather
 from . import emotions as emo
 from . import sleep as sleepmod
 from . import projects as proj
@@ -153,6 +155,7 @@ class Agent:
 
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
+        await weather.refresh(self.state, self.s, time.time())
         if await self.finish_work():
             self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
@@ -552,6 +555,8 @@ class Agent:
         ]
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
+        lines += abilities.perception(self.state, time.time())
+        lines += weather.perception(self.state, self.s, time.time())
         lines += emo.perception(self.state, self.s)
         lines += self._firsts()
         lines += self._calibration()

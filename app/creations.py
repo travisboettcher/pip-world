@@ -9,12 +9,13 @@ pass without any LLM. New primitive = one entry in each of `sanitize_spec`, `tic
 import random
 import time
 
+from . import abilities
 from . import world_effects
 from .text import clip
 from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
 
-CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world")
+CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world", "provides")
 SENSOR_CONDITIONS = ("crop_ripe", "visitor", "dawn", "dusk", "hungry", "tired")
 HELPER_EFFECTS = {"hurry_crops": 60, "find": 360, "comfort": 240}  # effect -> minimum minutes between runs
 MAX_CAPABILITIES = 3
@@ -72,6 +73,9 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
         elif t == "world":
             if world_effects.allowed(c.get("effect"), project):  # the engine checks; the GM only proposes
                 caps[t] = {"effect": c["effect"]}
+        elif t == "provides":
+            if abilities.allowed(c.get("ability"), project):  # the engine checks; the GM only proposes
+                caps[t] = {"ability": c["ability"]}
         elif t == "companion":
             if project["difficulty"] >= COMPANION_MIN_DIFFICULTY and _line(c.get("persona")):
                 caps[t] = {"persona": _line(c["persona"], 400),
@@ -229,6 +233,8 @@ def describe(c: dict, now: float | None = None) -> str:
         shown, off = clock_reading(c, now)
         skew = "about right" if abs(off) < 1 else f"about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
         parts.append(f"it shows {shown}" + (f" (it runs {skew}; use_item can set it)" if running(c, now) else ""))
+    if running(c, now) and caps.get("provides", {}).get("ability") == "news":
+        parts.append("it brings you news")
     for k, text in (("world", "it made lasting room in your world"),
                     ("periodic", "does things on its own now and then"),
                     ("sensor", f"reacts when: {caps.get('sensor', {}).get('condition', '')}"),
@@ -264,7 +270,8 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
         return f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"
     a = state.agent()
     situation = f"Pip is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
-    out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps) if gm else None
+    left = abilities.news_left(c, now)
+    out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps, bulletin=left > 0) if gm else None
     if not out:
         return f"you spend a moment with your {c['name']} ({purpose})."
     done = []
@@ -285,6 +292,14 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
     state.set_runtime(c["id"], rt)
     text = _line(out["text"], 300)
     state.log("creation", name=c["name"], what="used", text=text, purpose=_line(purpose, 120))
+    news = _line(out.get("bulletin"), 300) if left > 0 else ""
+    if news:  # a bulletin counts against the creation's allowance for the day
+        rt["news_log"] = [t for t in rt.get("news_log", []) if now - t < abilities.DAY] + [now]
+        state.set_runtime(c["id"], rt)
+        state.log("creation", name=c["name"], what="news", text=news)
+        text += f" Bulletin: {news}"
+    elif "provides" in caps and not left:
+        done.append("only static now: it has told you all the news it has today")
     if "upkeep" in caps and "halted_at" not in rt:  # using it never tends it: only the tend tool does
         left = (rt["tended_until"] - now) / 3600
         done.append(f"it keeps going for about {round(left)} more hours; use the tend tool to keep it going")

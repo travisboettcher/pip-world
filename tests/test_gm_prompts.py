@@ -375,3 +375,32 @@ async def test_a_neighbor_may_hand_pip_something_only_through_give(tmp_path):
     await gm.speak_in_person("Briar", "An owl.", [], [], ["got any seeds?"], "It is raining.")
     assert "give" not in b.schemas[1]["properties"] and "`give`" not in task(b, 1)
     assert "hands Pip nothing" in task(b, 1)
+
+
+# --- using a creation (and the news a radio brings) ----------------------------------------------------------------
+USE_PROPS = {"text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
+             "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"}}
+BULLETIN_ASK = ("- `bulletin`: only if Pip is listening for news: 2-3 sentences of news about Pip's own small world only "
+                "(the weather, the neighbors, the season, something invented and harmless), never real-world events")
+
+
+@pytest.mark.asyncio
+async def test_using_a_creation_asks_for_a_bulletin_only_when_it_may_bring_news(tmp_path):
+    gm, b, _ = master(tmp_path, report(text="Static."), report(text="Static."))
+    await gm.use("- radio", "listen", "Pip is idle.", False, True)
+    assert BULLETIN_ASK not in task(b, 0) and b.schemas[0] == {"type": "object", "properties": USE_PROPS, "required": ["text"]}
+    await gm.use("- radio", "listen", "Pip is idle.", False, True, bulletin=True)
+    assert task(b, 1).endswith(BULLETIN_ASK) and task(b, 1).startswith(task(b, 0).split("Optional effects")[0][:40])
+    assert b.schemas[1] == {"type": "object", "properties": {**USE_PROPS, "bulletin": {"type": "string"}}, "required": ["text"]}
+
+
+@pytest.mark.asyncio
+async def test_the_creation_design_schema_lets_the_gm_name_an_ability(tmp_path):
+    gm, b, _ = master(tmp_path, report(description="a radio", capabilities=[]))
+    project = {"name": "radio", "craft": "wireless", "goal": "hear the world", "history": []}
+    await gm.design(project, "sound", [], False)
+    cap = b.schemas[0]["properties"]["capabilities"]["items"]
+    assert cap["required"] == ["type"] and cap["properties"]["ability"] == {"type": "string"}
+    assert cap["properties"]["persona"] == {"type": "string"} and cap["properties"]["chatter_minutes"] == {"type": "number"}
+    assert cap["properties"]["hours"] == {"type": "number"} and cap["properties"]["finds"]["items"] == {"type": "string"}
+    assert "provides: ONLY if what Pip finished" in task(b) and "garden_plot" in task(b)

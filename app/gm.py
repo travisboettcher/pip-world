@@ -14,6 +14,7 @@ import re
 from .llm.base import LLMBackend, ToolSpec
 from . import invented_places
 from . import place_kinds
+from . import abilities
 from . import world_effects
 from .state import State
 from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
@@ -250,6 +251,7 @@ class GameMaster:
             "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
         ]
         caps.append(world_effects.gm_lines())
+        caps.append(abilities.gm_lines())
         if allow_companion:
             caps.append("companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: "
                         "who it is, how it expresses itself) and `chatter_minutes` (60-720) for how often it speaks up")
@@ -274,19 +276,22 @@ class GameMaster:
             "verb": {"type": "string"}, "lines": {"type": "array", "items": {"type": "string"}},
             "condition": {"type": "string"}, "alert": {"type": "string"}, "effect": {"type": "string"},
             "line": {"type": "string"}, "finds": {"type": "array", "items": {"type": "string"}},
-            "persona": {"type": "string"}, "chatter_minutes": {"type": "number"}}, "required": ["type"]}
+            "persona": {"type": "string"}, "chatter_minutes": {"type": "number"}, "ability": {"type": "string"}}, "required": ["type"]}
         return await self.ask(task, {
             "name": {"type": "string"}, "description": {"type": "string"},
             "capabilities": {"type": "array", "items": cap}, "quirks": {"type": "array", "items": {"type": "string"}},
         }, ["description", "capabilities"], "design")
 
     async def use(self, creation_line: str, purpose: str, situation: str, timekeeper: bool,
-                  can_stop: bool) -> dict | None:
+                  can_stop: bool, bulletin: bool = False) -> dict | None:
         effects = ["`mood`: a word or two, if this changes how Pip feels",
                    "`energy`: -0.1 to 0.1, only if it really tires or refreshes Pip",
                    *(["`stop`: true if this would make it stop working until Pip tends it again"] if can_stop else [])]
         if timekeeper:
             effects.append("`set_clock`: true if Pip is setting it to the right time")
+        if bulletin:
+            effects.append("`bulletin`: only if Pip is listening for news: 2-3 sentences of news about Pip's own small world only "
+                           "(the weather, the neighbors, the season, something invented and harmless), never real-world events")
         task = (
             f"Pip spends time with one of the things it made (using it, looking at it, playing it, reading it... "
             f"whatever fits).\nThe thing: {creation_line}\nWhat Pip wants: {purpose}\n"
@@ -296,7 +301,7 @@ class GameMaster:
         )
         return await self.ask(task, {
             "text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
-            "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"},
+            "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"}, **({"bulletin": {"type": "string"}} if bulletin else {}),
         }, ["text"], "use")
 
     # --- phase 3: companions ------------------------------------------------

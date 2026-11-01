@@ -70,6 +70,10 @@ class Settings:
     works_per_day: int = 6              # pictures and pieces of writing Pip may finish per local day
     works_min_gap_minutes: float = 10
     sleep: bool = True                 # day/night rhythm and the sleep tool
+    weather: bool = False              # real weather and daylight from Home Assistant (DESIGN-weather.md); needs a token
+    hass_url: str = "http://home-assistant:8123"
+    hass_token: str = ""               # a long-lived access token; only weather and sun.sun are ever read, read-only
+    weather_entity: str = "weather.forecast_home"
     emotions: str = "on"               # on = tracked and shown to Pip | quiet = tracked only | off (see DESIGN-emotions.md)
     emotion_settle_per_day: int = 3    # times Pip may settle a strong feeling per local day
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
@@ -150,6 +154,10 @@ class Settings:
             works_per_day=_int("WORKS_PER_DAY", 6),
             works_min_gap_minutes=_float("WORKS_MIN_GAP_MINUTES", 10),
             sleep=(e("SLEEP") or "1") not in ("0", "false", "no"),
+            weather=(e("WEATHER") or "0") not in ("0", "false", "no", "off"),
+            hass_url=e("HASS_URL") or "http://home-assistant:8123",
+            hass_token=e("HASS_TOKEN") or "",
+            weather_entity=e("WEATHER_ENTITY") or "weather.forecast_home",
             emotions=(e("EMOTIONS") or "on").lower() if (e("EMOTIONS") or "on").lower() in ("on", "quiet", "off") else "on",
             emotion_settle_per_day=_int("EMOTION_SETTLE_PER_DAY", 3),
             bedtime_hour=_int("BEDTIME_HOUR", 22),

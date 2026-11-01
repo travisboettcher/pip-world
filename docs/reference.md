@@ -70,7 +70,7 @@ goes; a "game master" LLM call (same backend and budget) only writes flavor and 
   genuinely work get up to 3 generic capabilities (`timekeeper`, `upkeep`, `periodic`, `sensor`, `helper`,
   `companion`), with the specifics (what it does, how it's tended, what it finds) written by the GM, plus quirks
   (setbacks leave marks). The engine runs them every monitor pass without the LLM: timekeepers drift, things that
-  need upkeep stop until Pip `tend`s them, sensors wake Pip, helpers speed the garden, find things or comfort Pip.
+  need upkeep stop until Pip `tend`s them, a running clock gives the exact time and a running radio (`provides`) bulletins, sensors wake Pip, helpers speed the garden, find things or comfort Pip.
   `use_item` on a creation asks the GM what happens, with only small capped effects.
 - A `companion` creation talks: it chatters now and then and answers `say(text, to=<name>)`, capped at
   `COMPANION_REPLIES_PER_HOUR`.

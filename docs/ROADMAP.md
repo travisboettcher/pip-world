@@ -129,7 +129,8 @@ is in my notes, not in the gears".
       still exist as ordinary creations, just without a mechanical effect. Candidates when Pip asks for them: a path that shortens a walk, more
       storage, a cellar that slows spoilage. Foraging gives wild seeds and food.
 
-- [ ] **Objects that grant abilities** (owner idea, 2026-10-31): a creation or item can give Pip something it can't otherwise do, and the GM narrates the result. Examples:
+- [x] **Objects that grant abilities** (built 2026-11-01; [DESIGN-abilities.md](DESIGN-abilities.md); owner idea, 2026-10-31): a `provides` capability from a small registry (`abilities.py`): a running clock
+      tells the exact time, a running radio brings up to 3 in-world bulletins a day via `use_item`. Original idea: a creation or item can give Pip something it can't otherwise do, and the GM narrates the result. Examples:
       a clock offers a `time` ability (today only the perception shows the time it keeps, with its drift), a radio brings news (a GM-written bulletin, perhaps seeded from real headlines
       or Home Assistant). Open question: a new capability primitive (`provides`) with an engine-owned limit per day, versus a generic `use_item` outcome. Pip should only see
       the ability while it owns a working object that provides it (a stopped clock gives no time).
@@ -149,7 +150,8 @@ is in my notes, not in the gears".
 - [x] Visitor identity: remember who visited and what they talked about, per person (M3 people notes)
 
 ### Homelab tie-ins
-- [ ] Real weather / daylight from Home Assistant (harmless sensors only): cloudy days slow the garden, sunset means bed
+- [x] **Real weather / daylight from Home Assistant** (built 2026-11-01; [DESIGN-weather.md](DESIGN-weather.md); deploy: `WEATHER=1` and a `HASS_TOKEN` in `.env`): Pip is told the conditions and
+      when the sun turns; rain speeds crops and snow slows them, within 15%. Read-only, two entities only. Still open: sunset moving bedtime; storms damaging plots (with random events).
 - [x] A bookshelf: the Calibre library is a place Pip walks to and reads in (M3.6, DESIGN-library.md)
 
 ## Ideas to design (2026-10-30)

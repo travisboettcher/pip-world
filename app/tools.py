@@ -19,6 +19,7 @@ from . import memory as mem
 from . import library as lib
 from . import neighbors as nb
 from . import places
+from . import weather
 from . import projects as proj
 from . import emotions as emo
 from . import sleep as sleepmod
@@ -408,8 +409,9 @@ async def plant(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"error: plot {plot} is already growing {plots[plot - 1]['crop']}", followup=True)
     at = item["attrs"]
     ctx.state.take_item(item["id"])
-    ctx.state.plant(plot, item["name"], at["crop"], float(at["grow_minutes"]), int(at["yield"]), float(at["food_value"]))
-    mins = max(1, round(float(at["grow_minutes"]) / ctx.settings.garden_speed))
+    grow = float(at["grow_minutes"]) * weather.grow_factor(ctx.state, ctx.settings, time.time())  # rain helps, snow hinders
+    ctx.state.plant(plot, item["name"], at["crop"], grow, int(at["yield"]), float(at["food_value"]))
+    mins = max(1, round(grow / ctx.settings.garden_speed))
     return ToolResult(f"planted {item['name']} in plot {plot}; {at['crop']} will be ready in about {mins} min")
 
 
