@@ -42,6 +42,7 @@ import random
 import pytest
 
 from app import invented_places as IP
+from tests.test_outreach import daytime
 
 TIP = "You'll want the ironmonger in Saltholm; he keeps thin brass wire, the fishing-hook gauge."
 SALT = {"place": "Saltholm", "there": "an ironmonger with a drawer of odds and ends; thin brass wire", "distance": "far"}
@@ -214,6 +215,7 @@ def test_the_directory_lists_heard_of_places_in_their_own_blocks(tmp_path):
 
 def test_a_near_place_with_no_words_said_about_it_is_a_short_walk_someone_mentioned(tmp_path):
     s, st, *_ = make(tmp_path, wild_places=[])
+    daytime(s)  # otherwise the directory says "closed now"
     IP.accept(st, "Briar", "Go to Fallow.", {"place": "Fallow", "distance": "near"})
     assert P.directory(st, s, None) == ["Places you've heard of but not been to (go_to works):",
                                             f"- Fallow, about {round(st.place_row('Fallow')['walk_minutes'])} min, a short walk"

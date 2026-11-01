@@ -11,6 +11,7 @@ from app.llm.fake import FakeBackend
 from app.main import create_app
 from app.outreach import Outreach
 from tests.test_projects import call, make
+from tests.test_outreach import daytime
 
 GOOD = ('<svg xmlns="http://www.w3.org/2000/svg" width="999" height="999" viewBox="0 0 5 5"><defs><linearGradient id="sky">'
         '<stop offset="0" stop-color="#9cf"/><stop offset="1" stop-color="#fff"/></linearGradient></defs>'
@@ -115,6 +116,7 @@ async def test_writing_is_kept_for_visitors_separately_from_the_diary(tmp_path):
 @pytest.mark.asyncio
 async def test_a_drawing_can_travel_with_a_postcard_where_the_channel_carries_pictures(tmp_path):
     s, st, agent = await drawer(tmp_path)
+    daytime(s)  # postcards are never sent at night
     ch = FakeChannel()
     agent.outreach = Outreach(s, st, [ch], receive=agent.receive)
     agent.ctx.outreach = agent.outreach

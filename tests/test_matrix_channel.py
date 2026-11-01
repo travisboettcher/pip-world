@@ -12,6 +12,7 @@ from app.matrix import MatrixChannel
 from app.outreach import Outreach
 from tests.channel_contract import ChannelContract
 from tests.test_projects import call, make
+from tests.test_outreach import daytime
 
 BOT, ROOM, HUMAN, TOKEN = "@pip:test", "!room:test", "@morgan:test", "secret-token"
 
@@ -285,6 +286,7 @@ def test_matrix_people_are_parsed_from_the_environment_string():
 @pytest.mark.asyncio
 async def test_end_to_end_through_the_core(tmp_path):
     s, st, gm, agent = make(tmp_path)
+    daytime(s)  # postcards are never sent at night
     s.outreach = "on"
     hs = FakeHomeserver()
     ch = MatrixChannel(settings(), ChannelStore(st, "matrix"), client=hs.client())

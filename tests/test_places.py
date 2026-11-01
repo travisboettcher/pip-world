@@ -10,6 +10,7 @@ from app.config import Settings
 from app.llm.base import ToolCall
 from tests.test_projects import make
 from tests.test_scoping import FakeLibrary
+from tests.test_outreach import daytime
 
 
 def neighbor(st, s):
@@ -131,6 +132,7 @@ async def test_arriving_somewhere_new_describes_it_from_what_is_there(tmp_path):
 @pytest.mark.asyncio
 async def test_arriving_without_a_gm_and_getting_home(tmp_path):
     s, st, gm, agent = make(tmp_path)
+    daytime(s)  # the woods are daylight-only
     _walk_to(st, "woods")
     data = await P.arrive(st, s, None, None)
     assert data["description"] == "" and st.meta("place:woods") == ""
