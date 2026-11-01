@@ -123,3 +123,15 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .emo .emo-val { text-align: right; font-variant-numeric: tabular-nums; }
 .emo .bar { position: relative; height: .45rem; }
 .emo .bar u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .55; text-decoration: none; }
+
+/* map: home in the middle, places at fixed spots, Pip's marker moving along its walk */
+.map svg { width: 100%; max-height: 28rem; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.map .map-path { stroke: var(--line); stroke-width: .35; stroke-dasharray: .8 1; } .map .map-path.unseen { opacity: .5; }
+.map .map-walk { stroke: var(--accent); stroke-width: .6; }
+.map .map-place text { font-size: 2.3px; fill: var(--ink); } .map .map-place { fill: var(--muted); stroke: var(--card); stroke-width: .3; }
+.map .kind-home { fill: var(--accent); } .map .kind-wild { fill: var(--good); } .map .kind-neighbor { fill: var(--warn); } .map .kind-library { fill: var(--ink); }
+.map .unseen { opacity: .5; } .map .heard circle { stroke: var(--muted); stroke-dasharray: .6 .5; fill: var(--card); }
+.map .map-pip { fill: var(--bad); stroke: var(--card); stroke-width: .35; }
+.map .map-pip-ring { fill: none; stroke: var(--bad); stroke-width: .35; animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes map-pulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.5); } }
+@media (prefers-reduced-motion: reduce) { .map .map-pip-ring { animation: none; opacity: .5; } }

@@ -50,7 +50,7 @@ garden (`GARDEN_PLOTS`, default 3). It starts with tomato and carrot seeds (give
 ./pipchat give "basil seeds" --kind seed --grow-minutes 30            # Pip can plant it
 ./pipchat items | garden
 ```
-HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`.
+HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`, `GET /map` (every place at its fixed spot, and where Pip is; drawn in the dashboard's World tab).
 
 ## Projects and creations
 Design and rationale: [DESIGN-creations.md](DESIGN-creations.md). Pip chooses what to make; the engine decides how it

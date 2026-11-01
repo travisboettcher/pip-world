@@ -116,6 +116,8 @@ is in my notes, not in the gears".
 - [x] **Places characters mention become real** ([DESIGN-invented-places.md](DESIGN-invented-places.md)): built (heard-of places, backstop,
       backfill, chat mentions, design on arrival, shops on account, growth, `GET/PATCH/DELETE /places`, `pipchat places`, residents
       (owner decision 5), and the `mentions_place` field / "Places in Pip's world" line in the neighbors' and residents' prompts)
+- [x] **Pip's map** (built 2026-11-01; [DESIGN-map.md](DESIGN-map.md)): `GET /map` and a Map card in the World tab. Home in the middle, every place at a spot it keeps forever
+      (distance = walking minutes), unvisited and heard-of places faint, and a marker for Pip that moves along its walk. The seed of the visual world (M2b).
 - [ ] Places, remaining: a user-editable `places.json` (places, hours, loot) and a place or two more (e.g. a market, once there are coins)
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds

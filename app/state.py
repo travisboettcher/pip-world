@@ -126,6 +126,9 @@ CREATE TABLE IF NOT EXISTS places (
   grown INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, heard_at REAL NOT NULL, real_at REAL,
   source TEXT NOT NULL DEFAULT 'mention'
 );
+CREATE TABLE IF NOT EXISTS map_places (
+  key TEXT PRIMARY KEY COLLATE NOCASE, x REAL NOT NULL, y REAL NOT NULL, placed_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
 );
@@ -1207,6 +1210,16 @@ class State:
         with self.lock:
             row = self.db.execute("SELECT * FROM places WHERE key = ?", (key,)).fetchone()
         return self._place(row) if row else None
+
+    def map_positions(self) -> dict[str, tuple[float, float]]:
+        """Where each place sits on the map (see worldmap.py); a place keeps its spot once it has one."""
+        with self.lock:
+            return {r["key"]: (r["x"], r["y"]) for r in self.db.execute("SELECT * FROM map_places ORDER BY placed_at, key")}
+
+    def set_map_position(self, key: str, x: float, y: float) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR IGNORE INTO map_places (key, x, y, placed_at) VALUES (?, ?, ?, ?)", (key, x, y, time.time()))
+            self.db.commit()
 
     def place_rows(self) -> list[dict]:
         with self.lock:

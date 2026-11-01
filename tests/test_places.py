@@ -316,3 +316,36 @@ def test_a_resident_with_nothing_known_about_them_is_just_here(tmp_path):
     st.add_character("Mr Teague", "resident", None, "persona", 0, 0, place="Saltholm")
     st.update_agent(location="Saltholm")
     assert "Mr Teague is here; talk with them in person using say with to: Mr Teague." in P.perception(st, s, None)
+
+
+@pytest.mark.asyncio
+async def test_nothing_that_belongs_to_a_place_works_while_walking_somewhere_else(tmp_path):
+    from tests.test_projects import call
+    s, st, gm, agent = make(tmp_path)
+    st.update_agent(location="workshop")
+    st.add_item("carrot seeds", 1, "seed")
+    assert "nothing is planted" in (await call(agent, "harvest")).text                    # at home, before leaving
+    _walk_to(st, "Saltholm")                                                               # underway, still "at" the workshop
+    for name, args in (("harvest", {}), ("plant", {"seed": "carrot seeds"})):
+        r = await call(agent, name, **args)
+        assert r.text == "you're on the way to Saltholm; wait until you get there" and r.followup is True
+    assert st.find_item("carrot seeds")[0]["qty"] == 4 and st.garden()[0]["state"] == "empty"      # 3 to start with, +1
+    assert "wrote" in (await call(agent, "note_to_self", section="todo", text="buy thin brass wire")).text   # anywhere tools still work
+    st.end_session()
+    assert "nothing is planted" in (await call(agent, "harvest")).text                    # arrived or turned back: it works again
+    _walk_to(st, "workshop")
+    assert (await call(agent, "harvest")).text == "you're on the way to home; wait until you get there"
+
+
+@pytest.mark.asyncio
+async def test_the_tools_offered_while_walking_are_only_the_ones_that_work_anywhere(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    agent.tools = T.enabled_tools(Settings(tools=["say", "go_to", "plant", "harvest", "tend", "note_to_self"]))
+    st.update_agent(location="workshop")
+    offered = lambda: {sp.name for sp in agent._specs()}                                   # noqa: E731
+    assert {"harvest", "plant", "say", "go_to"} <= offered()
+    _walk_to(st, "Saltholm")
+    walking = offered()
+    assert {"say", "go_to", "note_to_self"} <= walking and not walking & {"harvest", "plant", "tend"}
+    st.end_session()
+    assert {"harvest", "plant"} <= offered()

@@ -255,6 +255,51 @@ $('chat-form').addEventListener('submit', async (ev) => {
   }
 });
 
+// ---- map ----------------------------------------------------------------------
+// Pip's world drawn from /map: home in the middle, every place Pip knows of at its fixed spot, and Pip where it is (moving along its walk).
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs = {}, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  for (const kid of kids.flat()) if (kid != null) n.append(kid);
+  return n;
+}
+const MAP_MIN_HALF = 22, MAP_PAD = 9, MAP_CHAR = 1.3, MAP_GAP = 2.6; // viewBox units: width of a character, space between marker and label
+let mapData = null;
+function mapWhere(m) {
+  const w = m.pip.walking, name = (key) => m.places.find((p) => p.key === key)?.label ?? key;
+  if (w) return `Pip is walking from ${name(w.from)} to ${name(w.to)} (${Math.round(w.progress * 100)}%).`;
+  return m.pip.at === m.home ? 'Pip is home.' : `Pip is at ${name(m.pip.at)}.`;
+}
+function renderMap() {
+  if (!mapData) return;
+  const m = mapData, home = m.places.find((p) => p.key === m.home) ?? { x: 0, y: 0 };
+  const xs = [...m.places.map((p) => p.x), m.pip.x], ys = [...m.places.map((p) => p.y), m.pip.y];
+  // labels sit on the side of their marker facing away from home, so they don't pile up over the middle; make room for them
+  const side = (p) => (p.key === m.home ? 0 : p.x - home.x < 0 ? -1 : 1);
+  const reach = m.places.map((p) => Math.abs(p.x) + (side(p) ? MAP_GAP + MAP_CHAR * (p.label.length + 2) : 0));
+  const half = Math.max(MAP_MIN_HALF, ...reach, ...ys.map(Math.abs)) + MAP_PAD; // centred on home so the world grows outwards
+  const spokes = m.places.filter((p) => p.key !== m.home).map((p) => sv('line', { class: 'map-path' + (p.visited ? '' : ' unseen'), x1: home.x, y1: home.y, x2: p.x, y2: p.y }));
+  const walk = m.pip.walking && m.places.find((p) => p.key === m.pip.walking.from) && m.places.find((p) => p.key === m.pip.walking.to);
+  const trail = walk ? [sv('line', { class: 'map-walk', x1: m.places.find((p) => p.key === m.pip.walking.from).x, y1: m.places.find((p) => p.key === m.pip.walking.from).y,
+    x2: m.places.find((p) => p.key === m.pip.walking.to).x, y2: m.places.find((p) => p.key === m.pip.walking.to).y })] : [];
+  const marks = m.places.map((p) => {
+    const faint = p.key !== m.home && !p.visited;
+    const shape = p.kind === 'home' ? sv('path', { d: `M${p.x - 2.2} ${p.y + 1.6} V${p.y - 0.4} L${p.x} ${p.y - 2.4} L${p.x + 2.2} ${p.y - 0.4} V${p.y + 1.6} Z` })
+      : sv('circle', { cx: p.x, cy: p.y, r: 1.6 });
+    const dir = side(p);
+    const text = dir ? sv('text', { x: p.x + dir * MAP_GAP, y: p.y, dy: '.35em', 'text-anchor': dir < 0 ? 'end' : 'start' })
+      : sv('text', { x: p.x, y: p.y + 4.6, 'text-anchor': 'middle' });
+    text.textContent = p.label + (p.heard_only ? ' ?' : '');
+    return sv('g', { class: `map-place kind-${p.kind}${faint ? ' unseen' : ''}${p.heard_only ? ' heard' : ''}`, 'data-key': p.key }, shape, text);
+  });
+  const pip = sv('g', { class: 'map-pip' }, sv('circle', { class: 'map-pip-ring', cx: m.pip.x, cy: m.pip.y, r: 3.2 }), sv('circle', { cx: m.pip.x, cy: m.pip.y, r: 1.4 }));
+  const svg = sv('svg', { viewBox: `${-half} ${-half} ${half * 2} ${half * 2}`, role: 'img', 'aria-label': `Map of Pip's world. ${mapWhere(m)}` }, spokes, trail, marks, pip);
+  $('map').replaceChildren(svg);
+  $('map-where').textContent = mapWhere(m);
+}
+const refreshMap = async () => { mapData = await api('/map'); renderMap(); };
+
 // ---- tabs -------------------------------------------------------------------
 const TABS = ['now', 'journal', 'world', 'work', 'mind'];
 function showTab(name, remember = true) {
@@ -265,6 +310,7 @@ function showTab(name, remember = true) {
     $(`tab-btn-${t}`).tabIndex = t === name ? 0 : -1;
   }
   if (remember) { store.set('tab', name); history.replaceState(null, '', `#${name}`); }
+  if (name === 'world') refreshMap().catch(() => {});
 }
 $('tabbar').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 $('tabbar').addEventListener('keydown', (ev) => {
@@ -545,6 +591,7 @@ function handleEvent(e, live) {
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'garden', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
+  if (e.kind === 'arrived' || (e.kind === 'tool' && t === 'go_to')) debounce('map', refreshMap);
   if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
   if (e.kind === 'made_work') debounce('works', refreshWorks);
   if (['reflection', 'night_pass', 'night_undo', 'woke'].includes(e.kind) || (e.kind === 'tool' && t === 'undo_decision')) debounce('memory', refreshMemory);
@@ -578,4 +625,5 @@ setChatOpen(store.get('chatOpen', false), false);
   setInterval(() => Promise.all([refreshState(), refreshEmotions()]).catch(() => {}), 10_000);
   setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]).catch(() => {}), 60_000);
   setInterval(() => { renderGarden(); renderProjects(); }, 30_000);
+  setInterval(() => { if (!$('tab-world').hidden) refreshMap().catch(() => {}); }, 5_000); // Pip walks while you watch
 })();

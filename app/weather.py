@@ -1,19 +1,23 @@
 """Real weather and daylight (see DESIGN-weather.md).
 
-Home Assistant already knows the sky over the homelab. Pip is told the conditions and when the sun turns, and the weather nudges how
-long crops take to grow. Exactly two entities are ever read, with read-only GETs: the weather entity and `sun.sun`. Nothing here can
-touch anything else in the house. The reading is kept in the state's meta table, so the tick never waits on Home Assistant.
+Pip is told the conditions outside and when the sun turns, and the weather nudges how long crops take to grow. Where the weather comes
+from is a *provider*: a small class registered by name (`@register("homeassistant")`) that turns some source into a `Weather`. This module
+is everything that does not care which source: the reading itself, how it is worded to Pip, the growing-time factors, keeping the last
+reading in the state's meta table (so the tick never waits on a network call), and the throttled refresh. Pick the provider with
+`WEATHER_PROVIDER`; add one by writing a module that registers a class with `ready` and `async fetch(http)`, then importing it at the bottom.
+
+Providers must report one of the condition names in `CONDITIONS` (Home Assistant's vocabulary, which is a fair common denominator);
+anything else is shown in plain words and has no effect on the garden.
 """
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable
 
 import httpx
 
-SUN_ENTITY = "sun.sun"
-REFRESH_EVERY = 600        # seconds between requests to Home Assistant
+REFRESH_EVERY = 600        # seconds between requests to a provider
 STALE_AFTER = 3600         # a reading older than this is not shown or used
-UNUSABLE = ("unavailable", "unknown")
 
 # condition -> (how Pip hears it, growing-time multiplier). Rain helps, cold and snow hinder; the cap is +-15%.
 CONDITIONS = {
@@ -32,7 +36,7 @@ class Weather:
     temp: float | None
     unit: str
     above_horizon: bool
-    next_rising: float | None
+    next_rising: float | None      # epoch seconds
     next_setting: float | None
 
     @property
@@ -47,33 +51,40 @@ class Weather:
         return head + sun + "."
 
 
-def _time(v) -> float | None:
-    try:
-        return datetime.fromisoformat(str(v)).timestamp()
-    except (TypeError, ValueError):
-        return None
+# --- providers ------------------------------------------------------------------------------------------------------
+PROVIDERS: dict[str, Callable] = {}      # name -> class(settings) with `ready` and `async fetch(http) -> Weather | None`
 
 
-def _temp(v) -> float | None:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+def register(name: str):
+    def add(cls):
+        PROVIDERS[name] = cls
+        return cls
+    return add
 
 
-def parse(weather, sun) -> Weather | None:
-    """Home Assistant's two state objects -> Weather, or None if either is missing or unusable."""
-    if not isinstance(weather, dict) or not isinstance(sun, dict):
-        return None
-    condition = weather.get("state")
-    if not isinstance(condition, str) or condition in UNUSABLE:
-        return None
-    at, sa = weather.get("attributes") or {}, sun.get("attributes") or {}
-    unit = str(at.get("temperature_unit") or "C").replace("°", "").strip() or "C"
-    return Weather(condition, _temp(at.get("temperature")), unit, sun.get("state") == "above_horizon",
-                   _time(sa.get("next_rising")), _time(sa.get("next_setting")))
+def provider(settings):
+    """The configured provider, or None if the name is unknown."""
+    cls = PROVIDERS.get(settings.weather_provider)
+    return cls(settings) if cls else None
 
 
+class http_client:
+    """`async with http_client(http) as client`: the caller's client if given (left open), else a fresh one."""
+    def __init__(self, client=None):
+        self.client, self.own = client, client is None
+
+    async def __aenter__(self):
+        if self.own:
+            self.client = httpx.AsyncClient()
+        return self.client
+
+    async def __aexit__(self, *exc):
+        if self.own:
+            await self.client.aclose()
+        return False
+
+
+# --- the stored reading ---------------------------------------------------------------------------------------------
 def save(state, w: Weather, now: float) -> None:
     state.set_meta(weather=json.dumps(w.__dict__), weather_at=now)
 
@@ -96,33 +107,23 @@ def grow_factor(state, settings, now: float) -> float:
 
 
 async def refresh(state, settings, now: float, http=None) -> bool:
-    """Ask Home Assistant (at most every REFRESH_EVERY seconds). True if a fresh reading was stored."""
-    if not (settings.weather and settings.hass_token):
+    """Ask the provider (at most every REFRESH_EVERY seconds). True if a fresh reading was stored."""
+    if not settings.weather:
+        return False
+    source = provider(settings)
+    if not source or not source.ready:
         return False
     if now - float(state.meta("weather_try_at") or 0) < REFRESH_EVERY:
         return False
     state.set_meta(weather_try_at=now)
-    base, headers = settings.hass_url.rstrip("/"), {"Authorization": f"Bearer {settings.hass_token}"}
     try:
-        async with (http and _Borrowed(http) or httpx.AsyncClient()) as client:
-            got = [(await client.get(f"{base}/api/states/{entity}", headers=headers, timeout=10)).json()
-                   for entity in (settings.weather_entity, SUN_ENTITY)]
+        w = await source.fetch(http)
     except Exception:
         return False
-    w = parse(*got)
     if not w:
         return False
     save(state, w, now)
     return True
 
 
-class _Borrowed:
-    """Lets a caller-supplied client be used in `async with` without being closed."""
-    def __init__(self, client):
-        self.client = client
-
-    async def __aenter__(self):
-        return self.client
-
-    async def __aexit__(self, *exc):
-        return False
+from . import weather_homeassistant  # noqa: E402,F401  (registers the "homeassistant" provider)

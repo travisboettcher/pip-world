@@ -114,6 +114,9 @@ def out_of_place(ctx, name: str) -> str:
     here = ctx.state.agent()["location"]
     place = places.here(ctx.state, ctx.settings, ctx.library)
     listed = listed_here(name, place)
+    walk = ctx.state.session()
+    if (ANYWHERE not in scope or listed) and walk and walk["kind"] == "walk":  # Pip's location is where it left from, not where it is
+        return f"you're on the way to {places.label(walk['target'])}; wait until you get there"
     if not is_here(scope, here) and not listed:
         if scope[0] == "home":
             return f"you're at {places.label(here)}; go_to home first"

@@ -16,6 +16,7 @@ from . import emotions as emo
 from . import invented_places as invented
 from . import places
 from . import projects as proj
+from . import worldmap
 from .config import Settings
 from .llm import get_backend
 from .loop import Agent
@@ -243,6 +244,12 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         return {"neighbors": [{k: c[k] for k in ("name", "about", "life", "next_chatter_at")}
                               for c in st.characters("neighbor")],
                 "letters": st.letters(limit=min(limit, 500))}
+
+    @app.get("/map")
+    def get_map():
+        """Pip's map: every place with its spot, and where Pip is (see worldmap.py)."""
+        agent: Agent = app.state.agent
+        return worldmap.snapshot(agent.state, settings, agent.library)
 
     @app.get("/places")
     def get_places():

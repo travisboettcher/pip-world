@@ -17,6 +17,7 @@ from . import nightpass as np
 from .outreach import Outreach
 from . import places
 from . import weather
+from . import worldmap
 from . import emotions as emo
 from . import sleep as sleepmod
 from . import projects as proj
@@ -152,6 +153,7 @@ class Agent:
         if cr.tick(self.state, self.rng):
             self.request_wake()
         emo.drift(self.state, self.s)
+        worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
 
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
@@ -243,8 +245,7 @@ class Agent:
         inbox = self.state.pending_inbox()
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
-        here = places.here(self.state, self.s, self.library)
-        specs = specs_for(self.tools, here.key, here, places.open_now(here, self.s))  # what can be done here, described for here
+        specs = self._specs()
         if not self.ctx.vision:  # nothing to look with
             specs = [sp for sp in specs if sp.name != "look"]
         if not self.outreach.can_send():  # a postcard is only offered when one could actually go out
@@ -544,6 +545,13 @@ class Agent:
         if learned:
             lines += ["Things you've learned:"] + [fmt(m) for m in learned]
         return lines
+
+    def _specs(self) -> list:
+        """The tools to offer now: what can be done here, described for here. Mid-walk Pip is nowhere yet, so only what works anywhere."""
+        if places.present_at(self.state) is None:
+            return specs_for(self.tools, "")
+        here = places.here(self.state, self.s, self.library)
+        return specs_for(self.tools, here.key, here, places.open_now(here, self.s))
 
     def _perception(self, reason: str, inbox: list[dict]) -> str:
         a = self.state.agent()
