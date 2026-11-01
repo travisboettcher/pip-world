@@ -151,19 +151,48 @@ def accept(state, speaker: str, text: str, raw, now: float | None = None, rng: r
     return rec
 
 
-def add_to(state, place, speaker: str, text: str, raw, now: float | None = None) -> dict | None:
-    """A later mention of a known place: kept as evidence (the newest few), with any new spelling as an alias."""
+def add_to(state, place, speaker: str, text: str, raw, now: float | None = None,
+           rng: random.Random | None = None) -> dict | None:
+    """A later mention of a known place: kept as evidence (the newest few), with any new spelling as an alias. At a
+    real place, something new it names grows the place (owner decision 3, capped per place): a thing to find there,
+    or else a line of description. A heard-of place just keeps the mention, so the design will honour it."""
     now = now or time.time()
     rec = place if isinstance(place, dict) else find_record(state, place, now)
     if not rec or not isinstance(raw, dict):
         return None
-    fields = {"mentions": (rec["mentions"] + [_mention(speaker, raw, now)])[-MENTIONS_KEPT:], "heard_at": now}
+    mention = _mention(speaker, raw, now)
+    fields = {"mentions": (rec["mentions"] + [mention])[-MENTIONS_KEPT:], "heard_at": now,
+              **_grow(state, rec, mention, rng or random.Random())}
     name = _name(raw)
     alias = _alias(name) if name else ""
     if alias and alias != rec["key"].lower() and alias not in rec["aliases"]:
         fields["aliases"] = rec["aliases"] + [alias]
     state.update_place(rec["key"], **fields)
+    if "description" in fields:
+        state.set_meta(**{f"place:{rec['key']}": fields["description"]})
     return state.place_row(rec["key"])
+
+
+GROWTH_MAX = 3   # things a real place can gain from later mentions
+GROWN_VERB = ["look around for what can be had here", "looking around"]
+
+
+def _grow(state, rec: dict, mention: dict, rng: random.Random) -> dict:
+    room = GROWTH_MAX - rec["grown"]
+    if rec["status"] != "real" or room <= 0:
+        return {}
+    known = known_items(state)
+    rules = rec["kind"] if kinds.KINDS[rec["kind"]].loot_kinds else "wild"  # a sight grows like somewhere wild
+    new = [p for p in promised({"mentions": [mention]}, known) if not any(_covers(e[0], p["name"]) for e in rec["loot"])]
+    loot = build_loot([], rules, known, new[:room], rng, existing=rec["loot"])
+    if len(loot) > len(rec["loot"]):
+        verbs = rec["verbs"] if "gather" in rec["verbs"] else {**rec["verbs"], "gather": GROWN_VERB}
+        return {"loot": loot, "verbs": verbs, "grown": rec["grown"] + len(loot) - len(rec["loot"])}
+    line = f" {mention['by']} says: {mention['there'].rstrip('.')}."
+    if mention["there"] and mention["there"].lower() not in rec["description"].lower() \
+            and len(rec["description"] + line) <= 500:
+        return {"description": rec["description"] + line, "grown": rec["grown"] + 1}
+    return {}
 
 
 # --- the backstop: a name a character said, found again when Pip tries to go there ----------------
@@ -347,11 +376,14 @@ def promised(rec: dict, known: dict) -> list[dict]:
     return out
 
 
-def build_loot(entries, kind: str, known: dict, promises: list[dict], rng: random.Random) -> list[list]:
+def build_loot(entries, kind: str, known: dict, promises: list[dict], rng: random.Random,
+               existing: list | None = None) -> list[list]:
     """GM-proposed entries made into a gathering table: the place kind decides which item kinds may be there and how
-    many tools; the tier decides weight and quantity; names reuse what already exists. Every promised thing is in it."""
+    many tools; the tier decides weight and quantity; names reuse what already exists. Every promised thing is in it.
+    `existing` is a table to add to (a place growing)."""
     k = kinds.KINDS[kind]
-    out, tools = [], 0
+    out = [list(e) for e in existing or []]
+    tools = sum(e[1] == "tool" for e in out)
 
     def add(e, cap: int) -> None:
         nonlocal tools
@@ -373,7 +405,7 @@ def build_loot(entries, kind: str, known: dict, promises: list[dict], rng: rando
         add(e, LOOT_MAX)
     for p in promises:
         if not any(_covers(o[0], p["name"]) for o in out):
-            add(p, LOOT_MAX + len(promises))
+            add(p, len(out) + 1)
     return out
 
 
@@ -411,3 +443,55 @@ async def realise(state, gm, key: str, label: str, rng: random.Random | None = N
     said = [f"{m['by']} says: {m['there']}" if m["there"] else f"{m['by']} mentioned it" for m in rec["mentions"]]
     raw = await gm.design_place(label, said, sorted({n for n, _ in known_items(state).values()}))
     return design(state, rec, raw, rng, now)
+
+
+# --- seams for the characters' prompts (neighbor letters, in-person talk, a new neighbor) -----------------------
+MENTION_PROPERTY = {"type": "object", "properties": {
+    "place": {"type": "string", "description": "the destination as you said it: the town, wood or shop Pip would walk to"},
+    "there": {"type": "string", "description": "what you say is there or is for, under 120 characters"},
+    "distance": {"type": "string", "enum": list(DISTANCES)},
+    "items": {"type": "array", "items": {"type": "string"}},
+}, "required": ["place"]}
+PLACES_SHOWN = 8
+TAGS = {"woods": "foraging", "junkyard": "scrap", "library": "books"}
+WALK_WORDS = {"near": "a short walk", "far": "a long walk", VERY_FAR: "too far to walk"}
+
+
+def known_names(state, settings=None, library=None) -> list[str]:
+    """Every place that exists for Pip (built-in, a neighbor's home, invented, very far ones too), as it's said."""
+    from . import places  # places builds on this module
+    built = [places.label(k) for k in places.registry(state, settings, library) if k != places.HOME]
+    return list(dict.fromkeys(built + [places.label(r["key"]) for r in records(state)]))
+
+
+def mention_instruction(state, settings=None, library=None) -> str:
+    """The sentence a character's prompt carries, so the GM reuses known names (half the dedupe) and reports new ones."""
+    return ("Only if your words point Pip to a place it could go that isn't one of these: "
+            f"{', '.join(known_names(state, settings, library))}, give `mentions_place` (`place`: the destination as "
+            "you said it; `there`: what you say is there, under 120 characters; `distance`: near, far or very far, "
+            "as you'd put it; `items`: things you say can be had there). Not your own home, not landscape you just "
+            "pass through.")
+
+
+def _line_for(state, rec: dict, name: str) -> str:
+    from . import places
+    told = next((m for m in rec["mentions"] if m["by"] == name), None)
+    notes = [f"you told Pip: {told['there']}"] if told and told["there"] else []
+    if rec["status"] == "real":
+        found = [f["item"] for f in state.finds_at(rec["key"])[:2]]
+        notes.append("Pip has been" + (f" and found {', '.join(found)} there" if found else ""))
+    return f"{places.label(rec['key'])}, {WALK_WORDS[rec['distance']]}" + (f" ({'; '.join(notes)})" if notes else "")
+
+
+def places_line(state, name: str, settings=None, library=None) -> str:
+    """'Places in Pip's world: ...' for a character's prompt: what they told Pip about first, then the built-in places
+    and neighbors' homes (not their own), then places others mentioned; up to 8."""
+    from . import places
+    recs = records(state)
+    mine = [r for r in recs if any(m["by"] == name for m in r["mentions"])]
+    built = [places.label(k) + (f" ({TAGS[k]})" if k in TAGS else "")
+             for k, p in places.registry(state, settings, library).items()
+             if k != places.HOME and not p.invented and k != f"{name}{places.HOME_SUFFIX}"]
+    parts = ([_line_for(state, r, name) for r in mine] + built
+             + [_line_for(state, r, name) for r in recs if r not in mine])[:PLACES_SHOWN]
+    return "Places in Pip's world: " + "; ".join(parts) if parts else ""

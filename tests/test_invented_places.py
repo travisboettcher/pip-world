@@ -670,3 +670,129 @@ async def test_go_to_a_shop_that_will_be_shut_says_when_it_opens(tmp_path):
     st.update_place("Saltholm", hours=[h, (h + 1) % 24])
     r = await call(agent, "go_to", place="Saltholm")
     assert r.text.endswith(f" It'll be shut when you get there; it opens at {h}:00.")
+
+
+# --- places grow from later mentions (owner decision 3) ------------------------------------------------------
+def test_a_later_mention_of_something_new_at_a_real_place_adds_it(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = real_shop(st)
+    before = len(rec["loot"])
+    out = IP.add_to(st, "Saltholm", "Briar", "Saltholm's chandler has tarred rope now.",
+                    {"place": "Saltholm", "there": "the chandler has tarred rope", "items": ["tarred rope"]})
+    loot = {e[0]: e for e in out["loot"]}
+    assert len(out["loot"]) == before + 1 and loot["tarred rope"][1] == "material" and 6 <= loot["tarred rope"][2] <= 12
+    assert out["grown"] == 1 and out["description"] == DESIGN["description"]
+    again = IP.add_to(st, "Saltholm", "Briar", "Saltholm has tarred rope.", {"place": "Saltholm", "items": ["tarred rope"]})
+    assert len(again["loot"]) == before + 1 and again["grown"] == 1                  # nothing new: no growth
+
+
+def test_a_later_mention_with_no_new_thing_adds_a_line_of_description(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    out = IP.add_to(st, "Saltholm", "Morgan", "Saltholm has a harbour.", {"place": "Saltholm", "there": "a harbour full of boats"})
+    assert out["description"] == DESIGN["description"] + " Morgan says: a harbour full of boats."
+    assert st.meta("place:Saltholm") == out["description"] and out["grown"] == 1
+    same = IP.add_to(st, "Saltholm", "Morgan", "Saltholm has a harbour.", {"place": "Saltholm", "there": "a harbour full of boats"})
+    assert same["description"] == out["description"] and same["grown"] == 1          # said already: nothing new
+
+
+def test_a_sight_can_grow_something_to_gather(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"})
+    IP.design(st, rec, {"description": "A still lake."}, random.Random(1))
+    out = IP.add_to(st, "Lake Ennis", "Briar", "There are wild berries by Lake Ennis.",
+                    {"place": "Lake Ennis", "there": "wild berries by the shore"})
+    assert [e[0] for e in out["loot"]] == ["wild berries"] and out["loot"][0][1] == "food"
+    assert out["verbs"] == {"gather": ["look around for what can be had here", "looking around"]}
+
+
+def test_growth_is_capped_per_place_but_mentions_are_still_kept(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    for i, thing in enumerate(("tarred rope", "cork floats", "net needles", "lamp wicks")):
+        out = IP.add_to(st, "Saltholm", "Briar", f"Saltholm has {thing}.", {"place": "Saltholm", "items": [thing]})
+    names = [e[0] for e in out["loot"]]
+    assert "net needles" in names and "lamp wicks" not in names and out["grown"] == IP.GROWTH_MAX == 3
+    assert out["mentions"][-1]["items"] == ["lamp wicks"]
+
+
+def test_a_heard_of_place_keeps_later_mentions_as_promises_without_growing(tmp_path):
+    s, st = fresh(tmp_path)
+    known_shop(st, now=time.time())
+    out = IP.add_to(st, "Saltholm", "Briar", "Saltholm has tarred rope.", {"place": "Saltholm", "items": ["tarred rope"]})
+    assert out["grown"] == 0 and out["loot"] == [] and out["mentions"][-1]["items"] == ["tarred rope"]
+    designed = IP.design(st, out, DESIGN, random.Random(1))
+    assert "tarred rope" in [e[0] for e in designed["loot"]]                         # promised, so it's there
+
+
+def test_the_directory_blurb_of_a_real_place_shows_what_was_said_since(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    real_shop(st, now=time.time() - 60)
+    st.update_place("Saltholm", real_at=time.time() - 30)
+    assert P.registry(st, s, None)["Saltholm"].blurb == DESIGN["blurb"]
+    IP.add_to(st, "Saltholm", "Morgan", "Saltholm has a harbour.", {"place": "Saltholm", "there": "a harbour full of boats"})
+    assert P.registry(st, s, None)["Saltholm"].blurb == DESIGN["blurb"] + " (Morgan says: a harbour full of boats)"
+
+
+# --- the seams for the neighbor prompts ------------------------------------------------------------------
+def test_the_mention_property_is_a_report_schema_with_the_distance_enum():
+    prop = IP.MENTION_PROPERTY
+    assert prop["type"] == "object" and prop["required"] == ["place"]
+    assert set(prop["properties"]) == {"place", "there", "distance", "items"}
+    assert prop["properties"]["distance"]["enum"] == ["near", "far", "very far"]
+    assert prop["properties"]["items"] == {"type": "array", "items": {"type": "string"}}
+
+
+def test_the_mention_instruction_lists_the_places_that_already_exist(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.add_character("Briar Fennick", "neighbor", None, "a mender of nets", 60, 0)
+    heard(st)
+    heard(st, "Brightwater", "very far", "where Briar's sister lives")
+    line = IP.mention_instruction(st, s)
+    assert line.startswith("Only if your words point Pip to a place it could go that isn't one of these: ")
+    assert "the woods, the junkyard, Briar Fennick's home, Saltholm, Brightwater" in line and "home (" not in line
+    assert "`mentions_place`" in line and "very far" in line and "Not your own home" in line
+
+
+async def test_a_gm_reply_with_a_mention_records_the_place_and_one_without_does_nothing(tmp_path):
+    s, st, *_ = make(tmp_path)
+    reply = {"text": TIP, "mentions_place": SALT}
+    assert IP.accept(st, "Briar", reply["text"], reply.get("mentions_place"))["key"] == "Saltholm"
+    assert IP.accept(st, "Briar", "Hello again.", {"text": "Hello again."}.get("mentions_place")) is None
+    again = IP.accept(st, "Briar", "Saltholm's quay is busy.", {"place": "Saltholm's quay", "there": "a busy quay"})
+    assert again["key"] == "Saltholm" and len(again["mentions"]) == 2 and "saltholm quay" in again["aliases"]
+
+
+def places_world(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.add_character("Briar Fennick", "neighbor", None, "a mender of nets", 60, 0)
+    st.add_character("Marigold", "neighbor", None, "a beekeeper", 60, 0)
+    s.invented_places_per_day = 3
+    now = time.time()
+    IP.design(st, IP.accept(st, "Briar Fennick", TIP, SALT, now=now), DESIGN, random.Random(1))
+    st.add_find("Saltholm", "brass wire")
+    heard(st, "Fallow", "near", "a meadow full of larks", by="Marigold", now=now)
+    heard(st, "Brightwater", "very far", "where my sister lives", by="Briar Fennick", now=now + 1)
+    return s, st
+
+
+def test_the_places_line_puts_what_this_character_told_pip_first(tmp_path, monkeypatch):
+    s, st = places_world(tmp_path)
+    assert IP.places_line(st, "Briar Fennick", s) == (
+        f"Places in Pip's world: Saltholm, a long walk (you told Pip: {SALT['there']}; Pip has been and found brass wire "
+        "there); Brightwater, too far to walk (you told Pip: where my sister lives); the woods (foraging); the junkyard "
+        "(scrap); Marigold's home; Fallow, a short walk")
+    assert IP.places_line(st, "Marigold", s).startswith(
+        "Places in Pip's world: Fallow, a short walk (you told Pip: a meadow full of larks); the woods (foraging); "
+        "the junkyard (scrap); Briar Fennick's home; Saltholm, a long walk (Pip has been and found brass wire there); "
+        "Brightwater, too far to walk")
+    monkeypatch.setattr(IP, "PLACES_SHOWN", 2)
+    short = IP.places_line(st, "Briar Fennick", s)
+    assert short.endswith("; Brightwater, too far to walk (you told Pip: where my sister lives)") and "woods" not in short
+
+
+def test_the_places_line_is_empty_when_there_is_nowhere_to_go(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    assert IP.places_line(st, "Briar", s) == ""
+    st.update_agent(location="library")
+    assert IP.places_line(st, "Briar", s) == ""

@@ -137,7 +137,9 @@ def invented_place(rec: dict) -> Place:
     """A places-table row as a Place: a heard-of one has no verbs yet; a real one has its kind's."""
     heard_of = rec["status"] != "real"
     verbs = {v: (short, _verb_help(rec, v, short)) for v, (short, _) in rec["verbs"].items()}
-    return Place(rec["key"], said_about(rec["mentions"]) if heard_of else rec["blurb"], rec["walk_minutes"] or 0,
+    since = [m for m in rec["mentions"] if m["ts"] > (rec["real_at"] or 0)]
+    blurb = said_about(rec["mentions"]) if heard_of else rec["blurb"] + (f" ({said_about(since, 1)})" if since else "")
+    return Place(rec["key"], blurb, rec["walk_minutes"] or 0,
                  offers=tuple(verbs), verbs=verbs, hours=tuple(rec["hours"]) if rec["hours"] else None,
                  daylight_only=bool(rec["daylight_only"]), invented=True, heard=heard_of, mentions=rec["mentions"],
                  distance=rec["distance"])
