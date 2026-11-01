@@ -218,6 +218,7 @@ def test_an_invented_place_record_as_a_place(tmp_path):
     rec = real_shop(st, now=1000.0)
     st.update_place("Saltholm", real_at=2000.0)
     IP.add_to(st, "Saltholm", "Briar", "", {"place": "Saltholm", "there": "said at once"}, now=2000.0)   # not since
+    assert P.invented_place(st.place_row("Saltholm")).blurb == DESIGN["blurb"]
     IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "boats"}, now=3000.0)
     IP.add_to(st, "Saltholm", "Marigold", "", {"place": "Saltholm", "there": "gulls"}, now=3001.0)
     p = P.invented_place(st.place_row("Saltholm"))

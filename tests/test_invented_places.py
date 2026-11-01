@@ -1349,3 +1349,10 @@ def test_a_resident_is_kept_with_their_name_and_never_chatters_on_their_own(tmp_
     IP.design(st, known_shop(st), {**DESIGN, "resident": {**TEAGUE, "name": "Xavier Teague"}}, random.Random(2))
     (ch,) = st.characters()
     assert ch["name"] == "Xavier Teague" and ch["chatter_minutes"] == 0 and ch["next_chatter_at"] == 0
+
+
+def test_the_backfill_looks_past_a_name_said_first_in_a_sentence(tmp_path):
+    s, st = fresh(tmp_path)
+    st.log("companion", name="Briar", text="Saltholm is lovely. Ask the man in Saltholm.")
+    st.add_memory("go to Saltholm", "todo")
+    assert [r["key"] for r in IP.backfill(st)] == ["Saltholm"]

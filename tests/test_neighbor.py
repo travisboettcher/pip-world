@@ -1037,9 +1037,9 @@ async def test_a_new_neighbor_exactly(tmp_path):
     assert "isn't one of these: the woods, give `mentions_place`" in task
     every = s.neighbor_writes_every_hours * 60
     assert ch["name"] == "N" * 40 + "..." and ch["persona"] == "p" * 800 + "..." and ch["about"] == "a" * 160 + "..."
-    assert ch["chatter_minutes"] == every and ch["next_chatter_at"] == pytest.approx(now + every * 60 * 0.7)
+    assert ch["chatter_minutes"] == every and ch["next_chatter_at"] == pytest.approx(now + every * 60 * 0.7, abs=1e-3)
     (lt,) = st.letters()
-    assert lt["text"] == clip("l" * 1201, 1200) and lt["deliver_at"] == pytest.approx(now + s.letter_delay_minutes * 60 / 4)
+    assert lt["text"] == clip("l" * 1201, 1200) and lt["deliver_at"] == pytest.approx(now + s.letter_delay_minutes * 60 / 4, abs=1e-3)
     assert st.place_row("Saltholm") is None                                              # the letter doesn't name it
     assert st.events(limit=1)[0]["kind"] == "neighbor" and st.events(limit=1)[0]["data"] == {"name": ch["name"],
                                                                                             "about": ch["about"]}
