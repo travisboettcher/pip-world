@@ -13,6 +13,7 @@ from . import art
 from . import companions as comp
 from . import expectations as exp
 from . import gathering
+from . import invented_places as invented
 from . import creations as cr
 from . import memory as mem
 from . import library as lib
@@ -680,6 +681,12 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"place": {"type": "string"}}, ["place"]))
 async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     place = places.find(ctx.state, ctx.library, args["place"])
+    if not place:  # somewhere a character told Pip about: known, or said recently (the backstop)
+        rec = invented.find_record(ctx.state, args["place"]) or invented.recall_mention(ctx.state, args["place"])
+        if rec and rec["walk_minutes"] is None:
+            return ToolResult(f"{places.label(rec['key'])} is too far to walk to: you've only heard of it "
+                              f"({places.said_about(rec['mentions'])})", followup=True)
+        place = places.find(ctx.state, ctx.library, rec["key"]) if rec else None
     if not place:
         known = ", ".join(places.available(ctx.state, ctx.library))
         return ToolResult(f"error: you don't know a place called {args['place']!r} (you know: {known})", followup=True)
@@ -821,8 +828,12 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         if key == places.HOME:
             continue
         finds = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
-        knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))))
+        knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))
+                              | content_words(" ".join(m["there"] for m in p.mentions))))
         if not (finds or knows):
+            continue
+        if p.heard:
+            lines.append(f"- {places.label(key)}: {p.blurb} (you haven't been)")
             continue
         line = f"- {places.label(key)}: {p.blurb.split(':')[0]}"
         if finds:
@@ -832,6 +843,9 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         elif key in gathering.LOOT:
             line += "; you haven't found any yet, but it's the kind of place"
         lines.append(line)
+    lines += [f"- {places.label(r['key'])}: {places.said_about(r['mentions'])} (too far to walk)"
+              for r in invented.records(ctx.state) if r["walk_minutes"] is None
+              and words & content_words(" ".join(m["there"] for m in r["mentions"]))]
     if not lines:
         return ToolResult(f"you can't think of anywhere you'd find {what}. Try asking a neighbor, looking in a book, "
                           "or having a look around somewhere new.", followup=True)

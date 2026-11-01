@@ -80,6 +80,8 @@ class Settings:
     neighbor_writes_every_hours: float = 30
     letters_per_day: int = 3           # Pip's letters per 24 h
     parcels_per_day: int = 1           # parcels the neighbor may send per 24 h
+    invented_places_per_day: int = 2   # new heard-of places characters may add per 24 h (DESIGN-invented-places.md)
+    invented_places_max: int = 12      # invented places in all, heard-of and real together
     library_path: str = "/library"     # a Calibre library (read-only); the library place exists only if it's there
     walk_minutes: float = 10           # how long it takes to walk between places
     read_chars_per_minute: int = 700   # how much text a reading session covers
@@ -159,6 +161,8 @@ class Settings:
             neighbor_writes_every_hours=_float("NEIGHBOR_WRITES_EVERY_HOURS", 30),
             letters_per_day=_int("LETTERS_PER_DAY", 3),
             parcels_per_day=_int("PARCELS_PER_DAY", 1),
+            invented_places_per_day=_int("INVENTED_PLACES_PER_DAY", 2),
+            invented_places_max=_int("INVENTED_PLACES_MAX", 12),
             library_path=e("LIBRARY_PATH") or "/library",
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
