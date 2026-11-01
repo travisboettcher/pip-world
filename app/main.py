@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from . import art
 from . import creations as cr
 from . import emotions as emo
+from . import invented_places as invented
+from . import places
 from . import projects as proj
 from .config import Settings
 from .llm import get_backend
@@ -241,6 +243,31 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         return {"neighbors": [{k: c[k] for k in ("name", "about", "life", "next_chatter_at")}
                               for c in st.characters("neighbor")],
                 "letters": st.letters(limit=min(limit, 500))}
+
+    @app.get("/places")
+    def get_places():
+        """Places characters told Pip about (heard-of, real, removed), with who mentioned them; and the built-ins."""
+        agent: Agent = app.state.agent
+        st = agent.state
+        built = [k for k, p in places.registry(st, settings, agent.library).items() if not p.invented]
+        return {"places": st.place_rows(), "built_in": built}
+
+    @app.patch("/places/{key}")
+    def patch_place(key: str, changes: dict):
+        try:
+            rec = invented.patch(app.state.agent.state, key, changes)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        if not rec:
+            raise HTTPException(status_code=404, detail=f"no place called {key!r}")
+        return rec
+
+    @app.delete("/places/{key}")
+    def delete_place(key: str):
+        rec = invented.remove(app.state.agent.state, key)
+        if not rec:
+            raise HTTPException(status_code=404, detail=f"no place called {key!r}")
+        return rec
 
     @app.get("/library/search")
     def library_search(q: str = "", limit: int = 10):

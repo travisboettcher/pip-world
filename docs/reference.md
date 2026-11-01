@@ -192,6 +192,22 @@ time, so camping there yields less. The GM only narrates what the engine found. 
 "where could I get brass?" from the directory and what Pip has found, and a project step missing a material says where it was found.
 `WILD_PLACES` chooses which places exist. See [DESIGN-places.md](DESIGN-places.md).
 
+## Places characters mention
+Design: [DESIGN-invented-places.md](DESIGN-invented-places.md). When a neighbor, a companion or a visitor in chat points Pip at a place
+that doesn't exist yet ("ask the ironmonger in Saltholm"), it becomes a **heard-of** place: listed under "Places you've heard of" with
+who said what, a walk the engine fixes once (near 12-20 min, far 20-35; a place called very far is known but can't be walked to),
+and `go_to Saltholm` just works. On Pip's first arrival one GM call designs it from a fixed set of kinds (`wild`, `yard`, `shop`,
+`sight` - a sight is just somewhere to go and see); the engine keeps the kind only if what was said backs it and builds the loot itself,
+including anything a character promised was there. Shops keep hours, restock slowly, and what Pip rummages there goes on account until
+there are coins. Later mentions add to a real place (three times at most). Caps: `INVENTED_PLACES_PER_DAY` (2) new places a day,
+`INVENTED_PLACES_MAX` (12) in all; a heard-of place nobody mentions for 30 days is forgotten.
+```sh
+./pipchat places                  # heard-of and real places, who mentioned them, finds, what's on account
+./pipchat places rm Saltholm      # take one out of the world (kept for history, never offered again)
+```
+HTTP: `GET /places`, `PATCH /places/<key>` (`walk_minutes` (null: too far to walk), `hours` for a shop, `description`, `loot`; the same
+validation as a design), `DELETE /places/<key>`.
+
 ## The web UI
 `/ui/` has five tabs (Now, Journal, World, Work, Mind), a chat bubble (bottom-right; unread badge; remembers whether it was open) and a header
 with Pip's activity, hunger/energy meters and a token-usage pill (hover or tap for the breakdown and cost). The Mind tab shows the

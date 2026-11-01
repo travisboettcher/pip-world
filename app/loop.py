@@ -5,6 +5,7 @@ import random
 import time
 
 from . import companions as comp
+from . import invented_places as invented
 from . import creations as cr
 from . import expectations as exp
 from . import gathering
@@ -45,6 +46,7 @@ class Agent:
         self.library = library if library.available() else None
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
+        invented.backfill(state)
         self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
                                vision=bool(getattr(self.backend, "vision", False)))
         self.last_tick = 0.0
@@ -69,6 +71,7 @@ class Agent:
         inbox_id = self.state.add_inbox(text, sender, source=source, conversation=conversation, external_id=external_id)
         self.state.log("inbox", id=inbox_id, text=text, sender=sender, **({"source": source, "conversation": conversation}
                                                                           if source != "web" else {}))
+        invented.from_chat(self.state, sender, text)  # a visitor can point Pip somewhere new, like a character
         self.request_wake(urgent=True)
         return inbox_id
 
@@ -169,7 +172,7 @@ class Agent:
             if not sess or sess["ends_at"] > time.time():
                 return False
             if sess["kind"] == "walk":
-                return bool(await places.arrive(self.state, self.s, self.gm, self.library))
+                return bool(await places.arrive(self.state, self.s, self.gm, self.library, self.rng))
             if sess["kind"] == "read":
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "gather":
@@ -510,12 +513,18 @@ class Agent:
         visits = [(c["name"], ts) for c in self.state.characters("neighbor")
                   if (ts := self.state.last_arrived(places.home_of(c)))]
 
+        heard_of = [r for r in invented.records(self.state) if r["status"] == "heard"]
+
         def fmt_todo(m):
             # a neighbor visited since the to-do was written: the visit may have been the to-do
             since = m["edited_at"] or m["ts"]
             went = [name for name, ts in visits if ts > since and State.related(name, m["text"])]
             note = (f"  [you've since visited {', '.join(went)} - is this done? resolve_note it, or edit_note it down "
                     "to what's left]") if went else ""
+            for r in invented.named_in(heard_of, m["text"]):  # somewhere Pip has only heard of: it can go
+                note += (f"  [{places.label(r['key'])}: you've heard of it; go_to {r['key']} to walk there]"
+                         if r["walk_minutes"] is not None else
+                         f"  [{places.label(r['key'])}: you've heard of it, but it's too far to walk]")
             return fmt(m) + note
         lines: list[str] = []
         diary = self.state.memories("diary", limit=DIARY_SHOWN)
@@ -585,6 +594,9 @@ class Agent:
                 elif e["kind"] == "letter_sent":
                     lines.append(f"- you wrote to {d['to']}: {d['text'][:200]}"
                                  + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
+                elif e["kind"] == "heard_of_place":
+                    lines.append(f"- {d['by']} told you about {places.label(d['place'])}"
+                                 + (f": {d['there']}" if d["there"] else ""))
                 elif e["kind"] == "companion":  # model-written, so quoted like a visitor's words
                     lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
                 elif e["kind"] == "creation_made":

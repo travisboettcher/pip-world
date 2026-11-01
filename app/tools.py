@@ -13,6 +13,7 @@ from . import art
 from . import companions as comp
 from . import expectations as exp
 from . import gathering
+from . import invented_places as invented
 from . import creations as cr
 from . import memory as mem
 from . import library as lib
@@ -74,7 +75,7 @@ def busy(ctx: "ToolContext") -> str:
     if sess["kind"] == "read":
         return f"you're reading {sess['target']} (about {left} min left); rest stops early"
     if sess["kind"] == "gather":
-        return f"you're out {gathering.VERB.get(sess['target'], 'gathering')} at {places.label(sess['target'])} (about {left} min left); rest stops early"
+        return f"you're out {gathering.verb_for(ctx.state, sess['target'])} at {places.label(sess['target'])} (about {left} min left); rest stops early"
     cur = ctx.state.project(sess["project_id"])
     if sess["kind"] == "experiment":
         return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
@@ -101,16 +102,24 @@ def is_here(scope: tuple[str, ...], location: str) -> bool:
     return ANYWHERE in scope or places.scope_of(location) in scope
 
 
+def listed_here(name: str, place) -> bool:
+    """An invented place offers the shared verbs its record lists (gather, browse), wherever it is."""
+    return bool(getattr(place, "invented", False)) and name in place.verbs
+
+
 def out_of_place(ctx, name: str) -> str:
     """Why `name` can't be used where Pip is, or '' if it can."""
     scope = SCOPES.get(name, (ANYWHERE,))
     here = ctx.state.agent()["location"]
-    if not is_here(scope, here):
+    place = places.here(ctx.state, ctx.settings, ctx.library)
+    listed = listed_here(name, place)
+    if not is_here(scope, here) and not listed:
         if scope[0] == "home":
             return f"you're at {places.label(here)}; go_to home first"
         return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
-    place = places.here(ctx.state, ctx.settings, ctx.library)
-    if ANYWHERE not in scope and place.scope in scope and not places.open_now(place, ctx.settings):
+    if ANYWHERE not in scope and (place.scope in scope or listed) and not places.open_now(place, ctx.settings):
+        if place.hours:
+            return f"{places.label(here)} is closed for now; it opens at {place.hours[0]}:00"
         return f"{places.label(here)} is closed for now (it's dark); it opens in the morning"
     return ""
 
@@ -121,9 +130,10 @@ def specs_for(tools: dict, location: str, place=None, open_: bool = True) -> lis
     out = []
     for name, (spec, _) in tools.items():
         scope = SCOPES.get(name, (ANYWHERE,))
-        if not open_ and place and ANYWHERE not in scope and place.scope in scope:
+        listed = listed_here(name, place)
+        if not open_ and place and ANYWHERE not in scope and (place.scope in scope or listed):
             continue  # a closed place offers nothing of its own
-        if is_here(scope, location):
+        if is_here(scope, location) or listed:
             full = place.verbs.get(name, (None, None))[1] if place else None
             out.append(ToolSpec(spec.name, full, spec.parameters) if full else spec)
     return out
@@ -680,6 +690,12 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"place": {"type": "string"}}, ["place"]))
 async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     place = places.find(ctx.state, ctx.library, args["place"])
+    if not place:  # somewhere a character told Pip about: known, or said recently (the backstop)
+        rec = invented.find_record(ctx.state, args["place"]) or invented.recall_mention(ctx.state, args["place"])
+        if rec and rec["walk_minutes"] is None:
+            return ToolResult(f"{places.label(rec['key'])} is too far to walk to: you've only heard of it "
+                              f"({places.said_about(rec['mentions'])})", followup=True)
+        place = places.find(ctx.state, ctx.library, rec["key"]) if rec else None
     if not place:
         known = ", ".join(places.available(ctx.state, ctx.library))
         return ToolResult(f"error: you don't know a place called {args['place']!r} (you know: {known})", followup=True)
@@ -691,6 +707,10 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     minutes = places.start_walk(ctx.state, ctx.settings, place, record.walk_minutes if record else None)
     closed = (" It's closed right now (it's dark), so there will be nothing to do there until morning."
               if record and not places.open_now(record, ctx.settings, time.time() + minutes * 60) else "")
+    if closed and record.hours:
+        closed = f" It'll be shut when you get there; it opens at {record.hours[0]}:00."
+    if record and record.invented and not closed and sleepmod.is_night(ctx.settings, time.time() + 2 * minutes * 60):
+        closed = " It'll be dark before you could get back."  # a warning, not a refusal
     return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min.{closed}")
 
 
@@ -699,8 +719,12 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
-    if here in gathering.LOOT:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
-        seen = gathering.glimpse(ctx.rng, here)
+    table = gathering.loot_for(ctx.state, here)
+    rec = ctx.state.place_row(here) if table and here not in gathering.LOOT else None
+    if rec and rec["kind"] == "shop":
+        return ToolResult(shop_stock(ctx, here, table, rec), followup=True)
+    if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
+        seen = gathering.glimpse(ctx.rng, here, table=table)
         return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
                           + ". gather to dig for what you need.", followup=True)
     q = str(args.get("query") or "").strip()
@@ -712,6 +736,19 @@ async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     if not books:
         return ToolResult(f"nothing on the shelves matches {q!r}", followup=True)
     return ToolResult(f"{where}:\n" + "\n".join(f"- {lib.line(b, ctx.state)}" for b in books), followup=True)
+
+
+def shop_stock(ctx, here: str, table: list, rec: dict) -> str:
+    """At a shop, browse shows what's in today (fewer things as the stock runs down) and what's on account."""
+    level = gathering.stock(ctx.state, here)
+    n = round(gathering.GLIMPSE * min(1.0, level / gathering.full_yield_at(ctx.state, here)))
+    lines = [f"In stock at {places.label(here)} today: " + ", ".join(gathering.glimpse(ctx.rng, here, n, table))
+             + ". gather to pick through it." if n else
+             f"The shelves at {places.label(here)} are bare today; they restock slowly, so come back in a day or so."]
+    if rec["on_account"]:
+        lines.append("On account here: " + ", ".join(f"{q} {name}" for name, q in rec["on_account"].items())
+                     + " (nothing's owed yet; you can settle up later).")
+    return "\n".join(lines)
 
 
 @tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "
@@ -797,14 +834,17 @@ async def gather(ctx: ToolContext, args: dict) -> ToolResult:
     if why := busy(ctx):
         return ToolResult(why, followup=True)
     place = ctx.state.agent()["location"]
-    if place not in gathering.LOOT:
+    if not gathering.loot_for(ctx.state, place):
         return ToolResult("there's nothing to gather here", followup=True)
-    minutes = proj.clamp_int(args.get("minutes"), *gathering.SESSION_MINUTES, 30)
+    lo, hi = gathering.session_for(ctx.state, place)
+    minutes = proj.clamp_int(args.get("minutes"), lo, hi, min(30, hi))
+    verb = gathering.verb_for(ctx.state, place)
     ctx.state.start_session(0, 0, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="gather", target=place)
-    ctx.state.update_agent(activity="gathering", description=f"{gathering.VERB[place]} at {places.label(place)}")
+    ctx.state.update_agent(activity="gathering", description=f"{verb} at {places.label(place)}")
     real = max(1, round(minutes / ctx.settings.work_speed))
-    note = " The ground looks well picked over." if gathering.stock(ctx.state, place) < gathering.FULL_YIELD_AT else ""
-    return ToolResult(f"you set about {gathering.VERB[place]} at {places.label(place)} for {minutes} min.{note} "
+    note = (" The ground looks well picked over."
+            if gathering.stock(ctx.state, place) < gathering.full_yield_at(ctx.state, place) else "")
+    return ToolResult(f"you set about {verb} at {places.label(place)} for {minutes} min.{note} "
                       f"You'll see what you found in about {real} min.")
 
 
@@ -821,17 +861,25 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         if key == places.HOME:
             continue
         finds = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
-        knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))))
+        stocked = [e[0] for e in gathering.loot_for(ctx.state, key) or ()] if p.invented else []
+        knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))
+                              | content_words(" ".join(m["there"] for m in p.mentions)) | content_words(" ".join(stocked))))
         if not (finds or knows):
+            continue
+        if p.heard:
+            lines.append(f"- {places.label(key)}: {p.blurb} (you haven't been)")
             continue
         line = f"- {places.label(key)}: {p.blurb.split(':')[0]}"
         if finds:
             f = finds[0]
             line += f"; you've found {f['item']} there {f['times']} time{'s' if f['times'] != 1 else ''}" \
                     f" (last {mem.ago(f['last_ts'])})"
-        elif key in gathering.LOOT:
+        elif gathering.loot_for(ctx.state, key):
             line += "; you haven't found any yet, but it's the kind of place"
         lines.append(line)
+    lines += [f"- {places.label(r['key'])}: {places.said_about(r['mentions'])} (too far to walk)"
+              for r in invented.records(ctx.state) if r["walk_minutes"] is None
+              and words & content_words(" ".join(m["there"] for m in r["mentions"]))]
     if not lines:
         return ToolResult(f"you can't think of anywhere you'd find {what}. Try asking a neighbor, looking in a book, "
                           "or having a look around somewhere new.", followup=True)

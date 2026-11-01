@@ -9,6 +9,8 @@ neighbors.py). See DESIGN-library.md and DESIGN-neighbor.md.
 import time
 from dataclasses import dataclass, field
 
+from . import invented_places as invented
+from . import place_kinds as kinds
 from . import sleep as sleepmod
 from .text import clip
 
@@ -19,6 +21,7 @@ SCAVENGE_HELP = ("Scavenge through the junkyard's heaps for 15-60 minutes: scrap
                  "and now and then a tool. What you find is down to luck and how picked-over the heaps are. You'll see "
                  "what you found when the time is up; resting stops early.")
 HOME = "workshop"
+WALKS = {"near": "a short walk", "far": "a long walk"}
 HOME_SUFFIX = "'s home"
 
 
@@ -43,8 +46,8 @@ def scope_of(location: str) -> str:
 
 
 def label(place: str) -> str:
-    """How to say it: 'home', 'the library', "Marigold's home"."""
-    return "home" if place == HOME else place if place.endswith(HOME_SUFFIX) else f"the {place}"
+    """How to say it: 'home', 'the library', "Marigold's home", 'Saltholm' (a proper name takes no article)."""
+    return "home" if place == HOME else place if place.endswith(HOME_SUFFIX) or place[:1].isupper() else f"the {place}"
 
 
 @dataclass
@@ -58,6 +61,10 @@ class Place:
     verbs: dict = field(default_factory=dict)
     hours: tuple[int, int] | None = None   # local open hours (start, end); None = always open
     daylight_only: bool = False
+    invented: bool = False   # from the places table (a place a character mentioned); see invented_places.py
+    heard: bool = False      # ...and Pip hasn't been yet: no description, no verbs
+    mentions: list = field(default_factory=list)
+    distance: str = ""
 
     @property
     def label(self) -> str:
@@ -102,7 +109,40 @@ def registry(state, settings, library) -> dict[str, Place]:
     for c in state.characters("neighbor"):
         out[home_of(c)] = Place(home_of(c), f"where your neighbor {c['name']} lives" + (f" ({c['about']})" if c["about"] else ""),
                                 walk, offers=("talk",))
+    for rec in invented.records(state):
+        if rec["walk_minutes"] is not None and rec["key"] not in out:
+            out[rec["key"]] = invented_place(rec)
     return out
+
+
+def said_about(mentions: list, n: int = 2) -> str:
+    """What the characters said about a place: "Briar says: an ironmonger; Morgan says: a harbour"."""
+    said = [f"{m['by']} says: {m['there']}" for m in mentions if m["there"]][-n:]
+    return "; ".join(said) or (f"{mentions[-1]['by']} mentioned it" if mentions else "")
+
+
+def _verb_help(rec: dict, verb: str, short: str) -> str | None:
+    """The full description of a verb at an invented place (None: the tool's own)."""
+    if verb != "gather":
+        return None
+    lo, hi = kinds.KINDS[rec["kind"]].session
+    shop = kinds.KINDS[rec["kind"]].shop_hours
+    return (f"{short[:1].upper()}{short[1:]} at {label(rec['key'])} for {lo}-{hi} minutes. What you find is down to luck"
+            + (" and what's in stock (it restocks slowly); it goes on account, to settle up later."
+               if shop else " and how picked-over the place is.")
+            + " You'll see what you found when the time is up; resting stops early.")
+
+
+def invented_place(rec: dict) -> Place:
+    """A places-table row as a Place: a heard-of one has no verbs yet; a real one has its kind's."""
+    heard_of = rec["status"] != "real"
+    verbs = {v: (short, _verb_help(rec, v, short)) for v, (short, _) in rec["verbs"].items()}
+    since = [m for m in rec["mentions"] if m["ts"] > (rec["real_at"] or 0)]
+    blurb = said_about(rec["mentions"]) if heard_of else rec["blurb"] + (f" ({said_about(since, 1)})" if since else "")
+    return Place(rec["key"], blurb, rec["walk_minutes"] or 0,
+                 offers=tuple(verbs), verbs=verbs, hours=tuple(rec["hours"]) if rec["hours"] else None,
+                 daylight_only=bool(rec["daylight_only"]), invented=True, heard=heard_of, mentions=rec["mentions"],
+                 distance=rec["distance"])
 
 
 def here(state, settings, library) -> Place:
@@ -121,7 +161,9 @@ def find(state, library, query) -> str | None:
     if q in ("home", "house", "garden", "my workshop"):
         return HOME
     places = available(state, library)
-    hit = [p for p in places if p.lower() == q] or [p for p in places if q and (q in p.lower() or p.lower() in q)]
+    names = [(p, p.lower()) for p in places] + [(r["key"], a) for r in invented.records(state) if r["key"] in places
+                                                for a in r["aliases"]]
+    hit = list(dict.fromkeys([p for p, n in names if n == q] or [p for p, n in names if q and (q in n or n in q)]))
     if not hit:  # "marigold", "marigold's", "visit marigold thistlewick"
         hit = [home_of(c) for c in state.characters("neighbor")
                if any(w in q.replace("'s", " ").split() for w in c["name"].lower().split() if len(w) > 2)]
@@ -135,8 +177,9 @@ def start_walk(state, settings, place: str, minutes: float | None = None) -> int
     return max(1, round(minutes / settings.work_speed))
 
 
-async def arrive(state, settings, gm, library) -> dict | None:
-    """Finish a walk: Pip is now at its destination. The first visit to a place gets a lasting description."""
+async def arrive(state, settings, gm, library, rng=None) -> dict | None:
+    """Finish a walk: Pip is now at its destination. The first visit to a place gets a lasting description; a place
+    Pip has only heard of is designed instead (invented_places.realise), and retried next time if that fails."""
     sess = state.session()
     if not sess or sess["kind"] != "walk":
         return None
@@ -144,7 +187,13 @@ async def arrive(state, settings, gm, library) -> dict | None:
     place = sess["target"]
     here_record = registry(state, settings, library).get(place)
     first = place != HOME and state.meta(f"place:{place}") is None  # home is where Pip started
-    if first:
+    bare = False
+    if here_record and here_record.heard:
+        made = await invented.realise(state, gm, place, label(place), rng)
+        bare = not made
+        if bare and first:
+            state.set_meta(**{f"place:{place}": ""})
+    elif first:
         desc = None
         if gm:
             host = neighbor_at(state, place)
@@ -155,7 +204,8 @@ async def arrive(state, settings, gm, library) -> dict | None:
     state.update_agent(location=place, activity="idle",
                        description="just got home" if place == HOME else f"just arrived at {label(place)}")
     state.set_meta(arrived_at=str(time.time()))  # marks this visit (a neighbor greets Pip once per visit)
-    data = {"place": place, "label": label(place), "first_time": first, "description": state.meta(f"place:{place}") or ""}
+    data = {"place": place, "label": label(place), "first_time": first,
+            "description": invented.BARE.format(label(place)) if bare else state.meta(f"place:{place}") or ""}
     state.log("arrived", **data)
     return data
 
@@ -163,14 +213,21 @@ async def arrive(state, settings, gm, library) -> dict | None:
 def directory(state, settings, library, now: float | None = None) -> list[str]:
     """Where Pip can go and what each place is for, from the same records that decide which tools it is offered."""
     loc = state.agent()["location"]
-    lines = []
+    lines, heard_of = [], []
     for key, p in registry(state, settings, library).items():
         if key == loc:
             continue
         closed = "" if open_now(p, settings, now) else ", closed now"
+        if p.heard:
+            heard_of.append(f"- {key}, about {max(1, round(p.walk_minutes))} min, {WALKS[p.distance]}{closed} - {p.blurb}")
+            continue
         what = f" [{', '.join(p.offers)}]" if p.offers else ""
         lines.append(f"- {key}, {max(1, round(p.walk_minutes))} min{closed} - {p.blurb}{what}")
-    return ["Places you can go (go_to):"] + lines if lines else []
+    too_far = [f"- {r['key']} - {said_about(r['mentions'])}" for r in invented.records(state, now)
+               if r["walk_minutes"] is None and r["key"] != loc]
+    return ((["Places you can go (go_to):"] + lines if lines else [])
+            + (["Places you've heard of but not been to (go_to works):"] + heard_of if heard_of else [])
+            + (["Places you've heard of that are too far to walk to:"] + too_far if too_far else []))
 
 
 def perception(state, settings, library) -> list[str]:
@@ -181,7 +238,9 @@ def perception(state, settings, library) -> list[str]:
     desc = state.meta(f"place:{here_key}")
     where = f"home ({HOME})" if here_key == HOME else label(here_key)
     here_place = places.get(here_key)
-    closed = ", closed for now (it's dark; it opens in the morning)" if here_place and not open_now(here_place, settings) else ""
+    closed = "" if not here_place or open_now(here_place, settings) else (
+        f", closed for now (it opens at {here_place.hours[0]}:00)" if here_place.hours
+        else ", closed for now (it's dark; it opens in the morning)")
     lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
     host = neighbor_at(state, present_at(state) or "")
     if host:
