@@ -12,6 +12,7 @@ import logging
 import re
 
 from .llm.base import LLMBackend, ToolSpec
+from . import invented_places
 from . import place_kinds
 from . import world_effects
 from .state import State
@@ -314,7 +315,7 @@ class GameMaster:
         return clip(out["text"], 300) if out else None
 
     # --- the neighbor -----------------------------------------------------------
-    async def invent_neighbor(self, pip_world: str) -> dict | None:
+    async def invent_neighbor(self, pip_world: str, mention: str = "") -> dict | None:
         task = (
             f"Pip's world so far: {pip_world}\n\n"
             "Someone lives near Pip and is about to write to it for the first time. Invent them freely - any kind of "
@@ -328,10 +329,11 @@ class GameMaster:
             "they're known for)\n"
             "- `letter`: their first letter to Pip, introducing themselves (2-5 sentences, in their voice). Pip may walk "
             "over and visit them at home some day; they don't go out visiting themselves."
+            + (f"\n{mention}" if mention else "")
         )
         return await self.ask(task, {
             "name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
-            "letter": {"type": "string"},
+            "letter": {"type": "string"}, **self._mentions(mention),
         }, ["name", "persona", "about", "letter"], "invent_neighbor")
 
     @staticmethod
@@ -353,13 +355,19 @@ class GameMaster:
 
     _REMEMBERING = {"gist": {"type": "string"}, "told": {"type": "array", "items": {"type": "string"}}}
 
+    @staticmethod
+    def _mentions(mention: str) -> dict:
+        """The optional `mentions_place` field, asked for whenever the prompt carries its sentence."""
+        return {"mentions_place": invented_places.MENTION_PROPERTY} if mention else {}
+
     async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
                               received: str | None, enclosed: str, parcel_allowed: bool,
-                              told: list[str] = (), agenda: list[str] = ()) -> dict | None:
+                              told: list[str] = (), agenda: list[str] = (), places: str = "",
+                              mention: str = "") -> dict | None:
         task = (
             f"Write as {name}, Pip's neighbor. Who {name} is: {persona}\n"
             + (f"What's already happening in {name}'s life (not news any more): {' '.join(life)}\n" if life else "")
-            + self._plans(name, agenda) + self._known(name, told)
+            + self._plans(name, agenda) + self._known(name, told) + (f"{places}\n" if places else "")
             + ("Your letters with Pip so far (oldest first; Pip's in full, yours in brief):\n" + "\n".join(correspondence)
                + "\n" if correspondence else "")
             + (f"\nPip's letter just arrived:\n{received}\n" if received else
@@ -376,6 +384,7 @@ class GameMaster:
             "`what` (a few words) and `in_days` (1-14)\n"
             + ("- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food "
                "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
+            + (f"- {mention}\n" if mention else "")
         )
         parcel = {"type": "object", "properties": {
             "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
@@ -384,7 +393,7 @@ class GameMaster:
             "text": {"type": "string"}, "life_update": {"type": "string"}, "life_update_new": {"type": "boolean"},
             "upcoming": {"type": "object", "properties": {"what": {"type": "string"}, "in_days": {"type": "integer"}}},
             **self._REMEMBERING,
-            **({"parcel": parcel} if parcel_allowed else {}),
+            **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
         }, ["text"], "neighbor_letter")
 
     async def recall_told(self, name: str, persona: str, said: list[str]) -> list[str] | None:
@@ -462,13 +471,14 @@ class GameMaster:
                               ["summary"], "read_summary", max_tokens=1024)
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
-                              heard: list[str], greeting: bool, situation: str, told: list[str] = (),
-                              agenda: list[str] = ()) -> dict | None:
-        """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks."""
+                              heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
+                              places: str = "", mention: str = "") -> dict | None:
+        """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
+        it's the greeting."""
         task = (
             f"Voice {name}, Pip's neighbor. Who {name} is: {persona}\n"
             + (f"Lately in {name}'s life: {' '.join(life)}\n" if life else "")
-            + self._plans(name, agenda) + self._known(name, told)
+            + self._plans(name, agenda) + self._known(name, told) + (f"{places}\n" if places else "")
             + (f"What's passed between them recently (letters and talk, oldest first; Pip's words in full, {name}'s "
                "earlier ones in brief):\n" + "\n".join(conversation) + "\n" if conversation else "")
             + f"Right now Pip is visiting {name} at home. {situation}\n"
@@ -476,8 +486,9 @@ class GameMaster:
                if heard else f"Pip has just arrived at the door; greet it as {name} would.")
             + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
             f"{name} stays at home and can't do more than they plausibly could. Report the line as `text`, and:\n"
-            + self._remembering(name, "line")
+            + self._remembering(name, "line") + (f"- {mention}\n" if mention else "")
         )
-        out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING}, ["text"], "speak_in_person")
+        out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING, **self._mentions(mention)},
+                             ["text"], "speak_in_person")
         text = clip(out["text"], 400) if out else ""
         return {**out, "text": text} if text else None

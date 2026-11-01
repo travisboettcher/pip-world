@@ -2,6 +2,7 @@
 import pytest
 
 from app.gm import GameMaster
+from app.invented_places import MENTION_PROPERTY
 from app.llm.base import LLMResponse, ToolCall, Usage
 from app.llm.fake import FakeBackend
 from tests.test_projects import make, report
@@ -63,6 +64,7 @@ LETTER_FULL = (
     "as news):\n"
     "- has a lamp\n"
     "- likes tea\n"
+    "Places in Pip's world: the woods (foraging); Saltholm, a long walk\n"
     "Your letters with Pip so far (oldest first; Pip's in full, yours in brief):\n"
     "Pip: hi\n"
     "Briar (in brief): said hello\n"
@@ -86,6 +88,7 @@ LETTER_FULL = (
     "`what` (a few words) and `in_days` (1-14)\n"
     "- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food or "
     "tool, `qty` 1-3, `description`). Most letters have no parcel.\n"
+    "- Only if your words point Pip somewhere new, give `mentions_place`.\n"
 )
 
 GREETING_BARE = (
@@ -108,6 +111,7 @@ TALK_FULL = (
     "Things Pip already knows about Briar (refer back to them if it's natural, but don't introduce them again "
     "as news):\n"
     "- has a lamp\n"
+    "Places in Pip's world: the woods (foraging); Saltholm, a long walk\n"
     "What's passed between them recently (letters and talk, oldest first; Pip's words in full, Briar's earlier "
     "ones in brief):\n"
     "Pip: hi\n"
@@ -121,7 +125,30 @@ TALK_FULL = (
     'and asked how its walk went")\n'
     "- `told`: 0-3 short phrases for things about Briar or their world that this line tells Pip for the first "
     "time (not anything Pip already knows); empty if nothing is new\n"
+    "- Only if your words point Pip somewhere new, give `mentions_place`.\n"
 )
+
+PLACES = "Places in Pip's world: the woods (foraging); Saltholm, a long walk"
+MENTION = "Only if your words point Pip somewhere new, give `mentions_place`."
+MENTIONS = {"mentions_place": MENTION_PROPERTY}
+
+INVENT = (
+    "Pip's world so far: Pip lives in its home\n"
+    "\n"
+    "Someone lives near Pip and is about to write to it for the first time. Invent them freely - any kind of "
+    "creature or person that fits this small world, with their own life, work, worries and way of writing. "
+    "Make their life genuinely different from Pip's (not another maker of the same kinds of things), so they "
+    "have their own world to share. Give:\n"
+    "- `name`: what they're called\n"
+    "- `persona`: 3-5 sentences, private: who they are, what their days are like, what they care about, how "
+    "they write letters\n"
+    "- `about`: one short line of what Pip would know about them from a distance (where they live, what "
+    "they're known for)\n"
+    "- `letter`: their first letter to Pip, introducing themselves (2-5 sentences, in their voice). Pip may walk "
+    "over and visit them at home some day; they don't go out visiting themselves."
+)
+INVENT_PROPS = {"name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
+                "letter": {"type": "string"}}
 
 RECALL = (
     "Briar is Pip's neighbor. Who Briar is: An owl.\n"
@@ -148,9 +175,11 @@ async def test_letter_prompt_with_everything(tmp_path):
     gm, b, _ = master(tmp_path)
     await gm.neighbor_letter("Briar", "An owl.", ["The roof leaks.", "Rain came."],
                              ["Pip: hi", "Briar (in brief): said hello"], "Dear Briar, hi.", "a cup", True,
-                             told=["has a lamp", "likes tea"], agenda=["market in 2 days", "a storm tomorrow"])
+                             told=["has a lamp", "likes tea"], agenda=["market in 2 days", "a storm tomorrow"],
+                             places=PLACES, mention=MENTION)
     assert task(b) == LETTER_FULL
-    assert b.schemas == [{"type": "object", "properties": {**LETTER_PROPS, "parcel": PARCEL}, "required": ["text"]}]
+    assert b.schemas == [{"type": "object", "properties": {**LETTER_PROPS, "parcel": PARCEL, **MENTIONS},
+                          "required": ["text"]}]
 
 
 @pytest.mark.asyncio
@@ -164,7 +193,7 @@ async def test_a_failed_letter_is_logged_as_neighbor_letter(tmp_path):
 @pytest.mark.asyncio
 async def test_greeting_prompt_with_nothing_yet(tmp_path):
     gm, b, _ = master(tmp_path, report(text="Come in!", gist="Welcomed Pip.", told=[]))
-    out = await gm.speak_in_person("Briar", "An owl.", [], [], [], True, "It is raining.")
+    out = await gm.speak_in_person("Briar", "An owl.", [], [], [], "It is raining.")
     assert out == {"text": "Come in!", "gist": "Welcomed Pip.", "told": []}
     assert task(b) == GREETING_BARE
     assert b.schemas == [{"type": "object", "properties": {"text": {"type": "string"}, **REMEMBERING},
@@ -175,22 +204,34 @@ async def test_greeting_prompt_with_nothing_yet(tmp_path):
 async def test_talk_prompt_with_everything(tmp_path):
     gm, b, _ = master(tmp_path)
     await gm.speak_in_person("Briar", "An owl.", ["The roof leaks.", "Rain came."], ["Pip: hi", "Briar: hello"],
-                             ["hi", "how are you"], False, "It is raining.", told=["has a lamp"],
-                             agenda=["market in 2 days"])
+                             ["hi", "how are you"], "It is raining.", told=["has a lamp"],
+                             agenda=["market in 2 days"], places=PLACES, mention=MENTION)
     assert task(b) == TALK_FULL
+    assert b.schemas == [{"type": "object", "properties": {"text": {"type": "string"}, **REMEMBERING, **MENTIONS},
+                          "required": ["text"]}]
 
 
 @pytest.mark.asyncio
 async def test_a_spoken_line_is_clipped_to_400_and_a_blank_or_failed_one_is_none(tmp_path):
     long = "word " * 79 + "abcde"  # exactly 400 characters
     gm, b, st = master(tmp_path, report(text=long), report(text=long + "f"), report(text="   "))
-    args = ("Briar", "An owl.", [], [], ["hi"], False, "")
+    args = ("Briar", "An owl.", [], [], ["hi"], "")
     assert (await gm.speak_in_person(*args))["text"] == long.strip()
     assert (await gm.speak_in_person(*args))["text"] == "word " * 78 + "word..."
     assert await gm.speak_in_person(*args) is None
     assert await gm.speak_in_person(*args) is None  # the fake has nothing left: no report
     (e,) = [e for e in st.events(5) if e["kind"] == "gm_error"]
     assert e["data"]["purpose"] == "speak_in_person"
+
+
+@pytest.mark.asyncio
+async def test_invent_prompt_without_and_with_the_places_sentence(tmp_path):
+    gm, b, _ = master(tmp_path)
+    await gm.invent_neighbor("Pip lives in its home")
+    await gm.invent_neighbor("Pip lives in its home", mention=MENTION)
+    assert task(b, 0) == INVENT and task(b, 1) == INVENT + "\n" + MENTION
+    assert b.schemas == [{"type": "object", "properties": INVENT_PROPS, "required": list(INVENT_PROPS)},
+                         {"type": "object", "properties": {**INVENT_PROPS, **MENTIONS}, "required": list(INVENT_PROPS)}]
 
 
 @pytest.mark.asyncio

@@ -159,7 +159,7 @@ class Agent:
             self.request_wake()
         await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
         await nb.recall_told(self.state, self.gm, self._told_tries)
-        if await nb.step(self.state, self.s, self.gm, self.rng):
+        if await nb.step(self.state, self.s, self.gm, self.rng, library=self.library):
             self.request_wake()
         if mem.due(self.state, self.s, time.time()):
             await self.reflect()

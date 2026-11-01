@@ -9,6 +9,7 @@ import math
 import random
 import time
 
+from . import invented_places as invented
 from . import places
 from .companions import conversation as talk_lines
 from .memory import ago
@@ -102,7 +103,7 @@ async def ensure_neighbor(state, settings, gm, rng: random.Random, now: float | 
     made = [c["name"] for c in state.creations()]
     if made:
         world += f"; it has made {', '.join(made[:5])}"
-    raw = await gm.invent_neighbor(world) if gm else None
+    raw = await gm.invent_neighbor(world, invented.mention_instruction(state, settings)) if gm else None
     name = clip(raw.get("name"), 40) if raw else ""
     if not raw or not name or not clip(raw.get("letter"), 10) or name.lower() == PIP.lower():
         state.set_meta(neighbor_retry_at=str(now + RETRY_AFTER))
@@ -110,7 +111,8 @@ async def ensure_neighbor(state, settings, gm, rng: random.Random, now: float | 
     every = settings.neighbor_writes_every_hours * 60
     ch = state.add_character(name, "neighbor", None, clip(raw["persona"], 800), every,
                              now + every * 60 * rng.uniform(*JITTER), about=clip(raw.get("about"), 160))
-    state.add_letter(name, PIP, clip(raw["letter"], 1200), now + _delay(settings, rng) / 4)  # the first comes soon
+    lt = state.add_letter(name, PIP, clip(raw["letter"], 1200), now + _delay(settings, rng) / 4)  # the first comes soon
+    invented.accept(state, name, lt["text"], raw.get("mentions_place"), now)
     state.log("neighbor", name=name, about=ch["about"])
     return ch
 
@@ -147,16 +149,17 @@ def _deliver_to_pip(state, lt: dict, now: float) -> None:
     state.update_letter(lt["id"], delivered_at=now)
 
 
-async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict | None) -> bool:
+async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict | None, library=None) -> bool:
     """The neighbor writes a letter (an answer, or out of the blue). Returns False if the GM failed."""
     parcel_ok = state.letters_since_parcel(now - DAY) < settings.parcels_per_day
     out = await gm.neighbor_letter(ch["name"], ch["persona"], ch["life"], correspondence(state, ch["name"]),
                                    answering["text"] if answering else None,
                                    answering["enclosed"] if answering else "", parcel_ok, told=ch["told"],
-                                   agenda=agenda(ch, now)) if gm else None
+                                   agenda=agenda(ch, now), **_places(state, settings, library, ch)) if gm else None
     text = clip(out.get("text"), 1200) if out else ""
     if not text:
         return False
+    invented.accept(state, ch["name"], text, out.get("mentions_place"), now)
     parcel = clean_parcel(out.get("parcel")) if parcel_ok else None
     state.add_letter(ch["name"], PIP, text, now + _delay(settings, rng), parcel=parcel,
                      reply_to=answering["id"] if answering else None, gist=clip(out.get("gist"), 200))
@@ -171,7 +174,13 @@ async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict
     return True
 
 
-async def step(state, settings, gm, rng: random.Random, now: float | None = None) -> bool:
+def _places(state, settings, library, ch: dict) -> dict:
+    """What a character's prompt is told about the places in Pip's world, and how to point Pip to a new one."""
+    return {"places": invented.places_line(state, ch["name"], settings, library),
+            "mention": invented.mention_instruction(state, settings, library)}
+
+
+async def step(state, settings, gm, rng: random.Random, now: float | None = None, library=None) -> bool:
     """Deliver due letters, let neighbors answer or write first. Returns True if Pip should wake."""
     now = now or time.time()
     wake = False
@@ -187,22 +196,22 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
             wake = True
             continue
         ch = neighbors.get(lt["recipient"])
-        ok = bool(ch) and await _write(state, settings, gm, rng, ch, now, lt)
+        ok = bool(ch) and await _write(state, settings, gm, rng, ch, now, lt, library)
         if ok or lt["attempts"] + 1 >= MAX_ATTEMPTS or not ch:
             state.update_letter(lt["id"], delivered_at=now, attempts=lt["attempts"] + 1)
             state.log("letter_read", id=lt["id"], by=lt["recipient"], answered=ok)
         else:
             state.update_letter(lt["id"], attempts=lt["attempts"] + 1, deliver_at=now + RETRY_AFTER)
-    wake = await _visits(state, settings, gm, now) or wake
+    wake = await _visits(state, settings, gm, now, library) or wake
     for ch in state.characters("neighbor"):
         in_flight = state.letters(between=ch["name"], undelivered=True, limit=5)
         if not in_flight and now >= ch["next_chatter_at"]:
-            if not await _write(state, settings, gm, rng, ch, now, None):
+            if not await _write(state, settings, gm, rng, ch, now, None, library):
                 state.update_character(ch["id"], next_chatter_at=now + RETRY_AFTER)
     return wake
 
 
-async def _visits(state, settings, gm, now: float) -> bool:
+async def _visits(state, settings, gm, now: float, library=None) -> bool:
     """In person: a neighbor greets Pip once per visit and answers what Pip says (capped per hour)."""
     here = places.present_at(state)
     wake = False
@@ -222,14 +231,16 @@ async def _visits(state, settings, gm, now: float) -> bool:
         talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
         talk = talk[-CORRESPONDENCE_SHOWN * 2:]
         out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk,
-                                       [h["text"] for h in ch["heard"]] if answering else [], greeting and not answering,
-                                       situation, told=ch["told"], agenda=agenda(ch, now)) if gm else None
+                                       [h["text"] for h in ch["heard"]] if answering else [], situation,
+                                       told=ch["told"], agenda=agenda(ch, now),
+                                       **_places(state, settings, library, ch)) if gm else None
         state.set_meta(**{f"greeted:{ch['id']}": visit})
         fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
                   **({**_told(ch, out), **_happened(ch, now)} if out else {})}
         if fields:
             state.update_character(ch["id"], **fields)
         if out:
+            invented.accept(state, ch["name"], out["text"], out.get("mentions_place"), now)
             gist = clip(out.get("gist"), 200)
             state.log("companion", name=ch["name"], text=out["text"], reply=True, visit=True,
                       **({"gist": gist} if gist else {}))

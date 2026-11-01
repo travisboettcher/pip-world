@@ -789,3 +789,83 @@ async def test_the_agent_loop_invents_the_neighbor_and_lets_them_answer(tmp_path
     st.add_letter("Pip", "Marigold", "Hello Marigold!", time.time() - 1)
     await agent.resolve_world()
     assert st.letters()[-1]["sender"] == "Marigold" and st.letters()[-1]["text"] == "Got your note!"
+
+
+# --- places she mentions (DESIGN-invented-places.md) ------------------------------------------------------------
+from app import invented_places as IP
+from tests.test_scoping import FakeLibrary
+
+SALTHOLM = "You'll want the ironmonger in Saltholm; he keeps thin brass wire."
+MENTION = {"place": "Saltholm", "there": "an ironmonger with thin brass wire", "distance": "far"}
+
+
+@pytest.mark.asyncio
+async def test_her_letter_naming_a_place_makes_it_heard_of_and_she_is_told_the_places_there_are(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text=SALTHOLM, mentions_place=MENTION), report(text="Bees!")])
+    ch = neighbor(st, s)
+    now = time.time()
+    await _letters(st, s, agent, ch, now)
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "\nPlaces in Pip's world: the woods (foraging); the junkyard (scrap)\n" in task
+    assert "\n- Only if your words point Pip to a place it could go that isn't one of these: the woods, the junkyard, " \
+           "Marigold's home, give `mentions_place`" in task
+    rec = st.place_row("Saltholm")
+    assert rec["status"] == "heard" and rec["mentions"][0]["by"] == "Marigold" and rec["mentions"][0]["there"] == \
+        MENTION["there"]
+    await _letters(st, s, agent, st.characters("neighbor")[0], now + 99 * HOUR)  # a letter without one: nothing new
+    assert [r["key"] for r in st.place_rows()] == ["Saltholm"]
+    assert "Places in Pip's world: Saltholm, a long walk (you told Pip: an ironmonger with thin brass wire)" in \
+        gm.calls[1]["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_a_place_she_mentions_only_counts_if_her_words_name_it(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Bees are busy.", mentions_place=MENTION)])
+    ch = neighbor(st, s)
+    await _letters(st, s, agent, ch, time.time())
+    assert st.place_rows() == [] and st.letters()[-1]["text"] == "Bees are busy."
+
+
+@pytest.mark.asyncio
+async def test_she_is_told_about_the_library_when_one_is_mounted(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Bees!")])
+    ch = neighbor(st, s)
+    st.update_character(ch["id"], next_chatter_at=0)
+    await nb.step(st, s, agent.gm, FixedRng(), time.time(), library=FakeLibrary())
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "Places in Pip's world: the library (books); the woods" in task and "isn't one of these: the library," in task
+
+
+@pytest.mark.asyncio
+async def test_in_person_she_can_point_pip_to_a_place(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text=SALTHOLM, mentions_place=MENTION)])
+    neighbor(st, s)
+    _at_home_of(st, "Marigold", 5)
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "Places in Pip's world: the woods (foraging); the junkyard (scrap)\n" in task
+    assert task.endswith(f"- {IP.mention_instruction(st, s)}\n".replace(", Saltholm", ""))
+    assert st.place_row("Saltholm")["mentions"][0]["by"] == "Marigold"
+
+
+@pytest.mark.asyncio
+async def test_a_new_neighbors_first_letter_can_name_a_place(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(**{**INVENTED, "letter": SALTHOLM, "mentions_place": MENTION})],
+                            neighbor=True)
+    await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), time.time())
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "garden\n\nSomeone lives near Pip" in task and task.endswith(
+        "visiting themselves.\nOnly if your words point Pip to a place it could go that isn't one of these: the woods, "
+        "the junkyard, give `mentions_place` (`place`: the destination as you said it; `there`: what you say is "
+        "there, under 120 characters; `distance`: near, far or very far, as you'd put it; `items`: things you say can "
+        "be had there). Not your own home, not landscape you just pass through.")
+    assert st.place_row("Saltholm")["mentions"][0]["by"] == "Marigold"
+
+
+@pytest.mark.asyncio
+async def test_the_agent_loop_tells_her_about_its_library(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Bees!")])
+    agent.library = FakeLibrary()
+    st.update_character(neighbor(st, s)["id"], next_chatter_at=0)
+    await agent.resolve_world()
+    assert "Places in Pip's world: the library (books)" in gm.calls[0]["messages"][0]["content"]
