@@ -12,6 +12,7 @@ import logging
 import re
 
 from .llm.base import LLMBackend, ToolSpec
+from . import place_kinds
 from . import world_effects
 from .state import State
 from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
@@ -380,6 +381,32 @@ class GameMaster:
         )
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "narrate_haul")
         return clip(out["text"], 300) if out else None
+
+    async def design_place(self, place: str, mentions: list[str], existing: list[str]) -> dict | None:
+        """Make a place a character told Pip about real, on Pip's first arrival: its kind (from the registry), a
+        description that agrees with what was said, and what can be found there. The engine validates all of it."""
+        task = (
+            f"Pip has just arrived at {place} for the first time. Nobody has described it before; this is what others "
+            "told Pip about it (the place must agree with all of it):\n" + "\n".join(f"- {m}" for m in mentions)
+            + f"\n\nDecide what {place} is. `kind`, one of: {place_kinds.gm_lines()}. Use the kind what was said "
+            "suggests; a shop only if someone said there's a shop or a trade there. Give:\n"
+            "- `description`: 2-3 sentences of the place as Pip finds it (kept, and shown whenever Pip is here)\n"
+            "- `blurb`: one short line for a list of places\n"
+            "- `loot`: 4-10 things that can be found or had there, each {`name`, `kind`: material, food, seed or tool, "
+            "`tier`: common, uncommon or rare, `description`}; include everything the words above say is there. "
+            + (f"When a thing is one of these, use its name exactly: {', '.join(existing)}. " if existing else "")
+            + "\n- for a shop: `opens` and `closes` (local hours); `gather_help` (a few words: how Pip picks through "
+            "the stock), `browse_help` (a few words: how Pip sees what's in), `gerund` (e.g. 'rummaging in the "
+            "drawer'). For a wild place or a yard: `gather_help` and `gerund`. A sight needs none of these."
+        )
+        item = {"type": "object", "properties": {"name": {"type": "string"}, "kind": {"type": "string"},
+                                                 "tier": {"type": "string"}, "description": {"type": "string"}}}
+        out = await self.ask(task, {
+            "kind": {"type": "string"}, "description": {"type": "string"}, "blurb": {"type": "string"},
+            "loot": {"type": "array", "items": item}, "opens": {"type": "integer"}, "closes": {"type": "integer"},
+            "gather_help": {"type": "string"}, "browse_help": {"type": "string"}, "gerund": {"type": "string"},
+        }, ["kind", "description"], "design_place")
+        return out
 
     async def read_summary(self, title: str, authors: str, text: str, percent: int) -> dict | None:
         task = (

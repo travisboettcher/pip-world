@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import invented_places as invented
+from . import place_kinds as kinds
 from . import sleep as sleepmod
 from .text import clip
 
@@ -120,12 +121,26 @@ def said_about(mentions: list, n: int = 2) -> str:
     return "; ".join(said) or (f"{mentions[-1]['by']} mentioned it" if mentions else "")
 
 
+def _verb_help(rec: dict, verb: str, short: str) -> str | None:
+    """The full description of a verb at an invented place (None: the tool's own)."""
+    if verb != "gather":
+        return None
+    lo, hi = kinds.KINDS[rec["kind"]].session
+    shop = kinds.KINDS[rec["kind"]].shop_hours
+    return (f"{short[:1].upper()}{short[1:]} at {label(rec['key'])} for {lo}-{hi} minutes. What you find is down to luck"
+            + (" and what's in stock (it restocks slowly); it goes on account, to settle up later."
+               if shop else " and how picked-over the place is.")
+            + " You'll see what you found when the time is up; resting stops early.")
+
+
 def invented_place(rec: dict) -> Place:
     """A places-table row as a Place: a heard-of one has no verbs yet; a real one has its kind's."""
     heard_of = rec["status"] != "real"
+    verbs = {v: (short, _verb_help(rec, v, short)) for v, (short, _) in rec["verbs"].items()}
     return Place(rec["key"], said_about(rec["mentions"]) if heard_of else rec["blurb"], rec["walk_minutes"] or 0,
-                 hours=tuple(rec["hours"]) if rec["hours"] else None, daylight_only=bool(rec["daylight_only"]),
-                 invented=True, heard=heard_of, mentions=rec["mentions"], distance=rec["distance"])
+                 offers=tuple(verbs), verbs=verbs, hours=tuple(rec["hours"]) if rec["hours"] else None,
+                 daylight_only=bool(rec["daylight_only"]), invented=True, heard=heard_of, mentions=rec["mentions"],
+                 distance=rec["distance"])
 
 
 def here(state, settings, library) -> Place:
@@ -160,8 +175,9 @@ def start_walk(state, settings, place: str, minutes: float | None = None) -> int
     return max(1, round(minutes / settings.work_speed))
 
 
-async def arrive(state, settings, gm, library) -> dict | None:
-    """Finish a walk: Pip is now at its destination. The first visit to a place gets a lasting description."""
+async def arrive(state, settings, gm, library, rng=None) -> dict | None:
+    """Finish a walk: Pip is now at its destination. The first visit to a place gets a lasting description; a place
+    Pip has only heard of is designed instead (invented_places.realise), and retried next time if that fails."""
     sess = state.session()
     if not sess or sess["kind"] != "walk":
         return None
@@ -169,7 +185,13 @@ async def arrive(state, settings, gm, library) -> dict | None:
     place = sess["target"]
     here_record = registry(state, settings, library).get(place)
     first = place != HOME and state.meta(f"place:{place}") is None  # home is where Pip started
-    if first:
+    bare = False
+    if here_record and here_record.heard:
+        made = await invented.realise(state, gm, place, label(place), rng)
+        bare = not made
+        if bare and first:
+            state.set_meta(**{f"place:{place}": ""})
+    elif first:
         desc = None
         if gm:
             host = neighbor_at(state, place)
@@ -180,7 +202,8 @@ async def arrive(state, settings, gm, library) -> dict | None:
     state.update_agent(location=place, activity="idle",
                        description="just got home" if place == HOME else f"just arrived at {label(place)}")
     state.set_meta(arrived_at=str(time.time()))  # marks this visit (a neighbor greets Pip once per visit)
-    data = {"place": place, "label": label(place), "first_time": first, "description": state.meta(f"place:{place}") or ""}
+    data = {"place": place, "label": label(place), "first_time": first,
+            "description": invented.BARE.format(label(place)) if bare else state.meta(f"place:{place}") or ""}
     state.log("arrived", **data)
     return data
 
@@ -213,7 +236,9 @@ def perception(state, settings, library) -> list[str]:
     desc = state.meta(f"place:{here_key}")
     where = f"home ({HOME})" if here_key == HOME else label(here_key)
     here_place = places.get(here_key)
-    closed = ", closed for now (it's dark; it opens in the morning)" if here_place and not open_now(here_place, settings) else ""
+    closed = "" if not here_place or open_now(here_place, settings) else (
+        f", closed for now (it opens at {here_place.hours[0]}:00)" if here_place.hours
+        else ", closed for now (it's dark; it opens in the morning)")
     lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
     host = neighbor_at(state, present_at(state) or "")
     if host:

@@ -170,7 +170,7 @@ class Agent:
             if not sess or sess["ends_at"] > time.time():
                 return False
             if sess["kind"] == "walk":
-                return bool(await places.arrive(self.state, self.s, self.gm, self.library))
+                return bool(await places.arrive(self.state, self.s, self.gm, self.library, self.rng))
             if sess["kind"] == "read":
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "gather":

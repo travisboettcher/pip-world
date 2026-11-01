@@ -376,3 +376,297 @@ def test_a_visitor_message_reaching_pip_is_checked_for_places(tmp_path):
     s, st, gm, agent = make(tmp_path)
     agent.receive("You should go to Fen Hollow some time.", "Morgan")
     assert st.place_row("Fen Hollow")["mentions"][0]["by"] == "Morgan"
+
+
+# --- real on arrival: the design -------------------------------------------------------------------------
+from app import gathering as G
+from app import tools as T
+from app.gm import GameMaster
+from app.llm.fake import FakeBackend
+from tests.test_projects import report
+
+DESIGN = {"kind": "shop", "blurb": "a harbour village with an ironmonger's",
+          "description": "Saltholm is a huddle of tarred houses round a harbour. The ironmonger's has a drawer of odds and ends.",
+          "opens": 8, "closes": 18, "gather_help": "ask Mr Teague to let you pick through the drawer",
+          "gerund": "rummaging in the ironmonger's drawer", "browse_help": "see what Mr Teague has in stock",
+          "loot": [{"name": "Brass Wires", "kind": "material", "tier": "common", "description": "thin brass wire"},
+                   {"name": "fish hooks", "kind": "material", "tier": "uncommon", "description": "a twist of hooks"},
+                   {"name": "pliers", "kind": "tool", "tier": "common", "description": "small pliers"},
+                   {"name": "awl", "kind": "tool", "tier": "rare", "description": "an awl"},
+                   {"name": "hacksaw", "kind": "tool", "tier": "rare", "description": "a hacksaw"},
+                   {"name": "sea biscuits", "kind": "food", "tier": "rare", "description": "hard biscuits"},
+                   {"name": "kelp seeds", "kind": "seed", "tier": "uncommon", "description": "seeds"},
+                   {"name": "a dragon", "kind": "creature", "tier": "rare", "description": "no"},
+                   {"name": "  ", "kind": "material"}, "junk", {"name": "fish hooks", "kind": "material"}]}
+
+
+def known_shop(st, now=1000.0):
+    return IP.accept(st, "Briar", TIP, {**SALT, "items": ["thin brass wire", "copper rivets"]}, now=now)
+
+
+def test_design_builds_a_validated_real_place(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.design(st, known_shop(st), DESIGN, random.Random(2), now=5000.0)
+    assert rec["status"] == "real" and rec["kind"] == "shop" and rec["real_at"] == 5000.0
+    assert rec["hours"] == [8, 18] and not rec["daylight_only"] and rec["blurb"] == DESIGN["blurb"]
+    assert rec["description"] == DESIGN["description"] and st.meta("place:Saltholm") == DESIGN["description"]
+    assert rec["verbs"] == {"browse": ["see what Mr Teague has in stock", None],
+                            "gather": ["ask Mr Teague to let you pick through the drawer", "rummaging in the ironmonger's drawer"]}
+    loot = {e[0]: e for e in rec["loot"]}
+    assert "brass wire" in loot and "Brass Wires" not in loot                   # the junkyard's name, so it stacks
+    assert loot["brass wire"][1] == "material" and 15 <= loot["brass wire"][2] <= 30 and loot["brass wire"][3] == [1, 3]
+    assert 6 <= loot["fish hooks"][2] <= 12 and loot["fish hooks"][3] == [1, 2]
+    assert [e[0] for e in rec["loot"]].count("fish hooks") == 1
+    tools = [e for e in rec["loot"] if e[1] == "tool"]
+    assert [e[0] for e in tools] == ["pliers", "awl"]                            # at most two, and always rare
+    assert all(2 <= e[2] <= 5 and e[3] == [1, 1] for e in tools)
+    assert loot["sea biscuits"][5] == {"food_value": 0.3} and loot["kelp seeds"][5]["crop"] == "kelp"
+    assert "a dragon" not in loot
+    assert loot["copper rivets"][2] <= 12 and loot["copper rivets"][1] == "material"   # promised but left out: added
+    assert "thin brass wire" not in loot                                       # the brass wire already keeps that promise
+
+
+def test_a_promised_thing_named_in_what_was_said_is_found_there(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "The beach at Skerry has driftwood and wild berries.",
+                    {"place": "Skerry", "there": "driftwood and wild berries on the beach", "distance": "near"})
+    out = IP.design(st, rec, {"kind": "wild", "description": "A shingle beach.", "loot": [
+        {"name": "driftwood", "kind": "material", "tier": "common"}]}, random.Random(1))
+    loot = {e[0]: e for e in out["loot"]}
+    assert set(loot) == {"driftwood", "wild berries"} and loot["wild berries"][1] == "food"   # the woods' own kind
+    assert out["verbs"] == {"gather": ["forage for what grows here", "foraging"]} and out["hours"] is None
+    assert out["daylight_only"] and out["blurb"] == "A shingle beach."
+
+
+def test_a_kind_nobody_said_falls_back_and_a_sight_has_nothing_to_do(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Lake Ennis has the loveliest view.", {"place": "Lake Ennis", "there": "the loveliest view"})
+    out = IP.design(st, rec, {**DESIGN, "kind": "shop", "description": "A still lake under the hills."}, random.Random(1))
+    assert out["kind"] == "sight" and out["verbs"] == {} and out["loot"] == [] and out["hours"] is None
+
+
+@pytest.mark.parametrize("raw", [None, "text", {}, {"description": "  "}, {"kind": "shop"}])
+def test_an_unusable_design_leaves_the_place_heard_of(tmp_path, raw):
+    s, st = fresh(tmp_path)
+    rec = known_shop(st)
+    assert IP.design(st, rec, raw, random.Random(1)) is None and st.place_row("Saltholm")["status"] == "heard"
+
+
+def test_a_shop_with_nothing_in_its_table_offers_nothing_to_do(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Saltholm has a shop.", {"place": "Saltholm", "there": "a shop"})
+    out = IP.design(st, rec, {"kind": "shop", "description": "A shop, shut up and empty.", "loot": []}, random.Random(1))
+    assert out["kind"] == "shop" and out["loot"] == [] and out["verbs"] == {}
+
+
+async def test_gm_design_place_is_told_the_mentions_kinds_and_existing_names(tmp_path):
+    s, st = fresh(tmp_path)
+    fake = FakeBackend([report(**DESIGN)])
+    gm = GameMaster(fake, st)
+    out = await gm.design_place("Saltholm", ["Briar says: an ironmonger"], ["brass wire", "sticks"])
+    assert out["kind"] == "shop"
+    prompt = fake.calls[0]["messages"][0]["content"]
+    assert "Saltholm" in prompt and "Briar says: an ironmonger" in prompt and "brass wire, sticks" in prompt
+    assert all(f"{k} (" in prompt for k in ("wild", "yard", "shop", "sight"))
+    fake.queue(report(kind="shop"))
+    assert await gm.design_place("Saltholm", [], []) is None                       # no description: unusable
+
+
+async def test_first_arrival_designs_the_place_once(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=10**6)
+    known_shop(st, now=time.time())
+    gm.queue(report(**DESIGN))
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    data = await P.arrive(st, s, agent.gm, None, rng=random.Random(1))
+    assert data["first_time"] and data["description"] == DESIGN["description"] and len(gm.calls) == 1
+    assert st.place_row("Saltholm")["status"] == "real"
+    assert [r["key"] for r in st.place_rows()] == ["Saltholm"]
+    reg = P.registry(st, s, None)["Saltholm"]
+    assert not reg.heard and reg.offers == ("browse", "gather") and reg.blurb == DESIGN["blurb"]
+    assert reg.verbs["gather"][0] == "ask Mr Teague to let you pick through the drawer"
+    assert "15-30 minutes" in reg.verbs["gather"][1] and "on account" in reg.verbs["gather"][1]
+    st.update_agent(location="workshop")
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    again = await P.arrive(st, s, agent.gm, None)
+    assert not again["first_time"] and len(gm.calls) == 1                     # designed once
+
+
+async def test_a_failed_design_leaves_a_bare_place_and_the_next_arrival_retries(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=10**6)
+    known_shop(st, now=time.time())
+    gm.queue(report(kind="shop"))                                              # unusable
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    data = await P.arrive(st, s, agent.gm, None)
+    assert data["description"] == "you find Saltholm, but can't get your bearings today"
+    assert st.place_row("Saltholm")["status"] == "heard" and P.here(st, s, None).verbs == {}
+    st.update_agent(location="workshop")
+    gm.queue(report(**DESIGN))
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    data = await P.arrive(st, s, agent.gm, None)
+    assert st.place_row("Saltholm")["status"] == "real" and data["description"] == DESIGN["description"]
+    assert data["first_time"] is False
+
+
+async def test_only_one_place_is_designed_a_day(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=10**6)
+    known_shop(st, now=time.time())
+    IP.accept(st, "Briar", "Visit Fallow.", {"place": "Fallow", "there": "a meadow", "distance": "near"})
+    st.update_place("Fallow", status="real", real_at=time.time() - 3600)      # one designed an hour ago
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    data = await P.arrive(st, s, agent.gm, None)
+    assert gm.calls == [] and st.place_row("Saltholm")["status"] == "heard"
+    assert data["description"] == "you find Saltholm, but can't get your bearings today"
+
+
+# --- scoping: gather and browse wherever the place lists them -----------------------------------------
+def real_shop(st, now=None):
+    rec = known_shop(st, now=now or time.time())
+    return IP.design(st, rec, DESIGN, random.Random(2))
+
+
+def test_specs_offer_gather_at_a_real_shop_but_not_at_a_sight_or_a_heard_of_place(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    tools = {n: T.REGISTRY[n] for n in ("say", "gather", "browse", "plant")}
+    names = lambda key, open_=True: sorted(sp.name for sp in T.specs_for(tools, key, P.registry(st, s, None)[key], open_))  # noqa: E731
+    s.invented_places_per_day = 3
+    real_shop(st)
+    IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
+    heard(st, "Fallow", "near", "a meadow")
+    IP.design(st, st.place_row("Lake Ennis"), {"description": "A still lake."}, random.Random(1))
+    assert names("Saltholm") == ["browse", "gather", "say"]
+    assert names("Saltholm", open_=False) == ["say"]                          # a closed shop offers nothing
+    assert names("Lake Ennis") == ["say"] and names("Fallow") == ["say"]
+    sp = {x.name: x for x in T.specs_for(tools, "Saltholm", P.registry(st, s, None)["Saltholm"])}
+    assert "15-30 minutes" in sp["gather"].description
+
+
+async def test_gather_is_refused_at_a_closed_shop_and_where_it_isnt_offered(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    real_shop(st)
+    h = (time.localtime().tm_hour + 1) % 24
+    st.update_place("Saltholm", hours=[h, (h + 1) % 24])                       # opens in an hour
+    st.update_agent(location="Saltholm")
+    assert T.out_of_place(agent.ctx, "gather") == f"Saltholm is closed for now; it opens at {h}:00"
+    st.update_place("Saltholm", hours=None)
+    assert T.out_of_place(agent.ctx, "gather") == "" and T.out_of_place(agent.ctx, "browse") == ""
+    assert T.out_of_place(agent.ctx, "plant") == "you're at Saltholm; go_to home first"
+    IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
+    st.update_agent(location="Lake Ennis")
+    assert T.out_of_place(agent.ctx, "gather") == "you're not at the woods; go_to woods first"
+
+
+def test_perception_says_when_a_closed_shop_opens(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    real_shop(st)
+    h = (time.localtime().tm_hour + 1) % 24
+    st.update_place("Saltholm", hours=[h, (h + 1) % 24])
+    st.update_agent(location="Saltholm")
+    lines = P.perception(st, s, None)
+    assert lines[0] == f"You are at: Saltholm, closed for now (it opens at {h}:00) - {DESIGN['description']}"
+    assert not any(l.startswith("Here you can") for l in lines)
+    st.update_place("Saltholm", hours=None)
+    assert "Here you can: browse (see what Mr Teague has in stock), gather (ask Mr Teague to let you pick through the drawer)." \
+        in P.perception(st, s, None)
+
+
+# --- gathering at invented places, and shops on account ---------------------------------------------------
+from tests.test_gather import daytime, gather_and_wait, setup
+
+
+def wild_place(st):
+    rec = IP.accept(st, "Briar", "The beach at Skerry has driftwood and wild berries.",
+                    {"place": "Skerry", "there": "driftwood and wild berries on the beach", "distance": "near"}, now=time.time())
+    return IP.design(st, rec, {"kind": "wild", "description": "A shingle beach.", "gerund": "beachcombing", "loot": [
+        {"name": "driftwood", "kind": "material", "tier": "common"}]}, random.Random(1))
+
+
+async def test_gathering_at_an_invented_wild_place_draws_from_its_own_table(tmp_path):
+    s, st, gm, agent = setup(tmp_path, where="Skerry")
+    wild_place(st)
+    r = await gather_and_wait(agent, 40)
+    assert r.text.startswith("you set about beachcombing at Skerry for 40 min.")
+    ev = st.events(limit=5)
+    got = next(e["data"] for e in ev if e["kind"] == "gathered")
+    assert got["place"] == "Skerry" and got["stock"] == 80 and "on_account" not in got     # 120 - 40, like the woods
+    assert {i["name"] for i in got["items"]} <= {"driftwood", "wild berries"}
+    assert {f["item"] for f in st.finds_at("Skerry")} == {i["name"] for i in got["items"]}
+    assert G.loot_for(st, "Skerry")[0][0] == "driftwood" and G.loot_for(st, "Nowhere") is None
+    assert G.verb_for(st, "Skerry") == "beachcombing" and G.verb_for(st, "woods") == "foraging"
+    assert G.verb_for(st, "Nowhere") == "gathering"
+
+
+async def test_rummaging_at_a_shop_is_short_slow_to_restock_and_on_account(tmp_path):
+    s, st, gm, agent = setup(tmp_path, where="Saltholm")
+    real_shop(st)
+    st.update_place("Saltholm", hours=None)
+    r = await call(agent, "gather", minutes=60)
+    assert r.text.startswith("you set about rummaging in the ironmonger's drawer at Saltholm for 30 min.")  # 15-30 at a shop
+    assert T.busy(agent.ctx).startswith("you're out rummaging in the ironmonger's drawer at Saltholm")
+    time.sleep(0.05)
+    await agent.resolve_world()
+    got = next(e["data"] for e in st.events(limit=5) if e["kind"] == "gathered")
+    assert got["stock"] == 10                                                  # a shop holds 40, not 120
+    haul = {i["name"]: i["qty"] for i in got["items"]}
+    assert haul and got["on_account"] == haul and st.place_row("Saltholm")["on_account"] == haul
+    assert got["text"].endswith("It's on account at Saltholm: they're happy for you to settle up later.")
+    assert G.stock(st, "Saltholm", time.time() + 3600) == pytest.approx(12, abs=0.1)     # 2 an hour back
+    assert G.full_yield_at(st, "Saltholm") == 20 and G.full_yield_at(st, "woods") == G.FULL_YIELD_AT
+
+
+async def test_browsing_a_shop_shows_whats_in_stock_and_whats_on_account(tmp_path):
+    s, st, gm, agent = setup(tmp_path, where="Saltholm")
+    real_shop(st)
+    st.update_place("Saltholm", hours=None, on_account={"brass wire": 2})
+    r = await call(agent, "browse")
+    stock = r.text.split("\n")[0]
+    assert stock.startswith("In stock at Saltholm today: ") and stock.endswith(". gather to pick through it.")
+    assert len(stock.removeprefix("In stock at Saltholm today: ").split(", ")) == 4
+    assert r.text.split("\n")[1] == "On account here: 2 brass wire (nothing's owed yet; you can settle up later)."
+    st.set_meta(**{"stock:Saltholm": 0, "stock_at:Saltholm": time.time()})
+    r = await call(agent, "browse")
+    assert r.text.startswith("The shelves at Saltholm are bare today; they restock slowly, so come back in a day or so.")
+
+
+async def test_browsing_an_invented_yard_is_a_look_around(tmp_path):
+    s, st, gm, agent = setup(tmp_path, where="Grimsby Tip")
+    rec = IP.accept(st, "Briar", "Grimsby Tip is all scrap heaps.", {"place": "Grimsby Tip", "there": "scrap heaps"},
+                    now=time.time())
+    IP.design(st, rec, {"kind": "yard", "description": "Heaps.", "loot": [
+        {"name": "scrap iron", "kind": "material"}, {"name": "old chain", "kind": "material"}]}, random.Random(1))
+    r = await call(agent, "browse")
+    assert r.text.startswith("Looking over Grimsby Tip, you can make out: ") and "scrap iron" in r.text
+
+
+async def test_where_to_knows_what_a_real_invented_place_has(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    real_shop(st)
+    r = await call(agent, "where_to", what="fish hooks")
+    assert "- Saltholm: a harbour village with an ironmonger's; you haven't found any yet, but it's the kind of place" in r.text
+
+
+async def test_go_to_somewhere_far_warns_when_it_will_be_dark_before_pip_is_back(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=1)
+    heard(st)
+    h = time.localtime().tm_hour
+    s.bedtime_hour, s.wake_hour = (h + 1) % 24, (h + 9) % 24                  # night falls within the hour
+    st.update_place("Saltholm", hours=None, daylight_only=0, walk_minutes=40)
+    r = await call(agent, "go_to", place="Saltholm")
+    assert r.text.endswith(" It'll be dark before you could get back.")
+    st.end_session()
+    s.bedtime_hour, s.wake_hour = (h + 6) % 24, (h + 12) % 24
+    r = await call(agent, "go_to", place="Saltholm")
+    assert "dark" not in r.text
+
+
+async def test_go_to_a_shop_that_will_be_shut_says_when_it_opens(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=10**6)
+    heard(st)
+    h = (time.localtime().tm_hour + 2) % 24
+    st.update_place("Saltholm", hours=[h, (h + 1) % 24])
+    r = await call(agent, "go_to", place="Saltholm")
+    assert r.text.endswith(f" It'll be shut when you get there; it opens at {h}:00.")

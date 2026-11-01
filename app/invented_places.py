@@ -13,8 +13,9 @@ import re
 import time
 
 from . import place_kinds as kinds
-from .state import _singular
+from .state import _singular, name_key
 from .text import clip
+from .world import normalize_attrs
 
 DAY = 86400
 FORGET_AFTER = 30 * DAY        # a heard-of place nobody mentions again and Pip never visits is forgotten
@@ -302,3 +303,111 @@ def chat_mentions(text: str) -> list[dict]:
 def from_chat(state, sender: str, text: str, now: float | None = None) -> list[dict]:
     """A visitor's message: each place it points to is a mention, checked like a character's."""
     return [r for r in (accept(state, sender, text, raw, now) for raw in chat_mentions(text)) if r]
+
+
+# --- real on arrival: the design, the loot table and the promise check -------------------------------------
+TIERS = {"common": ((15, 30), (1, 3)), "uncommon": ((6, 12), (1, 2)), "rare": ((2, 5), (1, 1))}
+LOOT_MAX = 10
+DESIGNS_PER_DAY = 1
+BARE = "you find {}, but can't get your bearings today"
+
+
+def known_items(state) -> dict[str, tuple[str, str]]:
+    """name_key -> (name, kind) for things that already exist (the loot tables, Pip's belongings, other places'
+    tables), so an invented place's 'brass wire' is the junkyard's brass wire and stacks with it."""
+    from . import gathering  # gathering reads place rows; keep the import one-way at load time
+    out = {}
+    tables = list(gathering.LOOT.values()) + [r["loot"] for r in state.place_rows()]
+    for name, kind in [(e[0], e[1]) for t in tables for e in t] + [(i["name"], i["kind"]) for i in state.items()]:
+        out.setdefault(name_key(name), (name, kind))
+    return out
+
+
+def _plain(text: str) -> str:
+    return f" {name_key(' '.join(re.findall(r'[a-z0-9]+', str(text).lower())))} "
+
+
+def _covers(a: str, b: str) -> bool:
+    """Is one name the other with words added ('thin brass wire' / 'brass wire')?"""
+    x, y = _plain(a), _plain(b)
+    return x in y or y in x
+
+
+def promised(rec: dict, known: dict) -> list[dict]:
+    """What the characters said is there: the items they named, and known things their words mention."""
+    there = " ".join(m["there"] for m in rec["mentions"])
+    names = [i for m in rec["mentions"] for i in m.get("items", [])]
+    names += [n for n, _ in known.values() if _plain(n) in _plain(there)]
+    out = []
+    for n in names:
+        hit = next((v for v in known.values() if _covers(v[0], n)), None)
+        name, kind = hit if hit else (n, "material")
+        if not any(_covers(name, o["name"]) for o in out):
+            out.append({"name": name, "kind": kind, "tier": "uncommon", "description": ""})
+    return out
+
+
+def build_loot(entries, kind: str, known: dict, promises: list[dict], rng: random.Random) -> list[list]:
+    """GM-proposed entries made into a gathering table: the place kind decides which item kinds may be there and how
+    many tools; the tier decides weight and quantity; names reuse what already exists. Every promised thing is in it."""
+    k = kinds.KINDS[kind]
+    out, tools = [], 0
+
+    def add(e, cap: int) -> None:
+        nonlocal tools
+        if not isinstance(e, dict) or len(out) >= cap:
+            return
+        name = clip(e.get("name"), 40).strip(" .").lower()
+        if not name or any(name_key(o[0]) == name_key(name) for o in out):
+            return
+        name, item_kind = known.get(name_key(name), (name, e.get("kind")))
+        if item_kind not in k.loot_kinds or (item_kind == "tool" and tools >= k.max_tools):
+            return
+        tier = "rare" if item_kind == "tool" else e.get("tier") if e.get("tier") in TIERS else "common"
+        weights, qty = TIERS[tier]
+        tools += item_kind == "tool"
+        out.append([name, item_kind, rng.randint(*weights), list(qty), clip(e.get("description"), 100) or name,
+                    normalize_attrs(name, item_kind, {})])
+
+    for e in list(entries)[:LOOT_MAX * 2] if isinstance(entries, list) else []:
+        add(e, LOOT_MAX)
+    for p in promises:
+        if not any(_covers(o[0], p["name"]) for o in out):
+            add(p, LOOT_MAX + len(promises))
+    return out
+
+
+def design(state, rec: dict, raw, rng: random.Random | None = None, now: float | None = None) -> dict | None:
+    """Keep a GM design for a heard-of place, checked and clamped: the record becomes real. An unusable design keeps
+    it heard-of (bare), and the next arrival tries again."""
+    description = clip(raw.get("description"), 500) if isinstance(raw, dict) else ""
+    if not description:
+        return None
+    now, rng = now or time.time(), rng or random.Random()
+    kind = kinds.check(raw.get("kind"), " ".join([rec["key"]] + [m["there"] for m in rec["mentions"]]))
+    k = kinds.KINDS[kind]
+    known = known_items(state)
+    loot = build_loot(raw.get("loot"), kind, known, promised(rec, known), rng) if k.loot_kinds else []
+    verbs = {v: [clip(raw.get(f"{v}_help"), 80) or short, (clip(raw.get("gerund"), 40) or gerund) if gerund else None]
+             for v, (short, gerund) in k.verbs.items()} if loot else {}
+    hours = kinds.hours_for(kind, raw.get("opens"), raw.get("closes"))
+    blurb = clip(raw.get("blurb"), 120) or clip(re.split(r"(?<=[.!?])\s", description)[0], 120)
+    state.update_place(rec["key"], status="real", kind=kind, hours=list(hours) if hours else None,
+                       daylight_only=int(not hours), verbs=verbs, loot=loot, description=description, blurb=blurb,
+                       real_at=now)
+    state.set_meta(**{f"place:{rec['key']}": description})
+    return state.place_row(rec["key"])
+
+
+async def realise(state, gm, key: str, label: str, rng: random.Random | None = None,
+                  now: float | None = None) -> dict | None:
+    """Pip has arrived somewhere it has only heard of: one GM call designs it (at most one a day)."""
+    now = now or time.time()
+    rec = state.place_row(key)
+    if not gm or not rec or rec["status"] != "heard":
+        return None
+    if sum((r["real_at"] or 0) > now - DAY for r in state.place_rows()) >= DESIGNS_PER_DAY:
+        return None
+    said = [f"{m['by']} says: {m['there']}" if m["there"] else f"{m['by']} mentioned it" for m in rec["mentions"]]
+    raw = await gm.design_place(label, said, sorted({n for n, _ in known_items(state).values()}))
+    return design(state, rec, raw, rng, now)
