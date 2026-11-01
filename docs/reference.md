@@ -103,7 +103,8 @@ neighbor - name, private persona, a public one-liner - whose first letter arrive
 `LETTER_DELAY_MINUTES` each way; the neighbor answers on delivery, writes first every `NEIGHBOR_WRITES_EVERY_HOURS`,
 may send a small parcel (`PARCELS_PER_DAY`), and has a life that moves on between letters. Letters arrive in Pip's
 inbox with the neighbor as sender, so memory, recall and the nightly reflection pick them up. Pip can also
-`go_to` the neighbor's home: they greet it and talk in person (`say` with `to`).
+`go_to` the neighbor's home: they greet it and talk in person (`say` with `to`). Their letters and talk can point Pip to places
+that don't exist yet (below).
 ```sh
 ./pipchat letters      # the neighbor, what's new with them, and every letter (in transit too)
 ```
@@ -199,10 +200,12 @@ who said what, a walk the engine fixes once (near 12-20 min, far 20-35; a place 
 and `go_to Saltholm` just works. On Pip's first arrival one GM call designs it from a fixed set of kinds (`wild`, `yard`, `shop`,
 `sight` - a sight is just somewhere to go and see); the engine keeps the kind only if what was said backs it and builds the loot itself,
 including anything a character promised was there. Shops keep hours, restock slowly, and what Pip rummages there goes on account until
-there are coins. Later mentions add to a real place (three times at most). Caps: `INVENTED_PLACES_PER_DAY` (2) new places a day,
+there are coins. The design may also name someone who lives or works there (a shop's keeper, usually): a **resident**, a character Pip
+meets only there, who greets it once per visit and answers `say` with `to`, like a neighbor at home, but never writes letters.
+Later mentions add to a real place (three times at most). Caps: `INVENTED_PLACES_PER_DAY` (2) new places a day,
 `INVENTED_PLACES_MAX` (12) in all; a heard-of place nobody mentions for 30 days is forgotten.
 ```sh
-./pipchat places                  # heard-of and real places, who mentioned them, finds, what's on account
+./pipchat places                  # heard-of and real places, who mentioned them, finds, what's on account, who lives there
 ./pipchat places rm Saltholm      # take one out of the world (kept for history, never offered again)
 ```
 HTTP: `GET /places`, `PATCH /places/<key>` (`walk_minutes` (null: too far to walk), `hours` for a shop, `description`, `loot`; the same

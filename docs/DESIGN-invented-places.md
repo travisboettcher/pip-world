@@ -1,7 +1,7 @@
 # Design: places that characters mention become real
 
-Status (2026-10-31): **built (residents and neighbor-prompt wiring pending).** See "As built" at the end for where the
-implementation differs from the text above. Builds on [DESIGN-places.md](DESIGN-places.md) (place records, the
+Status (2026-10-31): **built**, residents and the neighbor-prompt wiring included. See "As built" at the end for where
+the implementation differs from the text above. Builds on [DESIGN-places.md](DESIGN-places.md) (place records, the
 directory, `gather`, `where_to`; its "later extension: discovery of places"), [DESIGN-neighbor.md](DESIGN-neighbor.md)
 (letters and visits) and the referee pattern of [DESIGN-creations.md](DESIGN-creations.md): the engine decides what exists
 and what it does, the GM only proposes from a fixed vocabulary and narrates. Related roadmap items: "Places, remaining:
@@ -268,14 +268,37 @@ the prompt seams), `place_kinds.py` (the kind registry), the `places` table in `
 `gathering.py`, `tools.py`, `loop.py`, `gm.py` (`design_place`), `main.py`, `memory.py` and `pipchat`. Tests:
 `tests/test_invented_places.py`, `tests/test_place_kinds.py`. Where it differs from the design above:
 
-- **Not built yet**: residents (decision 5), and the `mentions_place` field plus the "Places in Pip's world" line in
-  `gm.neighbor_letter`, `gm.speak_in_person` and `gm.invent_neighbor`. The seams for that wiring are ready:
-  `invented_places.MENTION_PROPERTY` (the report schema: `place`, `there`, `distance` enum `near|far|very far`, optional
-  `items`, the things the character says can be had there), `mention_instruction(state, settings, library)` (the prompt
-  sentence, listing every existing place name), `accept(state, speaker, text, raw)` (give it the reply's raw
-  `mentions_place`, which may be None, with the speaker and their words: it does everything, a new heard-of place or
-  `add_to` an existing one) and `places_line(state, name, settings, library)` ("Places in Pip's world: ...", the
-  character's own mentions first, up to 8). `places.json` is not built (decision 7).
+- **The characters' prompts**: `gm.neighbor_letter`, `gm.speak_in_person` (neighbors and residents) and
+  `gm.invent_neighbor` take `mention` (the `invented_places.mention_instruction` sentence, listing every existing place
+  name; when given, the report schema gains the optional `mentions_place`: `place`, `there`, `distance` enum
+  `near|far|very far`, optional `items`, the things the character says can be had there); the letter and in-person
+  calls also take `places`, that character's `places_line` ("Places in Pip's world: ...", their own mentions first, up
+  to 8), shown after what Pip already knows about them. The GM methods only place the strings; `neighbors.py` builds
+  them, and after every reply (a letter, a line in person, a new neighbor's first letter) passes the character's own
+  words and the raw field to `invented_places.accept`. `neighbors.step` takes the library (the agent loop passes it) so
+  the lists include it. `places.json` is not built (decision 7).
+- **Residents (decision 5)**: `gm.design_place` may return one `resident` (`name`, `persona`, `about`; the prompt says a
+  shop normally has its keeper, a wild place or a sight often nobody, and that someone the mentions name as being there
+  is that person). `invented_places.settle` keeps them as a `characters` row of kind `resident` with the place's key in
+  the new `place` column: name and persona required, clipped like a neighbor (40/800, `about` 160), never Pip or a name
+  any character already has (case-insensitive); a `resident` event is logged. Only a successful design makes one, so a
+  place gets at most one, at the moment it becomes real. Being met in person is generalised: `places.place_of(state,
+  ch)` (a neighbor's home, a resident's place while it is real, else None) and `places.company_at`; `neighbors._visits`
+  runs over everyone met in person, so a resident greets once per visit, answers `say(to=...)` under
+  `COMPANION_REPLIES_PER_HOUR`, keeps `gist`/`told` exactly as a neighbor does, and their lines are `companion` events
+  with `visit: true` (so memory, recall, people notes and firsts cover them unchanged). Differences from a neighbor: the
+  in-person prompt says "who Pip meets at <place>" / "Pip is at <place>, with <name>" / "greet it" (no door) and
+  "(oldest first; ...)" without "letters and"; it asks for an optional `life_update`/`life_update_new` (their life moves
+  on in talk, since they never write; kept on the same rule as a letter's); no letters, no writing first, no plans
+  (`upcoming`), no `recall_told` backfill (nothing to backfill). Pip learns the name only by being there: the
+  perception says "<name> is here (<about>); talk with them in person using say with to: <name>." and nothing names them
+  elsewhere. `say(to=...)` a resident from anywhere else, or while walking, gets "<name> can't hear you from here; go_to
+  <place> to talk with them" (a neighbor's refusal mentions letters instead, which residents don't take); after the
+  owner removes the place the resident stays in the table, never greets, and `say` gets just "can't hear you from
+  here". `write_letter` to a resident is refused as for anyone who isn't a neighbor. `GET /places` lists each place's
+  `residents` (name, about, life), removed places too, and `pipchat places` prints them. A resident's own place is in
+  their "Places in Pip's world" line like any other (described from Pip's side: "Saltholm, a long walk (Pip has
+  been)").
 - **The table** has a few more columns than listed: `core` (the normalised name used for matching), `distance`,
   `on_account` (a map item -> qty), `grown` (growth used), `heard_at` (the last mention, for forgetting). `key` is
   case-insensitive. A place's key is fixed at its first mention (the proper-noun form of that name) and never renamed,

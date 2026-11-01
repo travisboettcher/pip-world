@@ -1,6 +1,7 @@
 # Design: a neighbor who remembers what she's said (less repetition)
 
-Status (2026-10-31): parts 1 and 2 built and tested (fake backend); part 3 (self-check) not built. Follows
+Status (2026-10-31): parts 1 and 2 built and tested (fake backend); part 3 (self-check) not built. The same memory
+now also covers residents (DESIGN-invented-places.md). Follows
 DESIGN-neighbor.md; replaces the ROADMAP backlog idea of a verbatim-repeat check. Where the build had to decide
 something the design left open, see "As built" at the end.
 
@@ -122,3 +123,8 @@ DESIGN-invented-places.md.
   <what>". After the next letter or in-person line it becomes `Recently: <what>.` in `life`. Only letters propose
   plans; a visit can bring a due one up. A new plan when 3 are already pending is dropped, and so is an `in_days`
   that isn't a number.
+- **Residents** (people met at an invented place, DESIGN-invented-places.md) share the in-person half: their earlier
+  lines in brief, this visit's verbatim, `told` from each line. With no letters, they report `life_update` /
+  `life_update_new` on their in-person lines instead (same rule: kept only when explicitly new); they have no
+  `upcoming` and no `recall_told` backfill. Every letter and in-person call also carries the "Places in Pip's world"
+  line and the optional `mentions_place` (DESIGN-invented-places.md, "As built").
