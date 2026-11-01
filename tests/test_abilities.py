@@ -179,10 +179,11 @@ def test_the_clock_line_rounds_and_names_the_direction(tmp_path):
         st.set_runtime(c["id"], {**c["runtime"], "clock_offset": offset})
         return A.perception(st, t0)[0]
     assert line(0.5) == "By your Gear Clock it is 9:00 AM." and line(0.9) == "By your Gear Clock it is 9:00 AM."
-    assert line(1) == "By your Gear Clock it is 9:01 AM, about 1 min fast."
-    assert line(1.5) == "By your Gear Clock it is 9:01 AM, about 2 min fast."
-    assert line(-3) == "By your Gear Clock it is 8:57 AM, about 3 min slow."
-    assert line(2) == "By your Gear Clock it is 9:02 AM, about 2 min fast."
+    assert line(4.9) == "By your Gear Clock it is 9:04 AM."                          # a few minutes off is not worth mentioning
+    assert line(5) == "By your Gear Clock it is 9:05 AM, about 5 min fast."
+    assert line(5.5) == "By your Gear Clock it is 9:05 AM, about 6 min fast."
+    assert line(-7) == "By your Gear Clock it is 8:53 AM, about 7 min slow."
+    assert line(12) == "By your Gear Clock it is 9:12 AM, about 12 min fast."
 
 
 def test_a_news_allowance_frees_up_after_exactly_a_day(tmp_path):

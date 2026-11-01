@@ -398,7 +398,10 @@ def _plot_arg(args: dict):
 async def plant(ctx: ToolContext, args: dict) -> ToolResult:
     item, err = ctx.state.find_item(args["seed"], kind="seed")
     if not item:
-        return ToolResult(f"error: {err}", followup=True)
+        crop = str(args["seed"]).strip().lower().removesuffix(" seeds").removesuffix(" seed")
+        food = ctx.state.find_item(crop, kind="food")[0] if seed_packet_for(crop) else None
+        hint = f"; you could scoop seeds out of your {food['name']} with use_item (say what for)" if food else ""
+        return ToolResult(f"error: {err}{hint}", followup=True)
     plots = ctx.state.garden()
     plot = _plot_arg(args)
     if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):

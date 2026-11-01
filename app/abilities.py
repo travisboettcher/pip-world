@@ -67,7 +67,7 @@ def perception(state, now: float) -> list[str]:
         return []
     c = found[0]
     shown, off = cr.clock_reading(c, now)
-    skew = "" if abs(off) < 1 else f", about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
+    skew = "" if abs(off) < cr.DRIFT_NOTICED else f", about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
     return [f"By your {c['name']} it is {shown}{skew}."]
 
 

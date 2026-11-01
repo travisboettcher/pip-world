@@ -283,10 +283,13 @@ class GameMaster:
         }, ["description", "capabilities"], "design")
 
     async def use(self, creation_line: str, purpose: str, situation: str, timekeeper: bool,
-                  can_stop: bool, bulletin: bool = False) -> dict | None:
+                  can_stop: bool, bulletin: bool = False, tend_verb: str = "") -> dict | None:
         effects = ["`mood`: a word or two, if this changes how Pip feels",
                    "`energy`: -0.1 to 0.1, only if it really tires or refreshes Pip",
                    *(["`stop`: true if this would make it stop working until Pip tends it again"] if can_stop else [])]
+        if tend_verb:
+            effects.append(f"`tend`: true only if what Pip does is the regular upkeep that keeps it going (\"{tend_verb}\"): winding, "
+                           "charging, oiling, feeding, whatever suits it. Looking at it, setting it or admiring it is not upkeep")
         if timekeeper:
             effects.append("`set_clock`: true if Pip is setting it to the right time")
         if bulletin:
@@ -302,6 +305,7 @@ class GameMaster:
         return await self.ask(task, {
             "text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
             "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"}, **({"bulletin": {"type": "string"}} if bulletin else {}),
+            **({"tend": {"type": "boolean"}} if tend_verb else {}),
         }, ["text"], "use")
 
     # --- phase 3: companions ------------------------------------------------

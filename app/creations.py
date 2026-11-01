@@ -25,6 +25,7 @@ UPKEEP_FACTOR = {"rough": 0.5, "sound": 1.0, "fine": 1.5, "masterwork": 2.0}
 HURRY_FRACTION = 0.1      # hurry_crops: share of remaining growing time saved per run
 COMFORT_ENERGY = 0.05     # comfort: energy restored per run
 USE_ENERGY_COOLDOWN = 6 * 3600
+DRIFT_NOTICED = 5         # minutes a clock must be off before Pip is told (and tempted to reset it every hour)
 
 
 def _num(v, lo: float, hi: float, default: float) -> float:
@@ -231,7 +232,7 @@ def describe(c: dict, now: float | None = None) -> str:
         parts.append(f"STOPPED - {_needs(c)}" if "upkeep" in caps else "STOPPED")
     if "timekeeper" in caps:
         shown, off = clock_reading(c, now)
-        skew = "about right" if abs(off) < 1 else f"about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
+        skew = "about right" if abs(off) < DRIFT_NOTICED else f"about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
         parts.append(f"it shows {shown}" + (f" (it runs {skew}; use_item can set it)" if running(c, now) else ""))
     if running(c, now) and caps.get("provides", {}).get("ability") == "news":
         parts.append("it brings you news")
@@ -271,16 +272,23 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
     a = state.agent()
     situation = f"Pip is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
     left = abilities.news_left(c, now)
-    out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps, bulletin=left > 0) if gm else None
+    verb = caps["upkeep"]["verb"] if "upkeep" in caps else ""
+    out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps, bulletin=left > 0,
+                       tend_verb=verb) if gm else None
     if not out:
         return f"you spend a moment with your {c['name']} ({purpose})."
     done = []
     if out.get("set_clock") and "timekeeper" in caps:
         set_clock(c, now)
         done.append("it now shows the right time")
+    tended = False
     if out.get("stop") and "upkeep" in caps:  # only tended things can stop: tending is how they're restarted
         rt["halted_at"] = now
-        done.append(f"it has stopped until you tend it ({caps['upkeep']['verb']})")
+        done.append(f"it has stopped until you tend it ({verb})")
+    elif out.get("tend") and "upkeep" in caps:  # what Pip did was the upkeep itself: the same as the tend tool
+        tend(state, c, now)
+        tended = True
+        done.append(f"{verb}: it will keep going for about {round(caps['upkeep']['hours'])} hours")
     fields = {}
     if out.get("mood"):
         fields["mood"] = _line(out["mood"], 40)
@@ -300,7 +308,7 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
         text += f" Bulletin: {news}"
     elif "provides" in caps and not left:
         done.append("only static now: it has told you all the news it has today")
-    if "upkeep" in caps and "halted_at" not in rt:  # using it never tends it: only the tend tool does
+    if "upkeep" in caps and "halted_at" not in rt and not tended:  # using it for anything else doesn't tend it
         left = (rt["tended_until"] - now) / 3600
         done.append(f"it keeps going for about {round(left)} more hours; use the tend tool to keep it going")
     return text + (f" ({'; '.join(done)})" if done else "")

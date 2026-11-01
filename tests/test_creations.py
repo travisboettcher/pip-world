@@ -273,3 +273,50 @@ def test_the_registry_drives_the_gm_prompt_and_the_checks():
     assert not W.allowed("workbench", {**bench, "difficulty": 1})
     spec = {"capabilities": {"world": {"effect": "moon_base"}}}
     assert W.apply(None, spec) is None and "world" not in spec["capabilities"]                              # unknown effects do nothing
+
+
+def test_a_small_drift_is_not_worth_a_clock_reset(tmp_path):
+    s, st, *_ = make(tmp_path)
+    t0 = 1_700_000_000.0
+    c = build(st, {"description": "x", "capabilities": [{"type": "timekeeper"}]}, now=t0)
+    for offset, said in ((0.5, "about right"), (4.9, "about right"), (-4.9, "about right"),
+                         (5, "about 5 min fast"), (-6, "about 6 min slow")):
+        st.set_runtime(c["id"], {**c["runtime"], "clock_offset": offset})
+        d = cr.describe(st.creation(c["id"]), t0)
+        assert f"(it runs {said}; use_item can set it)" in d, (offset, d)
+
+
+@pytest.mark.asyncio
+async def test_using_a_thing_the_way_it_is_tended_tends_it_for_real(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="You wind it up.", tend=True), report(text="You admire it."),
+                                       report(text="You wind it, then it sputters.", tend=True, stop=True)])
+    t0 = time.time()
+    c = build(st, {"description": "x", "capabilities": [{"type": "upkeep", "verb": "wound", "hours": 12}]}, name="clock", now=t0 - 8 * 3600)
+    assert st.creation(c["id"])["runtime"]["tended_until"] == pytest.approx(t0 + 4 * 3600, abs=5)       # 4 hours left
+    r = await call(agent, "use_item", item="clock", purpose="wind it")
+    assert r.text == "You wind it up. (wound: it will keep going for about 12 hours)"
+    assert st.creation(c["id"])["runtime"]["tended_until"] == pytest.approx(time.time() + 12 * 3600, abs=5)
+    assert "`tend`" in gm.calls[0]["messages"][0]["content"] and '"wound"' in gm.calls[0]["messages"][0]["content"]
+    r = await call(agent, "use_item", item="clock", purpose="look at it")                              # not tended: the old note
+    assert r.text == "You admire it. (it keeps going for about 12 more hours; use the tend tool to keep it going)"
+    r = await call(agent, "use_item", item="clock", purpose="wind it again")                            # stopped in the same breath
+    assert "it has stopped until you tend it (wound)" in r.text and "wound: it will keep going" not in r.text
+    assert not cr.running(st.creation(c["id"]), time.time())
+
+
+@pytest.mark.asyncio
+async def test_only_a_tended_thing_can_be_tended_by_using_it(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="You polish it.", tend=True)])
+    build(st, {"description": "a painting", "capabilities": []}, name="painting")
+    r = await call(agent, "use_item", item="painting", purpose="polish")
+    assert r.text == "You polish it." and "`tend`" not in gm.calls[0]["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_without_a_game_master_using_a_thing_is_just_a_moment_spent_and_changes_nothing(tmp_path):
+    s, st, *_ = make(tmp_path)
+    t0 = time.time()
+    c = build(st, {"description": "x", "capabilities": [{"type": "upkeep", "verb": "wound", "hours": 12}]}, name="clock", now=t0)
+    before = st.creation(c["id"])["runtime"]["tended_until"]
+    assert await cr.use(st, None, c, "wind it") == "you spend a moment with your clock (wind it)."
+    assert st.creation(c["id"])["runtime"]["tended_until"] == before

@@ -404,3 +404,15 @@ async def test_the_creation_design_schema_lets_the_gm_name_an_ability(tmp_path):
     assert cap["properties"]["persona"] == {"type": "string"} and cap["properties"]["chatter_minutes"] == {"type": "number"}
     assert cap["properties"]["hours"] == {"type": "number"} and cap["properties"]["finds"]["items"] == {"type": "string"}
     assert "provides: ONLY if what Pip finished" in task(b) and "garden_plot" in task(b)
+
+
+@pytest.mark.asyncio
+async def test_using_a_tended_creation_asks_whether_that_was_its_upkeep(tmp_path):
+    gm, b, _ = master(tmp_path, report(text="Tick."), report(text="Tick."))
+    await gm.use("- clock", "wind it", "Pip is idle.", True, True, tend_verb="wound")
+    t = task(b, 0)
+    assert ("- `tend`: true only if what Pip does is the regular upkeep that keeps it going (\"wound\"): winding, charging, "
+            "oiling, feeding, whatever suits it. Looking at it, setting it or admiring it is not upkeep") in t
+    assert b.schemas[0]["properties"]["tend"] == {"type": "boolean"}
+    await gm.use("- clock", "wind it", "Pip is idle.", True, True)
+    assert "`tend`" not in task(b, 1) and "tend" not in b.schemas[1]["properties"]

@@ -410,6 +410,24 @@ async def test_use_item_on_a_tomato_for_its_seeds_gives_seed_packets(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_planting_a_seed_you_only_hold_as_food_says_how_to_get_the_seeds(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    st.take_item(st.find_item("tomato seeds")[0]["id"], 3)                  # no tomato seeds left
+    assert (await reg("plant")(agent.ctx, {"seed": "tomato seeds"})).text.startswith("error: you don't have 'tomato seeds'")
+    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "tomato seeds"})).text      # nothing to scoop them from
+    st.add_item("tomatoes", 2, "food")
+    r = await reg("plant")(agent.ctx, {"seed": "tomato seeds"})
+    assert r.text == ("error: you don't have 'tomato seeds' (kind: seed); you could scoop seeds out of your tomatoes with use_item "
+                      "(say what for)") and r.followup is True
+    assert "use_item" in (await reg("plant")(agent.ctx, {"seed": "tomatoes"})).text               # however it is named
+    assert "use_item" in (await reg("plant")(agent.ctx, {"seed": "tomato"})).text
+    st.add_item("bread", 1, "food")
+    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "bread seeds"})).text         # bread has no seeds
+    st.add_item("hazelnuts", 1, "food")
+    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "hazelnuts"})).text           # ...nor do wild nuts
+
+
+@pytest.mark.asyncio
 async def test_harvest_when_nothing_ripe(tmp_path):
     s, st, _, agent = make(tmp_path)
     assert "nothing is planted" in (await reg("harvest")(agent.ctx, {})).text
