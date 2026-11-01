@@ -581,6 +581,33 @@ def cmd_letters(pip: Pip, a) -> None:
         print(f"  {dim(when)} {bold(lt['sender'] + ' -> ' + lt['recipient'])}: {lt['text']}" + dim(extra))
 
 
+def cmd_places(pip: Pip, a) -> None:
+    if a.action == "rm":
+        if not a.name:
+            raise SystemExit("usage: pipchat places rm NAME")
+        r = pip.call("/places/" + urllib.parse.quote(" ".join(a.name)), method="DELETE")
+        return out_json(r) if JSON_MODE else print(f"removed {r['key']} (kept for history; never offered again)")
+    r = pip.call("/places")
+    if JSON_MODE:
+        return out_json(r)
+    print(bold("Built in: ") + ", ".join(r["built_in"]))
+    for p in r["places"]:
+        walk = f"about {round(p['walk_minutes'])} min" if p["walk_minutes"] is not None else "too far to walk"
+        status = {"heard": "heard of", "real": f"real, {p['kind']}"}.get(p["status"], p["status"])
+        line = f"{bold(p['key'])} " + dim(f"[{status}] {walk}")
+        print(dim(line) if p["status"] in ("removed", "forgotten") else line)
+        if p["description"]:
+            print(f"  {p['description']}")
+        for m in p["mentions"]:
+            print(dim(f"  {fmt_time(m['ts'])} {m['by']}: ") + (m["there"] or "(mentioned it)"))
+        if p["loot"]:
+            print(dim("  finds: " + ", ".join(e[0] for e in p["loot"])))
+        if p["on_account"]:
+            print(yellow("  on account: " + ", ".join(f"{q} {n}" for n, q in p["on_account"].items())))
+    if not r["places"]:
+        print(dim("  nobody has told Pip about anywhere new yet"))
+
+
 def cmd_library(pip: Pip, a) -> None:
     if a.query:
         books = pip.call("/library/search?" + urllib.parse.urlencode({"q": " ".join(a.query)}))
@@ -696,6 +723,9 @@ def build_parser() -> argparse.ArgumentParser:
     add("reflect", cmd_reflect, "make Pip reflect now instead of waiting for the night")
     p = add("library", cmd_library, "books Pip is reading, or search the library")
     p.add_argument("query", nargs="*")
+    p = add("places", cmd_places, "places characters told Pip about (heard of and real); places rm NAME removes one")
+    p.add_argument("action", nargs="?", choices=["rm"])
+    p.add_argument("name", nargs="*")
     p = add("letters", cmd_letters, "Pip's neighbor and their letters")
     p.add_argument("-n", type=int, default=20, help="letters to show (default 20)")
     p = add("recall", cmd_recall, "search Pip's memory the way its recall tool does")
@@ -723,7 +753,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "emotions", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "gallery", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "emotions", "projects", "creations", "memory", "reflect", "recall", "letters", "places", "library", "outreach", "gallery", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

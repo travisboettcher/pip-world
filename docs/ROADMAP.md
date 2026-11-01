@@ -113,7 +113,9 @@ is in my notes, not in the gears".
       reflection (M3) already exists; tie it to Pip actually going to bed
 - [x] **Places and place-scoped tools** (DESIGN-places.md): tool scoping, place records, `browse`, the directory, `gather` at the woods and
       junkyard (loot tables, depletion, daylight hours), `where_to`, the missing-material hint
-- [ ] **Places characters mention become real** (designed 2026-10-31: [DESIGN-invented-places.md](DESIGN-invented-places.md); open questions for the owner at the end)
+- [ ] **Places characters mention become real** ([DESIGN-invented-places.md](DESIGN-invented-places.md)): built (heard-of places, backstop,
+      backfill, chat mentions, design on arrival, shops on account, growth, `GET/PATCH/DELETE /places`, `pipchat places`); pending:
+      residents (owner decision 5) and the `mentions_place` field / "Places in Pip's world" line in the neighbor prompts
 - [ ] Places, remaining: a user-editable `places.json` (places, hours, loot) and a place or two more (e.g. a market, once there are coins)
 - [ ] **Small economy**: sell surplus produce and creations at the market for coins, buy materials there
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds

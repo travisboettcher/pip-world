@@ -3,6 +3,7 @@ import time
 
 from app.config import Settings
 from app.state import State
+from app.text import clip
 
 
 def fresh(tmp_path):
@@ -796,3 +797,68 @@ def test_the_places_line_is_empty_when_there_is_nowhere_to_go(tmp_path):
     assert IP.places_line(st, "Briar", s) == ""
     st.update_agent(location="library")
     assert IP.places_line(st, "Briar", s) == ""
+
+
+# --- owner control ---------------------------------------------------------------------------------------
+def test_removing_a_place_hides_it_but_pip_can_still_leave(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    real_shop(st)
+    st.update_agent(location="Saltholm")
+    assert IP.remove(st, "saltholm")["status"] == "removed" and IP.remove(st, "Nowhere") is None
+    assert "Saltholm" not in P.registry(st, s, None) and P.here(st, s, None).verbs == {}
+    assert IP.find_record(st, "Saltholm") is None
+    assert IP.accept(st, "Briar", TIP, SALT) is None                       # and nobody brings it back by name
+    assert st.place_row("Saltholm")["status"] == "removed"
+
+
+def test_patch_changes_walk_hours_description_and_loot_through_the_validator(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    out = IP.patch(st, "Saltholm", {"walk_minutes": 90, "hours": [3, 23], "description": "x " * 300,
+                                    "loot": [{"name": "rope", "kind": "material", "tier": "rare"},
+                                             {"name": "a saw", "kind": "tool"}, {"name": "a dragon", "kind": "beast"}]},
+                   rng=random.Random(1))
+    assert out["walk_minutes"] == 50 and out["hours"] == [7, 19] and out["description"] == clip("x " * 300, 500)
+    assert st.meta("place:Saltholm") == out["description"]
+    assert [e[0] for e in out["loot"]] == ["rope", "a saw"] and out["loot"][0][3] == [1, 1]
+    assert IP.patch(st, "Saltholm", {"walk_minutes": 0.2})["walk_minutes"] == 1
+    assert IP.patch(st, "Saltholm", {"walk_minutes": None})["walk_minutes"] is None     # too far to walk now
+    assert IP.patch(st, "Nowhere", {"walk_minutes": 5}) is None
+
+
+@pytest.mark.parametrize("changes", [{"description": " "}, {"walk_minutes": "far"}, {"hours": [9]}, {"loot": "rope"},
+                                     {"colour": "blue"}])
+def test_patch_refuses_what_it_cant_use(tmp_path, changes):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    with pytest.raises(ValueError):
+        IP.patch(st, "Saltholm", changes)
+
+
+def test_patch_hours_only_apply_to_a_shop_and_loot_only_to_a_real_place(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Fallow is a meadow.", {"place": "Fallow", "there": "a meadow"}, now=time.time())
+    with pytest.raises(ValueError):
+        IP.patch(st, "Fallow", {"hours": [9, 17]})
+    with pytest.raises(ValueError):
+        IP.patch(st, "Fallow", {"loot": [{"name": "rope", "kind": "material"}]})
+    assert IP.patch(st, "Fallow", {"walk_minutes": 14})["walk_minutes"] == 14 and rec["kind"] == "wild"
+
+
+def test_the_places_endpoints_list_patch_and_remove(tmp_path):
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+                 neighbor=False)
+    with TestClient(create_app(s, FakeBackend())) as c:
+        st = c.app.state.agent.state
+        heard(st, now=time.time())
+        got = c.get("/places").json()
+        assert [p["key"] for p in got["places"]] == ["Saltholm"] and got["places"][0]["mentions"][0]["by"] == "Briar"
+        assert "woods" in got["built_in"] and "workshop" in got["built_in"]
+        assert c.patch("/places/saltholm", json={"walk_minutes": 18}).json()["walk_minutes"] == 18
+        assert c.patch("/places/saltholm", json={"colour": "blue"}).status_code == 422
+        assert c.patch("/places/Nowhere", json={"walk_minutes": 18}).status_code == 404
+        assert c.delete("/places/Saltholm").json()["status"] == "removed"
+        assert c.delete("/places/Saltholm").status_code == 404
+        assert c.get("/places").json()["places"][0]["status"] == "removed"

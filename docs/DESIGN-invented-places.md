@@ -1,6 +1,7 @@
 # Design: places that characters mention become real
 
-Status (2026-10-31): **design only, nothing built.** Builds on [DESIGN-places.md](DESIGN-places.md) (place records, the
+Status (2026-10-31): **built (residents and neighbor-prompt wiring pending).** See "As built" at the end for where the
+implementation differs from the text above. Builds on [DESIGN-places.md](DESIGN-places.md) (place records, the
 directory, `gather`, `where_to`; its "later extension: discovery of places"), [DESIGN-neighbor.md](DESIGN-neighbor.md)
 (letters and visits) and the referee pattern of [DESIGN-creations.md](DESIGN-creations.md): the engine decides what exists
 and what it does, the GM only proposes from a fixed vocabulary and narrates. Related roadmap items: "Places, remaining:
@@ -260,3 +261,68 @@ places that change over time (a flooded path).
 7. `places.json`: later.
 8. **Places needn't be useful**: some are just destinations (a lake with a nice view) with a description and no
    verbs. A kind for that is in the registry from the start.
+
+## As built (2026-10-31)
+Code: `brain/app/invented_places.py` (names, `accept`, `add_to`, the backstop, backfill, chat, design, loot, owner control,
+the prompt seams), `place_kinds.py` (the kind registry), the `places` table in `state.py`, and small changes to `places.py`,
+`gathering.py`, `tools.py`, `loop.py`, `gm.py` (`design_place`), `main.py`, `memory.py` and `pipchat`. Tests:
+`tests/test_invented_places.py`, `tests/test_place_kinds.py`. Where it differs from the design above:
+
+- **Not built yet**: residents (decision 5), and the `mentions_place` field plus the "Places in Pip's world" line in
+  `gm.neighbor_letter`, `gm.speak_in_person` and `gm.invent_neighbor`. The seams for that wiring are ready:
+  `invented_places.MENTION_PROPERTY` (the report schema: `place`, `there`, `distance` enum `near|far|very far`, optional
+  `items`, the things the character says can be had there), `mention_instruction(state, settings, library)` (the prompt
+  sentence, listing every existing place name), `accept(state, speaker, text, raw)` (give it the reply's raw
+  `mentions_place`, which may be None, with the speaker and their words: it does everything, a new heard-of place or
+  `add_to` an existing one) and `places_line(state, name, settings, library)` ("Places in Pip's world: ...", the
+  character's own mentions first, up to 8). `places.json` is not built (decision 7).
+- **The table** has a few more columns than listed: `core` (the normalised name used for matching), `distance`,
+  `on_account` (a map item -> qty), `grown` (growth used), `heard_at` (the last mention, for forgetting). `key` is
+  case-insensitive. A place's key is fixed at its first mention (the proper-noun form of that name) and never renamed,
+  because stock, finds and the kept description are keyed by it; later spellings become aliases.
+- **Names**: the core keeps proper nouns minus trade words when the name has one; a capitalised plain adjective ("The Old
+  Mill", "North") doesn't count as a proper noun, so "The Old Mill" and "the old mill" are one place. A name is refused if
+  it is reserved (`home`, `house`, `workshop`, `library`, `wood(s)`, `junkyard`, `market`, `garden`), shares a word with
+  Pip, any character's name, or the speaker's own name (so "A letter from Briar" never makes a place called Briar). A
+  name the owner removed is never re-made.
+- **Distance** (decision 4): near 12-20 min, far 20-35, very far = no walk at all (heard-of, too far to walk; `go_to` says
+  so kindly, and the directory lists it in a third block). The 50-minute cap applies to the owner's `PATCH`, which can
+  also make a very far place walkable or a walkable one very far.
+- **Heard-of hours**: the kind is guessed from the name and `there` words at mention time (a shop word means shop
+  hours, 9-17); the design may change it. A shut shop says when it opens ("it opens at 9:00"), in `go_to`, the
+  perception and the refusal, instead of "it's dark".
+- **The backstop** searches the last 20 things others said to Pip: `companion` events (companions, and neighbors in
+  person), delivered letters and visitor chat (`inbox` events that are letters or not gifts), never Pip's own words or
+  engine-written gift notes. The distance comes from cue words in the sentence ("days away" = very far, "just down the
+  lane" = near, otherwise far). The backfill runs once (`meta invented_places_backfill`) when the agent starts, over the
+  last 5000 events, and only counts a name a character wrote capitalised and mid-sentence (so "Ask" and "Thursday" in a
+  to-do don't become places).
+- **Chat (decision 6)**: the cheapest reliable detection is a few patterns on each visitor message as it arrives
+  (`Agent.receive`), no GM call: a pointing phrase ("go to", "walk over to", "visit", "go and see"; "there's a ... in",
+  "ask the ... in", "try the ... at"; "a lake/village/shop called") followed by a capitalised name or "the" plus up to two
+  words and a landscape or settlement word ("the next valley", "the old mill"). Each hit goes through `accept` like a
+  character's mention (caps, reserved names, neighbors). "I was in Berlin" or "a cat called Tom" record nothing; what the
+  patterns miss, the backstop still catches because it searches chat too.
+- **Design**: at most one successful design per rolling 24 h. The design call returns `kind`, `description`, `blurb`,
+  `loot`, and for shops `opens`/`closes`, `gather_help`, `browse_help`, `gerund`. A design with no description is
+  unusable (the place stays heard-of and bare, "you find Saltholm, but can't get your bearings today"). A place whose
+  loot comes out empty gets no verbs.
+- **Loot**: up to 10 GM entries, then the promised things. Promises are the `items` the characters named plus any
+  existing item name that appears in a `there` note; a promise is kept by any entry whose name covers it ("brass wire"
+  keeps "thin brass wire"), so no near-duplicates are added. Weights are drawn within the tier's range.
+- **Scoping**: the built-ins keep their static scopes (`gather` at woods/junkyard, `browse` at library/junkyard, which
+  existing tests pin); an invented place additionally offers whichever of `gather`/`browse` its record lists
+  (`tools.listed_here`), and closed-place logic covers both. `browse` is still only enabled when the library is mounted
+  (as before), so without one a shop offers `gather` alone.
+- **Shops**: full yield at half the capacity (20 of 40), so a stocked shop isn't "picked over"; `browse` there shows up to
+  4 things, fewer as stock runs down, "bare" at none, and the on-account list. The darkness warning in `go_to` is only
+  for invented places (the built-ins are a short walk).
+- **Growth (decision 3)**: up to 3 per place. A later mention of a real place naming something new (an `items` entry or a
+  known item in its `there`) adds it as an uncommon find (a sight grows like a wild place and gains a gather verb); with
+  nothing new to find, a new `there` becomes a line of description ("Morgan says: a harbour full of boats."). Mentions
+  since the design also show in the directory blurb. A heard-of place only keeps the mention, and the design honours it.
+- **Events**: `heard_of_place` is logged once, when the place is first recorded; it shows in recent events ("Briar told
+  you about Saltholm: ...") and in recall.
+- **Owner control**: `GET /places` (every row, all statuses, plus the built-in keys), `PATCH /places/<key>`
+  (`walk_minutes`, `hours`, `description`, `loot`; anything else, or a bad value, is a 422), `DELETE /places/<key>`
+  (status `removed`), `pipchat places` and `pipchat places rm NAME`. No `pipchat places add` or `export`.

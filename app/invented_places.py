@@ -495,3 +495,57 @@ def places_line(state, name: str, settings=None, library=None) -> str:
     parts = ([_line_for(state, r, name) for r in mine] + built
              + [_line_for(state, r, name) for r in recs if r not in mine])[:PLACES_SHOWN]
     return "Places in Pip's world: " + "; ".join(parts) if parts else ""
+
+
+# --- owner control (GET/PATCH/DELETE /places, pipchat places) ------------------------------------------------------
+WALK_CAP = 50   # minutes: a round trip plus a session fits in daylight
+PATCHABLE = ("walk_minutes", "hours", "description", "loot")
+
+
+def remove(state, key: str) -> dict | None:
+    """The owner takes a place out of the world: kept for history, never offered, not re-made by the same name."""
+    rec = state.place_row(key)
+    if not rec or rec["status"] not in ACTIVE:
+        return None
+    state.update_place(rec["key"], status="removed")
+    return state.place_row(rec["key"])
+
+
+def _walk(raw) -> float | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValueError("walk_minutes must be a number of minutes (or null: too far to walk)")
+    return max(1, min(WALK_CAP, round(raw)))
+
+
+def patch(state, key: str, changes: dict, rng: random.Random | None = None) -> dict | None:
+    """The owner's edits, through the same rules as everything else: walk 1-50 min (null: too far to walk), shop
+    hours within the kind's bounds, a description clipped like the GM's, loot built like a design's."""
+    rec = state.place_row(key)
+    if not rec or rec["status"] not in ACTIVE:
+        return None
+    unknown = set(changes) - set(PATCHABLE)
+    if unknown:
+        raise ValueError(f"can't change {', '.join(sorted(unknown))} (only {', '.join(PATCHABLE)})")
+    fields = {}
+    if "walk_minutes" in changes:
+        walk = _walk(changes["walk_minutes"])
+        fields.update(walk_minutes=walk, distance=VERY_FAR if walk is None else "near" if walk <= BANDS["near"][1] else "far")
+    if "hours" in changes:
+        h = changes["hours"]
+        if not kinds.KINDS[rec["kind"]].shop_hours or not isinstance(h, list) or len(h) != 2:
+            raise ValueError("hours are [opens, closes], and only a shop keeps hours")
+        fields["hours"] = list(kinds.hours_for(rec["kind"], *h))
+    if "description" in changes:
+        fields["description"] = clip(changes["description"], 500)
+        if not fields["description"]:
+            raise ValueError("a description can't be empty")
+    if "loot" in changes:
+        if rec["status"] != "real" or not isinstance(changes["loot"], list):
+            raise ValueError("loot is a list of {name, kind, tier, description}, for a place Pip has been to")
+        fields["loot"] = build_loot(changes["loot"], rec["kind"], known_items(state), [], rng or random.Random())
+    state.update_place(rec["key"], **fields)
+    if "description" in fields:
+        state.set_meta(**{f"place:{rec['key']}": fields["description"]})
+    return state.place_row(rec["key"])
