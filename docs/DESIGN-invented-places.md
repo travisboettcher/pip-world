@@ -170,8 +170,8 @@ for now (Not now: a keeper character).
   all, heard-of and real together (`INVENTED_PLACES_MAX`); at most 1 design call a day (a second new place reached the
   same day arrives undesigned, exactly as on a GM failure, and is designed on the next arrival). A heard-of place that is never visited is forgotten after 30 days, freeing room. At the cap, mentions
   are not recorded, and the characters' prompts already list the places that exist, so they lean on them.
-- **Only characters create places**, and only with their own words (the text check). Pip's guesses, Pip's to-dos and the
-  owner's chat don't. The owner adds places directly (below).
+- **Characters and visitors create places**, and only with their own words (the text check). Pip's guesses and Pip's
+  to-dos don't. (Owner decision 6: what a visitor says in chat counts.) The owner adds places directly (below).
 - **Distance**: the engine owns walk minutes, capped at 50; `go_to` adds "it'll be dark before you could get back" when
   arrival plus the walk home passes nightfall (`sleepmod`), a warning, not a refusal, like today's "closed" note.
 - **Sleep and daylight**: invented places only get daylight-only or bounded shop hours from their kind; none is open all
@@ -195,7 +195,7 @@ for now (Not now: a keeper character).
 - `gm.design_place` is given every recorded mention verbatim and told the description must agree with them ("Briar said
   the ironmonger keeps a drawer of odds and ends"). The promise check makes the loot agree too.
 - A later mention of a real place (Briar names Saltholm's harbour) is added to its `mentions` as evidence and shown in the
-  directory blurb, but doesn't change the place's offers in this design (open question 3).
+  directory blurb, and may add to the place (owner decision 3).
 - Recall and firsts need nothing new: arrivals log `arrived` (the `place:` first already exists in `firsts.py`), hauls log
   `gathered`, and the mention itself logs a `heard_of_place` event so recall can answer "who told me about Saltholm?".
 
@@ -245,3 +245,18 @@ places that change over time (a flooded path).
 6. Should the owner's chat ("there's a market in the next valley") be able to create places too, or stay owner-only via
    `pipchat places add`?
 7. `places.json` as an overlay now, or keep it with the public-repo extraction as DESIGN-places.md decided?
+
+## Owner decisions (2026-10-31)
+1. **Lazy**: heard-of on mention, real on first arrival.
+2. **Rummage on account** at shops until coins.
+3. **Places grow**: a later mention of something new at a real place (Saltholm's harbour) can add to it (a loot entry, a
+   verb from the fixed set, or a line of description), capped per place.
+4. **Light caps**, as proposed. Distance is a natural limit too: a place a character calls very far is heard-of but
+   too far to walk to ("it's days away over the marsh"); it stays in what Pip knows without being reachable.
+5. **Residents now**: a shopkeeper (or anyone who lives or works at a place) is a persistent character with their own
+   history and memory, treated like a neighbor (the `characters` table; greeting once per visit, `say(to=...)`,
+   capped replies; the gist/`told` memory of DESIGN-neighbor-memory.md). Unlike a neighbor they don't write letters.
+6. **Chat can create places**: what a visitor says in chat counts as a mention, like a character's words.
+7. `places.json`: later.
+8. **Places needn't be useful**: some are just destinations (a lake with a nice view) with a description and no
+   verbs. A kind for that is in the registry from the start.
