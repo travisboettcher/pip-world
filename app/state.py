@@ -1265,6 +1265,11 @@ class State:
             row = self.db.execute("SELECT text FROM reflections WHERE id = ?", (reflection_id,)).fetchone()
         return row["text"] if row else None
 
+    def senders(self) -> list[str]:
+        """Everyone who has ever sent Pip a message (visitors by name, neighbors' letters)."""
+        with self.lock:
+            return [r["sender"] for r in self.db.execute("SELECT DISTINCT sender FROM inbox")]
+
     def people(self) -> list[dict]:
         """Everyone Pip has notes on, most recently seen first."""
         with self.lock:

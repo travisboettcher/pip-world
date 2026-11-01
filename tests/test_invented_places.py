@@ -114,6 +114,15 @@ def test_reserved_names_neighbors_and_homes_are_refused(tmp_path, name):
     assert st.place_rows() == []
 
 
+def test_a_person_pip_knows_is_not_a_place(tmp_path):
+    s, st = fresh(tmp_path)
+    st.upsert_person("Morgan", "brings seeds", 0)
+    st.add_inbox("hello", sender="Jade")
+    for name in ("Morgan", "Jade"):
+        assert IP.accept(st, "A visitor", f"I'm {name}.", {"place": name, "distance": "far"}) is None
+    assert st.place_rows() == []
+
+
 def test_pip_cannot_invent_a_place(tmp_path):
     s, st = fresh(tmp_path)
     assert IP.accept(st, "Pip", TIP, SALT) is None and st.place_rows() == []

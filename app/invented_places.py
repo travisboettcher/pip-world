@@ -72,7 +72,7 @@ def _said(text: str) -> set[str]:
 def _reserved(state, c: str, speaker: str = "") -> bool:
     if c in RESERVED:
         return True
-    names = [ch["name"] for ch in state.characters()] + [speaker]
+    names = [ch["name"] for ch in state.characters()] + [p["name"] for p in state.people()] + state.senders() + [speaker]
     taken = {PIP} | {w for n in names for w in _said(n) if len(w) > 2}
     return bool(taken & set(c.split()))
 
