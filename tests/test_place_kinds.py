@@ -45,3 +45,13 @@ def test_shop_hours_are_bounded_and_other_kinds_keep_to_daylight():
 def test_gm_lines_list_every_kind_and_what_it_is_for():
     line = K.gm_lines()
     assert all(f"{k} (" in line for k in K.KINDS) and K.KINDS["sight"].help in line
+
+
+def test_a_proposed_kind_is_kept_when_the_words_back_it_even_if_another_comes_first():
+    assert K.check("shop", "a shop by the shore") == "shop"                 # the guess would be wild (shore)
+    assert K.check(["shop"], "a shop by the shore") == "wild"                # not a kind name at all: the guess
+
+
+def test_the_kinds_for_the_gm_exactly():
+    assert K.gm_lines() == "; ".join(f"{k.name} ({k.help})" for k in K.KINDS.values())
+    assert K.gm_lines().startswith("wild (somewhere outdoors to forage: a wood, a shore, a marsh edge); yard (")

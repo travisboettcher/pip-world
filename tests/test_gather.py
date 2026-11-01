@@ -8,6 +8,7 @@ from app import capabilities as C
 from app import gathering as G
 from app import places as P
 from app import tools as T
+from app.text import clip
 from app.world import KINDS
 from tests.test_projects import PLAN, call, make, report
 
@@ -228,3 +229,136 @@ async def test_getting_home_is_never_a_first_visit(tmp_path):
     (arrived,) = st.events(1)
     assert arrived["data"] == {"place": "workshop", "label": "home", "first_time": False, "description": ""}
     assert gm.calls == []
+
+
+# --- exact draws and hauls (pinned by mutation testing) ----------------------------------------------------
+class ScriptRng:
+    """A random source whose draws the test decides: `uniform` returns u, `choices` the next picked index, `randint` hi."""
+    def __init__(self, u=0.0, picks=()):
+        self.u, self.picks, self.calls = u, list(picks), []
+
+    def uniform(self, a, b):
+        self.calls.append(("uniform", a, b))
+        return self.u
+
+    def choices(self, table, weights):
+        self.calls.append(("choices", list(weights)))
+        return [table[self.picks.pop(0)]]
+
+    def randint(self, lo, hi):
+        self.calls.append(("randint", lo, hi))
+        return hi
+
+
+TABLE = [("odd tool", "tool", 6, (1, 1), "an odd tool", {}), ("stuff", "material", 7, (1, 4), "common stuff", {})]
+
+
+def test_a_draw_counts_finds_from_minutes_and_stock_and_skill_weights_rare_ones():
+    rng = ScriptRng(0.4, [1])
+    assert G.draw(rng, "x", 6, 1.0, 2.0, TABLE) == [("stuff", "material", 4, "common stuff", {})]
+    assert rng.calls == [("uniform", -0.5, 0.5), ("choices", [pytest.approx(7.8), 7]), ("randint", 1, 4)]
+    assert G.draw(ScriptRng(0.0, [1]), "x", 0, 1.0, 0, TABLE) == []                 # no time, no finds
+
+
+def test_a_low_stock_draw_finds_less_of_each_and_adds_up_repeats():
+    rng = ScriptRng(0.0, [1, 1, 0])
+    assert G.draw(rng, "x", 60, 0.5, 0, TABLE) == [("stuff", "material", 6, "common stuff", {}),
+                                                    ("odd tool", "tool", 1, "an odd tool", {})]
+
+
+class HaulGM:
+    def __init__(self, text=None):
+        self.text, self.calls = text, []
+
+    async def narrate_haul(self, label, minutes, found, depleted):
+        self.calls.append((label, minutes, found, depleted))
+        return self.text
+
+
+async def test_resolve_finds_records_and_depletes_exactly(tmp_path):
+    s, st, *_ = make(tmp_path)
+    now = time.time() + 7200
+    st.start_session(0, 0, 30, now, kind="gather", target="junkyard")
+    st.set_meta(**{"stock:junkyard": 15, "stock_at:junkyard": now - 3600})        # refilled to 30 by `now`
+    st.update_agent(activity="gathering")
+    gm = HaulGM()
+    data = await G.resolve(st, s, gm, ScriptRng(0.0, [1, 1]), now=now)
+    assert gm.calls == [("the junkyard", 30, [("brass wire", 4)], False)]
+    assert data == {"place": "junkyard", "label": "the junkyard", "minutes": 30, "items": [{"name": "brass wire", "qty": 4}],
+                    "text": "You spend about 30 minutes at the junkyard and find 4 brass wire.", "depleted": False,
+                    "stock": 0, "interrupted": False}
+    assert G.stock(st, "junkyard", now) == 0 and st.abilities() == {"handiness": 15, "patience": 15}
+    assert st.finds_at("junkyard")[0]["last_ts"] == now
+    assert st.agent()["description"] == "just back from scavenging at the junkyard" and st.agent()["activity"] == "idle"
+
+
+async def test_resolve_only_finishes_a_gather(tmp_path):
+    s, st, *_ = make(tmp_path)
+    assert await G.resolve(st, s, None, ScriptRng()) is None
+    st.start_session(0, 0, 10, time.time(), kind="walk", target="woods")
+    assert await G.resolve(st, s, None, ScriptRng()) is None and st.session()["kind"] == "walk"
+
+
+async def test_skill_from_handiness_and_patience_weights_the_rare_finds(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.add_ability_xp({"handiness": 540, "patience": 60})                           # levels 3 and 1: skill 2
+    st.start_session(0, 0, 10, time.time(), kind="gather", target="junkyard")
+    rng = ScriptRng(0.0, [1])
+    await G.resolve(st, s, None, rng)
+    weights = next(c[1] for c in rng.calls if c[0] == "choices")
+    assert weights == [pytest.approx(w * 1.3) if w <= G.RARE_WEIGHT else w for _, _, w, *_ in G.JUNKYARD]
+
+
+async def test_a_gather_cut_short_counts_the_minutes_spent_and_isnt_narrated(tmp_path):
+    s, st, *_ = make(tmp_path, work_speed=2)
+    st.start_session(0, 0, 90, time.time(), kind="gather", target="junkyard")
+    gm = HaulGM("narrated")
+    data = await G.resolve(st, s, gm, ScriptRng(0.0, [1] * 8), now=st.session()["started_at"] + 1830, interrupted=True)
+    assert data["minutes"] == 61 and data["interrupted"] and gm.calls == []
+    assert data["text"].startswith("You spend about 61 minutes at the junkyard and find ")
+    st.start_session(0, 0, 90, time.time(), kind="gather", target="junkyard")
+    before = st.abilities()["handiness"]
+    await G.resolve(st, s, gm, ScriptRng(0.0, [1] * 8), now=st.session()["started_at"] + 0.25, interrupted=True)
+    assert st.abilities()["handiness"] - before == pytest.approx(0.25 * 2 / 60 * 0.5)
+
+
+async def test_a_picked_over_place_is_depleted_below_half(tmp_path):
+    s, st, *_ = make(tmp_path)
+    now = time.time()
+    st.start_session(0, 0, 30, now, kind="gather", target="woods")
+    st.set_meta(**{"stock:woods": 29, "stock_at:woods": now})
+    data = await G.resolve(st, s, None, ScriptRng(0.0, [4] * 8), now=now)
+    assert data["depleted"] and data["text"].endswith(", though it's getting picked over.")
+    berries = next(i for i in st.items() if i["name"] == "wild berries")
+    assert berries["attrs"] == {"food_value": 0.2}
+
+
+async def test_a_long_narration_is_clipped(tmp_path):
+    s, st, *_ = make(tmp_path)
+    st.start_session(0, 0, 10, time.time(), kind="gather", target="junkyard")
+    data = await G.resolve(st, s, HaulGM("b" * 410), ScriptRng(0.0, [1] * 8))
+    assert data["text"] == clip("b" * 410, 400)
+
+
+async def test_a_shop_haul_goes_on_account_and_its_stock_is_judged_by_the_shop(tmp_path):
+    from tests.test_invented_places import real_shop
+    s, st, *_ = make(tmp_path)
+    rec = real_shop(st)
+    now = time.time()
+    st.update_place("Saltholm", on_account={"brass wire": 2})
+    st.set_meta(**{"stock:Saltholm": 15, "stock_at:Saltholm": now})                 # 15 of a full 20: three quarters
+    st.start_session(0, 0, 15, now, kind="gather", target="Saltholm")
+    st.update_agent(activity="gathering")
+    wire = [e[0] for e in rec["loot"]].index("brass wire")
+    data = await G.resolve(st, s, HaulGM("a" * 330), ScriptRng(0.0, [wire]), now=now)
+    assert not data["depleted"] and data["items"] == [{"name": "brass wire", "qty": 3}]
+    assert data["text"] == clip("a" * 330, 320) + " It's on account at Saltholm: they're happy for you to settle up later."
+    assert st.place_row("Saltholm")["on_account"] == {"brass wire": 5}
+    assert st.agent()["description"] == "just back from rummaging in the ironmonger's drawer at Saltholm"
+
+
+def test_a_heard_of_shop_has_the_default_session_and_verb(tmp_path):
+    from tests.test_invented_places import known_shop
+    s, st, *_ = make(tmp_path)
+    known_shop(st, now=time.time())
+    assert G.session_for(st, "Saltholm") == G.SESSION_MINUTES and G.verb_for(st, "Saltholm") == "gathering"

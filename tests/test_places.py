@@ -166,3 +166,150 @@ async def test_a_place_no_longer_offered_is_described_without_hints(tmp_path):
     await P.arrive(st, s, agent.gm, None)
     assert gm.calls[0]["messages"][0]["content"].startswith(
         "Pip has just arrived at the woods for the first time. Describe the place as Pip finds it")
+
+
+# --- exact records, lookups and lines (pinned by mutation testing) -----------------------------------------
+import random
+
+from app import invented_places as IP
+from tests.test_invented_places import DESIGN, DesignGM, heard, real_shop
+
+
+def test_the_built_in_places_are_exactly_these_records(tmp_path):
+    s, st, *_ = make(tmp_path, walk_minutes=7)
+    reg = P.registry(st, s, None)
+    assert reg["workshop"].walk_minutes == 7 and P.registry(st, None, None)["workshop"].walk_minutes == 10.0
+    assert reg["woods"] == P.Place("woods", "a patch of woods past the garden: sticks, bark, resin, berries and nuts, "
+                                   "birdsong", 8, offers=("gather",), daylight_only=True,
+                                   verbs={"gather": ("forage for sticks, bark, berries and nuts", P.FORAGE_HELP)})
+    assert reg["junkyard"] == P.Place(
+        "junkyard", "a scrapyard over the hill: heaps of scrap metal, wire, springs and old machine parts", 15,
+        offers=("gather", "browse"), daylight_only=True,
+        verbs={"gather": ("scavenge through the heaps", P.SCAVENGE_HELP),
+               "browse": ("look over the heaps to see what's worth digging for", None)})
+    st.add_character("Marigold", "neighbor", None, "persona", 60, 0, about="a beekeeper")
+    st.add_character("Briar", "neighbor", None, "persona", 60, 0)
+    reg = P.registry(st, s, None)
+    assert reg["Marigold's home"].blurb == "where your neighbor Marigold lives (a beekeeper)"
+    assert reg["Briar's home"].blurb == "where your neighbor Briar lives"
+
+
+def test_said_about_gives_the_last_two_things_said_or_who_mentioned_it():
+    ms = [{"by": b, "there": t} for b, t in (("Briar", "a meadow"), ("Morgan", "larks"), ("Marigold", "a stile"))]
+    assert P.said_about(ms) == "Morgan says: larks; Marigold says: a stile"
+    assert P.said_about([{"by": "Briar", "there": ""}, {"by": "Morgan", "there": ""}]) == "Morgan mentioned it"
+    assert P.said_about([]) == ""
+
+
+def test_the_gather_help_at_an_invented_place_exactly(tmp_path):
+    shop = {"key": "Saltholm", "kind": "shop"}
+    assert P._verb_help(shop, "gather", "ask to pick through the drawers") == (
+        "Ask to pick through the drawers at Saltholm for 15-30 minutes. What you find is down to luck and what's in "
+        "stock (it restocks slowly); it goes on account, to settle up later. You'll see what you found when the time "
+        "is up; resting stops early.")
+    assert P._verb_help({"key": "old mill", "kind": "wild"}, "gather", "forage here") == (
+        "Forage here at the old mill for 15-60 minutes. What you find is down to luck and how picked-over the place "
+        "is. You'll see what you found when the time is up; resting stops early.")
+    assert P._verb_help(shop, "browse", "see what's in") is None
+
+
+def test_an_invented_place_record_as_a_place(tmp_path):
+    s, st = IP_fresh(tmp_path)
+    rec = real_shop(st, now=1000.0)
+    st.update_place("Saltholm", real_at=2000.0)
+    IP.add_to(st, "Saltholm", "Briar", "", {"place": "Saltholm", "there": "said at once"}, now=2000.0)   # not since
+    IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "boats"}, now=3000.0)
+    IP.add_to(st, "Saltholm", "Marigold", "", {"place": "Saltholm", "there": "gulls"}, now=3001.0)
+    p = P.invented_place(st.place_row("Saltholm"))
+    assert p.blurb == DESIGN["blurb"] + " (Marigold says: gulls)" and p.daylight_only is False
+    assert p.mentions == st.place_row("Saltholm")["mentions"] and p.invented and not p.heard
+    st.update_place("Saltholm", walk_minutes=None, daylight_only=1)
+    p = P.invented_place(st.place_row("Saltholm"))
+    assert p.walk_minutes == 0 and p.daylight_only is True
+    assert rec["key"] == "Saltholm"
+
+
+def IP_fresh(tmp_path):
+    from tests.test_invented_places import fresh
+    return fresh(tmp_path)
+
+
+def test_find_understands_home_aliases_parts_of_names_and_neighbors(tmp_path):
+    s, st, *_ = make(tmp_path)
+    s.invented_places_per_day = 5
+    for q in ("my garden", "the house", "house", "garden"):
+        assert P.find(st, None, q) == P.HOME, q
+    IP.accept(st, "Briar", "Ask the ironmonger in Saltholm.", {"place": "the ironmonger in Saltholm", "distance": "far"})
+    IP.accept(st, "Briar", "Fen is near Fen Hollow.", {"place": "Fen", "distance": "near"})
+    IP.accept(st, "Briar", "Fen is near Fen Hollow.", {"place": "Fen Hollow", "distance": "near"})
+    assert P.find(st, None, "ironmonger in saltholm") == "Saltholm" and P.find(st, None, "salt") == "Saltholm"
+    assert P.find(st, None, "fen") == "Fen" and P.find(st, None, "hollow") == "Fen Hollow"
+    st.add_character("Marigold Thistlewick", "neighbor", None, "x", 60, 0)
+    st.add_character("Ann March", "neighbor", None, "x", 60, 0)
+    st.add_character("Jo Pell", "neighbor", None, "x", 60, 0)
+    st.add_character("Tock", "creation", None, "x", 60, 0)
+    assert P.find(st, None, "visit marigold thistlewick") == "Marigold Thistlewick's home"
+    assert P.find(st, None, "marigold's") == "Marigold Thistlewick's home"
+    assert P.find(st, None, "visit ann") == "Ann March's home"
+    assert P.find(st, None, "visit jo") is None and P.find(st, None, "tock") is None
+
+
+async def test_arriving_at_a_heard_of_place_designs_it_with_its_label_and_the_rng(tmp_path):
+    s, st, *_ = make(tmp_path)
+    IP.accept(st, "Briar", "Go and see the old mill.", {"place": "the old mill", "there": "a mill", "distance": "near"},
+              now=time.time())
+    gm = DesignGM({"kind": "sight", "description": "A mill."})
+    _walk_to(st, "old mill")
+    await P.arrive(st, s, gm, None, rng=random.Random(1))
+    assert gm.calls[0][0] == "the old mill"
+    IP.accept(st, "Briar", "Go and see Skerry.", {"place": "Skerry", "there": "a beach", "distance": "near"},
+              now=time.time())
+    st.update_place("old mill", real_at=time.time() - 2 * IP.DAY)
+    raw = {"kind": "wild", "description": "A beach.",
+           "loot": [{"name": f"thing {c}", "kind": "material", "tier": "common"} for c in "abc"]}
+    _walk_to(st, "Skerry")
+    await P.arrive(st, s, DesignGM(raw), None, rng=random.Random(5))
+    r = random.Random(5)
+    assert [e[2] for e in st.place_row("Skerry")["loot"]] == [r.randint(15, 30) for _ in range(3)]
+
+
+async def test_a_bare_arrival_keeps_an_empty_description_and_a_long_one_is_clipped(tmp_path):
+    s, st, *_ = make(tmp_path)
+    heard(st, now=time.time())
+    _walk_to(st, "Saltholm")
+    await P.arrive(st, s, DesignGM(None), None)
+    assert st.meta("place:Saltholm") == ""
+
+    class Describer:
+        async def describe_place(self, label, hints):
+            return "z" * 501
+    _walk_to(st, "woods")
+    await P.arrive(st, s, Describer(), None)
+    assert st.meta("place:woods") == "z" * 500 + "..."
+
+
+def test_the_directory_lists_every_block_exactly(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    s.invented_places_per_day = 5
+    assert not any("heard of" in l for l in P.directory(st, s, None))
+    heard(st, "Fallow", "near", "a meadow", now=time.time())
+    st.update_place("Fallow", walk_minutes=1, daylight_only=0)
+    rec = IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
+    IP.design(st, rec, {"description": "A still lake.", "blurb": "a still lake"}, random.Random(1))
+    st.update_place("Lake Ennis", walk_minutes=1, daylight_only=0)
+    now = 1000.0 + IP.DAY
+    IP.accept(st, "Briar", "My sister is in Brightwater.", {"place": "Brightwater", "there": "my sister",
+                                                            "distance": "very far"}, now=1000.0)
+    assert P.directory(st, s, None, now=now) == [
+        "Places you can go (go_to):", "- Lake Ennis, 1 min - a still lake",
+        "Places you've heard of but not been to (go_to works):", "- Fallow, about 1 min, a short walk - Briar says: a meadow",
+        "Places you've heard of that are too far to walk to:", "- Brightwater - Briar says: my sister"]
+
+
+def test_a_resident_with_nothing_known_about_them_is_just_here(tmp_path):
+    s, st, *_ = make(tmp_path)
+    real_shop(st)
+    st.update_place("Saltholm", hours=None)
+    st.add_character("Mr Teague", "resident", None, "persona", 0, 0, place="Saltholm")
+    st.update_agent(location="Saltholm")
+    assert "Mr Teague is here; talk with them in person using say with to: Mr Teague." in P.perception(st, s, None)

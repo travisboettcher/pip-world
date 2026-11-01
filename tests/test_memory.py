@@ -362,3 +362,50 @@ async def test_day_counts_are_plain_facts_in_the_prompt_and_stored(tmp_path):
     assert "2 work sessions, 90 minutes worked, 1 sessions where you described your approach, 1 setbacks" in task
     ((day, stored),) = st.day_stats(5)
     assert stored == d["stats"]
+
+
+# --- the searchable text of each kind of event (exact; pinned by mutation testing) ----------------------------
+@pytest.mark.parametrize("kind, data, text", [
+    ("inbox", {"letter": True, "text": "A letter from Briar: hello"}, "A letter from Briar: hello"),
+    ("reading", {"title": "Walden", "summary": "about a pond"}, "You read Walden: about a pond"),
+    ("reading", {"title": "Walden", "summary": "a pond", "quotes": ["simplify", "go slow"]},
+     'You read Walden: a pond "simplify" "go slow"'),
+    ("letter_sent", {"to": "Briar", "text": "hello"}, "You wrote to Briar: hello"),
+    ("letter_sent", {"to": "Briar", "text": "hello", "enclosed": "a spring"}, "You wrote to Briar: hello (enclosed: a spring)"),
+    ("inbox", {"text": "hi Pip", "sender": "Morgan"}, "Morgan said to you: hi Pip"),
+    ("inbox", {"text": "hi Pip"}, "A visitor said to you: hi Pip"),
+    ("inbox", {"text": "hi Pip", "gift": True}, None),
+    ("inbox", {"text": "Morgan gave you 2 x brass wire"}, None),
+    ("say", {"text": "hello", "to_name": "Briar"}, "You said to Briar: hello"),
+    ("say", {"text": "hello"}, "You said: hello"),
+    ("gift", {"sender": "Morgan", "qty": 2, "item": "brass wire"}, "Morgan gave you 2 x brass wire"),
+    ("work", {"project": "clock", "stage": "gears", "result": "progress", "text": "it turns"},
+     "Working on clock (gears), progress: it turns"),
+    ("work", {"project": "clock", "stage": "gears", "result": "setback", "text": "it jams", "learned": "oil it",
+              "expectation": "as expected"}, "Working on clock (gears), setback: it jams You learned: oil it (as expected)"),
+    ("work", {"project": "clock", "interrupted": True}, None),
+    ("experiment", {"project": "clock", "hypothesis": "oil helps", "text": "it did"}, "Experiment on clock (oil helps): it did"),
+    ("experiment", {"project": "clock", "hypothesis": "oil helps", "text": "it did", "finding": "oil helps",
+                    "expectation": "a surprise"}, "Experiment on clock (oil helps): it did You learned: oil helps (a surprise)"),
+    ("experiment", {"project": "clock", "interrupted": True}, None),
+    ("world_changed", {"text": "Snow fell."}, "Snow fell."),
+    ("revised_work", {"title": "Gulls"}, "You looked at your drawing 'Gulls' and redrew it"),
+    ("made_work", {"what": "drawing", "title": "Gulls"}, "You drew 'Gulls'"),
+    ("made_work", {"what": "drawing", "title": "Gulls", "caption": "three gulls"}, "You drew 'Gulls': three gulls"),
+    ("made_work", {"what": "poem", "title": "Tide", "text": "in and out"}, "You wrote 'Tide': in and out"),
+    ("made_work", {"what": "poem", "title": "Tide"}, "You wrote 'Tide': "),
+    ("outreach", {"text": "hi", "what": "postcard"}, None),
+    ("outreach", {"text": "hi", "what": "postcard", "delivered": True}, "You sent a postcard to a friend outside: hi"),
+    ("outreach", {"text": "hi", "what": "reply", "delivered": True}, "You answered a friend outside: hi"),
+    ("gathered", {"text": "You find 2 sticks.", "items": [{"name": "sticks"}]}, "You find 2 sticks."),
+    ("gathered", {"text": "You find 2 sticks.", "interrupted": True, "items": [{"name": "sticks"}]}, "You find 2 sticks."),
+    ("gathered", {"text": "Nothing.", "interrupted": True, "items": []}, None),
+    ("gathered", {"text": "Nothing.", "items": []}, "Nothing."),
+    ("creation_made", {"name": "Tock", "description": "a clockwork bird"}, "You finished making Tock: a clockwork bird"),
+    ("companion", {"name": "Tock", "text": "tick"}, "Tock said: tick"),
+    ("heard_of_place", {"by": "Briar", "place": "Saltholm", "there": "an ironmonger"}, "Briar told you about Saltholm: an ironmonger"),
+    ("heard_of_place", {"by": "Briar", "place": "Saltholm", "there": ""}, "Briar told you about Saltholm"),
+    ("tick", {}, None),
+])
+def test_recall_text_for_each_kind_of_event(kind, data, text):
+    assert mem.recall_text(kind, data) == text

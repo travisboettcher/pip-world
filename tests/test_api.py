@@ -160,3 +160,20 @@ def test_ui_files_are_revalidated_not_cached_blindly(tmp_path, monkeypatch):
             assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and r.headers["etag"], path
         again = c.get("/ui/style.css", headers={"if-none-match": r.headers["etag"]})
         assert again.status_code == 304
+
+
+def test_the_app_is_named_serves_drawings_locked_down_and_mounts_the_web_dir(tmp_path, monkeypatch):
+    from app import art
+    from tests.test_art import GOOD
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<p>hello</p>")
+    monkeypatch.setenv("WEB_DIR", str(web))
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        assert c.app.title == "agent-world" and c.app.url_path_for("ui", path="/index.html") == "/ui/index.html"
+        assert "hello" in c.get("/ui/index.html").text
+        d = c.app.state.agent.state.add_work("drawing", "A circle", art.sanitize_svg(GOOD), "round")
+        h = c.get(f"/works/{d}.svg").headers
+        assert h["content-security-policy"] == "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        assert h["cache-control"] == "no-cache" and h["x-content-type-options"] == "nosniff"

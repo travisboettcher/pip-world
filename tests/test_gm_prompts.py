@@ -310,3 +310,53 @@ async def test_recall_prompt_and_only_strings_are_kept(tmp_path):
     assert await gm.recall_told("Briar", "An owl.", []) is None  # no report at all
     (e,) = [e for e in st.events(5) if e["kind"] == "gm_error"]
     assert e["data"]["purpose"] == "recall_told"
+
+
+# --- designing a place a character told Pip about (invented places) --------------------------------------------
+DESIGN_BARE = (
+    "Pip has just arrived at Fallow for the first time. Nobody has described it before; this is what others told "
+    "Pip about it (the place must agree with all of it):\n"
+    "- Briar says: a meadow\n"
+    "- Morgan mentioned it\n"
+    "\n"
+    "Decide what Fallow is. `kind`, one of: {kinds}. Use the kind what was said suggests; a shop only if someone "
+    "said there's a shop or a trade there. Give:\n"
+    "- `description`: 2-3 sentences of the place as Pip finds it (kept, and shown whenever Pip is here)\n"
+    "- `blurb`: one short line for a list of places\n"
+    "- `loot`: 4-10 things that can be found or had there, each {{`name`, `kind`: material, food, seed or tool, "
+    "`tier`: common, uncommon or rare, `description`}}; include everything the words above say is there. \n"
+    "- for a shop: `opens` and `closes` (local hours); `gather_help` (a few words: how Pip picks through the "
+    "stock), `browse_help` (a few words: how Pip sees what's in), `gerund` (e.g. 'rummaging in the drawer'). For a "
+    "wild place or a yard: `gather_help` and `gerund`. A sight needs none of these.\n"
+    "- `resident`: someone who lives or works there and will talk with Pip, if the place has one (a shop "
+    "normally has its keeper; a wild place or a sight often has nobody): `name`, `persona` (3-5 sentences, "
+    "private: who they are, their days, how they talk) and `about` (one short line of what Pip would know of them "
+    "once met). If the words above name someone who is there, it's them; never Pip or whoever told Pip about it."
+)
+STR = {"type": "string"}
+DESIGN_SCHEMA = {"type": "object", "properties": {
+    "kind": STR, "description": STR, "blurb": STR,
+    "loot": {"type": "array", "items": {"type": "object", "properties": {"name": STR, "kind": STR, "tier": STR,
+                                                                         "description": STR}}},
+    "opens": {"type": "integer"}, "closes": {"type": "integer"}, "gather_help": STR, "browse_help": STR, "gerund": STR,
+    "resident": {"type": "object", "properties": {"name": STR, "persona": STR, "about": STR},
+                 "required": ["name", "persona"]},
+}, "required": ["kind", "description"]}
+
+
+async def test_design_place_prompt_and_schema_exactly(tmp_path):
+    from app import place_kinds
+    gm, backend, st = master(tmp_path, report(kind="wild", description="A meadow."))
+    out = await gm.design_place("Fallow", ["Briar says: a meadow", "Morgan mentioned it"], [])
+    assert out == {"kind": "wild", "description": "A meadow."}
+    assert task(backend) == DESIGN_BARE.format(kinds=place_kinds.gm_lines())
+    assert backend.schemas[0] == DESIGN_SCHEMA
+    backend.queue(report(kind="wild"))
+    assert await gm.design_place("Fallow", [], []) is None
+    assert st.events(limit=1)[0]["data"] == {"purpose": "design_place", "error": "no usable report"}
+
+
+async def test_a_failed_new_neighbor_is_logged_as_such(tmp_path):
+    gm, backend, st = master(tmp_path, report(name="Briar"))
+    assert await gm.invent_neighbor("a workshop") is None
+    assert st.events(limit=1)[0]["data"] == {"purpose": "invent_neighbor", "error": "no usable report"}

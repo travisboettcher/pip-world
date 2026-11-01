@@ -955,3 +955,397 @@ def test_the_places_endpoint_lists_who_lives_at_each_place_even_once_removed(tmp
         assert [p["residents"] for p in c.get("/places").json()["places"]] == [expected, []]
         c.delete("/places/Saltholm")
         assert c.get("/places").json()["places"][0]["residents"] == expected
+
+
+# --- edges pinned by mutation testing ----------------------------------------------------------------------
+DAY = 86400.0
+
+
+def test_a_capitalised_connector_isnt_part_of_the_proper_name():
+    assert IP.core("The Mill At Saltholm") == "saltholm" and IP.key_for("The Mill At Saltholm") == "Saltholm"
+
+
+def test_a_possessive_s_is_not_a_word_the_speaker_said(tmp_path):
+    s, st = fresh(tmp_path)
+    assert IP.accept(st, "Morgan", "Go to Briar's Bend.", {"place": "S Bend"}) is None
+
+
+@pytest.mark.parametrize("name, key", [("Ys", "Ys"), ("Xanadu", "Xanadu"), ("Saint Agnes Under The Hill", "Saint Agnes Under Hill")])
+def test_short_long_and_x_names_are_kept(tmp_path, name, key):
+    s, st = fresh(tmp_path)
+    assert IP.accept(st, "Briar", f"Go to {name}.", {"place": name})["key"] == key
+
+
+def test_a_name_of_forty_letters_is_kept_after_its_punctuation_is_trimmed(tmp_path):
+    s, st = fresh(tmp_path)
+    name = f"A{'a' * 12} B{'b' * 12} C{'c' * 11}"
+    assert len(name) == 40
+    assert IP.accept(st, "Briar", f"Go to {name}.", {"place": f"{name}."})["key"] == name
+    assert IP.accept(st, "Briar", "Go to Saint Agnes Under The Green Hill.",
+                     {"place": "Saint Agnes Under The Green Hill"}) is None          # six words
+
+
+def test_a_name_said_exactly_is_enough(tmp_path):
+    s, st = fresh(tmp_path)
+    assert IP.accept(st, "Briar", "Saltholm", {"place": "Saltholm"})["key"] == "Saltholm"
+
+
+def test_names_of_three_letters_count_as_a_characters_name_but_two_dont(tmp_path):
+    s, st = fresh(tmp_path)
+    st.add_character("Ann Fenwick", "neighbor", None, "x", 60, 0)
+    st.add_character("Ed Marlow", "neighbor", None, "x", 60, 0)
+    assert IP.accept(st, "Morgan", "Go to Ann Tor.", {"place": "Ann Tor"}) is None
+    assert IP.accept(st, "Morgan", "Go to Ed Tor.", {"place": "Ed Tor"})["key"] == "Ed Tor"
+
+
+def test_a_place_is_remembered_for_exactly_thirty_days(tmp_path):
+    s, st = fresh(tmp_path)
+    IP.accept(st, "Briar", "Visit Aldmoor.", {"place": "Aldmoor"}, now=1000.0)
+    assert [r["key"] for r in IP.records(st, now=1000.0 + 30 * DAY)] == ["Aldmoor"]
+
+
+def test_the_day_cap_counts_places_from_less_than_a_day_ago(tmp_path):
+    s, st = fresh(tmp_path)
+    s.invented_places_per_day = 1
+    IP.accept(st, "Briar", "Visit Aldmoor.", {"place": "Aldmoor"}, now=1000.0)
+    assert IP.accept(st, "Briar", "Visit Brenfold.", {"place": "Brenfold"}, now=1000.0 + DAY)["key"] == "Brenfold"
+
+
+def test_a_first_mention_by_a_longer_name_keeps_it_as_an_alias(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Ask the ironmonger in Saltholm.", {"place": "the ironmonger in Saltholm"}, now=1000.0)
+    assert rec["key"] == "Saltholm" and rec["aliases"] == ["ironmonger in saltholm"]
+    assert IP.find_record(st, "ironmonger in saltholm", now=1000.0)["key"] == "Saltholm"   # by its alias
+
+
+def test_a_mention_clips_the_speaker_and_keeps_three_named_things(tmp_path):
+    s, st = fresh(tmp_path)
+    speaker = "Morgan " + "x" * 34
+    rec = IP.accept(st, speaker, "Go to Fallow.", {"place": "Fallow", "items": [7, "rope", "q" * 41, " ", "nets", "floats"]})
+    assert rec["mentions"][0]["by"] == clip(speaker, 40) and rec["mentions"][0]["items"] == ["rope", clip("q" * 41, 40), "nets"]
+
+
+def test_add_to_finds_the_place_at_the_time_given(tmp_path):
+    s, st = fresh(tmp_path)
+    IP.accept(st, "Briar", TIP, SALT, now=1000.0)
+    assert IP.add_to(st, "Saltholm", "Briar", "", None, now=2000.0) is None          # nothing to add
+    out = IP.add_to(st, "Saltholm", "Briar", "", {"there": "boats"}, now=2000.0)
+    assert out["heard_at"] == 2000.0 and out["aliases"] == [] and out["mentions"][-1]["there"] == "boats"
+    out = IP.add_to(st, "Saltholm", "Briar", "", {"place": "Saltholm", "there": "nets"}, now=2000.0)
+    assert out["aliases"] == []                                                      # its own name isn't an alias
+
+
+def test_a_place_that_has_grown_three_times_takes_no_more_description(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    st.update_place("Saltholm", grown=3)
+    out = IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "a harbour full of boats"})
+    assert out["description"] == DESIGN["description"] and out["grown"] == 3
+
+
+def test_a_yard_only_grows_what_a_yard_can_hold(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Cobbleton has a scrap heap.", {"place": "Cobbleton", "there": "a scrap heap"})
+    IP.design(st, rec, {"kind": "yard", "description": "A tip.", "loot": [{"name": "rusty tin", "kind": "material"}]},
+              random.Random(1))
+    out = IP.add_to(st, "Cobbleton", "Briar", "", {"place": "Cobbleton", "items": ["wild berries"]})
+    assert [e[0] for e in out["loot"]] == ["rusty tin"] and out["grown"] == 0
+
+
+def test_growth_skips_what_is_already_there_and_keeps_the_gather_verb(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    st.update_place("Saltholm", grown=2)                                             # room for one more
+    out = IP.add_to(st, "Saltholm", "Briar", "", {"place": "Saltholm", "items": ["brass wire", "tarred rope"]})
+    assert "tarred rope" in [e[0] for e in out["loot"]] and out["grown"] == 3
+    assert out["verbs"]["gather"] == ["ask Mr Teague to let you pick through the drawer",
+                                      "rummaging in the ironmonger's drawer"]
+
+
+def test_a_line_of_description_ends_with_one_full_stop(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    out = IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "tea at the inn of Captain X."})
+    assert out["description"] == DESIGN["description"] + " Morgan says: tea at the inn of Captain X."
+
+
+def test_a_description_grows_up_to_five_hundred_characters(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    line = " Morgan says: boats."
+    st.update_place("Saltholm", description="d" * (501 - len(line)))
+    out = IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "boats"})
+    assert out["grown"] == 0 and len(out["description"]) == 501 - len(line)
+    st.update_place("Saltholm", description="d" * (500 - len(line)))
+    out = IP.add_to(st, "Saltholm", "Morgan", "", {"place": "Saltholm", "there": "boats"})
+    assert out["grown"] == 1 and len(out["description"]) == 500
+
+
+def test_the_backstop_hears_a_visitor_and_a_letter_with_a_gift(tmp_path):
+    s, st = fresh(tmp_path)
+    s.invented_places_per_day = 5
+    st.log("inbox", text="You could visit Brenfold.")
+    st.log("inbox", text="Dear Pip, do visit Cailey.", sender="Briar", letter=True, gift=True)
+    st.log("inbox", text="Here's a gift from Dunmere.", sender="Briar", gift=True)   # an engine-written gift note
+    assert IP.recall_mention(st, "Brenfold")["mentions"][0]["by"] == "A visitor"
+    assert IP.recall_mention(st, "Cailey")["mentions"][0]["by"] == "Briar"
+    assert IP.recall_mention(st, "Dunmere") is None
+
+
+def test_the_backstop_searches_only_the_latest_voices(tmp_path):
+    s, st = fresh(tmp_path)
+    st.log("companion", name="Briar", text="Go to Fallow.")
+    st.log("companion", name="Briar", text="Hello.")
+    assert IP.recall_mention(st, "Fallow", limit=1) is None
+    assert IP.recall_mention(st, "Fallow", limit=2, now=1000.0)["created_at"] == 1000.0
+
+
+def test_the_backstop_keeps_the_full_name_said_and_falls_back_to_its_core(tmp_path):
+    s, st = fresh(tmp_path)
+    st.log("companion", name="Briar", text="Ask the ironmonger in Saltholm for wire.")
+    assert IP.recall_mention(st, "the ironmonger in Saltholm")["aliases"] == ["ironmonger in saltholm"]
+    (tmp_path / "b").mkdir()
+    s2, st2 = fresh(tmp_path / "b")
+    st2.log("companion", name="Briar", text="Saltholm is lovely.")                   # said first in a sentence: fine here
+    assert IP.recall_mention(st2, "the Saltholm ironmonger")["key"] == "Saltholm"
+
+
+@pytest.mark.parametrize("text, there", [
+    ("Hi. Lovely day. Go to Fallow.", "Go to Fallow."), ("Mr X says go to Fallow.", "Mr X says go to Fallow."),
+    ("Go to Fallow with Mr X now.", "Go to Fallow with Mr X now."), ("go to Fallow", "go to Fallow"),
+    ("Go to Fallow. Then rest.", "Go to Fallow."), (":) go to Fallow", ") go to Fallow"),
+])
+def test_what_is_there_is_the_sentence_the_name_is_in(text, there):
+    assert IP.chat_mentions(text)[0]["there"] == there
+
+
+def test_a_chat_message_names_each_place_once(tmp_path):
+    assert [m["place"] for m in IP.chat_mentions("Go to Fen Hollow, a village called Fen Hollow.")] == ["Fen Hollow"]
+    assert [m["place"] for m in IP.chat_mentions(
+        "Go to Fen Hollow, then go to Fen Hollow again, and visit Brightwater.")] == ["Fen Hollow", "Brightwater"]
+    s, st = fresh(tmp_path)
+    assert IP.from_chat(st, "Morgan", "Go to Fallow.", now=1000.0)[0]["created_at"] == 1000.0
+
+
+def test_named_in_matches_a_text_that_is_just_the_name(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = heard(st)
+    assert IP.named_in([rec], "Saltholm") == [rec] and IP.named_in([rec], "nowhere") == []
+
+
+def test_the_backfill_only_reads_the_newest_two_hundred_open_to_dos(tmp_path):
+    s, st = fresh(tmp_path)
+    s.invented_places_per_day = 5
+    st.log("companion", name="Briar", text="Briar says Fallow and Brenfold are lovely, and Dunmere and Eskdale too.")
+    for _ in range(300):
+        st.log("noise")                                                              # past the go_to backstop's reach
+    st.add_memory("go to Brenfold", "todo")
+    st.add_memory("go to Fallow", "todo")
+    for i in range(199):
+        st.add_memory(f"mend the clock {i}", "todo")
+    st.resolve_memory(st.add_memory("go to Dunmere", "todo"))
+    st.add_memory("go to Eskdale", "wishlist")
+    found = IP.backfill(st, now=1000.0)
+    assert [r["key"] for r in found] == ["Fallow"] and [r["key"] for r in st.place_rows()] == ["Fallow"]
+    assert found[0]["created_at"] == 1000.0
+
+
+def test_the_backfill_skips_weekdays_and_runs_once(tmp_path):
+    s, st = fresh(tmp_path)
+    st.log("companion", name="Briar", text="Briar mends nets on Thursday, then walks to Fallow.")
+    st.add_memory("Thursday: Fallow with Briar", "todo")
+    assert [r["key"] for r in IP.backfill(st)] == ["Fallow"]
+    st.log("companion", name="Briar", text="Briar says Brenfold is lovely.")
+    st.add_memory("go to Brenfold", "todo")
+    assert IP.backfill(st) == [] and st.place_row("Brenfold") is None
+
+
+def test_the_backfill_returns_nothing_when_nobody_named_the_place(tmp_path):
+    s, st = fresh(tmp_path)
+    st.add_memory("go to Fallow", "todo")
+    assert IP.backfill(st) == []
+
+
+def test_what_was_promised_reuses_existing_names_without_repeats(tmp_path):
+    s, st = fresh(tmp_path)
+    known = IP.known_items(st)
+    assert IP.promised({"mentions": [{"there": "wire"}]}, known) == []                # an old mention with no items
+    assert IP.promised({"mentions": [{"there": "", "items": ["Wild Berries"]}]}, known) == [
+        {"name": "wild berries", "kind": "food", "tier": "uncommon", "description": ""}]
+    assert IP.promised({"mentions": [{"there": "", "items": ["brass wire", "thin brass wire"]}]}, known) == [
+        {"name": "brass wire", "kind": "material", "tier": "uncommon", "description": ""}]
+
+
+def test_build_loot_counts_tools_already_there(tmp_path):
+    existing = [["pliers", "tool", 3, [1, 1], "p", {}], ["saw", "tool", 3, [1, 1], "s", {}]]
+    out = IP.build_loot([{"name": "awl", "kind": "tool"}], "shop", {}, [], random.Random(1), existing=existing)
+    assert [e[0] for e in out] == ["pliers", "saw"]
+
+
+def test_build_loot_cleans_names_and_keeps_descriptions(tmp_path):
+    entries = [{"name": "Rope.", "kind": "material", "description": "a coil of rope"}, {"name": "nets", "kind": "material"},
+               {"name": "floats", "kind": "material", "description": "d" * 101}, {"name": "q" * 41, "kind": "material"},
+               {"name": "Xmas cake", "kind": "food"}]
+    out = IP.build_loot(entries, "shop", {}, [], random.Random(1))
+    assert [e[0] for e in out] == ["rope", "nets", "floats", "q" * 40, "xmas cake"]
+    assert [e[4] for e in out][:3] == ["a coil of rope", "nets", clip("d" * 101, 100)]
+
+
+def test_build_loot_takes_ten_entries_from_the_first_twenty(tmp_path):
+    many = [{"name": f"thing {chr(97 + i)}", "kind": "material"} for i in range(12)]
+    assert len(IP.build_loot(many, "wild", {}, [], random.Random(1))) == 10
+    late = ["junk"] * 20 + [{"name": "rope", "kind": "material"}]
+    assert IP.build_loot(late, "wild", {}, [], random.Random(1)) == []
+    assert IP.build_loot(None, "wild", {}, [], random.Random(1)) == []
+
+
+def test_a_promise_kept_by_a_longer_name_isnt_added_again():
+    promise = {"name": "hemp twine", "kind": "material", "tier": "uncommon", "description": ""}
+    out = IP.build_loot([{"name": "thick hemp twine", "kind": "material"}], "wild", {}, [promise], random.Random(1))
+    assert [e[0] for e in out] == ["thick hemp twine"]
+
+
+class DesignGM:
+    def __init__(self, raw):
+        self.raw, self.calls = raw, []
+
+    async def design_place(self, label, said, known):
+        self.calls.append((label, said, known))
+        return self.raw
+
+
+async def test_realise_asks_the_gm_with_what_was_said_and_keeps_its_numbers(tmp_path):
+    s, st = fresh(tmp_path)
+    now = time.time()
+    IP.accept(st, "Briar", "Fallow is a meadow.", {"place": "Fallow", "there": "a meadow"}, now=now)
+    IP.add_to(st, "Fallow", "Morgan", "", {"place": "Fallow"}, now=now)
+    loot = [{"name": f"thing {c}", "kind": "material", "tier": "common"} for c in "abc"]
+    gm = DesignGM({"kind": "wild", "description": "A meadow.", "loot": loot})
+    assert await IP.realise(st, None, "Fallow", "Fallow") is None
+    assert await IP.realise(st, gm, "Nowhere", "Nowhere") is None
+    rec = await IP.realise(st, gm, "Fallow", "Fallow", rng=random.Random(5), now=now)
+    assert gm.calls == [("Fallow", ["Briar says: a meadow", "Morgan mentioned it"],
+                         sorted({n for n, _ in IP.known_items(st).values()} - {"thing a", "thing b", "thing c"}))]
+    r = random.Random(5)
+    assert [e[2] for e in rec["loot"]] == [r.randint(15, 30) for _ in range(3)] and rec["real_at"] == now
+    assert await IP.realise(st, gm, "Fallow", "Fallow", now=now + 2 * DAY) is None and len(gm.calls) == 1   # real now
+
+
+async def test_a_design_from_exactly_a_day_ago_doesnt_count(tmp_path):
+    s, st = fresh(tmp_path)
+    now = time.time()
+    heard(st, "Fallow", "near", "a meadow", now=now)
+    heard(st, "Brenfold", "near", "a meadow", now=now + 1)
+    st.update_place("Brenfold", status="real", real_at=now - DAY)
+    assert (await IP.realise(st, DesignGM({"description": "A meadow."}), "Fallow", "Fallow", now=now))["status"] == "real"
+
+
+class Shelves:
+    def available(self):
+        return True
+
+
+def test_the_names_and_instruction_follow_the_settings_and_the_library(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    heard(st)
+    assert IP.known_names(st, s, Shelves()) == ["the library", "Saltholm"]
+    assert IP.mention_instruction(st, s, Shelves()) == (
+        "Only if your words point Pip to a place it could go that isn't one of these: the library, Saltholm, give "
+        "`mentions_place` (`place`: the destination as you said it; `there`: what you say is there, under 120 "
+        "characters; `distance`: near, far or very far, as you'd put it; `items`: things you say can be had there). "
+        "Not your own home, not landscape you just pass through.")
+    assert IP.places_line(st, "Marigold", s, Shelves()) == (
+        f"Places in Pip's world: the library (books); Saltholm, a long walk")
+
+
+def test_the_places_line_names_two_finds_or_just_that_pip_has_been(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    real_shop(st)
+    assert IP.places_line(st, "Marigold", s) == "Places in Pip's world: Saltholm, a long walk (Pip has been)"
+    for item, ts in (("rope", 1.0), ("nails", 2.0), ("brass wire", 3.0)):
+        st.add_find("Saltholm", item, ts=ts)
+    assert IP.places_line(st, "Marigold", s) == (
+        "Places in Pip's world: Saltholm, a long walk (Pip has been and found brass wire, nails there)")
+
+
+@pytest.mark.parametrize("walk, distance", [(14, "near"), (20, "near"), (21, "far"), (None, "very far")])
+def test_patching_the_walk_sets_the_distance(tmp_path, walk, distance):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    out = IP.patch(st, "Saltholm", {"walk_minutes": walk})
+    assert out["walk_minutes"] == walk and out["distance"] == distance
+
+
+def test_patch_clips_a_description_and_builds_loot_without_a_given_rng(tmp_path):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    assert IP.patch(st, "Saltholm", {"description": "y" * 501})["description"] == "y" * 500 + "..."
+    assert [e[0] for e in IP.patch(st, "Saltholm", {"loot": [{"name": "rope", "kind": "material"}]})["loot"]] == ["rope"]
+
+
+@pytest.mark.parametrize("changes, message", [
+    ({"walk_minutes": "far"}, "walk_minutes must be a number of minutes (or null: too far to walk)"),
+    ({"colour": "blue", "age": 3}, "can't change age, colour (only walk_minutes, hours, description, loot)"),
+    ({"hours": [9]}, "hours are [opens, closes], and only a shop keeps hours"),
+    ({"description": " "}, "a description can't be empty"),
+    ({"loot": "rope"}, "loot is a list of {name, kind, tier, description}, for a place Pip has been to"),
+])
+def test_patch_says_why_it_refuses(tmp_path, changes, message):
+    s, st = fresh(tmp_path)
+    real_shop(st)
+    with pytest.raises(ValueError) as e:
+        IP.patch(st, "Saltholm", changes)
+    assert str(e.value) == message
+
+
+async def test_a_half_stocked_shop_shows_half_as_much_and_lists_each_thing_on_account(tmp_path):
+    s, st, gm, agent = setup(tmp_path, where="Saltholm")
+    real_shop(st)
+    st.update_place("Saltholm", hours=None, on_account={"brass wire": 2, "awl": 1})
+    st.set_meta(**{"stock:Saltholm": 10, "stock_at:Saltholm": time.time()})          # half of the 20 for a full haul
+    lines = (await call(agent, "browse")).text.split("\n")
+    shown = lines[0].removeprefix("In stock at Saltholm today: ").removesuffix(". gather to pick through it.").split(", ")
+    assert len(shown) == 2 and all(n in [e[0] for e in st.place_row("Saltholm")["loot"]] for n in shown)
+    assert lines[1] == "On account here: 2 brass wire, 1 awl (nothing's owed yet; you can settle up later)."
+
+
+def test_a_design_keeps_its_own_kind_and_resets_daylight(tmp_path):
+    s, st = fresh(tmp_path)
+    s.invented_places_per_day = 5
+    fallow = heard(st, "Fallow", "near", "a meadow by the shop", now=time.time())
+    assert fallow["kind"] == "wild" and fallow["daylight_only"] == 1
+    out = IP.design(st, fallow, {"kind": "shop", "description": "A meadow. With larks.", "loot": [
+        {"name": "rope", "kind": "material"}]}, random.Random(1))
+    assert out["kind"] == "shop" and out["daylight_only"] == 0 and out["blurb"] == "A meadow."
+    skerry = heard(st, "Skerry", "near", "a beach", now=time.time())
+    assert IP.design(st, skerry, {"kind": "sight", "description": "A beach."}, random.Random(1))["kind"] == "sight"
+
+
+def test_a_design_with_a_proper_trade_name_is_a_shop(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Go to the Fishmonger.", {"place": "the Fishmonger", "there": "a quiet place"},
+                    now=time.time())
+    assert IP.design(st, rec, {"kind": "shop", "description": "Fish."}, random.Random(1))["kind"] == "shop"
+
+
+def test_a_designs_words_are_clipped_at_their_limits(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = heard(st, "Skerry", "near", "a beach", now=time.time())
+    out = IP.design(st, rec, {"kind": "wild", "description": "y" * 501, "gather_help": "h" * 81, "gerund": "g" * 41,
+                              "loot": [{"name": "driftwood", "kind": "material"}]}, random.Random(1))
+    assert out["description"] == "y" * 500 + "..." and out["verbs"]["gather"] == ["h" * 80 + "...", "g" * 40 + "..."]
+    assert out["blurb"] == "y" * 120 + "..."
+    st.update_place("Skerry", status="heard")
+    out = IP.design(st, st.place_row("Skerry"), {"kind": "wild", "description": "b" * 121 + ". More.", "blurb": "c" * 121},
+                    random.Random(1))
+    assert out["blurb"] == "c" * 120 + "..."
+    st.update_place("Skerry", status="heard")
+    out = IP.design(st, st.place_row("Skerry"), {"kind": "wild", "description": "b" * 121 + ". More."}, random.Random(1))
+    assert out["blurb"] == "b" * 120 + "..."
+
+
+def test_a_resident_is_kept_with_their_name_and_never_chatters_on_their_own(tmp_path):
+    s, st = fresh(tmp_path)
+    IP.design(st, known_shop(st), {**DESIGN, "resident": {**TEAGUE, "name": "Xavier Teague"}}, random.Random(2))
+    (ch,) = st.characters()
+    assert ch["name"] == "Xavier Teague" and ch["chatter_minutes"] == 0 and ch["next_chatter_at"] == 0
