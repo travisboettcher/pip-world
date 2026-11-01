@@ -93,3 +93,76 @@ async def test_the_old_tool_name_still_works_and_history_carries_over(tmp_path):
         "tool:browse_library" not in {r["key"] for r in st.db.execute("SELECT key FROM facets")}
     got = C.collect([e for e in st.events(10)])["tool"]
     assert got["browse"]["tries"] >= 2 and "browse_library" not in got
+
+
+class ShelvedLibrary(FakeLibrary):
+    def overview(self):
+        return "shelves of old books"
+
+
+def _walk_to(st, place):
+    st.start_session(0, 0, 10, time.time() - 1, kind="walk", target=place)
+
+
+@pytest.mark.asyncio
+async def test_arriving_somewhere_new_describes_it_from_what_is_there(tmp_path):
+    from tests.test_projects import report
+    s, st, gm, agent = make(tmp_path, [report(text="Tall trees."), report(text="Dusty stacks."),
+                                       report(text="Odd corner.")])
+    _walk_to(st, "woods")
+    st.update_agent(activity="walking")
+    data = await P.arrive(st, s, agent.gm, ShelvedLibrary())  # a library is around, but this is the woods
+    assert gm.calls[0]["messages"][0]["content"].startswith(
+        "Pip has just arrived at the woods for the first time. What's actually there: a patch of woods past the garden")
+    assert data == {"place": "woods", "label": "the woods", "first_time": True, "description": "Tall trees."}
+    a = st.agent()
+    assert a["location"] == "woods" and a["activity"] == "idle" and a["description"] == "just arrived at the woods"
+    assert abs(float(st.meta("arrived_at")) - time.time()) < 5
+    _walk_to(st, "library")
+    await P.arrive(st, s, agent.gm, ShelvedLibrary())
+    assert "What's actually there: shelves of old books." in gm.calls[1]["messages"][0]["content"]
+    s.wild_places = []
+    _walk_to(st, "quarry")  # nowhere the registry knows (any more): nothing to go on
+    await P.arrive(st, s, agent.gm, None)
+    assert gm.calls[2]["messages"][0]["content"].startswith(
+        "Pip has just arrived at the quarry for the first time. Describe the place as Pip finds it")
+
+
+@pytest.mark.asyncio
+async def test_arriving_without_a_gm_and_getting_home(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    _walk_to(st, "woods")
+    data = await P.arrive(st, s, None, None)
+    assert data["description"] == "" and st.meta("place:woods") == ""
+    assert P.perception(st, s, None)[0] == "You are at: the woods"
+    _walk_to(st, P.HOME)
+    assert (await P.arrive(st, s, None, None))["first_time"] is False
+    a = st.agent()
+    assert a["description"] == "just got home" and a["activity"] == "idle"
+    assert P.perception(st, s, None)[0] == "You are at: home (workshop)"
+
+
+@pytest.mark.asyncio
+async def test_arrive_only_ends_a_walk(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    st.start_session(1, 0, 10, time.time() - 1, kind="work")
+    assert await P.arrive(st, s, None, None) is None
+    assert st.session()["kind"] == "work" and st.agent()["location"] == P.HOME
+
+
+def test_perception_needs_somewhere_else_to_go(tmp_path):
+    s, st, *_ = make(tmp_path, wild_places=[])
+    assert P.perception(st, s, None) == []  # home is all there is
+    neighbor(st, s)
+    lines = P.perception(st, s, None)  # home and one neighbor
+    assert lines[0] == "You are at: home (workshop)" and lines[1] == "Places you can go (go_to):"
+    assert any(line.startswith("- library, 10 min") for line in P.perception(st, s, FakeLibrary()))
+
+
+@pytest.mark.asyncio
+async def test_a_place_no_longer_offered_is_described_without_hints(tmp_path):
+    s, st, gm, agent = make(tmp_path, wild_places=[])
+    _walk_to(st, "woods")  # the woods were taken off the map while Pip was on the way
+    await P.arrive(st, s, agent.gm, None)
+    assert gm.calls[0]["messages"][0]["content"].startswith(
+        "Pip has just arrived at the woods for the first time. Describe the place as Pip finds it")

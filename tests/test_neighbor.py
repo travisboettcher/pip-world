@@ -500,3 +500,292 @@ async def test_nothing_is_recalled_before_anything_has_been_said(tmp_path):
     await nb.recall_told(st, agent.gm, {})
     assert "Marigold: Hello! I keep bees." in gm.calls[0]["messages"][0]["content"]
     assert st.characters()[0]["told"] == ["they keep bees"]
+
+
+# --- edges: who is asked, what is kept, exact limits -------------------------------------------------------------
+def companion(st, name="Clocky"):
+    """A creation companion: a character, but not a neighbor (no letters, no home of its own)."""
+    return st.add_character(name, "creation", None, "A chatty clock.", 60, time.time() - 1)
+
+
+def bramble(st):
+    return st.add_character("Bramble", "neighbor", None, "A hedgehog.", 60, time.time() + 99 * HOUR, about="Bakes.")
+
+
+def test_correspondence_is_hers_only_the_newest_six_with_pips_letters_on_the_way(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    now = time.time()
+
+    def delivered(sender, recipient, text, **kw):
+        st.update_letter(st.add_letter(sender, recipient, text, now, **kw)["id"], delivered_at=now)
+
+    delivered("Marigold", "Pip", "Letter 0.", gist="Gist 0.")  # pushed out: only the newest six are shown
+    delivered("Marigold", "Pip", "Letter 1.", gist="Gist 1.")
+    st.add_letter("Marigold", "Pip", "Still on its way.", now + HOUR)  # hers, not arrived: not said yet
+    delivered("Bramble", "Pip", "From Bramble.")  # someone else's
+    delivered("Marigold", "Pip", "Letter 2.", gist="Gist 2.")
+    delivered("Pip", "Marigold", "Thanks!")
+    delivered("Marigold", "Pip", "Letter 3.", gist="Gist 3.")
+    st.add_letter("Pip", "Marigold", "On my way to you.", now + HOUR, enclosed="1 x twine")  # Pip's, on the way
+    assert nb.correspondence(st, "Marigold") == [
+        "Marigold (in brief): Gist 1.", "Marigold (in brief): Gist 2.", "Pip: Thanks!", "Marigold (in brief): Gist 3.",
+        "Pip: On my way to you. [enclosed: 1 x twine]"]
+
+
+def test_clean_upcoming_keeps_a_few_words():
+    assert nb.clean_upcoming({"what": "X" * 101, "in_days": 2}, 0)["what"] == "X" * 100  # clipped, and the "..." trimmed
+    assert nb.clean_upcoming({"what": "Xmas fair X.", "in_days": 2}, 0) == {"what": "Xmas fair X", "due_at": 2 * nb.DAY}
+    assert nb.clean_upcoming("soon", 0) is None and nb.clean_upcoming(None, 0) is None
+
+
+@pytest.mark.asyncio
+async def test_her_letter_is_clipped_exactly_and_a_due_plan_and_news_both_join_her_life(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="x" * 1201, gist="g" * 201, told=["a" * 81], life_update="l" * 201,
+                                              life_update_new=True)])
+    ch = neighbor(st, s)
+    now = time.time()
+    st.update_character(ch["id"], upcoming=[{"what": "jam day", "due_at": now - 60}], life=["Old."])
+    _due_to_write(st, ch, now)
+    await nb.step(st, s, agent.gm, FixedRng(*[1.0] * 9), now)  # every jitter at its top: x1.3
+    lt = st.letters()[-1]
+    assert lt["text"] == "x" * 1200 + "..." and lt["gist"] == "g" * 200 + "..."
+    assert lt["deliver_at"] == pytest.approx(now + s.letter_delay_minutes * 60 * 1.3)
+    ch = st.characters()[0]
+    assert ch["life"] == ["Old.", "Recently: jam day.", "l" * 200 + "..."] and ch["upcoming"] == []
+    assert ch["told"] == ["a" * 80 + "..."]
+    assert ch["next_chatter_at"] == pytest.approx(now + ch["chatter_minutes"] * 60 * 1.3)
+
+
+@pytest.mark.asyncio
+async def test_a_letter_with_nothing_new_leaves_what_she_has_alone(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Hi.")])
+    ch = neighbor(st, s)
+    told, life = [f"thing {i}" for i in range(31)], [f"Event {i}." for i in range(7)]  # more than she'd keep now
+    st.update_character(ch["id"], told=told, life=life)
+    now = time.time()
+    _due_to_write(st, ch, now)
+    await nb.step(st, s, agent.gm, FixedRng(), now)
+    ch = st.characters()[0]
+    assert ch["told"] == told and ch["life"] == life and st.letters()[-1]["text"] == "Hi."
+
+
+@pytest.mark.asyncio
+async def test_her_answer_is_asked_with_who_she_is_and_what_pip_enclosed(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Thanks for the twine!"), report(text="Me again.")])
+    ch = neighbor(st, s)
+    now = time.time()
+    st.add_letter("Pip", "Marigold", "Here you go.", now - 1, enclosed="1 x twine")
+    await nb.step(st, s, agent.gm, FixedRng(), now)
+    task = gm.calls[0]["messages"][0]["content"]
+    assert task.startswith(f"Write as Marigold, Pip's neighbor. Who Marigold is: {INVENTED['persona']}\n")
+    assert "Pip enclosed something with it: 1 x twine. React to it honestly.\n" in task
+    assert "- `parcel`: only if it's natural" in task  # none sent today: one may go along
+    for lt in st.letters(undelivered=True):
+        st.update_letter(lt["id"], delivered_at=now)
+    _due_to_write(st, ch, now + 1)
+    await nb.step(st, s, agent.gm, FixedRng(), now + 1)
+    task = gm.calls[1]["messages"][0]["content"]
+    assert "No letter is waiting; Marigold decides to write to Pip anyway." in task
+    assert "Pip enclosed something" not in task
+
+
+@pytest.mark.asyncio
+async def test_without_a_gm_letters_to_her_wait_an_hour_and_so_does_her_next_letter(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    ch = neighbor(st, s)
+    now = time.time()
+    _due_to_write(st, ch, now)
+    assert await nb.step(st, s, None, FixedRng(), now) is False
+    assert st.characters()[0]["next_chatter_at"] == now + nb.RETRY_AFTER and st.letters() == []
+    st.add_letter("Pip", "Marigold", "hello?", now - 1)
+    assert await nb.step(st, s, None, FixedRng(), now) is False
+    (got,) = st.letters()
+    assert got["attempts"] == 1 and got["delivered_at"] is None and got["deliver_at"] == now + nb.RETRY_AFTER
+
+
+@pytest.mark.asyncio
+async def test_due_letters_to_pip_all_arrive_once_each_and_not_early(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    now = time.time()
+    st.add_letter("Marigold", "Pip", "Later.", now + 1)  # not yet (and older than the ones that are due)
+    st.add_letter("Marigold", "Pip", "On the dot.", now)
+    st.add_letter("Marigold", "Pip", "Earlier.", now - 5)
+    assert await nb.step(st, s, None, FixedRng(), now) is True
+    assert [m["text"] for m in st.pending_inbox()] == ["A letter from Marigold: On the dot.",
+                                                       "A letter from Marigold: Earlier."]
+    assert await nb.step(st, s, None, FixedRng(), now) is False  # delivered once
+    assert len(st.pending_inbox()) == 2 and st.letters()[0]["delivered_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_at_most_200_letters_arrive_in_one_step(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    now = time.time()
+    for i in range(201):
+        st.add_letter("Marigold", "Pip", f"Letter {i}.", now - 1)
+    await nb.step(st, s, None, FixedRng(), now)
+    assert [lt["text"] for lt in st.letters(undelivered=True)] == ["Letter 0."]
+
+
+@pytest.mark.asyncio
+async def test_only_neighbors_read_letters_and_write_first(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    c = companion(st)
+    now = time.time()
+    lt = st.add_letter("Pip", "Clocky", "tick?", now - 1)
+    await nb.step(st, s, agent.gm, FixedRng(), now)
+    assert gm.calls == [] and st.letters()[0]["delivered_at"] == now  # nobody to answer: dropped
+    e = st.events(1)[0]
+    assert e["kind"] == "letter_read" and e["data"] == {"id": lt["id"], "by": "Clocky", "answered": False}
+    assert [x for x in st.characters() if x["id"] == c["id"]][0]["next_chatter_at"] == c["next_chatter_at"]
+
+
+@pytest.mark.asyncio
+async def test_a_letter_on_the_way_to_someone_else_doesnt_stop_her_writing(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Hello!")])
+    ch = neighbor(st, s)
+    bramble(st)
+    now = time.time()
+    st.add_letter("Pip", "Bramble", "Hi Bramble.", now + HOUR)
+    _due_to_write(st, ch, now)
+    await nb.step(st, s, agent.gm, FixedRng(), now)
+    assert st.letters()[-1]["sender"] == "Marigold" and st.letters()[-1]["text"] == "Hello!"
+
+
+def _at_home_of(st, name, arrived=None):
+    st.update_agent(location=f"{name}'s home")
+    if arrived is not None:
+        st.set_meta(arrived_at=str(arrived))
+
+
+@pytest.mark.asyncio
+async def test_in_person_the_one_whose_home_it_is_greets_pip(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Come in, come in.", gist="g" * 201)])
+    ch = neighbor(st, s)
+    b = bramble(st)
+    st.update_character(b["id"], life=["The oven is new."])
+    st.update_letter(st.add_letter("Bramble", "Pip", "Buns!", 0, gist="Wrote about buns.")["id"], delivered_at=1)
+    st.add_letter("Marigold", "Pip", "Bees!", 0, gist="Wrote about bees.")
+    assert await nb._visits(st, s, agent.gm, time.time()) is False  # at home: nobody to visit
+    _at_home_of(st, "Bramble")  # no arrival recorded (an older database): still one greeting
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
+    task = gm.calls[0]["messages"][0]["content"]
+    assert task.startswith("Voice Bramble, Pip's neighbor. Who Bramble is: A hedgehog.\n"
+                           "Lately in Bramble's life: The oven is new.\n")
+    assert "Bramble (in brief): Wrote about buns.\n" in task and "bees" not in task
+    assert "Right now Pip is visiting Bramble at home. Pip seems curious.\n" in task
+    assert st.meta(f"greeted:{b['id']}") == ""
+    assert st.events(1)[0]["data"]["gist"] == "g" * 200 + "..."
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False and len(gm.calls) == 1
+    assert st.characters()[0]["id"] == ch["id"] and st.characters()[1]["replies"] == []  # a greeting isn't a reply
+
+
+@pytest.mark.asyncio
+async def test_without_a_gm_a_visit_passes_quietly(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    ch = neighbor(st, s)
+    _at_home_of(st, "Marigold", 5)
+    assert await nb.step(st, s, None, FixedRng(), time.time()) is False
+    assert st.meta(f"greeted:{ch['id']}") == "5"
+
+
+@pytest.mark.asyncio
+async def test_she_answers_at_most_four_times_an_hour(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Yes?"), report(text="Oh, hello again!")])
+    ch = neighbor(st, s)
+    now = time.time()
+    _at_home_of(st, "Marigold", now - 100)
+    st.set_meta(**{f"greeted:{ch['id']}": str(now - 100)})
+    heard = [{"ts": now, "text": "hi"}]
+    st.update_character(ch["id"], heard=heard, replies=[now - 10] * 4)
+    assert await nb.step(st, s, agent.gm, FixedRng(), now) is False and gm.calls == []  # four in the last hour
+    st.update_character(ch["id"], replies=[now - 3600] * 4)  # an hour ago: no longer counted
+    assert await nb.step(st, s, agent.gm, FixedRng(), now) is True
+    assert 'Pip just said: "hi"\n' in gm.calls[0]["messages"][0]["content"]
+    c = st.characters()[0]
+    assert c["heard"] == [] and c["replies"] == [now]
+    st.update_character(ch["id"], heard=heard, replies=[now - 10] * 4)
+    _at_home_of(st, "Marigold", now + 1)  # a new visit, while she's talked out: she greets, nothing more
+    assert await nb.step(st, s, agent.gm, FixedRng(), now + 1) is True
+    task = gm.calls[1]["messages"][0]["content"]
+    assert "Pip has just arrived at the door" in task and "Pip just said" not in task
+    c = st.characters()[0]
+    assert c["heard"] == heard and c["replies"] == [now - 10] * 4
+
+
+@pytest.mark.asyncio
+async def test_a_visit_leaves_what_pip_said_to_a_companion_alone(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    c = companion(st)
+    heard = [{"ts": 1.0, "text": "tick tock"}]
+    st.update_character(c["id"], heard=heard)
+    await nb.step(st, s, None, FixedRng(), time.time())
+    assert st.characters()[1]["heard"] == heard
+
+
+def test_perception_lists_neighbors_and_only_pips_letters_still_on_the_way(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    neighbor(st, s)
+    companion(st)
+    now = time.time()
+    st.update_letter(st.add_letter("Pip", "Marigold", "Arrived.", now)["id"], delivered_at=now)
+    st.add_letter("Marigold", "Pip", "Hers.", now + HOUR)
+    for i in range(21):
+        st.add_letter("Pip", "Marigold", f"Letter {i}.", now + HOUR)
+    st.update_letter(st.add_letter("Pip", "Bramble", "Arrived too.", now)["id"], delivered_at=now)
+    lines = nb.perception(st, now + 3 * HOUR)
+    assert lines[:2] == ["Your neighbors (they live nearby: visit them with go_to, or write with write_letter):",
+                         "- Marigold: Lives past the hedge; keeps bees."]
+    assert lines[2:] == ["- your letter to Marigold (sent 3 hours ago) is on its way"] * 20  # the newest twenty
+
+
+@pytest.mark.asyncio
+async def test_recall_goes_neighbor_by_neighbor_past_ones_it_cant_do_yet(tmp_path):
+    s, st, gm, agent = make(tmp_path, [LLMResponse("no", [], Usage(1, 1)), report(told=["d" * 81, "they sew"])])
+    for name in ("Ash", "Birch", "Cedar", "Dahlia"):
+        st.add_character(name, "neighbor", None, f"{name} is a tree.", 60, time.time() + 99 * HOUR)
+    a, b, c, d = st.characters()
+    companion(st)
+    st.log("companion", name="Clocky", text="Tick.", reply=True)  # a companion has talked, but isn't a neighbor
+    st.update_character(a["id"], told=["they grow tall"])  # already knows: skipped
+    for name in ("Cedar", "Dahlia"):  # Birch has said nothing yet
+        st.update_letter(st.add_letter(name, "Pip", f"Hello from {name}.", 0)["id"], delivered_at=1)
+    st.add_letter("Pip", "Dahlia", "Hello Dahlia!", 0)
+    tries = {}
+    await nb.recall_told(st, agent.gm, tries)
+    assert len(gm.calls) == 2 and tries == {c["id"]: 1}  # Cedar failed: tried again next time
+    task = gm.calls[1]["messages"][0]["content"]
+    assert task.startswith("Dahlia is Pip's neighbor. Who Dahlia is: Dahlia is a tree.\n")
+    assert "so far (letters and talk, oldest first):\nDahlia: Hello from Dahlia.\nPip: Hello Dahlia!\n\n" in task
+    assert st.characters()[3]["told"] == ["d" * 80 + "...", "they sew"]
+    assert await nb.recall_told(st, None, {}) is None  # no GM: nothing to do, even for Cedar
+
+
+@pytest.mark.asyncio
+async def test_recall_reads_the_newest_fifty_letters(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(told=["they keep bees"])])
+    neighbor(st, s)
+    for i in range(51):
+        st.update_letter(st.add_letter("Marigold", "Pip", f"Note {i}.", 0)["id"], delivered_at=1)
+    await nb.recall_told(st, agent.gm, {})
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "Marigold: Note 0.\n" not in task and "oldest first):\nMarigold: Note 1.\n" in task
+
+
+@pytest.mark.asyncio
+async def test_the_agent_loop_invents_the_neighbor_and_lets_them_answer(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(**INVENTED), report(told=["keeps bees"]), report(text="Got your note!")],
+                            neighbor=True)
+    await agent.resolve_world()
+    (ch,) = st.characters("neighbor")
+    assert ch["name"] == "Marigold" and len(gm.calls) == 1
+    for lt in st.letters(undelivered=True):
+        st.update_letter(lt["id"], delivered_at=time.time())
+    st.add_letter("Pip", "Marigold", "Hello Marigold!", time.time() - 1)
+    await agent.resolve_world()
+    assert st.letters()[-1]["sender"] == "Marigold" and st.letters()[-1]["text"] == "Got your note!"
