@@ -585,3 +585,30 @@ async def test_the_diary_moment_no_longer_claims_a_reply_that_never_happened(tmp
     assert "you haven't said anything back to them yet" in p and "you already replied" not in p
     st.log("say", text="hi!", to=[1])
     assert "you already replied, don't answer again" in agent._perception("timer", [])
+
+
+# --- edges pinned by mutation testing ------------------------------------------------------------------------
+def test_a_web_visitor_message_has_no_conversation(tmp_path):
+    from tests.test_projects import make
+    s, st, gm, agent = make(tmp_path)
+    agent.receive("hello Pip", "Morgan")
+    assert [r["conversation"] for r in st.db.execute("SELECT conversation FROM inbox")] == [""]
+
+
+async def test_finish_work_waits_for_the_time_and_arrives_with_the_agents_rng(tmp_path):
+    import random
+
+    from app import invented_places as IP
+    from tests.test_projects import make, report
+    s, st, gm, agent = make(tmp_path)
+    assert await agent.finish_work() is False                                     # nothing to finish
+    st.start_session(0, 0, 10, time.time() + 60, kind="walk", target="woods")
+    assert await agent.finish_work() is False and st.session()                    # not yet
+    IP.accept(st, "Briar", "Go to Skerry.", {"place": "Skerry", "there": "a beach", "distance": "near"})
+    gm.queue(report(kind="wild", description="A beach.",
+                    loot=[{"name": f"thing {c}", "kind": "material", "tier": "common"} for c in "abc"]))
+    agent.rng = random.Random(5)
+    st.start_session(0, 0, 10, time.time() - 1, kind="walk", target="Skerry")
+    assert await agent.finish_work() is True
+    r = random.Random(5)
+    assert [e[2] for e in st.place_row("Skerry")["loot"]] == [r.randint(15, 30) for _ in range(3)]

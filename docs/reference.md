@@ -194,8 +194,10 @@ time, so camping there yields less. The GM only narrates what the engine found. 
 `WILD_PLACES` chooses which places exist. See [DESIGN-places.md](DESIGN-places.md).
 
 ## Places characters mention
-Design: [DESIGN-invented-places.md](DESIGN-invented-places.md). When a neighbor, a companion or a visitor in chat points Pip at a place
-that doesn't exist yet ("ask the ironmonger in Saltholm"), it becomes a **heard-of** place: listed under "Places you've heard of" with
+Design: [DESIGN-invented-places.md](DESIGN-invented-places.md). When a neighbor (in a letter or in person), a resident or a visitor in
+chat points Pip at a place that doesn't exist yet ("ask the ironmonger in Saltholm"), it becomes a **heard-of** place. Companions don't
+report places as they talk; a place one of them named only becomes heard-of if Pip later tries `go_to` it (the backstop searches the
+last things others said to Pip, companions included). A heard-of place is listed under "Places you've heard of" with
 who said what, a walk the engine fixes once (near 12-20 min, far 20-35; a place called very far is known but can't be walked to),
 and `go_to Saltholm` just works. On Pip's first arrival one GM call designs it from a fixed set of kinds (`wild`, `yard`, `shop`,
 `sight` - a sight is just somewhere to go and see); the engine keeps the kind only if what was said backs it and builds the loot itself,
