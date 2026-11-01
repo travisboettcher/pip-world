@@ -117,6 +117,15 @@ CREATE TABLE IF NOT EXISTS place_finds (
   place TEXT NOT NULL, item TEXT NOT NULL, times INTEGER NOT NULL DEFAULT 0, last_ts REAL NOT NULL,
   PRIMARY KEY (place, item)
 );
+CREATE TABLE IF NOT EXISTS places (
+  key TEXT PRIMARY KEY COLLATE NOCASE, core TEXT NOT NULL, aliases TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'heard', kind TEXT NOT NULL DEFAULT 'sight', distance TEXT NOT NULL DEFAULT 'far',
+  blurb TEXT NOT NULL DEFAULT '', walk_minutes REAL, hours TEXT NOT NULL DEFAULT 'null',
+  daylight_only INTEGER NOT NULL DEFAULT 1, verbs TEXT NOT NULL DEFAULT '{}', loot TEXT NOT NULL DEFAULT '[]',
+  mentions TEXT NOT NULL DEFAULT '[]', description TEXT NOT NULL DEFAULT '', on_account TEXT NOT NULL DEFAULT '{}',
+  grown INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, heard_at REAL NOT NULL, real_at REAL,
+  source TEXT NOT NULL DEFAULT 'mention'
+);
 CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
 );
@@ -1174,6 +1183,34 @@ class State:
         with self.lock:
             rows = [dict(r) for r in self.db.execute("SELECT * FROM place_finds ORDER BY times DESC, last_ts DESC")]
         return [r for r in rows if self.related(item_name, r["item"])]
+
+    # --- invented places (see invented_places.py) --------------------------------------
+    PLACE_JSON = ("aliases", "hours", "verbs", "loot", "mentions", "on_account")
+
+    def _place(self, row) -> dict:
+        return {**dict(row), **{k: json.loads(row[k]) for k in self.PLACE_JSON}}
+
+    def add_place(self, key: str, core: str, **fields) -> dict:
+        vals = {"key": key, "core": core, **{k: json.dumps(v) if k in self.PLACE_JSON else v for k, v in fields.items()}}
+        with self.lock:
+            self.db.execute(f"INSERT INTO places ({', '.join(vals)}) VALUES ({', '.join('?' for _ in vals)})", tuple(vals.values()))
+            self.db.commit()
+        return self.place_row(key)
+
+    def place_row(self, key: str) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM places WHERE key = ?", (key,)).fetchone()
+        return self._place(row) if row else None
+
+    def place_rows(self) -> list[dict]:
+        with self.lock:
+            return [self._place(r) for r in self.db.execute("SELECT * FROM places ORDER BY created_at, key")]
+
+    def update_place(self, key: str, **fields) -> None:
+        vals = {k: json.dumps(v) if k in self.PLACE_JSON else v for k, v in fields.items()}
+        with self.lock:
+            self.db.execute(f"UPDATE places SET {', '.join(f'{k} = ?' for k in vals)} WHERE key = ?", (*vals.values(), key))
+            self.db.commit()
 
     def add_turning(self, score: int, signals: list, start: float, end: float) -> int:
         with self.lock:
