@@ -26,6 +26,7 @@ def test_help_text(tmp_path):
         "/projects: projects in progress\n"
         "/creations: what Pip has made\n"
         "/notes: open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)\n"
+        "/emotions: Pip's emotion state\n"
         "/usage: today's token use against the budget")
 
 

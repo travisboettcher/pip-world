@@ -1,6 +1,7 @@
 # Design: emotions
 
-Status: **design only, not built.** Idea from the owner, 2026-10-30: "a more complex emotion system, with core emotions that run from 0-100 and
+Status: **steps 1-2 built 2026-10-31** (state, appraisal, log, API, `pipchat emotions`, `/emotions`, the Now-tab meters, the prompt readout, and a `settle`
+action). Steps 3-4 (behavioural effects, nightly arc, `feel`) are not built. Idea from the owner, 2026-10-30: "a more complex emotion system, with core emotions that run from 0-100 and
 combined inform Pip's behavior".
 
 ## What exists
@@ -76,3 +77,30 @@ Table `emotion_log` (a snapshot every few minutes or on large moves, with what c
 2. How strongly should emotions move Pip's real outcomes (dice, pace)? I suggest small and capped, with the prompt carrying most of the influence.
 3. Should Pip be able to *do* things about how it is (a `comfort`-style tool, a walk, the neighbour), or just have them evolve from events and sleep?
 4. Start with display and prompt only (steps 1-2) and watch, before turning on the behavioural effects?
+
+
+## Decisions (owner, 2026-10-31)
+1. Core set: **Plutchik's eight**, as proposed.
+2. Influence: **prompt only for now**. The emotion state is shown to Pip; it changes no dice, pace or wake times yet. Revisit after watching it for a while.
+3. Agency: Pip gets a **comfort-style action**, the `settle(emotion, how?)` tool.
+4. Rollout: **steps 1-2 first**.
+
+## As built (steps 1-2)
+- `emotions.py` holds the rules; the numbers live in tables `emotions` (value + time, decayed lazily on read) and `emotion_log` (every move: emotion, delta,
+  new value, cause). `State.log` runs registered listeners after each event; `emotions.attach` registers the appraiser, which maps events to moves:
+  gift (joy +10, trust +6, surprise +8), a visitor message (joy +5, trust +4, sadness -6), work by result (breakthrough joy +10 / surprise +6 / anticipation +5;
+  good joy +4 / anticipation +3; slow sadness +2; setback sadness +8 / anger +6; blowup fear +12 / sadness +8 / anger +8 / surprise +8) plus a `better`/`worse` than
+  expected surprise, experiment outcomes, a finished creation (joy +20, anticipation +6), a crop ripening, hunger and energy alerts, a failed tool call, a postcard
+  sent, and waking (every emotion closes 40% of its gap to baseline). Loneliness: after 8 hours without a visitor message, sadness +3 and trust -1, at most hourly,
+  never while asleep.
+- Baselines: trust 55, joy 45, anticipation 35, sadness 15, fear 10, surprise 10, anger 8, disgust 5. Half-lives: surprise 20 min, fear 2 h, anger 3 h,
+  disgust and anticipation 4 h, joy 6 h, sadness 1 day, trust 2 days.
+- Derived, never stored: **valence** (mean of joy/trust/anticipation minus mean of sadness/anger/fear/disgust) and **arousal**, each with a word, and a **blend**:
+  the strongest Plutchik pair whose members are both at least 8 points over their baselines (warmth, awe, optimism, remorse...).
+- **What Pip sees** each tick (mode `on`): the up-to-four emotions at least 10 points from baseline with their gap, then "Overall: pleasant, calm; it feels like
+  warmth." If nothing stands out, one quiet line. `EMOTIONS=quiet` tracks without showing it; `off` records nothing and removes `settle`.
+- **`settle(emotion, how?)`**: eases one emotion by 35 points but never below baseline, only when it is at least 5 over, at most `EMOTION_SETTLE_PER_DAY` (3)
+  per local day. Logged as a `settled` event; the dashboard and `pipchat` show why.
+- An `emotion` event is logged when a feeling first enters the high band (60+). `GET /emotions[?limit=]`, `pipchat emotions`, Matrix `/emotions`, and the
+  Now tab (eight meters, a tick for each usual level) show the state and what moved it.
+- Not built: dice/pace effects, the nightly arc, `feel` self-reports, the turning-point signal (steps 3-4).

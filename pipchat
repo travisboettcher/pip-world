@@ -388,6 +388,22 @@ def cmd_garden(pip: Pip, a) -> None:
             print(f"  plot {g['plot']}: {g['crop']} - ready in about {g['ready_in_min']} min")
 
 
+def cmd_emotions(pip: Pip, a) -> None:
+    r = pip.call(f"/emotions?limit={a.n}")
+    if JSON_MODE:
+        return out_json(r)
+    print(bold("Emotion state") + dim(f"  ({r['mode']})"))
+    for e in r["emotions"]:
+        bar = "#" * round(e["value"] / 5)
+        print(f"  {e['name']:<13}{e['value']:>4}  {bar:<20} " + dim(f"usual {e['baseline']}"))
+    tail = f"; it feels like {r['blend']}" if r["blend"] else ""
+    print(f"  overall: {r['valence_word']} ({r['valence']:+d}), {r['arousal_word']} ({r['arousal']}){tail}")
+    if r["log"]:
+        print(bold("What moved it"))
+        for x in r["log"]:
+            print(f"  {time.strftime('%m-%d %H:%M', time.localtime(x['ts']))}  {x['emotion']:<13}{x['delta']:+6.1f} -> {x['value']:5.1f}  " + dim(x["cause"]))
+
+
 def cmd_outreach(pip: Pip, a) -> None:
     r = pip.call("/outreach")
     if JSON_MODE:
@@ -665,6 +681,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kind", action="append", help="only this event kind; repeatable")
     add("items", cmd_items, "what Pip owns")
     add("garden", cmd_garden, "Pip's garden plots")
+    p = add("emotions", cmd_emotions, "Pip's emotion state and what moved it")
+    p.add_argument("-n", type=int, default=15, help="how many recent moves to show (default 15)")
     p = add("outreach", cmd_outreach, "Pip's channels to the outside world, today's allowance, postcards and replies")
     p.add_argument("-n", type=int, default=15, help="how many to show (default 15)")
     p = add("gallery", cmd_gallery, "Pip's drawings and pieces of writing")
@@ -705,7 +723,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "gallery", "-h", "--help"}
+    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "emotions", "projects", "creations", "memory", "reflect", "recall", "letters", "library", "outreach", "gallery", "-h", "--help"}
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):

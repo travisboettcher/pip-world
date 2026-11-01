@@ -19,6 +19,7 @@ from . import library as lib
 from . import neighbors as nb
 from . import places
 from . import projects as proj
+from . import emotions as emo
 from . import sleep as sleepmod
 from .toolnames import ALIASES, canonical
 from .config import Settings
@@ -746,12 +747,25 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue
+        if name == "settle" and settings.emotions == "off":
+            continue
         if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
             continue  # no way out configured
         if name in ("browse", "read") and not lib.Library(settings.library_path).available():
             continue  # no Calibre library mounted
         out[name] = REGISTRY[name]
     return out
+
+
+@tool("settle",
+      "Take a quiet moment to ease one strong feeling (one of the emotions in your emotion state). It brings that feeling "
+      "back toward its usual level, a few times a day at most. How you do it is up to you.",
+      _obj({"emotion": {"type": "string", "description": "joy, sadness, anger, fear, trust, disgust, surprise or anticipation"},
+            "how": {"type": "string", "description": "optional: what you do to settle (a walk round the bench, tea, tidying)"}},
+           ["emotion"]))
+async def settle(ctx: ToolContext, args: dict) -> ToolResult:
+    ok, text = emo.settle(ctx.state, ctx.settings, args.get("emotion", ""), str(args.get("how") or ""))
+    return ToolResult(text, followup=not ok)
 
 
 @tool("undo_decision",

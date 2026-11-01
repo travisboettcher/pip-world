@@ -200,9 +200,14 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       `draw` shows the result and `replaces=<id>` redoes it (3 times at most); `look(drawing)` shows any of them (`LOOKS_PER_DAY`)
 - [ ] Drawing as a timed session; inbound pictures from the owner
 
-### Emotions (idea, 2026-10-30; DESIGN-emotions.md)
-- [ ] Eight core emotions, 0-100, with baselines and decay; appraisal from events; blends/valence/arousal shown to Pip; small capped effects on dice,
-      pace and memory; nightly emotional arc; optional `feel` self-report vs engine state. Awaiting owner answers on the emotion set and influence strength
+### Emotions (DESIGN-emotions.md; steps 1-2 built 2026-10-31)
+- [x] Plutchik's eight, 0-100, with baselines and half-lives; appraisal from events; loneliness; waking eases; every move logged with its cause (`emotion_log`);
+      valence, arousal and a blend derived; shown to Pip as a short readout (prompt only: no mechanical effect yet); `settle` tool; `GET /emotions`, `pipchat emotions`,
+      Matrix `/emotions`, Now-tab meters. Deploy: add `look,settle` to `TOOLS` in `.env`; `EMOTIONS=on|quiet|off`, `EMOTION_SETTLE_PER_DAY`.
+- [ ] Watch it for a few days: do the numbers feel right, is the readout noise, does Pip use `settle`? Then decide on step 3.
+- [ ] Step 3: small capped effects (dice +-0.05, wake pace, event importance), each behind a setting. Step 4: nightly emotional arc for the reflection, a turning-point signal
+      from big swings, optional `feel` self-report vs the engine's numbers.
+- [ ] The dashboard changes (Now-tab meters, feed lines) were checked by parsing the JS and exercising the API, not seen in a real browser.
 
 ## Backlog / known issues
 - [x] **Resources not used up** (owner feedback, 2026-10-30; fixed 2026-10-31). Findings: food *was* decremented (`eat` -> `take_item`), but `tomato` (harvest) and `tomatoes` (gift)

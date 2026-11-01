@@ -6,17 +6,18 @@ inbox, no wake. They mirror `pipchat` (status, items, garden...). Everything is 
 import re
 import time
 
+from . import emotions as emo
 from . import projects as proj
 from . import sleep as sleepmod
 from .state import SECTIONS
 
 COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
-NAMES = ("help", "status", "items", "garden", "projects", "creations", "notes", "usage")
+NAMES = ("help", "status", "items", "garden", "projects", "creations", "notes", "emotions", "usage")
 HELP = {"help": "this list", "status": "what Pip is doing and how it is", "items": "what Pip owns",
         "garden": "the garden plots", "projects": "projects in progress", "creations": "what Pip has made",
         "notes": "open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)",
-        "usage": "today's token use against the budget"}
+        "emotions": "Pip's emotion state", "usage": "today's token use against the budget"}
 
 
 def answer(state, settings, text: str, now: float | None = None) -> str | None:
@@ -93,6 +94,13 @@ def _notes(state, settings, arg, now):
     return "Notes\n" + "\n".join(out)
 
 
+def _emotions(state, settings, arg, now):
+    snap = emo.snapshot(state, now)
+    tail = f"; it feels like {snap['blend']}" if snap["blend"] else ""
+    return ("Emotions\n" + ", ".join(f"{e['name']} {e['value']}" for e in snap["emotions"])
+            + f"\nOverall: {snap['valence_word']}, {snap['arousal_word']}{tail}.")
+
+
 def _usage(state, settings, arg, now):
     u = state.usage_today()
     pct = round(100 * u["total_tokens"] / u["budget"]) if u["budget"] else 0
@@ -100,4 +108,4 @@ def _usage(state, settings, arg, now):
 
 
 _HANDLERS = {"help": _help, "status": _status, "items": _items, "garden": _garden, "projects": _projects,
-             "creations": _creations, "notes": _notes, "usage": _usage}
+             "creations": _creations, "notes": _notes, "emotions": _emotions, "usage": _usage}

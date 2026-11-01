@@ -109,8 +109,12 @@ inbox with the neighbor as sender, so memory, recall and the nightly reflection 
 ```
 HTTP: `GET /letters`.
 
+## Emotion state
+Design: [DESIGN-emotions.md](DESIGN-emotions.md). Eight emotions (0-100) that rise and fall with what happens to Pip and settle on their own; Pip is shown the ones that
+stand out plus an overall tone, and can `settle` a strong one. `EMOTIONS=on|quiet|off`. `./pipchat emotions` shows the numbers and what moved them; HTTP `GET /emotions`.
+
 ## Matrix commands
-In the Matrix room, `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes` and `/usage` return information straight from the engine
+In the Matrix room, `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes`, `/emotions` and `/usage` return information straight from the engine
 (no LLM, not a reply from Pip, nothing reaches Pip). Anything else is a message to Pip. See [DESIGN-outreach.md](DESIGN-outreach.md).
 
 ## Places and the library

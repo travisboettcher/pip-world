@@ -115,3 +115,11 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .tag { font-size: .7rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 .4rem; color: var(--muted); margin-left: .3rem; }
 .caps { display: flex; flex-wrap: wrap; gap: .3rem; }
 .caps .chip { cursor: default; }
+
+/* emotion state: eight small meters, a tick marks each emotion's usual level */
+.emotions { display: grid; gap: .35rem; }
+.emo { display: grid; grid-template-columns: 6.5rem 1fr 2rem; align-items: center; gap: .5rem; font-size: .8rem; }
+.emo .emo-name { color: var(--muted); }
+.emo .emo-val { text-align: right; font-variant-numeric: tabular-nums; }
+.emo .bar { position: relative; height: .45rem; }
+.emo .bar u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .55; text-decoration: none; }

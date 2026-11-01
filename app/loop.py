@@ -14,6 +14,7 @@ from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
 from . import places
+from . import emotions as emo
 from . import sleep as sleepmod
 from . import projects as proj
 from .config import Settings
@@ -43,6 +44,7 @@ class Agent:
         library = lib.Library(settings.library_path)
         self.library = library if library.available() else None
         self.outreach = Outreach(settings, state, receive=self.receive)
+        emo.attach(state, settings)
         self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
                                vision=bool(getattr(self.backend, "vision", False)))
         self.last_tick = 0.0
@@ -143,6 +145,7 @@ class Agent:
             self.request_wake()
         if cr.tick(self.state, self.rng):
             self.request_wake()
+        emo.drift(self.state, self.s)
 
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
@@ -538,6 +541,7 @@ class Agent:
         ]
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
+        lines += emo.perception(self.state, self.s)
         lines += self._firsts()
         lines += self._calibration()
         lines += places.perception(self.state, self.s, self.library)

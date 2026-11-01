@@ -31,7 +31,7 @@ def test_help_lists_every_command(tmp_path):
     r = ask(st, s, "/help")
     for name in commands.NAMES:
         assert f"/{name}" in r
-    assert set(commands.NAMES) >= {"help", "status", "items", "garden", "projects", "creations", "notes", "usage"}
+    assert set(commands.NAMES) >= {"help", "status", "items", "garden", "projects", "creations", "notes", "emotions", "usage"}
 
 
 def test_status_reports_the_agent_and_the_day(tmp_path):

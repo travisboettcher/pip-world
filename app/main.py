@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import art
 from . import creations as cr
+from . import emotions as emo
 from . import projects as proj
 from .config import Settings
 from .llm import get_backend
@@ -109,6 +110,11 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.get("/items")
     def get_items():
         return app.state.agent.state.items()
+
+    @app.get("/emotions")
+    def get_emotions(limit: int = 50):
+        st = app.state.agent.state
+        return {"mode": settings.emotions, **emo.snapshot(st), "log": st.emotion_log(min(limit, 500))}
 
     @app.get("/garden")
     def get_garden():

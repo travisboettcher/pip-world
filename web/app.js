@@ -62,6 +62,7 @@ function describeTool(d) {
     case 'sleep': return { group: 'actions', text: r.startsWith('you go to bed') ? 'Pip goes to bed' : `Pip can't sleep yet: ${r}` };
     case 'gather': return { group: 'actions', text: r.startsWith('you set about') ? `Pip ${r.replace(/^you /, '')}`.replace(/ You'll see.*$/, '') : `Pip can't gather: ${r}` };
     case 'undo_decision': return { group: 'journal', text: `Pip takes back a night decision: ${r}` };
+    case 'settle': return null; // shown via the 'settled' event
     case 'eat': return { group: 'actions', text: a.item ? `Pip eats ${a.item}` : 'Pip has a meal' };
     case 'rest': return { group: 'actions', text: 'Pip rests' };
     case 'web_search': return { group: 'actions', text: `Pip searches the web for: ${a.query}` };
@@ -121,6 +122,8 @@ function describe(e) {
     case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
+    case 'emotion': return { group: 'world', cls: 'world', text: `Pip's ${d.emotion} is high (${d.value}): ${d.cause}` };
+    case 'settled': return { group: 'actions', text: `Pip settles its ${d.emotion} (${d.from} → ${d.to})` + (d.how ? `: ${d.how}` : '') };
     case 'alert': return { group: 'world', cls: 'warn', text: `Pip's ${d.stat} needs attention` };
     case 'budget_exceeded': return { group: 'world', cls: 'bad', text: "Pip has used today's token budget and is asleep until tomorrow." };
     case 'error': return { group: 'system', cls: 'bad', text: String(d.error) };
@@ -320,6 +323,20 @@ document.addEventListener('keydown', (ev) => {
   else if (chat.open) setChatOpen(false);
 });
 const refreshState = async () => { state = await api('/state'); renderState(); };
+
+// ---- emotion state (the engine's numbers; see DESIGN-emotions.md) ----------------
+let emotionData = null;
+function renderEmotions() {
+  const d = emotionData, card = $('emotions-card');
+  if (!d || d.mode === 'off') { card.hidden = true; return; }
+  card.hidden = false;
+  $('emotions').replaceChildren(...d.emotions.map((e) => h('div', { class: 'emo', title: `${e.name} ${e.value} (usual ${e.baseline})` },
+    h('span', { class: 'emo-name' }, e.name), h('div', { class: 'bar' }, h('i', { style: `width:${e.value}%` }), h('u', { style: `left:${e.baseline}%` })),
+    h('span', { class: 'emo-val' }, String(e.value)))));
+  $('emotions-overall').textContent = `Overall: ${d.valence_word}, ${d.arousal_word}` + (d.blend ? `; it feels like ${d.blend}` : '')
+    + (d.mode === 'quiet' ? ' (Pip is not shown this)' : '') + '.';
+}
+const refreshEmotions = async () => { emotionData = await api('/emotions?limit=1'); renderEmotions(); };
 
 function renderNotes() {
   const status = $('note-status').value;
@@ -526,6 +543,7 @@ function handleEvent(e, live) {
   if (e.kind === 'tool' && ['note_to_self', 'edit_note', 'resolve_note'].includes(t)) debounce('notes', refreshNotes);
   if (e.kind === 'gathered' || (e.kind === 'tool' && ['eat', 'use_item', 'plant', 'harvest', 'gather'].includes(t))) { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (e.kind === 'gift') debounce('items', refreshItems);
+  if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'garden', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
   if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
   if (e.kind === 'made_work') debounce('works', refreshWorks);
@@ -549,7 +567,7 @@ setChatOpen(store.get('chatOpen', false), false);
 (async function boot() {
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters(), refreshWorks()]);
+    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters(), refreshWorks()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {
@@ -557,7 +575,7 @@ setChatOpen(store.get('chatOpen', false), false);
     $('now').textContent = `Can't reach Pip: ${err.message}`;
   }
   connect();
-  setInterval(() => refreshState().catch(() => {}), 10_000);
+  setInterval(() => Promise.all([refreshState(), refreshEmotions()]).catch(() => {}), 10_000);
   setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]).catch(() => {}), 60_000);
   setInterval(() => { renderGarden(); renderProjects(); }, 30_000);
 })();

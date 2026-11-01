@@ -1,5 +1,6 @@
 """SQLite-backed world state: agent stats, event log, inbox, memories, usage."""
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -11,6 +12,8 @@ from . import firsts as firstsmod
 from .memory import RECALL_EVENT_KINDS, event_importance, STOP_WORDS, recall_text
 from .text import craft_name
 from .world import KINDS, STARTER_ITEMS, normalize_attrs
+
+log = logging.getLogger("state")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent (
@@ -124,6 +127,11 @@ CREATE TABLE IF NOT EXISTS facets (
 );
 CREATE TABLE IF NOT EXISTS abilities (name TEXT PRIMARY KEY, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS emotions (name TEXT PRIMARY KEY, value REAL NOT NULL, updated_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS emotion_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, emotion TEXT NOT NULL, delta REAL NOT NULL, value REAL NOT NULL,
+  cause TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS reflections (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
   importance INTEGER NOT NULL DEFAULT 5, period_start REAL NOT NULL, period_end REAL NOT NULL
@@ -177,6 +185,7 @@ class State:
     def __init__(self, settings: Settings, path: str | None = None):
         self.s = settings
         self.lock = threading.RLock()
+        self.listeners: list = []   # callables(kind, data, ts) run after each logged event; they must not break logging
         self.db = sqlite3.connect(path or settings.db_path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         with self.lock:
@@ -289,7 +298,37 @@ class State:
             if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
                 self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
-            return cur.lastrowid
+        for fn in list(self.listeners):
+            try:
+                fn(kind, data, now)
+            except Exception:
+                log.exception("event listener failed")
+        return cur.lastrowid
+
+    # --- emotions (see emotions.py) ---------------------------------------------------
+    def emotion_rows(self) -> dict[str, tuple[float, float]]:
+        with self.lock:
+            return {r["name"]: (r["value"], r["updated_at"]) for r in self.db.execute("SELECT * FROM emotions")}
+
+    def set_emotion(self, name: str, value: float, ts: float) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO emotions VALUES (?, ?, ?)", (name, value, ts))
+            self.db.commit()
+
+    def add_emotion_log(self, ts: float, emotion: str, delta: float, value: float, cause: str) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO emotion_log (ts, emotion, delta, value, cause) VALUES (?, ?, ?, ?, ?)",
+                            (ts, emotion, delta, value, cause))
+            self.db.commit()
+
+    def emotion_log(self, limit: int = 100, since: float | None = None) -> list[dict]:
+        q, args = "SELECT * FROM emotion_log", []
+        if since is not None:
+            q += " WHERE ts >= ?"
+            args.append(since)
+        with self.lock:
+            rows = self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+        return [dict(r) for r in reversed(rows)]
 
     # --- firsts (see firsts.py, DESIGN-self.md) -------------------------------------
     def _note_facets(self, kind: str, data: dict, ts: float, event_id: int,

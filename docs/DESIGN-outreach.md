@@ -155,5 +155,5 @@ homeserver. An unconfigured channel never breaks Pip: it reports "not configured
 ## Slash commands (built 2026-10-31)
 A message from an allowed sender that is exactly `/word [argument]` is not a visitor message: `commands.answer` builds the reply from state and the channel handler
 sends it back into the same thread (kind `reply`), then returns. Nothing reaches Pip's inbox, no tick is requested, no event is logged, and no LLM is called.
-Commands (read-only): `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes [diary|todo|wishlist|ambitions|learned]`, `/usage`. An unknown word
+Commands (read-only): `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes [diary|todo|wishlist|ambitions|learned]`, `/emotions`, `/usage`. An unknown word
 is answered with a pointer to `/help`. A `/word` later in a sentence is an ordinary message to Pip. In `OUTREACH=log` mode the reply is built but not sent.
