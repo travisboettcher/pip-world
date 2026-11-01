@@ -393,6 +393,23 @@ async def test_garden_plant_harvest_eat(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_use_item_on_a_tomato_for_its_seeds_gives_seed_packets(tmp_path):
+    s, st, _, agent = make(tmp_path)
+    st.add_item("tomatoes", 2, "food")
+    r = await reg("use_item")(agent.ctx, {"item": "tomatoes", "purpose": "scoop out a few seeds to save"})
+    assert "tomato seeds" in r.text and not r.text.startswith("error") and st.find_item("tomatoes")[0]["qty"] == 1
+    seeds = st.find_item("tomato seeds")[0]
+    assert seeds["qty"] == 5 and seeds["kind"] == "seed" and seeds["attrs"]["crop"] == "tomatoes"  # 3 starter + 2
+    assert "eat tool" in (await reg("use_item")(agent.ctx, {"item": "tomatoes", "purpose": "snack"})).text
+    assert st.find_item("tomatoes")[0]["qty"] == 1
+    st.add_item("bread", 1, "food")
+    assert "eat tool" in (await reg("use_item")(agent.ctx, {"item": "bread", "purpose": "get its seeds"})).text
+    st.add_item("carrots", 1, "food")
+    await reg("use_item")(agent.ctx, {"item": "carrot", "purpose": "Save the SEEDS"})
+    assert st.find_item("carrot seeds")[0]["qty"] == 5 and st.find_item("carrots")[0] is None
+
+
+@pytest.mark.asyncio
 async def test_harvest_when_nothing_ripe(tmp_path):
     s, st, _, agent = make(tmp_path)
     assert "nothing is planted" in (await reg("harvest")(agent.ctx, {})).text

@@ -24,3 +24,13 @@ def normalize_attrs(name: str, kind: str, attrs: dict | None) -> dict:
     elif kind == "food":
         a.setdefault("food_value", FOOD_DEFAULT)
     return a
+
+
+SEEDS_PER_FOOD = 2  # packets of seed saved from one piece of a crop's fruit
+
+
+def seed_packet_for(food_name: str) -> dict | None:
+    """The starter seed packet for the crop `food_name` is the fruit of (tomatoes, carrots), if any."""
+    from .state import name_key  # state imports this module
+    want = name_key(food_name)
+    return next((s for s in STARTER_ITEMS if name_key(s["attrs"]["crop"]) == want), None)

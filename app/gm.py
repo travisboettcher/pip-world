@@ -353,6 +353,9 @@ class GameMaster:
     def _plans(name: str, agenda: list[str]) -> str:
         return f"Coming up for {name}:\n" + "".join(f"- {a}\n" for a in agenda) if agenda else ""
 
+    _PARCEL = {"type": "object", "properties": {
+        "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
+        "description": {"type": "string"}}, "required": ["name", "kind"]}
     _REMEMBERING = {"gist": {"type": "string"}, "told": {"type": "array", "items": {"type": "string"}}}
 
     @staticmethod
@@ -391,9 +394,7 @@ class GameMaster:
                "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
             + (f"- {mention}\n" if mention else "")
         )
-        parcel = {"type": "object", "properties": {
-            "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
-            "description": {"type": "string"}}, "required": ["name", "kind"]}
+        parcel = self._PARCEL
         return await self.ask(task, {
             "text": {"type": "string"}, **self._NEWS,
             "upcoming": {"type": "object", "properties": {"what": {"type": "string"}, "in_days": {"type": "integer"}}},
@@ -486,7 +487,7 @@ class GameMaster:
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
-                              places: str = "", mention: str = "", at: str = "") -> dict | None:
+                              places: str = "", mention: str = "", at: str = "", can_give: bool = False) -> dict | None:
         """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
         it's the greeting. A neighbor is at home; a resident (`at` their place) has no letters, so their life moves
         on in talk: they may report a `life_update` too."""
@@ -502,13 +503,19 @@ class GameMaster:
             + (f"Pip just said: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}, face to face."
                if heard else f"Pip has just arrived{'' if at else ' at the door'}; greet it as {name} would.")
             + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
-            f"{name} stays at {at or 'home'} and can't do more than they plausibly could. Report the line as `text`, "
+            f"{name} stays at {at or 'home'} and can't do more than they plausibly could"
+            + ("" if can_give else ", and hands Pip nothing") + f". Report the line as `text`, "
             "and:\n"
             + self._remembering(name, "line") + ("Optional:\n" + self._news("talk") if at else "")
+            + (f"- `give`: only if {name} really hands Pip something small right now "
+               "(`name`, `kind`: material, seed, food or tool, `qty` 1-3, `description`). Pip receives exactly this and "
+               "nothing else, so never describe handing over, offering a pinch of, or giving anything you do not report "
+               "here\n" if can_give else "")
             + (f"- {mention}\n" if mention else "")
         )
         out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING,
-                                    **(self._NEWS if at else {}), **self._mentions(mention)},
+                                    **(self._NEWS if at else {}), **self._mentions(mention),
+                                    **({"give": self._PARCEL} if can_give else {})},
                              ["text"], "speak_in_person")
         text = clip(out["text"], 400) if out else ""
         return {**out, "text": text} if text else None

@@ -158,7 +158,8 @@ async def test_tend_and_use_tools(tmp_path):
     assert r.text == "your hourglass has stopped - it needs tending (turn) first" and gm.calls == []
     assert "you tend your hourglass (turn)" in (await call(agent, "tend", creation="glass")).text
     r = await call(agent, "use_item", item="hourglass", purpose="set it to the right time")
-    assert r.text == "You set it right. (it now shows the right time)"
+    assert r.text == ("You set it right. (it now shows the right time; it keeps going for about 4 more hours; "
+                      "use the tend tool to keep it going)")
     assert cr.clock_reading(st.creation(c["id"]), time.time())[1] == pytest.approx(0, abs=0.1)
     a = st.agent()
     assert a["mood"] == "pleased" and a["energy"] == pytest.approx(0.9 + 0.1)  # energy effect capped at 0.1
@@ -167,11 +168,21 @@ async def test_tend_and_use_tools(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_using_a_running_tended_thing_says_that_tending_not_using_keeps_it_going(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="You wind the key.")])
+    build(st, {"description": "x", "capabilities": [{"type": "upkeep", "verb": "wound", "hours": 12}]},
+          now=time.time(), name="clock")
+    r = await call(agent, "use_item", item="clock", purpose="wind it")
+    assert r.text.startswith("You wind the key.") and "use the tend tool" in r.text and "about 12 more hours" in r.text
+
+
+@pytest.mark.asyncio
 async def test_use_can_stop_only_tended_things(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="It sputters out.", stop=True), report(text="Hm.", stop=True)])
     build(st, {"description": "x", "capabilities": [{"type": "upkeep", "verb": "oil", "hours": 10}]}, name="lantern")
     r = await call(agent, "use_item", item="lantern", purpose="shake it")
     assert "it has stopped until you tend it (oil)" in r.text and not cr.running(st.creations()[0], time.time())
+    assert "keeps going" not in r.text           # a halted thing isn't "going for 10 more hours"
     assert "needs tending (oil)" in (await call(agent, "use_item", item="lantern", purpose="x")).text
     build(st, {"description": "a painting", "capabilities": []}, name="painting")
     r = await call(agent, "use_item", item="painting", purpose="admire it")

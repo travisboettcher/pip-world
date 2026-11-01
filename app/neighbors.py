@@ -244,9 +244,10 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
         at = "" if ch["kind"] == "neighbor" else places.label(where)  # a resident is met at their place
         talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
         talk = talk[-CORRESPONDENCE_SHOWN * 2:]
+        can_give = _can_give(state, settings, now)
         out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk,
                                        [h["text"] for h in ch["heard"]] if answering else [], situation,
-                                       told=ch["told"], agenda=agenda(ch, now), at=at,
+                                       told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give,
                                        **_places(state, settings, library, ch)) if gm else None
         state.set_meta(**{f"greeted:{ch['id']}": visit})
         fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
@@ -258,10 +259,27 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
         if out:
             invented.accept(state, ch["name"], out["text"], out.get("mentions_place"), now)
             gist = clip(out.get("gist"), 200)
-            state.log("companion", name=ch["name"], text=out["text"], reply=True, visit=True,
+            handed = _hand_over(state, ch["name"], out.get("give")) if can_give else ""
+            state.log("companion", name=ch["name"], text=out["text"] + handed, reply=True, visit=True,
                       **({"gist": gist} if gist else {}))
             wake = True
     return wake
+
+
+def _can_give(state, settings, now: float) -> bool:
+    """Whether they may hand Pip something today: letters' parcels and hand-overs share the daily cap."""
+    in_person = sum(1 for e in state.events_since(now - DAY) if e["kind"] == "gift" and e["data"].get("in_person"))
+    return state.letters_since_parcel(now - DAY) + in_person < settings.parcels_per_day
+
+
+def _hand_over(state, name: str, raw) -> str:
+    """Put what they handed over into Pip's belongings. Returns a note for the line ('' if nothing was given)."""
+    p = clean_parcel(raw)
+    if not p:
+        return ""
+    item = state.add_item(p["name"], p["qty"], p["kind"], p["description"] or f"from {name}")
+    state.log("gift", sender=name, item=item["name"], qty=p["qty"], item_kind=item["kind"], in_person=True)
+    return f" ({name} hands you {p['qty']} x {item['name']}.)"
 
 
 def send(state, settings, rng: random.Random, to: dict, text: str, enclosed: str) -> dict:

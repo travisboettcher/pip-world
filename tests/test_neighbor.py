@@ -175,6 +175,68 @@ async def test_visiting_the_neighbor_in_person(tmp_path):
     assert st.characters("neighbor")[0]["heard"] == [] and len(gm.calls) == 3  # left before she answered
 
 
+@pytest.mark.asyncio
+async def test_what_a_neighbor_hands_over_in_person_lands_in_belongings_once_a_day(tmp_path):
+    seeds = {"name": "carrot seeds", "kind": "seed", "qty": 9, "description": "old seeds from a husband's rows"}
+    s, st, gm, agent = make(tmp_path, [report(text="A low cottage humming with bees."),
+                                       report(text="Pip! Come in."),
+                                       report(text="Here, take a pinch.", give=seeds),
+                                       report(text="Take more.", give=seeds)], work_speed=1e6)
+    neighbor(st, s)
+    await call(agent, "go_to", place="Marigold")
+    time.sleep(0.01)
+    await agent.finish_work()
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())      # the greeting
+    assert "`give`" in gm.calls[1]["messages"][0]["content"]
+    await call(agent, "say", text="Any carrot seeds?", to="marigold")
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())
+    assert st.find_item("carrot seeds")[0]["qty"] == 6 and st.find_item("carrot seeds")[0]["kind"] == "seed"  # 3 starter + 3 (clamped from 9)
+    ev = [e for e in st.events(10) if e["kind"] == "companion"][0]["data"]
+    assert ev["text"] == "Here, take a pinch. (Marigold hands you 3 x carrot seeds.)"
+    gift = [e for e in st.events(10) if e["kind"] == "gift"][0]["data"]
+    assert gift["sender"] == "Marigold" and gift["item"] == "carrot seeds" and gift["qty"] == 3 and gift["in_person"] is True
+    await call(agent, "say", text="Any more?", to="marigold")
+    st.update_character(st.characters("neighbor")[0]["id"], replies=[])
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())
+    assert "`give`" not in gm.calls[3]["messages"][0]["content"] and "hands Pip nothing" in gm.calls[3]["messages"][0]["content"]
+    assert st.find_item("carrot seeds")[0]["qty"] == 6           # a second handover the same day is not honoured
+    assert [e for e in st.events(10) if e["kind"] == "companion"][0]["data"]["text"] == "Take more."
+
+
+def test_the_daily_cap_counts_letter_parcels_and_hand_overs_but_not_old_ones_or_plain_gifts(tmp_path):
+    s, st, gm, agent = make(tmp_path)               # parcels_per_day is 1
+    now = time.time()
+    assert nb._can_give(st, s, now) is True
+    st.log("gift", sender="Marigold", item="honey", qty=1, item_kind="food")              # a delivered letter's gift: not in person
+    assert nb._can_give(st, s, now + 1) is True
+    st.log("tool", tool="x", args={}, result="y", in_person=True)                           # only gifts count
+    assert nb._can_give(st, s, now + 1) is True
+    st.log("gift", sender="Marigold", item="honey", qty=1, item_kind="food", in_person=True)
+    assert nb._can_give(st, s, now + 1) is False
+    assert nb._can_give(st, s, now + nb.DAY + 60) is True                                    # a day later
+    (tmp_path / "b").mkdir()
+    (tmp_path / "c").mkdir()
+    s2, st2, *_ = make(tmp_path / "b")
+    st2.add_letter("Marigold", "Pip", "hi", now, parcel={"name": "honey", "kind": "food", "qty": 1, "description": ""})
+    assert nb._can_give(st2, s2, now + 1) is False and nb._can_give(st2, s2, now + nb.DAY + 60) is True
+    assert nb._can_give(st2, make(tmp_path / "c", parcels_per_day=2)[0], now + 1) is True
+    assert nb._can_give(st, make(tmp_path / "c", parcels_per_day=2)[0], now + 1) is True      # one of two given
+
+
+def test_a_hand_over_adds_the_item_logs_it_and_says_so_only_when_it_is_valid(tmp_path):
+    s, st, *_ = make(tmp_path)
+    assert nb._hand_over(st, "Marigold", None) == "" and nb._hand_over(st, "Marigold", {"name": "x", "kind": "pet"}) == ""
+    gifts = lambda: [e["data"] for e in st.events(20) if e["kind"] == "gift"]  # noqa: E731
+    assert gifts() == []
+    note = nb._hand_over(st, "Marigold", {"name": "honey", "kind": "food", "qty": 2})
+    assert note == " (Marigold hands you 2 x honey.)"
+    it = st.find_item("honey")[0]
+    assert it["qty"] == 2 and it["kind"] == "food" and it["description"] == "from Marigold"
+    nb._hand_over(st, "Marigold", {"name": "needle", "kind": "tool", "description": "a fine one"})
+    assert st.find_item("needle")[0]["description"] == "a fine one"
+    assert {k: v for k, v in gifts()[0].items() if k != "firsts"} == {"sender": "Marigold", "item": "needle", "qty": 1, "item_kind": "tool", "in_person": True}
+
+
 async def _visit(agent, st, s):
     await call(agent, "go_to", place="Marigold")
     time.sleep(0.01)

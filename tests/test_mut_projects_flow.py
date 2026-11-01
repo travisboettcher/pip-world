@@ -490,6 +490,19 @@ def test_revealing_a_fact_answers_the_first_question_unless_told_which():
     assert proj.apply_changes(p, {}, reveal=True)["answered"] is None            # no question to answer
 
 
+def test_an_insight_with_no_hidden_fact_left_still_answers_the_first_question():
+    # a question raised mid-project (a surprise) has no hidden fact behind it; the insight is what settles it
+    p = pj(questions=["q1", "q2"])
+    out = proj.apply_changes(p, {}, reveal=True)
+    assert out["answered"] == "q1" and p["questions"] == ["q2"]
+    p = pj(questions=["q1", "q2"], hidden=[{"fact": "a", "found": True}])
+    assert proj.apply_changes(p, {"answers": 1}, reveal=True)["answered"] == "q2"
+    p = pj(questions=["q1"], hidden=[{"fact": "a", "found": True}])
+    assert proj.apply_changes(p, {}, reveal=True, may_answer=False)["answered"] is None and p["questions"] == ["q1"]
+    p = pj(questions=["q1"], hidden=[{"fact": "a", "found": False}])
+    assert proj.apply_changes(p, {}, reveal=False)["answered"] is None
+
+
 def test_settling_the_last_question_with_nothing_left_to_do_adds_a_closing_step():
     p = pj(questions=["last"], stages=[{"name": "a", "minutes": 30, "progress": 30.0, "started": True, "materials": {}}])
     out = proj.apply_changes(p, {"answers": 0}, reveal=False)

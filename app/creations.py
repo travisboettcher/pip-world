@@ -285,4 +285,7 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
     state.set_runtime(c["id"], rt)
     text = _line(out["text"], 300)
     state.log("creation", name=c["name"], what="used", text=text, purpose=_line(purpose, 120))
+    if "upkeep" in caps and "halted_at" not in rt:  # using it never tends it: only the tend tool does
+        left = (rt["tended_until"] - now) / 3600
+        done.append(f"it keeps going for about {round(left)} more hours; use the tend tool to keep it going")
     return text + (f" ({'; '.join(done)})" if done else "")

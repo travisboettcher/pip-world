@@ -28,7 +28,7 @@ from .llm.base import ToolSpec
 from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip
-from .world import FOOD_DEFAULT
+from .world import FOOD_DEFAULT, SEEDS_PER_FOOD, seed_packet_for
 
 
 @dataclass
@@ -364,7 +364,12 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
     if item["kind"] == "seed":
         return ToolResult("error: seeds are planted with the plant tool", followup=True)
     if item["kind"] == "food":
-        return ToolResult("error: food is eaten with the eat tool", followup=True)
+        packet = seed_packet_for(item["name"]) if "seed" in str(args.get("purpose") or "").lower() else None
+        if not packet:
+            return ToolResult("error: food is eaten with the eat tool", followup=True)
+        ctx.state.take_item(item["id"], 1)  # a crop's fruit holds seeds: one is used up, a couple of packets saved
+        ctx.state.add_item(packet["name"], SEEDS_PER_FOOD, "seed", packet["description"], packet["attrs"])
+        return ToolResult(f"scooped {SEEDS_PER_FOOD} {packet['name']} out of one of your {item['name']} and set them aside")
     if item["kind"] == "tool":
         return ToolResult(f"used your {item['name']} (you keep it)")
     qty = max(1, int(args.get("quantity") or 1))

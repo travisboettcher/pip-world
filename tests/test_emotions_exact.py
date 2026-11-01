@@ -1,5 +1,5 @@
 """Boundaries, exact wording and time plumbing of the emotion rules (what the owner reads in the log and UI)."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -194,7 +194,8 @@ def test_the_daily_cap_resets_at_midnight(tmp_path):
     assert emo.settle(st, s, "anger")[0]
     emo.nudge(st, {"anger": 60}, "x")
     assert not emo.settle(st, s, "anger")[0]
-    tomorrow = datetime.now().replace(hour=0, minute=1, second=0, microsecond=0).timestamp() + 86400
+    tomorrow = (datetime.now().replace(hour=0, minute=1, second=0, microsecond=0) + timedelta(days=1)).timestamp()  # not +86400s: a DST day is 25h
+    emo.nudge(st, {"anger": 60}, "x", tomorrow)                           # the first nudge has decayed by then, whatever the hour
     assert emo.settle(st, s, "anger", "", tomorrow)[0]                   # a new day, a new allowance
 
 

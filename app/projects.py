@@ -324,7 +324,8 @@ def apply_changes(project: dict, data: dict, reveal: bool, new_question: bool = 
     if finding and finding not in project["findings"]:
         project["findings"].append(finding)
         out["finding"] = finding
-    if may_answer and project["questions"] and (revealed or isinstance(data.get("answers"), int)):
+    # an insight settles a question even when no hidden fact stands behind it (a question a surprise raised has none)
+    if may_answer and project["questions"] and (reveal or isinstance(data.get("answers"), int)):
         q = data.get("answers")
         q = q if isinstance(q, int) and 0 <= q < len(project["questions"]) else 0
         out["answered"] = project["questions"].pop(q)
