@@ -226,7 +226,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] Verified `restic/backup-agent-world.sh` against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
-- [ ] Briar's letters are getting repetitive (owner, 2026-10-30). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
+- [ ] Briar's letters are getting repetitive (owner, 2026-10-30). **Designed 2026-10-31: [DESIGN-neighbor-memory.md](DESIGN-neighbor-memory.md)** (she sees gists of her own letters and a list of what Pip already knows, not her own sentences; no matching; the notes below are the earlier thinking). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
       repeating openings/topics, each letter shares one `life_update` sentence so Briar's life barely moves, and the prompt shows only the
       correspondence so far. Owner likes the storytelling; the specific problem is a verbatim recurring line ("If you come over the marsh, the blue
       door is the one that rattles") that reads as forgetful, not as a deliberate motif. Fix target: no verbatim repeat of a sentence from recent
