@@ -1,6 +1,8 @@
 # Design: a neighbor who remembers what she's said (less repetition)
 
-Status (2026-10-31): designed, not built. Follows DESIGN-neighbor.md; replaces the ROADMAP backlog idea of a verbatim-repeat check.
+Status (2026-10-31): parts 1 and 2 built and tested (fake backend); part 3 (self-check) not built. Follows
+DESIGN-neighbor.md; replaces the ROADMAP backlog idea of a verbatim-repeat check. Where the build had to decide
+something the design left open, see "As built" at the end.
 
 ## Why
 Briar's letters and visits keep bringing back the same details as if new. The clearest case is "the blue door is the
@@ -101,3 +103,22 @@ Decide on step 3 after a few days.
 The same treatment for companion creations (`companions.py` also replays its own lines verbatim; worth doing once this
 proves out). Letters that react to Pip's world facts (roadmap idea). Places she mentions becoming real: see
 DESIGN-invented-places.md.
+
+## As built (decisions the design left open)
+- Her own letters and earlier-visit lines appear as `<name> (in brief): <gist>`; the headings say "Pip's in full,
+  yours in brief". A visit line's `gist` is stored on its `companion` event only when the model gave one.
+- "The current visit" is every `companion` event at or after the `arrived_at` timestamp (`companions.conversation`
+  takes `verbatim_since`); old events with no gist fall back to their first sentence, like letters.
+- `told` comes from both calls (letters and in-person lines), clipped to 80 chars, the first 3 non-empty per call.
+- The backfill (`neighbors.recall_told` / `gm.recall_told`) runs from the agent loop's world step, not only at
+  start-up: any neighbor with an empty `told` and no `told_recalled:<id>` meta gets one call over everything said
+  so far, word for word (delivered letters, Pip's letters, visit lines). Success sets the meta, even if the list
+  comes back empty, so it never runs again. Failures are counted in memory: after two it waits for the next start.
+  It waits while nothing has been said yet, so a newly invented neighbor's first letter is recalled once it arrives.
+- `life_update` is kept only when `life_update_new` is explicitly `true` (missing counts as not new).
+- `upcoming` is its own optional field of the letter call (`{what, in_days}`), not nested inside `life_update`.
+  It's stored as `{what, due_at}`. Pending plans are shown too ("Coming up for <name>: in 3 days: the spring
+  tide"), so she can look forward to them and doesn't announce them twice. Due ones read "today or this week:
+  <what>". After the next letter or in-person line it becomes `Recently: <what>.` in `life`. Only letters propose
+  plans; a visit can bring a due one up. A new plan when 3 are already pending is dropped, and so is an `in_days`
+  that isn't a number.

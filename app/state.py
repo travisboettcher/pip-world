@@ -218,6 +218,9 @@ class State:
                 ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what Pip said it expects (may be empty)
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
                 ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
+                ("characters", "told", "TEXT NOT NULL DEFAULT '[]'"),      # what a neighbor has told Pip (phrases)
+                ("characters", "upcoming", "TEXT NOT NULL DEFAULT '[]'"),  # a neighbor's plans: [{what, due_at}]
+                ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -803,9 +806,11 @@ class State:
         return None, "which one? " + ", ".join(c["name"] for c in part)
 
     # --- characters (companions; later neighbors) ----------------------------
-    @staticmethod
-    def _character(row) -> dict:
-        return {**dict(row), **{k: json.loads(row[k]) for k in ("heard", "replies", "life")}}
+    _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming")
+
+    @classmethod
+    def _character(cls, row) -> dict:
+        return {**dict(row), **{k: json.loads(row[k]) for k in cls._CHARACTER_JSON}}
 
     def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
                       next_chatter_at: float, about: str = "") -> dict:
@@ -823,7 +828,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     def update_character(self, character_id: int, **fields) -> None:
-        vals = {k: json.dumps(v) if k in ("heard", "replies", "life") else v for k, v in fields.items()}
+        vals = {k: json.dumps(v) if k in self._CHARACTER_JSON else v for k, v in fields.items()}
         with self.lock:
             self.db.execute(f"UPDATE characters SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?",
                             (*vals.values(), character_id))
@@ -862,12 +867,12 @@ class State:
         return {**dict(row), "parcel": json.loads(row["parcel"]) if row["parcel"] else None}
 
     def add_letter(self, sender: str, recipient: str, text: str, deliver_at: float, enclosed: str = "",
-                   parcel: dict | None = None, reply_to: int | None = None) -> dict:
+                   parcel: dict | None = None, reply_to: int | None = None, gist: str = "") -> dict:
         with self.lock:
             cur = self.db.execute(
-                "INSERT INTO letters (ts, sender, recipient, text, enclosed, parcel, deliver_at, reply_to) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (time.time(), sender, recipient, text, enclosed,
-                                                    json.dumps(parcel) if parcel else None, deliver_at, reply_to))
+                "INSERT INTO letters (ts, sender, recipient, text, enclosed, parcel, deliver_at, reply_to, gist) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (time.time(), sender, recipient, text, enclosed,
+                                                       json.dumps(parcel) if parcel else None, deliver_at, reply_to, gist))
             self.db.commit()
             return self._letter(self.db.execute("SELECT * FROM letters WHERE id = ?", (cur.lastrowid,)).fetchone())
 

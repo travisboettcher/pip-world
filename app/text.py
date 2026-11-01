@@ -1,4 +1,5 @@
 """Small text helpers shared by the world modules (no app imports, so anything can use them)."""
+import re
 
 
 def clip(text, limit: int) -> str:
@@ -9,6 +10,11 @@ def clip(text, limit: int) -> str:
     cut = text[:limit]
     end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "), cut.rfind("* "))
     return cut[:end + 1] if end > limit // 3 else cut.rsplit(" ", 1)[0] + "..."
+
+
+def brief(gist, text, limit: int = 200) -> str:
+    """A stored one-line summary of something said, or (none stored) its first sentence."""
+    return clip(gist, limit) or clip(re.split(r"(?<=[.!?])\s", " ".join(str(text or "").split()), maxsplit=1)[0], limit)
 
 
 def craft_name(raw) -> str:

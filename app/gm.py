@@ -333,20 +333,46 @@ class GameMaster:
             "letter": {"type": "string"},
         }, ["name", "persona", "about", "letter"], "invent_neighbor")
 
+    @staticmethod
+    def _known(name: str, told: list[str]) -> str:
+        return (f"Things Pip already knows about {name} (refer back to them if it's natural, but don't introduce them "
+                "again as news):\n" + "".join(f"- {t}\n" for t in told) if told else "")
+
+    @staticmethod
+    def _remembering(name: str, what: str) -> str:
+        """The asks every neighbor call shares, so the engine keeps track of what's been said."""
+        return (f"- `gist`: one sentence, third person, of what this {what} says (e.g. \"Told Pip the tide times for "
+                f"the week and asked how its walk went\")\n"
+                f"- `told`: 0-3 short phrases for things about {name} or their world that this {what} tells Pip for the "
+                "first time (not anything Pip already knows); empty if nothing is new\n")
+
+    @staticmethod
+    def _plans(name: str, agenda: list[str]) -> str:
+        return f"Coming up for {name}:\n" + "".join(f"- {a}\n" for a in agenda) if agenda else ""
+
+    _REMEMBERING = {"gist": {"type": "string"}, "told": {"type": "array", "items": {"type": "string"}}}
+
     async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
-                              received: str | None, enclosed: str, parcel_allowed: bool) -> dict | None:
+                              received: str | None, enclosed: str, parcel_allowed: bool,
+                              told: list[str] = (), agenda: list[str] = ()) -> dict | None:
         task = (
             f"Write as {name}, Pip's neighbor. Who {name} is: {persona}\n"
-            + (f"What's been happening in {name}'s life lately: {' '.join(life)}\n" if life else "")
-            + ("Your letters with Pip so far (oldest first):\n" + "\n".join(correspondence) + "\n" if correspondence
-               else "")
+            + (f"What's already happening in {name}'s life (not news any more): {' '.join(life)}\n" if life else "")
+            + self._plans(name, agenda) + self._known(name, told)
+            + ("Your letters with Pip so far (oldest first; Pip's in full, yours in brief):\n" + "\n".join(correspondence)
+               + "\n" if correspondence else "")
             + (f"\nPip's letter just arrived:\n{received}\n" if received else
                f"\nNo letter is waiting; {name} decides to write to Pip anyway.\n")
             + (f"Pip enclosed something with it: {enclosed}. React to it honestly.\n" if enclosed else "")
             + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what Pip said if anything, and "
             f"sharing something from their own life. Pip can walk over to visit {name} at home (you can invite it), "
-            f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Optional:\n"
-            "- `life_update`: one sentence on what's newly happening in their life (it carries into later letters)\n"
+            f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
+            + self._remembering(name, "letter") + "Optional:\n"
+            "- `life_update`: one sentence, only if something in their life has changed since what's already "
+            "happening (it carries into later letters), with `life_update_new`: true if it's really new, false if it "
+            "restates something above\n"
+            f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
+            "`what` (a few words) and `in_days` (1-14)\n"
             + ("- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food "
                "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
         )
@@ -354,9 +380,23 @@ class GameMaster:
             "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
             "description": {"type": "string"}}, "required": ["name", "kind"]}
         return await self.ask(task, {
-            "text": {"type": "string"}, "life_update": {"type": "string"},
+            "text": {"type": "string"}, "life_update": {"type": "string"}, "life_update_new": {"type": "boolean"},
+            "upcoming": {"type": "object", "properties": {"what": {"type": "string"}, "in_days": {"type": "integer"}}},
+            **self._REMEMBERING,
             **({"parcel": parcel} if parcel_allowed else {}),
         }, ["text"], "neighbor_letter")
+
+    async def recall_told(self, name: str, persona: str, said: list[str]) -> list[str] | None:
+        task = (
+            f"{name} is Pip's neighbor. Who {name} is: {persona}\n"
+            f"Everything {name} and Pip have said to each other so far (letters and talk, oldest first):\n"
+            + "\n".join(said) + "\n\n"
+            f"List what {name} has told Pip about themselves or their world, as `told`: short phrases (under 12 words), "
+            "e.g. \"their door rattles in the wind\". At most 20, the ones that stand out most; facts and details, "
+            "not greetings or feelings, and nothing that only Pip said."
+        )
+        out = await self.ask(task, {"told": {"type": "array", "items": {"type": "string"}}}, ["told"], "recall_told")
+        return [t for t in out["told"] if isinstance(t, str)] if out and isinstance(out["told"], list) else None
 
     # --- places and the library ---------------------------------------------------
     async def describe_place(self, place: str, details: str) -> str | None:
@@ -395,17 +435,22 @@ class GameMaster:
                               ["summary"], "read_summary", max_tokens=1024)
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
-                              heard: list[str], greeting: bool, situation: str) -> str | None:
+                              heard: list[str], greeting: bool, situation: str, told: list[str] = (),
+                              agenda: list[str] = ()) -> dict | None:
+        """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks."""
         task = (
             f"Voice {name}, Pip's neighbor. Who {name} is: {persona}\n"
             + (f"Lately in {name}'s life: {' '.join(life)}\n" if life else "")
-            + ("What's passed between them recently (letters and talk, oldest first):\n" + "\n".join(conversation)
-               + "\n" if conversation else "")
+            + self._plans(name, agenda) + self._known(name, told)
+            + (f"What's passed between them recently (letters and talk, oldest first; Pip's words in full, {name}'s "
+               "earlier ones in brief):\n" + "\n".join(conversation) + "\n" if conversation else "")
             + f"Right now Pip is visiting {name} at home. {situation}\n"
             + (f"Pip just said: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}, face to face."
                if heard else f"Pip has just arrived at the door; greet it as {name} would.")
             + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
-            f"{name} stays at home and can't do more than they plausibly could."
+            f"{name} stays at home and can't do more than they plausibly could. Report the line as `text`, and:\n"
+            + self._remembering(name, "line")
         )
-        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "speak_in_person")
-        return clip(out["text"], 400) if out else None
+        out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING}, ["text"], "speak_in_person")
+        text = clip(out["text"], 400) if out else ""
+        return {**out, "text": text} if text else None

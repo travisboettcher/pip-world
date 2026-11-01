@@ -8,6 +8,7 @@ import random
 import time
 
 from .creations import running
+from .text import brief
 
 CONVERSATION_LINES = 6
 JITTER = (0.7, 1.3)
@@ -21,12 +22,14 @@ def add_for_creation(state, rng: random.Random, c: dict) -> dict | None:
     return state.add_character(c["name"], "creation", c["id"], comp["persona"], comp["chatter_minutes"], first)
 
 
-def conversation(state, name: str) -> list[str]:
+def conversation(state, name: str, verbatim_since: float | None = None) -> list[str]:
+    """The last lines between Pip and `name`. With `verbatim_since`, `name`'s own earlier lines are shown in brief."""
     lines = []
     for e in reversed(state.events(200)):
         d = e["data"]
         if e["kind"] == "companion" and d["name"] == name:
-            lines.append(f"{name}: {d['text']}")
+            earlier = verbatim_since is not None and e["ts"] < verbatim_since
+            lines.append(f"{name} (in brief): {brief(d.get('gist'), d['text'])}" if earlier else f"{name}: {d['text']}")
         elif e["kind"] == "say" and d.get("to_name") == name:
             lines.append(f"Pip: {d['text']}")
     return lines[-CONVERSATION_LINES:]

@@ -56,6 +56,7 @@ class Agent:
         self.ticks = 0
         self._moment_shown: dict[int, int] = {}  # event id -> times offered for the diary
         self._reflecting = asyncio.Lock()
+        self._told_tries: dict = {}  # neighbors whose told-backfill failed, this run (neighbors.recall_told)
         self._finishing = asyncio.Lock()  # the monitor and a tick may both try to resolve the same session
 
     # --- wake control ------------------------------------------------
@@ -154,6 +155,7 @@ class Agent:
         if await comp.step(self.state, self.s, self.gm, self.rng):
             self.request_wake()
         await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
+        await nb.recall_told(self.state, self.gm, self._told_tries)
         if await nb.step(self.state, self.s, self.gm, self.rng):
             self.request_wake()
         if mem.due(self.state, self.s, time.time()):

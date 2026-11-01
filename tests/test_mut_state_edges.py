@@ -52,6 +52,9 @@ MIGRATED = {
     ("work_session", "expect"): ("TEXT", "''"),
     ("work_session", "kind"): ("TEXT", "'work'"),
     ("work_session", "target"): ("TEXT", "''"),
+    ("characters", "told"): ("TEXT", "'[]'"),
+    ("characters", "upcoming"): ("TEXT", "'[]'"),
+    ("letters", "gist"): ("TEXT", "''"),
 }
 
 
@@ -89,6 +92,25 @@ def test_migrated_defaults_apply_to_rows_that_already_existed(tmp_path, clock):
     db.close()
     row = State(Settings(db_path=path, sleep=False)).pending_inbox()[0]
     assert row["sender"] == "A visitor" and row["source"] == "web" and row["gift"] == 0 and row["offers"] == 0
+
+
+def test_old_neighbors_and_letters_read_with_empty_memory(tmp_path, clock):
+    path = str(tmp_path / "old.db")
+    st = State(Settings(db_path=path, sleep=False))
+    st.add_character("Briar", "neighbor", None, "A shore warden.", 60, 0)
+    st.add_letter("Briar", "Pip", "The blue door rattles.", 1)
+    st.db.close()
+    db = sqlite3.connect(path)
+    db.execute("ALTER TABLE characters DROP COLUMN told")
+    db.execute("ALTER TABLE characters DROP COLUMN upcoming")
+    db.execute("ALTER TABLE letters DROP COLUMN gist")
+    db.commit()
+    db.close()
+    st = State(Settings(db_path=path, sleep=False))
+    assert st.characters()[0]["told"] == [] and st.characters()[0]["upcoming"] == [] and st.letters()[0]["gist"] == ""
+    st.update_character(1, told=["their blue door rattles"], upcoming=[{"what": "a tide", "due_at": 9}])
+    assert st.characters()[0]["told"] == ["their blue door rattles"]
+    assert st.characters()[0]["upcoming"] == [{"what": "a tide", "due_at": 9}]
 
 
 def test_opening_a_current_database_twice_is_harmless(tmp_path, clock):
