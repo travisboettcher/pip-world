@@ -109,6 +109,10 @@ inbox with the neighbor as sender, so memory, recall and the nightly reflection 
 ```
 HTTP: `GET /letters`.
 
+## Matrix commands
+In the Matrix room, `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes` and `/usage` return information straight from the engine
+(no LLM, not a reply from Pip, nothing reaches Pip). Anything else is a message to Pip. See [DESIGN-outreach.md](DESIGN-outreach.md).
+
 ## Places and the library
 Design: [DESIGN-library.md](DESIGN-library.md). Pip lives in its `workshop` (projects and garden happen there) and
 can `go_to` the **library**: the homelab's Calibre library (`../calibre/library`, the folder calibre-web serves),

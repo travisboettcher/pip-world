@@ -151,3 +151,9 @@ rooms, leaves every other invite and joins its own, backs off on errors, and kee
 It sends text into a thread (with the in-reply-to fallback pointing at the thread's latest message), starts a thread with a top-level message, shows typing, sends read
 receipts, and uploads and sends images in the thread (a failed upload still delivers the words and says so). It passes the shared contract suite against an in-process fake
 homeserver. An unconfigured channel never breaks Pip: it reports "not configured" and the error shows in `pipchat outreach`.
+
+## Slash commands (built 2026-10-31)
+A message from an allowed sender that is exactly `/word [argument]` is not a visitor message: `commands.answer` builds the reply from state and the channel handler
+sends it back into the same thread (kind `reply`), then returns. Nothing reaches Pip's inbox, no tick is requested, no event is logged, and no LLM is called.
+Commands (read-only): `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes [diary|todo|wishlist|ambitions|learned]`, `/usage`. An unknown word
+is answered with a pointer to `/help`. A `/word` later in a sentence is an ordinary message to Pip. In `OUTREACH=log` mode the reply is built but not sent.

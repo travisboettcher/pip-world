@@ -12,6 +12,7 @@ import re
 import time
 from datetime import datetime
 
+from . import commands
 from . import matrix  # noqa: F401  (registers the 'matrix' channel)
 from . import sleep as sleepmod
 from .channels import Inbound, Outbound, build_channels
@@ -76,6 +77,10 @@ class Outreach:
             if self.s.outreach == "off" or not self.receive:
                 return
             sender = clip(m.sender_name or m.sender_id, 40)
+            reply = commands.answer(self.state, self.s, m.text)
+            if reply is not None:       # a slash command: answered from state, never Pip's inbox
+                await self._deliver(ch, Outbound(reply[:2000], "reply"), m.conversation)
+                return
             iid = self.receive(str(m.text)[:2000], sender, ch.name, m.conversation, m.message_id)
             if iid and "receipts" in ch.capabilities:
                 try:

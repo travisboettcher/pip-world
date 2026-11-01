@@ -135,10 +135,9 @@ is in my notes, not in the gears".
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
       in the thread, never at night), the Matrix channel, and the `matrix/` homeserver on `matrix.example.io` with `bootstrap.py` and a restic backup.
       Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.
-- [ ] **Slash commands in the Matrix channel** (owner feedback, 2026-10-30): messages like `/status`, `/garden`, `/items` (and the like, mirroring `pipchat`) should be
-      answered by the engine with plain info straight from state, **not** passed to Pip, so no LLM call and no reply "from Pip". Needs a command hook in the
-      channel/inbound path before delivery to the inbox; the reply goes back into the room as a clearly engine-made message. Settle the command list and
-      whether it works in a thread or only top-level.
+- [x] **Slash commands in the Matrix channel** (owner feedback, 2026-10-30; built 2026-10-31, `commands.py`): a message that starts with `/word` is answered by the engine from
+      state: `/help /status /items /garden /projects /creations /notes [section] /usage`. No LLM call, nothing in Pip's inbox, no wake, no event; the reply goes into the same
+      thread as kind `reply`. Unknown commands get a pointer to `/help`; strangers are still dropped by the channel; `OUTREACH=log` sends nothing. Works on every channel.
 - [ ] Outreach, remaining: Element Web for a desktop view; inbound photos; a Telegram or webhook channel if ever wanted; end-to-end encryption (later);
       add the homeserver to Uptime Kuma
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
