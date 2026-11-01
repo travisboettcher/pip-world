@@ -428,7 +428,21 @@ def design(state, rec: dict, raw, rng: random.Random | None = None, now: float |
                        daylight_only=int(not hours), verbs=verbs, loot=loot, description=description, blurb=blurb,
                        real_at=now)
     state.set_meta(**{f"place:{rec['key']}": description})
+    settle(state, rec["key"], raw.get("resident"))
     return state.place_row(rec["key"])
+
+
+def settle(state, key: str, raw) -> dict | None:
+    """Someone the design says lives or works at the place becomes a resident: a character met only there (owner
+    decision 5). Checked like a new neighbor: a name and a persona, clipped; never Pip or a name already taken."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("name"), str) or not isinstance(raw.get("persona"), str):
+        return None
+    name, persona = clip(raw["name"].strip(" ."), 40), clip(raw["persona"], 800)
+    if not name or not persona or name.lower() in {PIP} | {c["name"].lower() for c in state.characters()}:
+        return None
+    ch = state.add_character(name, "resident", None, persona, 0, 0, about=clip(raw.get("about"), 160), place=key)
+    state.log("resident", name=name, place=key, about=ch["about"])
+    return ch
 
 
 async def realise(state, gm, key: str, label: str, rng: random.Random | None = None,

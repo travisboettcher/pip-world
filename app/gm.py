@@ -356,6 +356,14 @@ class GameMaster:
     _REMEMBERING = {"gist": {"type": "string"}, "told": {"type": "array", "items": {"type": "string"}}}
 
     @staticmethod
+    def _news(later: str) -> str:
+        return ("- `life_update`: one sentence, only if something in their life has changed since what's already "
+                f"happening (it carries into later {later}), with `life_update_new`: true if it's really new, false "
+                "if it restates something above\n")
+
+    _NEWS = {"life_update": {"type": "string"}, "life_update_new": {"type": "boolean"}}
+
+    @staticmethod
     def _mentions(mention: str) -> dict:
         """The optional `mentions_place` field, asked for whenever the prompt carries its sentence."""
         return {"mentions_place": invented_places.MENTION_PROPERTY} if mention else {}
@@ -376,11 +384,8 @@ class GameMaster:
             + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what Pip said if anything, and "
             f"sharing something from their own life. Pip can walk over to visit {name} at home (you can invite it), "
             f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
-            + self._remembering(name, "letter") + "Optional:\n"
-            "- `life_update`: one sentence, only if something in their life has changed since what's already "
-            "happening (it carries into later letters), with `life_update_new`: true if it's really new, false if it "
-            "restates something above\n"
-            f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
+            + self._remembering(name, "letter") + "Optional:\n" + self._news("letters")
+            + f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
             "`what` (a few words) and `in_days` (1-14)\n"
             + ("- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food "
                "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
@@ -390,7 +395,7 @@ class GameMaster:
             "name": {"type": "string"}, "kind": {"type": "string"}, "qty": {"type": "integer"},
             "description": {"type": "string"}}, "required": ["name", "kind"]}
         return await self.ask(task, {
-            "text": {"type": "string"}, "life_update": {"type": "string"}, "life_update_new": {"type": "boolean"},
+            "text": {"type": "string"}, **self._NEWS,
             "upcoming": {"type": "object", "properties": {"what": {"type": "string"}, "in_days": {"type": "integer"}}},
             **self._REMEMBERING,
             **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
@@ -433,7 +438,8 @@ class GameMaster:
 
     async def design_place(self, place: str, mentions: list[str], existing: list[str]) -> dict | None:
         """Make a place a character told Pip about real, on Pip's first arrival: its kind (from the registry), a
-        description that agrees with what was said, and what can be found there. The engine validates all of it."""
+        description that agrees with what was said, what can be found there, and perhaps who lives or works there.
+        The engine validates all of it."""
         task = (
             f"Pip has just arrived at {place} for the first time. Nobody has described it before; this is what others "
             "told Pip about it (the place must agree with all of it):\n" + "\n".join(f"- {m}" for m in mentions)
@@ -446,14 +452,22 @@ class GameMaster:
             + (f"When a thing is one of these, use its name exactly: {', '.join(existing)}. " if existing else "")
             + "\n- for a shop: `opens` and `closes` (local hours); `gather_help` (a few words: how Pip picks through "
             "the stock), `browse_help` (a few words: how Pip sees what's in), `gerund` (e.g. 'rummaging in the "
-            "drawer'). For a wild place or a yard: `gather_help` and `gerund`. A sight needs none of these."
+            "drawer'). For a wild place or a yard: `gather_help` and `gerund`. A sight needs none of these.\n"
+            "- `resident`: someone who lives or works there and will talk with Pip, if the place has one (a shop "
+            "normally has its keeper; a wild place or a sight often has nobody): `name`, `persona` (3-5 sentences, "
+            "private: who they are, their days, how they talk) and `about` (one short line of what Pip would know of "
+            "them once met). If the words above name someone who is there, it's them; never Pip or whoever told Pip "
+            "about it."
         )
         item = {"type": "object", "properties": {"name": {"type": "string"}, "kind": {"type": "string"},
                                                  "tier": {"type": "string"}, "description": {"type": "string"}}}
+        resident = {"type": "object", "properties": {"name": {"type": "string"}, "persona": {"type": "string"},
+                                                     "about": {"type": "string"}}, "required": ["name", "persona"]}
         out = await self.ask(task, {
             "kind": {"type": "string"}, "description": {"type": "string"}, "blurb": {"type": "string"},
             "loot": {"type": "array", "items": item}, "opens": {"type": "integer"}, "closes": {"type": "integer"},
             "gather_help": {"type": "string"}, "browse_help": {"type": "string"}, "gerund": {"type": "string"},
+            "resident": resident,
         }, ["kind", "description"], "design_place")
         return out
 
@@ -472,23 +486,29 @@ class GameMaster:
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
-                              places: str = "", mention: str = "") -> dict | None:
+                              places: str = "", mention: str = "", at: str = "") -> dict | None:
         """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
-        it's the greeting."""
+        it's the greeting. A neighbor is at home; a resident (`at` their place) has no letters, so their life moves
+        on in talk: they may report a `life_update` too."""
         task = (
-            f"Voice {name}, Pip's neighbor. Who {name} is: {persona}\n"
+            (f"Voice {name}, who Pip meets at {at}." if at else f"Voice {name}, Pip's neighbor.")
+            + f" Who {name} is: {persona}\n"
             + (f"Lately in {name}'s life: {' '.join(life)}\n" if life else "")
             + self._plans(name, agenda) + self._known(name, told) + (f"{places}\n" if places else "")
-            + (f"What's passed between them recently (letters and talk, oldest first; Pip's words in full, {name}'s "
-               "earlier ones in brief):\n" + "\n".join(conversation) + "\n" if conversation else "")
-            + f"Right now Pip is visiting {name} at home. {situation}\n"
+            + (f"What's passed between them recently ({'' if at else 'letters and talk, '}oldest first; Pip's words "
+               f"in full, {name}'s earlier ones in brief):\n" + "\n".join(conversation) + "\n" if conversation else "")
+            + (f"Right now Pip is at {at}, with {name}." if at else f"Right now Pip is visiting {name} at home.")
+            + f" {situation}\n"
             + (f"Pip just said: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}, face to face."
-               if heard else f"Pip has just arrived at the door; greet it as {name} would.")
+               if heard else f"Pip has just arrived{'' if at else ' at the door'}; greet it as {name} would.")
             + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
-            f"{name} stays at home and can't do more than they plausibly could. Report the line as `text`, and:\n"
-            + self._remembering(name, "line") + (f"- {mention}\n" if mention else "")
+            f"{name} stays at {at or 'home'} and can't do more than they plausibly could. Report the line as `text`, "
+            "and:\n"
+            + self._remembering(name, "line") + ("Optional:\n" + self._news("talk") if at else "")
+            + (f"- {mention}\n" if mention else "")
         )
-        out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING, **self._mentions(mention)},
+        out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING,
+                                    **(self._NEWS if at else {}), **self._mentions(mention)},
                              ["text"], "speak_in_person")
         text = clip(out["text"], 400) if out else ""
         return {**out, "text": text} if text else None

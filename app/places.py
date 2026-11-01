@@ -4,7 +4,7 @@ neighbor's home are a walk away.
 `go_to` uses the same real-time session as work (kind `walk`): Pip is walking until it arrives, then wakes there.
 Each place gets a description written once by the GM the first time Pip arrives, and kept. A neighbor's home is
 the place called "<Name>'s home"; while Pip is there, the neighbor greets it and talks with it in person (see
-neighbors.py). See DESIGN-library.md and DESIGN-neighbor.md.
+neighbors.py), as does a resident at an invented place. See DESIGN-library.md and DESIGN-neighbor.md.
 """
 import time
 from dataclasses import dataclass, field
@@ -32,6 +32,23 @@ def home_of(neighbor: dict) -> str:
 def neighbor_at(state, place: str) -> dict | None:
     """The neighbor whose home `place` is, if any."""
     return next((c for c in state.characters("neighbor") if home_of(c) == place), None)
+
+
+IN_PERSON = ("neighbor", "resident")
+
+
+def place_of(state, ch: dict) -> str | None:
+    """Where a character can be met in person: a neighbor at home, a resident at their place while it's in the world.
+    None for a companion, or for a resident whose place the owner removed (they're kept, but out of reach)."""
+    if ch["kind"] == "neighbor":
+        return home_of(ch)
+    rec = state.place_row(ch["place"]) if ch["kind"] == "resident" else None
+    return rec["key"] if rec and rec["status"] == "real" else None
+
+
+def company_at(state, place: str | None) -> list[dict]:
+    """The characters Pip can talk with in person at `place` (none while it's walking: pass present_at)."""
+    return [c for c in state.characters() if place and place_of(state, c) == place]
 
 
 def present_at(state) -> str | None:
@@ -242,9 +259,11 @@ def perception(state, settings, library) -> list[str]:
         f", closed for now (it opens at {here_place.hours[0]}:00)" if here_place.hours
         else ", closed for now (it's dark; it opens in the morning)")
     lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
-    host = neighbor_at(state, present_at(state) or "")
-    if host:
-        lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}.")
+    for host in company_at(state, present_at(state)):
+        lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}."
+                     if host["kind"] == "neighbor" else
+                     f"{host['name']} is here" + (f" ({host['about']})" if host["about"] else "")
+                     + f"; talk with them in person using say with to: {host['name']}.")
         if host["heard"]:
             lines.append(f"{host['name']} hasn't answered yet: give them a moment, no need to say it again.")
     if here_place and here_place.verbs and not closed:

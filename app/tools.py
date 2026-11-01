@@ -207,9 +207,11 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
-        if ch and ch["kind"] == "neighbor" and places.present_at(ctx.state) != places.home_of(ch):
-            return ToolResult(f"{ch['name']} can't hear you from here; write_letter, or go_to their home to visit",
-                              followup=True)
+        where = places.place_of(ctx.state, ch) if ch else None
+        if ch and ch["kind"] in places.IN_PERSON and (not where or places.present_at(ctx.state) != where):
+            return ToolResult(f"{ch['name']} can't hear you from here" + (
+                "; write_letter, or go_to their home to visit" if ch["kind"] == "neighbor" else
+                f"; go_to {where} to talk with them" if where else ""), followup=True)
         if ch:
             comp.hear(ctx.state, ch, text)
             ctx.state.log("say", text=text, to=[], to_name=ch["name"])

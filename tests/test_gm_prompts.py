@@ -150,6 +150,50 @@ INVENT = (
 INVENT_PROPS = {"name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
                 "letter": {"type": "string"}}
 
+LIFE_UPDATE = (
+    "Optional:\n"
+    "- `life_update`: one sentence, only if something in their life has changed since what's already happening "
+    "(it carries into later talk), with `life_update_new`: true if it's really new, false if it restates "
+    "something above\n"
+)
+
+RESIDENT_GREETING = (
+    "Voice Mr Teague, who Pip meets at Saltholm. Who Mr Teague is: An ironmonger.\n"
+    "Right now Pip is at Saltholm, with Mr Teague. It is raining.\n"
+    "Pip has just arrived; greet it as Mr Teague would. One to three short sentences, spoken aloud, in "
+    "character; a small action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they "
+    "plausibly could. Report the line as `text`, and:\n"
+    '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
+    'and asked how its walk went")\n'
+    "- `told`: 0-3 short phrases for things about Mr Teague or their world that this line tells Pip for the first "
+    "time (not anything Pip already knows); empty if nothing is new\n"
+    + LIFE_UPDATE
+)
+
+RESIDENT_TALK = (
+    "Voice Mr Teague, who Pip meets at Saltholm. Who Mr Teague is: An ironmonger.\n"
+    "Lately in Mr Teague's life: A new drawer came.\n"
+    "Things Pip already knows about Mr Teague (refer back to them if it's natural, but don't introduce them again "
+    "as news):\n"
+    "- sells wire\n"
+    "Places in Pip's world: the woods (foraging); Saltholm, a long walk\n"
+    "What's passed between them recently (oldest first; Pip's words in full, Mr Teague's earlier ones in brief):\n"
+    "Pip: hi\n"
+    "Mr Teague: hello\n"
+    "Right now Pip is at Saltholm, with Mr Teague. It is raining.\n"
+    'Pip just said: "any wire?"\n'
+    "Answer Pip as Mr Teague, face to face. One to three short sentences, spoken aloud, in character; a small "
+    "action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they plausibly could. "
+    "Report the line as `text`, and:\n"
+    '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
+    'and asked how its walk went")\n'
+    "- `told`: 0-3 short phrases for things about Mr Teague or their world that this line tells Pip for the first "
+    "time (not anything Pip already knows); empty if nothing is new\n"
+    + LIFE_UPDATE
+    + "- Only if your words point Pip somewhere new, give `mentions_place`.\n"
+)
+LIFE_PROPS = {"life_update": {"type": "string"}, "life_update_new": {"type": "boolean"}}
+
 RECALL = (
     "Briar is Pip's neighbor. Who Briar is: An owl.\n"
     "Everything Briar and Pip have said to each other so far (letters and talk, oldest first):\n"
@@ -209,6 +253,26 @@ async def test_talk_prompt_with_everything(tmp_path):
     assert task(b) == TALK_FULL
     assert b.schemas == [{"type": "object", "properties": {"text": {"type": "string"}, **REMEMBERING, **MENTIONS},
                           "required": ["text"]}]
+
+
+@pytest.mark.asyncio
+async def test_a_resident_greets_pip_where_they_are(tmp_path):
+    gm, b, _ = master(tmp_path)
+    await gm.speak_in_person("Mr Teague", "An ironmonger.", [], [], [], "It is raining.", at="Saltholm")
+    assert task(b) == RESIDENT_GREETING
+    assert b.schemas == [{"type": "object", "properties": {"text": {"type": "string"}, **REMEMBERING, **LIFE_PROPS},
+                          "required": ["text"]}]
+
+
+@pytest.mark.asyncio
+async def test_a_resident_talks_with_pip_with_everything(tmp_path):
+    gm, b, _ = master(tmp_path)
+    await gm.speak_in_person("Mr Teague", "An ironmonger.", ["A new drawer came."], ["Pip: hi", "Mr Teague: hello"],
+                             ["any wire?"], "It is raining.", told=["sells wire"], places=PLACES, mention=MENTION,
+                             at="Saltholm")
+    assert task(b) == RESIDENT_TALK
+    assert b.schemas == [{"type": "object", "properties": {"text": {"type": "string"}, **REMEMBERING, **LIFE_PROPS,
+                                                           **MENTIONS}, "required": ["text"]}]
 
 
 @pytest.mark.asyncio

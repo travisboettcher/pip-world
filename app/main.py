@@ -246,11 +246,15 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/places")
     def get_places():
-        """Places characters told Pip about (heard-of, real, removed), with who mentioned them; and the built-ins."""
+        """Places characters told Pip about (heard-of, real, removed), with who mentioned them and who lives there;
+        and the built-ins."""
         agent: Agent = app.state.agent
         st = agent.state
         built = [k for k, p in places.registry(st, settings, agent.library).items() if not p.invented]
-        return {"places": st.place_rows(), "built_in": built}
+        residents = st.characters("resident")
+        return {"places": [{**r, "residents": [{k: c[k] for k in ("name", "about", "life")} for c in residents
+                                               if c["place"] == r["key"]]} for r in st.place_rows()],
+                "built_in": built}
 
     @app.patch("/places/{key}")
     def patch_place(key: str, changes: dict):

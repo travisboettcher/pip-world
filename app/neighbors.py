@@ -4,6 +4,9 @@ Letters take hours each way. The neighbor answers what Pip sends, writes first n
 parcel (capped per day), and has a little life of their own that moves on between letters. Letters for Pip arrive
 in the inbox with the neighbor as sender, so perception, diary moments, recall and reflection treat them like any
 other visit. See DESIGN-neighbor.md.
+
+Residents (someone who lives or works at a place a character told Pip about, DESIGN-invented-places.md) are met in
+person the same way, but only at their place, and they don't write.
 """
 import math
 import random
@@ -51,6 +54,13 @@ def _told(ch: dict, out: dict) -> dict:
     raw = out.get("told")
     new = [t for t in (clip(x, 80) for x in (raw if isinstance(raw, list) else [])) if t][:TOLD_PER_CALL]
     return {"told": (ch["told"] + new)[-TOLD_KEPT:]} if new else {}
+
+
+def _news(life: list[str], out: dict) -> dict:
+    """Their life moves on: a `life_update` joins it only when the model itself says it's news."""
+    if clip(out.get("life_update"), 5) and out.get("life_update_new") is True:
+        return {"life": (life + [clip(out["life_update"], 200)])[-LIFE_KEPT:]}
+    return {}
 
 
 def clean_upcoming(raw, now: float) -> dict | None:
@@ -165,8 +175,7 @@ async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict
                      reply_to=answering["id"] if answering else None, gist=clip(out.get("gist"), 200))
     fields = {"next_chatter_at": now + ch["chatter_minutes"] * 60 * rng.uniform(*JITTER), **_told(ch, out),
               **_happened(ch, now)}
-    if clip(out.get("life_update"), 5) and out.get("life_update_new") is True:  # the model's own "is this news?"
-        fields["life"] = (fields.get("life", ch["life"]) + [clip(out["life_update"], 200)])[-LIFE_KEPT:]
+    fields.update(_news(fields.get("life", ch["life"]), out))
     pending, plan = fields.get("upcoming", ch["upcoming"]), clean_upcoming(out.get("upcoming"), now)
     if plan and len(pending) < UPCOMING_KEPT:
         fields["upcoming"] = pending + [plan]
@@ -212,11 +221,15 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
 
 
 async def _visits(state, settings, gm, now: float, library=None) -> bool:
-    """In person: a neighbor greets Pip once per visit and answers what Pip says (capped per hour)."""
+    """In person: whoever Pip finds where it is (a neighbor at home, a resident at their place) greets it once per
+    visit and answers what it says (capped per hour)."""
     here = places.present_at(state)
     wake = False
-    for ch in state.characters("neighbor"):
-        if here != places.home_of(ch):
+    for ch in state.characters():
+        if ch["kind"] not in places.IN_PERSON:
+            continue
+        where = places.place_of(state, ch)
+        if not where or here != where:
             if ch["heard"]:
                 state.update_character(ch["id"], heard=[])  # Pip left before they could answer
             continue
@@ -228,15 +241,18 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
             continue
         a = state.agent()
         situation = f"Pip seems {a['mood']}."
+        at = "" if ch["kind"] == "neighbor" else places.label(where)  # a resident is met at their place
         talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
         talk = talk[-CORRESPONDENCE_SHOWN * 2:]
         out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk,
                                        [h["text"] for h in ch["heard"]] if answering else [], situation,
-                                       told=ch["told"], agenda=agenda(ch, now),
+                                       told=ch["told"], agenda=agenda(ch, now), at=at,
                                        **_places(state, settings, library, ch)) if gm else None
         state.set_meta(**{f"greeted:{ch['id']}": visit})
         fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
                   **({**_told(ch, out), **_happened(ch, now)} if out else {})}
+        if out and at:  # no letters: a resident's life moves on in talk
+            fields.update(_news(fields.get("life", ch["life"]), out))
         if fields:
             state.update_character(ch["id"], **fields)
         if out:

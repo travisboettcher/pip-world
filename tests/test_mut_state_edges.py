@@ -55,6 +55,7 @@ MIGRATED = {
     ("characters", "told"): ("TEXT", "'[]'"),
     ("characters", "upcoming"): ("TEXT", "'[]'"),
     ("letters", "gist"): ("TEXT", "''"),
+    ("characters", "place"): ("TEXT", "''"),
 }
 
 
@@ -111,6 +112,14 @@ def test_old_neighbors_and_letters_read_with_empty_memory(tmp_path, clock):
     st.update_character(1, told=["their blue door rattles"], upcoming=[{"what": "a tide", "due_at": 9}])
     assert st.characters()[0]["told"] == ["their blue door rattles"]
     assert st.characters()[0]["upcoming"] == [{"what": "a tide", "due_at": 9}]
+
+
+def test_a_resident_keeps_their_place_and_older_characters_have_none(tmp_path, clock):
+    st = mk(tmp_path)
+    old = st.add_character("Briar", "neighbor", None, "A shore warden.", 60, 0)
+    ch = st.add_character("Mr Teague", "resident", None, "An ironmonger.", 0, 0, about="keeps the shop", place="Saltholm")
+    assert old["place"] == "" and ch["place"] == "Saltholm" and ch["kind"] == "resident" and ch["about"] == "keeps the shop"
+    assert st.characters("resident") == [ch]
 
 
 def test_opening_a_current_database_twice_is_harmless(tmp_path, clock):

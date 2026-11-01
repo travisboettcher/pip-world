@@ -230,6 +230,7 @@ class State:
                 ("characters", "told", "TEXT NOT NULL DEFAULT '[]'"),      # what a neighbor has told Pip (phrases)
                 ("characters", "upcoming", "TEXT NOT NULL DEFAULT '[]'"),  # a neighbor's plans: [{what, due_at}]
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
+                ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -814,7 +815,7 @@ class State:
             return None, f"you haven't made anything called {query!r}"
         return None, "which one? " + ", ".join(c["name"] for c in part)
 
-    # --- characters (companions; later neighbors) ----------------------------
+    # --- characters (companions, neighbors, residents of invented places) ----------------------------
     _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming")
 
     @classmethod
@@ -822,12 +823,12 @@ class State:
         return {**dict(row), **{k: json.loads(row[k]) for k in cls._CHARACTER_JSON}}
 
     def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
-                      next_chatter_at: float, about: str = "") -> dict:
+                      next_chatter_at: float, about: str = "", place: str = "") -> dict:
         with self.lock:
             cur = self.db.execute(
-                "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts, about) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes, next_chatter_at,
-                                                     time.time(), about))
+                "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts, about, "
+                "place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes,
+                                                              next_chatter_at, time.time(), about, place))
             self.db.commit()
             return self._character(self.db.execute("SELECT * FROM characters WHERE id = ?", (cur.lastrowid,)).fetchone())
 

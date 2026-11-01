@@ -524,6 +524,83 @@ async def test_only_one_place_is_designed_a_day(tmp_path):
     assert data["description"] == "you find Saltholm, but can't get your bearings today"
 
 
+# --- residents: someone who lives or works at a real place (owner decision 5) -----------------------------
+TEAGUE = {"name": "Mr Teague", "persona": "The Saltholm ironmonger: slow-spoken, proud of his drawer of odds and ends.",
+          "about": "keeps the ironmonger's in Saltholm"}
+
+
+def test_a_design_with_a_resident_makes_them_a_character_of_the_place(tmp_path):
+    s, st = fresh(tmp_path)
+    IP.design(st, known_shop(st), {**DESIGN, "resident": {**TEAGUE, "name": "  Mr Teague. "}}, random.Random(2),
+              now=5000.0)
+    (ch,) = st.characters()
+    assert ch["kind"] == "resident" and ch["place"] == "Saltholm" and ch["name"] == "Mr Teague"
+    assert ch["persona"] == TEAGUE["persona"] and ch["about"] == TEAGUE["about"]
+    ev = st.events(limit=1)[0]
+    assert ev["kind"] == "resident" and ev["data"] == {"name": "Mr Teague", "place": "Saltholm",
+                                                      "about": TEAGUE["about"]}
+
+
+def test_a_residents_words_are_clipped_like_a_neighbors(tmp_path):
+    s, st = fresh(tmp_path)
+    IP.design(st, known_shop(st), {**DESIGN, "resident": {"name": "N" * 41, "persona": "p" * 801, "about": "a" * 161}},
+              random.Random(2))
+    (ch,) = st.characters()
+    assert ch["name"] == "N" * 40 + "..." and ch["persona"] == "p" * 800 + "..." and ch["about"] == "a" * 160 + "..."
+
+
+@pytest.mark.parametrize("resident", [None, "Mr Teague", {}, {"name": "  ", "persona": "x"}, {"name": "Mr Teague"},
+                                      {"name": "Mr Teague", "persona": " "}, {"name": "pip", "persona": "x"},
+                                      {"name": "briar", "persona": "x"}, {"name": 7, "persona": "x"},
+                                      {"name": "Mr Teague", "persona": ["x"]}])
+def test_a_resident_needs_a_new_name_and_a_persona(tmp_path, resident):
+    s, st = fresh(tmp_path)
+    st.add_character("Briar", "neighbor", None, "A shore warden.", 60, 0)
+    rec = IP.design(st, known_shop(st), {**DESIGN, "resident": resident}, random.Random(2))
+    assert rec["status"] == "real" and [c["name"] for c in st.characters()] == ["Briar"]
+
+
+def test_an_unusable_design_makes_no_resident(tmp_path):
+    s, st = fresh(tmp_path)
+    assert IP.design(st, known_shop(st), {"kind": "shop", "resident": TEAGUE}, random.Random(2)) is None
+    assert st.characters() == []
+
+
+DESIGN_PROMPT = (
+    "Pip has just arrived at Saltholm for the first time. Nobody has described it before; this is what others told "
+    "Pip about it (the place must agree with all of it):\n"
+    "- Briar says: an ironmonger\n"
+    "\n"
+    "Decide what Saltholm is. `kind`, one of: {kinds}. Use the kind what was said suggests; a shop only if someone "
+    "said there's a shop or a trade there. Give:\n"
+    "- `description`: 2-3 sentences of the place as Pip finds it (kept, and shown whenever Pip is here)\n"
+    "- `blurb`: one short line for a list of places\n"
+    "- `loot`: 4-10 things that can be found or had there, each {{`name`, `kind`: material, food, seed or tool, "
+    "`tier`: common, uncommon or rare, `description`}}; include everything the words above say is there. When a "
+    "thing is one of these, use its name exactly: brass wire, sticks. \n"
+    "- for a shop: `opens` and `closes` (local hours); `gather_help` (a few words: how Pip picks through the "
+    "stock), `browse_help` (a few words: how Pip sees what's in), `gerund` (e.g. 'rummaging in the drawer'). For a "
+    "wild place or a yard: `gather_help` and `gerund`. A sight needs none of these.\n"
+    "- `resident`: someone who lives or works there and will talk with Pip, if the place has one (a shop "
+    "normally has its keeper; a wild place or a sight often has nobody): `name`, `persona` (3-5 sentences, "
+    "private: who they are, their days, how they talk) and `about` (one short line of what Pip would know of them "
+    "once met). If the words above name someone who is there, it's them; never Pip or whoever told Pip about it."
+)
+
+
+async def test_gm_design_place_asks_for_a_resident_exactly(tmp_path):
+    from app import place_kinds
+    from tests.test_gm_prompts import SchemaBackend
+    s, st = fresh(tmp_path)
+    fake = SchemaBackend([report(**DESIGN)])
+    await GameMaster(fake, st).design_place("Saltholm", ["Briar says: an ironmonger"], ["brass wire", "sticks"])
+    assert fake.calls[0]["messages"][0]["content"] == DESIGN_PROMPT.format(kinds=place_kinds.gm_lines())
+    assert fake.schemas[0]["properties"]["resident"] == {"type": "object", "properties": {
+        "name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"}},
+        "required": ["name", "persona"]}
+    assert fake.schemas[0]["required"] == ["kind", "description"]
+
+
 # --- scoping: gather and browse wherever the place lists them -----------------------------------------
 def real_shop(st, now=None):
     rec = known_shop(st, now=now or time.time())
@@ -862,3 +939,19 @@ def test_the_places_endpoints_list_patch_and_remove(tmp_path):
         assert c.delete("/places/Saltholm").json()["status"] == "removed"
         assert c.delete("/places/Saltholm").status_code == 404
         assert c.get("/places").json()["places"][0]["status"] == "removed"
+
+
+def test_the_places_endpoint_lists_who_lives_at_each_place_even_once_removed(tmp_path):
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+                 neighbor=False)
+    with TestClient(create_app(s, FakeBackend())) as c:
+        st = c.app.state.agent.state
+        IP.design(st, known_shop(st, now=time.time()), {**DESIGN, "resident": TEAGUE}, random.Random(2))
+        heard(st, "Fallow", "near", "a meadow", now=time.time())
+        st.update_character(st.characters()[0]["id"], life=["A new drawer came."])
+        expected = [{"name": "Mr Teague", "about": TEAGUE["about"], "life": ["A new drawer came."]}]
+        assert [p["residents"] for p in c.get("/places").json()["places"]] == [expected, []]
+        c.delete("/places/Saltholm")
+        assert c.get("/places").json()["places"][0]["residents"] == expected

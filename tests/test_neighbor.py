@@ -869,3 +869,150 @@ async def test_the_agent_loop_tells_her_about_its_library(tmp_path):
     st.update_character(neighbor(st, s)["id"], next_chatter_at=0)
     await agent.resolve_world()
     assert "Places in Pip's world: the library (books)" in gm.calls[0]["messages"][0]["content"]
+
+
+# --- residents: someone met at a place Pip was told about (DESIGN-invented-places.md, owner decision 5) -----------
+import random
+
+from app import places as P
+from tests.test_invented_places import DESIGN, TIP, SALT, TEAGUE
+
+HERE = ("Mr Teague is here (keeps the ironmonger's in Saltholm); talk with them in person using say with to: "
+        "Mr Teague.")
+
+
+def saltholm(st, arrived=None):
+    """Saltholm, real, with Mr Teague keeping the ironmonger's; Pip there if `arrived` is given."""
+    IP.design(st, IP.accept(st, "Briar", TIP, SALT, now=time.time()), {**DESIGN, "resident": TEAGUE},
+              random.Random(2))
+    if arrived is not None:
+        st.update_agent(location="Saltholm")
+        st.set_meta(arrived_at=str(arrived))
+    return st.characters("resident")[0]
+
+
+@pytest.mark.asyncio
+async def test_a_resident_greets_pip_once_per_visit_and_only_at_their_place(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="*looks up from the drawer* Morning.", gist="Greeted Pip.")])
+    ch = saltholm(st)
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False and gm.calls == []  # Pip is at home
+    st.update_agent(location="Saltholm")
+    st.set_meta(arrived_at="5")
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
+    task = gm.calls[0]["messages"][0]["content"]
+    assert task.startswith(f"Voice Mr Teague, who Pip meets at Saltholm. Who Mr Teague is: {TEAGUE['persona']}\n")
+    assert "Right now Pip is at Saltholm, with Mr Teague. Pip seems curious.\nPip has just arrived; greet it" in task
+    assert "Places in Pip's world: the woods (foraging); the junkyard (scrap); Saltholm, a long walk (Pip has been)\n" in task
+    assert {k: v for k, v in st.events(1)[0]["data"].items() if k != "firsts"} == {
+        "name": "Mr Teague", "text": "*looks up from the drawer* Morning.", "reply": True, "visit": True,
+        "gist": "Greeted Pip."}
+    assert st.meta(f"greeted:{ch['id']}") == "5"
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False and len(gm.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_pip_meets_a_resident_by_name_only_at_their_place(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    saltholm(st)
+    assert "Mr Teague" not in agent._perception("timer", [])
+    st.update_agent(location="Saltholm")
+    assert HERE in agent._perception("timer", [])
+    await call(agent, "say", text="Any brass wire?", to="mr teague")
+    assert "Mr Teague hasn't answered yet: give them a moment, no need to say it again." in \
+        agent._perception("timer", [])
+    st.update_agent(location="woods")
+    assert "Mr Teague" not in agent._perception("timer", [])
+
+
+@pytest.mark.asyncio
+async def test_a_resident_answers_what_pip_says_capped_per_hour(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="A spool, aye.", told=["he keeps brass wire on spools"])])
+    now = time.time()
+    ch = saltholm(st, arrived=now - 100)
+    st.set_meta(**{f"greeted:{ch['id']}": str(now - 100)})
+    r = await call(agent, "say", text="Any brass wire?", to="Mr Teague")
+    assert r.text == "said it to Mr Teague; it will answer in a moment"
+    st.update_character(ch["id"], replies=[now - 10] * 4)
+    assert await nb.step(st, s, agent.gm, FixedRng(), now) is False and gm.calls == []  # four in the last hour
+    st.update_character(ch["id"], replies=[])
+    assert await nb.step(st, s, agent.gm, FixedRng(), now) is True
+    assert 'Pip just said: "Any brass wire?"\nAnswer Pip as Mr Teague' in gm.calls[0]["messages"][0]["content"]
+    c = st.characters("resident")[0]
+    assert c["heard"] == [] and c["replies"] == [now] and c["told"] == ["he keeps brass wire on spools"]
+
+
+@pytest.mark.asyncio
+async def test_a_resident_cant_be_heard_from_elsewhere_or_on_the_way(tmp_path):
+    s, st, gm, agent = make(tmp_path, work_speed=1e-6)
+    ch = saltholm(st)
+    r = await call(agent, "say", text="hello?", to="Mr Teague")
+    assert r.text == "Mr Teague can't hear you from here; go_to Saltholm to talk with them"
+    st.update_agent(location="Saltholm")
+    await call(agent, "say", text="thanks!", to="Mr Teague")
+    await call(agent, "go_to", place="home")                     # walking: Saltholm is behind Pip
+    assert "can't hear you from here" in (await call(agent, "say", text="bye!", to="Mr Teague")).text
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False and gm.calls == []
+    assert st.characters("resident")[0]["heard"] == []          # left before they could answer
+    assert HERE not in agent._perception("timer", [])
+
+
+@pytest.mark.asyncio
+async def test_a_residents_words_can_point_pip_to_a_place_and_their_life_moves_on(tmp_path):
+    said = "Try the chandler at Corrow Point for rope."
+    s, st, gm, agent = make(tmp_path, [
+        report(text=said, mentions_place={"place": "Corrow Point", "there": "a chandler with rope", "distance": "near"},
+               life_update="A new drawer of hooks came in.", life_update_new=True),
+        report(text="Hello again.", life_update="Still the drawer.", life_update_new=False)])
+    saltholm(st, arrived=5)
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
+    task = gm.calls[0]["messages"][0]["content"]
+    assert "Only if your words point Pip to a place it could go that isn't one of these: the woods, the junkyard, " \
+           "Saltholm, give `mentions_place`" in task
+    rec = st.place_row("Corrow Point")
+    assert rec["status"] == "heard" and rec["mentions"][0]["by"] == "Mr Teague"
+    assert st.characters("resident")[0]["life"] == ["A new drawer of hooks came in."]
+    st.set_meta(arrived_at="6")
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())
+    assert st.characters("resident")[0]["life"] == ["A new drawer of hooks came in."]  # not news: not kept
+
+
+@pytest.mark.asyncio
+async def test_residents_dont_write_letters(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    saltholm(st)
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time() + 99 * 24 * HOUR) is False and gm.calls == []
+    assert st.letters() == []
+    r = await call(agent, "write_letter", to="Mr Teague", text="Dear Mr Teague")
+    assert "you don't have a neighbor called 'Mr Teague'" in r.text and st.letters() == []
+
+
+@pytest.mark.asyncio
+async def test_a_removed_place_keeps_its_resident_but_nobody_can_reach_them(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Morning.")])
+    saltholm(st, arrived=5)
+    IP.remove(st, "Saltholm")
+    assert [c["name"] for c in st.characters("resident")] == ["Mr Teague"]
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is False and gm.calls == []
+    assert (await call(agent, "say", text="hello?", to="Mr Teague")).text == "Mr Teague can't hear you from here"
+    assert "Mr Teague" not in agent._perception("timer", [])
+
+
+@pytest.mark.asyncio
+async def test_a_residents_talk_is_remembered_like_a_neighbors(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(text="Morning.")])
+    saltholm(st, arrived=5)
+    await nb.step(st, s, agent.gm, FixedRng(), time.time())
+    lines, people, _ = mem.material(st, 0, time.time() + 1, 12000)
+    assert "Mr Teague" in people and any("] Mr Teague said: Morning." in l for l in lines)
+
+
+@pytest.mark.asyncio
+async def test_arriving_somewhere_new_pip_meets_whoever_the_design_says_is_there(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(**DESIGN, resident=TEAGUE), report(text="Morning.")], work_speed=1e6)
+    IP.accept(st, "Briar", TIP, SALT, now=time.time())
+    await call(agent, "go_to", place="Saltholm")
+    time.sleep(0.01)
+    await agent.finish_work()
+    assert st.agent()["location"] == "Saltholm" and HERE in agent._perception("timer", [])
+    assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
+    assert gm.calls[1]["messages"][0]["content"].startswith("Voice Mr Teague, who Pip meets at Saltholm.")

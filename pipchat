@@ -604,6 +604,8 @@ def cmd_places(pip: Pip, a) -> None:
             print(dim("  finds: " + ", ".join(e[0] for e in p["loot"])))
         if p["on_account"]:
             print(yellow("  on account: " + ", ".join(f"{q} {n}" for n, q in p["on_account"].items())))
+        for c in p.get("residents", []):
+            print(f"  {bold(c['name'])} lives or works here" + (f" - {c['about']}" if c["about"] else ""))
     if not r["places"]:
         print(dim("  nobody has told Pip about anywhere new yet"))
 
