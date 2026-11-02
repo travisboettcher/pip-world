@@ -42,9 +42,9 @@ async def test_a_channel_message_becomes_a_visitor_message_with_its_source(tmp_p
     s, st, agent, ch = await setup(tmp_path)
     assert await ch.inject("u1", "how is the clock?", message_id="a1")
     (m,) = st.pending_inbox()
-    assert (m["text"], m["sender"], m["source"], m["external_id"]) == ("how is the clock?", "Morgan", "fake", "a1") and m["conversation"]
+    assert (m["text"], m["sender"], m["source"], m["external_id"]) == ("how is the clock?", "Sam", "fake", "a1") and m["conversation"]
     ev = [e for e in st.events(5) if e["kind"] == "inbox"][0]["data"]
-    assert ev["source"] == "fake" and ev["conversation"] == m["conversation"] and ev["sender"] == "Morgan"
+    assert ev["source"] == "fake" and ev["conversation"] == m["conversation"] and ev["sender"] == "Sam"
     assert agent._wake.is_set() and agent._urgent                                # it wakes Pip like any visitor
     assert ch.read_calls == [(m["conversation"], "a1")]                          # and is acknowledged
     assert "the first time you heard from someone outside, through fake" in agent._perception("event", [])

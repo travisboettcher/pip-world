@@ -102,7 +102,7 @@ class FakeChannel:
 
     def __init__(self, allowed: dict[str, str] | None = None, store: ChannelStore | None = None,
                  capabilities=("receive", "threads", "typing", "receipts")):
-        self.allowed = allowed if allowed is not None else {"u1": "Morgan"}
+        self.allowed = allowed if allowed is not None else {"u1": "Sam"}
         self.store = store
         self.capabilities = frozenset(capabilities)
         self.sent: list[tuple[Outbound, str, str]] = []     # (message, conversation it went to, result conversation)

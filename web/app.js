@@ -247,7 +247,7 @@ $('chat-form').addEventListener('submit', async (ev) => {
   if (!text) return;
   $('chat-input').value = '';
   try {
-    const r = await post('/inbox', { text, sender: store.get('giver', 'Morgan') });
+    const r = await post('/inbox', { text, sender: store.get('giver', 'visitor') });
     showVisitor(r.id, text, Date.now() / 1000);
     trackPending(r.id);
   } catch (err) {
@@ -548,7 +548,7 @@ $('wake').addEventListener('click', async () => {
   setTimeout(() => { b.textContent = 'Wake Pip'; b.disabled = false; }, 1500);
 });
 $('g-kind').addEventListener('change', () => { $('g-seed').hidden = $('g-kind').value !== 'seed'; });
-$('g-from').value = store.get('giver', 'Morgan');
+$('g-from').value = store.get('giver', 'visitor');
 $('give-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const status = $('g-status');

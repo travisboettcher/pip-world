@@ -24,7 +24,7 @@ Add a backend in `brain/app/llm/` and register it in `llm/__init__.py`; add a pa
 `cd brain && pip install -r requirements-dev.txt && pytest`
 
 ## Talking to Pip: `pipchat`
-Stdlib-only CLI (`./pipchat`, or symlink it onto your PATH). Defaults to the Traefik URL; override with `PIP_URL` or `--url`.
+Stdlib-only CLI (`./pipchat`, or symlink it onto your PATH). Defaults to `http://localhost:8000`; override with `PIP_URL` or `--url`.
 ```sh
 ./pipchat                       # interactive chat; /status /usage /notes /log /watch /tick work inside it
 ./pipchat "hello Pip"           # say one thing, print the reply
@@ -87,7 +87,7 @@ Design: [DESIGN-memory.md](DESIGN-memory.md).
   involved, and a fresh self-portrait. These sit at the top of every prompt at a fixed size (~500-900 tokens).
 - **`recall(query)`**: Pip searches its journal, visitor messages, gifts, work, reflections and people notes
   (SQLite FTS5).
-- **Who's talking**: visitor messages carry a sender (`pipchat --from`, default `$PIP_NAME` or Morgan; the web UI
+- **Who's talking**: visitor messages carry a sender (`pipchat --from`, default `$PIP_NAME` or `visitor`; the web UI
   uses the name from the gift form), so Pip can remember people.
 ```sh
 ./pipchat memory                      # self-portrait, people, beliefs, recent days

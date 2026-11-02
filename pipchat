@@ -6,7 +6,7 @@
   pipchat status | usage | health
   pipchat give "tiny needle file" [--kind tool|material|food|seed] [-q N] [--message "for the clock!"]
   pipchat items | garden | projects | creations
-  pipchat memory | reflect | recall "what Morgan said about the clock"
+  pipchat memory | reflect | recall "what a visitor said about the clock"
   pipchat letters               the neighbor and the letters between them and Pip
   pipchat library [query]       books Pip is reading, or search the library
   pipchat notes [section] [--status open|done] [-n N]
@@ -14,7 +14,7 @@
   pipchat tick                  wake Pip now
   pipchat --json <command>      machine-readable output (watch emits JSON lines)
 
-Set PIP_URL (or --url) if Pip isn't at the default Traefik address.
+Set PIP_URL (or --url) if Pip isn't at http://localhost:8000, and PIP_NAME (or --from) to say who you are.
 """
 import argparse
 import json
@@ -26,8 +26,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_URL = "https://agent-world.internal.example.io"
-DEFAULT_SENDER = os.environ.get("PIP_NAME") or "Morgan"  # who you are to Pip (it remembers people by name)
+DEFAULT_URL = os.environ.get("PIP_URL") or "http://localhost:8000"
+DEFAULT_SENDER = os.environ.get("PIP_NAME") or "visitor"  # who you are to Pip (it remembers people by name)
 SECTIONS = ["diary", "todo", "wishlist", "ambitions", "learned"]
 TTY = sys.stdout.isatty()
 REPLY_TIMEOUT = 120   # Pip wakes within ~MIN_TICK_INTERVAL of a message, then thinks
@@ -678,13 +678,13 @@ def cmd_chat(pip: Pip, a) -> None:
 def build_parser() -> argparse.ArgumentParser:
     def common():  # fresh option objects per parser: set_defaults() mutates them in place
         cp = argparse.ArgumentParser(add_help=False)
-        cp.add_argument("--url", default=argparse.SUPPRESS, help=f"Pip's address (default $PIP_URL or {DEFAULT_URL})")
+        cp.add_argument("--url", default=argparse.SUPPRESS, help=f"Pip's address (default $PIP_URL or http://localhost:8000)")
         cp.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
         return cp
 
     ap = argparse.ArgumentParser(prog="pipchat", description="Talk to Pip", parents=[common()],
                                  epilog="Anything that isn't a command is said to Pip: pipchat \"hi!\"")
-    ap.set_defaults(url=os.environ.get("PIP_URL", DEFAULT_URL), json=False, func=cmd_chat)
+    ap.set_defaults(url=DEFAULT_URL, json=False, func=cmd_chat)
     sub = ap.add_subparsers(dest="command", metavar="command")
 
     def add(name, func, help, **kw):
@@ -740,7 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tool: kept; material: used up; food: eaten; seed: planted (default tool)")
     p.add_argument("--desc", help="short description Pip will see")
     p.add_argument("--message", help="something you say as you hand it over")
-    p.add_argument("--from", dest="sender", default=DEFAULT_SENDER, help="who it's from (default $PIP_NAME or Morgan)")
+    p.add_argument("--from", dest="sender", default=DEFAULT_SENDER, help="who it's from (default $PIP_NAME or visitor)")
     p.add_argument("--crop", help="seeds: what grows (default: name minus 'seeds')")
     p.add_argument("--grow-minutes", type=float, help="seeds: minutes to ripen (default 60)")
     p.add_argument("--yield", dest="yield_", type=int, help="seeds: crops per harvest (default 3)")
