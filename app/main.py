@@ -132,6 +132,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             "agent": agent.state.agent(),
             "usage": agent.state.usage_today(),
             "pending_inbox": len(agent.state.pending_inbox()),
+            "coins": agent.state.coins(),
             "ticks": agent.ticks,
             "backend": agent.backend.name,
             "model": settings.llm_model,

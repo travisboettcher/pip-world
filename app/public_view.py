@@ -47,7 +47,7 @@ ALWAYS = ("firsts", "returns")
 TOOLS_WITH_RESULT = frozenset({
     "set_activity", "eat", "rest", "use_item", "plant", "harvest", "start_project", "work_on", "abandon_project", "tend",
     "go_to", "browse", "read", "gather", "where_to", "experiment", "revise_plan", "sleep", "resume_project", "draw",
-    "write_piece", "look", "settle", "note_to_self", "edit_note", "resolve_note", "web_search",
+    "write_piece", "look", "settle", "note_to_self", "edit_note", "resolve_note", "web_search", "buy", "sell", "pay",
 })
 
 GENERIC_NAMES = frozenset({"a visitor", "visitor", "someone", "anonymous", "guest"})
@@ -113,4 +113,4 @@ def public_events(state, settings):
 
 
 def public_state(state_json: dict) -> dict:
-    return {"agent": state_json["agent"], "ticks": state_json["ticks"]}
+    return {"agent": state_json["agent"], "ticks": state_json["ticks"], "coins": state_json["coins"]}

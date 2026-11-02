@@ -334,6 +334,8 @@ class Agent:
             lines.append("Your belongings:")
             lines += [f"- {i['name']} x{i['qty']} ({i['kind']})" + (f": {i['description']}" if i["description"] else "")
                       for i in items] or ["- (nothing)"]
+        if any(t in self.tools for t in ("buy", "sell", "pay")):
+            lines.append(f"Coins: {self.state.coins()}")
         if "plant" in self.tools:
             lines.append("Your garden:")
             for g in self.state.garden():

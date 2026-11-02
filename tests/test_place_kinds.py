@@ -3,8 +3,8 @@ from app import place_kinds as K
 from app.world import KINDS
 
 
-def test_the_registry_has_the_four_kinds_with_their_rules():
-    assert list(K.KINDS) == ["wild", "yard", "shop", "sight"]
+def test_the_registry_has_the_five_kinds_with_their_rules():
+    assert list(K.KINDS) == ["wild", "yard", "shop", "market", "sight"]
     wild, yard, shop, sight = (K.KINDS[k] for k in ("wild", "yard", "shop", "sight"))
     assert set(wild.verbs) == {"gather"} and wild.loot_kinds == ("material", "food", "seed") and wild.max_tools == 0
     assert set(yard.verbs) == {"gather", "browse"} and "tool" in yard.loot_kinds and yard.max_tools == 1

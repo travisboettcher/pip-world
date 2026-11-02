@@ -495,7 +495,7 @@ async def test_first_arrival_designs_the_place_once(tmp_path):
     assert st.place_row("Saltholm")["status"] == "real"
     assert [r["key"] for r in st.place_rows()] == ["Saltholm"]
     reg = P.registry(st, s, None)["Saltholm"]
-    assert not reg.heard and reg.offers == ("browse", "gather") and reg.blurb == DESIGN["blurb"]
+    assert not reg.heard and reg.offers == ("browse", "gather", "buy", "sell", "pay") and reg.blurb == DESIGN["blurb"]
     assert reg.verbs["gather"][0] == "ask Mr Teague to let you pick through the drawer"
     assert "15-30 minutes" in reg.verbs["gather"][1] and "on account" in reg.verbs["gather"][1]
     st.update_agent(location="workshop")
@@ -659,8 +659,9 @@ def test_perception_says_when_a_closed_shop_opens(tmp_path):
     assert lines[0] == f"You are at: Saltholm, closed for now (it opens at {h}:00) - {DESIGN['description']}"
     assert not any(l.startswith("Here you can") for l in lines)
     st.update_place("Saltholm", hours=None)
-    assert "Here you can: browse (see what Mr Teague has in stock), gather (ask Mr Teague to let you pick through the drawer)." \
-        in P.perception(st, s, None)
+    assert ("Here you can: browse (see what Mr Teague has in stock), gather (ask Mr Teague to let you pick through the drawer), "
+            "buy (buy something from a booth here), sell (sell something you have to a booth here), "
+            "pay (pay what you owe on account here).") in P.perception(st, s, None)
 
 
 # --- gathering at invented places, and shops on account ---------------------------------------------------
@@ -713,9 +714,10 @@ async def test_browsing_a_shop_shows_whats_in_stock_and_whats_on_account(tmp_pat
     st.update_place("Saltholm", hours=None, on_account={"brass wire": 2})
     r = await call(agent, "browse")
     stock = r.text.split("\n")[0]
-    assert stock.startswith("In stock at Saltholm today: ") and stock.endswith(". gather to pick through it.")
-    assert len(stock.removeprefix("In stock at Saltholm today: ").split(", ")) == 4
-    assert r.text.split("\n")[1] == "On account here: 2 brass wire (nothing's owed yet; you can settle up later)."
+    assert stock.startswith("In stock at Saltholm today: ") and stock.endswith("gather to pick through the drawers on account.")
+    shown = stock.removeprefix("In stock at Saltholm today: ").split(". You have")[0].split("), ")
+    assert len(shown) == 4 and all("coins" in x for x in shown) and "You have 10 coins." in stock
+    assert r.text.split("\n")[1].startswith("On account here: 2 brass wire (") and "coins at today's prices; pay settles it)." in r.text
     st.set_meta(**{"stock:Saltholm": 0, "stock_at:Saltholm": time.time()})
     r = await call(agent, "browse")
     assert r.text.startswith("The shelves at Saltholm are bare today; they restock slowly, so come back in a day or so.")
@@ -1315,9 +1317,9 @@ async def test_a_half_stocked_shop_shows_half_as_much_and_lists_each_thing_on_ac
     st.update_place("Saltholm", hours=None, on_account={"brass wire": 2, "awl": 1})
     st.set_meta(**{"stock:Saltholm": 10, "stock_at:Saltholm": time.time()})          # half of the 20 for a full haul
     lines = (await call(agent, "browse")).text.split("\n")
-    shown = lines[0].removeprefix("In stock at Saltholm today: ").removesuffix(". gather to pick through it.").split(", ")
-    assert len(shown) == 2 and all(n in [e[0] for e in st.place_row("Saltholm")["loot"]] for n in shown)
-    assert lines[1] == "On account here: 2 brass wire, 1 awl (nothing's owed yet; you can settle up later)."
+    shown = lines[0].removeprefix("In stock at Saltholm today: ").split(". You have")[0].split("), ")
+    assert len(shown) == 2 and all(n.split(" (")[0] in [e[0] for e in st.place_row("Saltholm")["loot"]] for n in shown)
+    assert lines[1].startswith("On account here: 2 brass wire, 1 awl (") and "coins at today's prices; pay settles it)." in lines[1]
 
 
 def test_a_design_keeps_its_own_kind_and_resets_daylight(tmp_path):

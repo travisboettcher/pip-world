@@ -150,10 +150,16 @@ def _verb_help(rec: dict, verb: str, short: str) -> str | None:
             + " You'll see what you found when the time is up; resting stops early.")
 
 
+TRADE_VERBS = {"buy": "buy something from a booth here", "sell": "sell something you have to a booth here",
+               "pay": "pay what you owe on account here"}
+
+
 def invented_place(rec: dict) -> Place:
     """A places-table row as a Place: a heard-of one has no verbs yet; a real one has its kind's."""
     heard_of = rec["status"] != "real"
     verbs = {v: (short, _verb_help(rec, v, short)) for v, (short, _) in rec["verbs"].items()}
+    if not heard_of and kinds.KINDS[rec["kind"]].trades:
+        verbs.update({v: (short, None) for v, short in TRADE_VERBS.items()})
     since = [m for m in rec["mentions"] if m["ts"] > (rec["real_at"] or 0)]
     blurb = said_about(rec["mentions"]) if heard_of else rec["blurb"] + (f" ({said_about(since, 1)})" if since else "")
     return Place(rec["key"], blurb, rec["walk_minutes"] or 0,

@@ -12,6 +12,7 @@ from . import companions as comp
 from . import expectations as exp
 from . import gathering
 from . import invented_places as invented
+from . import market
 from . import creations as cr
 from . import memory as mem
 from . import library as lib
@@ -746,16 +747,57 @@ async def browse(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 def shop_stock(ctx, here: str, table: list, rec: dict) -> str:
-    """At a shop, browse shows what's in today (fewer things as the stock runs down) and what's on account."""
+    """At a shop, browse shows what's in today with its price (fewer things as the stock runs down) and what's on account."""
     level = gathering.stock(ctx.state, here)
     n = round(gathering.GLIMPSE * min(1.0, level / gathering.full_yield_at(ctx.state, here)))
-    lines = [f"In stock at {places.label(here)} today: " + ", ".join(gathering.glimpse(ctx.rng, here, n, table))
-             + ". gather to pick through it." if n else
+    now = time.time()
+    seen = [e for e in table if e[0] in gathering.glimpse(ctx.rng, here, n, table) and market.stock_left(ctx.state, here, e, now)]
+    lines = [f"In stock at {places.label(here)} today: "
+             + ", ".join(f"{e[0]} ({market.sell_price(ctx.state, here, e, now)} coins)" for e in seen)
+             + f". You have {ctx.state.coins()} coins. buy what you need; gather to pick through the drawers on account." if seen else
              f"The shelves at {places.label(here)} are bare today; they restock slowly, so come back in a day or so."]
     if rec["on_account"]:
+        owed = market.owed(ctx.state, here, now)
         lines.append("On account here: " + ", ".join(f"{q} {name}" for name, q in rec["on_account"].items())
-                     + " (nothing's owed yet; you can settle up later).")
+                     + f" ({owed} coins at today's prices; pay settles it).")
     return "\n".join(lines)
+
+
+def _qty(args: dict) -> int | None:
+    try:
+        q = int(args.get("quantity", 1))
+    except (TypeError, ValueError):
+        return None
+    return q if q >= 1 else None
+
+
+_TRADE_ITEM = {"item": {"type": "string"}, "quantity": {"type": "integer", "description": "optional; default 1"}}
+
+
+@tool("buy", "Buy something from a booth here with your coins. Prices change a little every day and as things are bought.",
+      _obj(_TRADE_ITEM, ["item"]), where=("market",))
+async def buy(ctx: ToolContext, args: dict) -> ToolResult:
+    qty = _qty(args)
+    if qty is None:
+        return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
+    ok, text = market.buy(ctx.state, ctx.state.agent()["location"], str(args.get("item") or ""), qty, time.time())
+    return ToolResult(text if ok else f"error: {text}", followup=True)
+
+
+@tool("sell", "Sell something you have to a booth here. It pays less than it charges, and only has so many coins a day.",
+      _obj(_TRADE_ITEM, ["item"]), where=("market",))
+async def sell(ctx: ToolContext, args: dict) -> ToolResult:
+    qty = _qty(args)
+    if qty is None:
+        return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
+    ok, text = market.sell(ctx.state, ctx.state.agent()["location"], str(args.get("item") or ""), qty, time.time())
+    return ToolResult(text if ok else f"error: {text}", followup=True)
+
+
+@tool("pay", "Pay what you owe a booth here for things you took on account.", _obj({}, []), where=("market",))
+async def pay(ctx: ToolContext, args: dict) -> ToolResult:
+    ok, text = market.pay(ctx.state, ctx.state.agent()["location"], time.time())
+    return ToolResult(text if ok else f"error: {text}", followup=True)
 
 
 @tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "

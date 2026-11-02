@@ -24,6 +24,7 @@ class PlaceKind:
     refill: float = 15                          # ...and how many come back per hour
     shop_hours: bool = False                    # bounded opening hours (else: open in daylight)
     session: tuple[int, int] = DEFAULT_SESSION  # how long a gather there may be
+    trades: bool = False                        # has booths: buy, sell and pay work here (see market.py)
 
 
 KINDS: dict[str, PlaceKind] = {k.name: k for k in (
@@ -41,7 +42,11 @@ KINDS: dict[str, PlaceKind] = {k.name: k for k in (
                "grocer", "draper"),
               {"browse": ("see what's in stock today", None),
                "gather": ("ask to pick through the drawers, on account", "rummaging")},
-              ("tool", "material", "food", "seed"), max_tools=2, capacity=40, refill=2, shop_hours=True, session=(15, 30)),
+              ("tool", "material", "food", "seed"), max_tools=2, capacity=40, refill=2, shop_hours=True, session=(15, 30), trades=True),
+    PlaceKind("market", "somewhere with several booths to buy from and sell to: a market square, a bazaar, a quayside market",
+              ("market", "bazaar", "quay"),
+              {"browse": ("walk the booths and see what's on offer and at what price", None)},
+              ("tool", "material", "food", "seed"), max_tools=3, capacity=80, refill=4, shop_hours=True, trades=True),
     PlaceKind("sight", "somewhere just to go and see: a lighthouse, a ruin, a lake with a view", ()),
 )}
 FALLBACK = "sight"

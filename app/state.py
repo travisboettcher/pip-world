@@ -133,6 +133,12 @@ CREATE TABLE IF NOT EXISTS reflection_cites (
   reflection_id INTEGER NOT NULL, ref_kind TEXT NOT NULL, ref_id INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS reflection_cites_by_reflection ON reflection_cites (reflection_id);
+CREATE TABLE IF NOT EXISTS purses (party TEXT PRIMARY KEY, coins INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS market_prices (   -- how far one booth's price for one item has drifted (see market.py)
+  place TEXT NOT NULL, item TEXT NOT NULL, local REAL NOT NULL, local_at REAL NOT NULL, day TEXT NOT NULL DEFAULT '',
+  sold_today INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (place, item)
+);
+CREATE TABLE IF NOT EXISTS tills (place TEXT PRIMARY KEY, coins INTEGER NOT NULL, day TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS facets (
   key TEXT PRIMARY KEY, label TEXT NOT NULL, tier TEXT NOT NULL, first_event_id INTEGER,
   first_ts REAL NOT NULL, last_ts REAL NOT NULL, count INTEGER NOT NULL DEFAULT 1, shown INTEGER NOT NULL DEFAULT 0
@@ -576,6 +582,49 @@ class State:
         with self.lock:
             self.db.execute("UPDATE items SET qty = qty - ? WHERE id = ?", (qty, item_id))
             self.db.execute("DELETE FROM items WHERE id = ? AND qty <= 0", (item_id,))
+            self.db.commit()
+
+    # --- coins and markets (see market.py) ------------------------------
+    START_COINS = 10
+
+    def coins(self, party: str = "pip") -> int:
+        with self.lock:
+            row = self.db.execute("SELECT coins FROM purses WHERE party = ?", (party,)).fetchone()
+        return row["coins"] if row else (self.START_COINS if party == "pip" else 0)
+
+    def add_coins(self, party: str, delta: int) -> int:
+        """Change a purse by `delta` coins (a purse never goes below zero). Returns the new total."""
+        with self.lock:
+            total = self.coins(party) + int(delta)
+            if total < 0:
+                raise ValueError(f"{party} has only {self.coins(party)} coins")
+            self.db.execute("INSERT INTO purses (party, coins) VALUES (?, ?) ON CONFLICT(party) DO UPDATE SET coins = excluded.coins",
+                            (party, total))
+            self.db.commit()
+        return total
+
+    def price_row(self, place: str, item: str) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM market_prices WHERE place = ? AND item = ?", (place, item)).fetchone()
+        return dict(row) if row else None
+
+    def set_price_row(self, place: str, item: str, local: float, local_at: float, day: str, sold_today: int) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO market_prices (place, item, local, local_at, day, sold_today) VALUES (?, ?, ?, ?, ?, ?) "
+                            "ON CONFLICT(place, item) DO UPDATE SET local = excluded.local, local_at = excluded.local_at, "
+                            "day = excluded.day, sold_today = excluded.sold_today",
+                            (place, item, local, local_at, day, sold_today))
+            self.db.commit()
+
+    def till_row(self, place: str) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM tills WHERE place = ?", (place,)).fetchone()
+        return dict(row) if row else None
+
+    def set_till(self, place: str, coins: int, day: str) -> None:
+        with self.lock:
+            self.db.execute("INSERT INTO tills (place, coins, day) VALUES (?, ?, ?) "
+                            "ON CONFLICT(place) DO UPDATE SET coins = excluded.coins, day = excluded.day", (place, int(coins), day))
             self.db.commit()
 
     # --- garden ----------------------------------------------------------

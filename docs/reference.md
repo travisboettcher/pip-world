@@ -241,3 +241,8 @@ A new kind of change is one entry in that registry. Changes without an entry sti
 See [DESIGN-art.md](DESIGN-art.md). `draw(title, svg)` takes an SVG on a 400 x 300 canvas, which is parsed against a strict whitelist and re-serialised (scripts,
 images, links, styles and external references are refused with a reason Pip can fix); `write_piece(title, text)` keeps a public piece of writing. Both appear in the
 gallery (`GET /works`, the Work tab, `pipchat gallery`), are paced by `WORKS_PER_DAY`, and a drawing can go with a postcard as a PNG.
+
+## Coins and markets
+Design: [DESIGN-market.md](DESIGN-market.md). Pip has a purse (10 coins to start; `GET /state` shows `coins`). At a shop or market (a place kind
+that trades) the tools `buy`, `sell` and `pay` appear, and `browse` lists the day's prices. Prices move a little with trade and drift back, a booth
+pays 60% of what it charges and has only a day's coins to pay out, and anything Pip can find can be bought. Add `buy,sell,pay` to `TOOLS`.

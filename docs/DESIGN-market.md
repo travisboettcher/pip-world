@@ -1,6 +1,8 @@
 # Design: markets and coins
 
-Status (2026-11-02): design, nothing built. Grew out of the tomato glut (81 tomatoes after a day of scoop-seeds-and-replant):
+Status (2026-11-02): phase 1 built (`app/market.py`, `tests/test_market.py`); phases 2-3 not yet. Where the build differs from the plan below: a
+booth's stock for the day is `max(2, 2 * the table's biggest quantity)` per item (no restocking mid-day), tills reset daily (not accumulate),
+and `pay` settles the whole account at once. Grew out of the tomato glut (81 tomatoes after a day of scoop-seeds-and-replant):
 crops had no demand. Crops now take about a day (v0.2.1); this gives the surplus somewhere to go, and gives Pip a reason to
 roam, forage and want things. It replaces the ROADMAP's "Small economy" item.
 
