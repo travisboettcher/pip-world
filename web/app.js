@@ -37,12 +37,14 @@ async function api(path, opts) {
   return r.json();
 }
 const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+let PUBLIC = false; // set at boot from /mode: the public, read-only view hides every control and the owner-only panels
 const timers = {};
 const debounce = (key, fn, ms = 800) => { clearTimeout(timers[key]); timers[key] = setTimeout(fn, ms); };
 
 // ---- describing events (mirrors pipchat's format_event) ---------------------
 function describeTool(d) {
   const a = d.args || {}, r = String(d.result ?? '');
+  if (PUBLIC) return d.result ? { group: 'actions', text: `Pip: ${r}` } : null; // the public feed carries results, not arguments
   if (d.noop) return null; // nothing changed (e.g. restating the same activity)
   switch (d.tool) {
     case 'say': return null; // shown via the 'say' event
@@ -139,7 +141,7 @@ function describe(e) {
 // ---- activity feed ----------------------------------------------------------
 let filters = { chat: true, actions: true, journal: true, world: true, system: false, ...store.get('filters', {}) };
 function renderFilters() {
-  $('filters').replaceChildren(...GROUPS.map(([key, label]) => h('button', {
+  $('filters').replaceChildren(...GROUPS.filter(([key]) => !(PUBLIC && key === 'chat')).map(([key, label]) => h('button', {
     type: 'button', class: 'chip', 'aria-pressed': String(!!filters[key]),
     onclick: () => { filters[key] = !filters[key]; store.set('filters', filters); renderFilters(); applyFilters(); },
   }, label)));
@@ -337,6 +339,7 @@ function renderState() {
   const a = state.agent, u = state.usage;
   $('now').replaceChildren(h('b', {}, a.activity), a.description ? ` — ${a.description}` : '');
   $('meters').replaceChildren(meter('Hunger', a.hunger, 'hunger'), meter('Energy', a.energy));
+  if (PUBLIC) { $('meta').replaceChildren(...[['Mood', a.mood], ['Location', a.location], ['Ticks since start', state.ticks]].flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])); return; }
   const meta = [['Mood', a.mood], ['Location', a.location], ['Model', `${state.model} via ${state.backend}`],
                 ['Pacing', state.pacing], ['Ticks since start', state.ticks], ['Inbox waiting', state.pending_inbox],
                 ['Tools', state.tools.join(', ')]];
@@ -481,7 +484,7 @@ function renderMind() {
     ...section('How Pip has changed', (m.changes || []).slice(0, 4).map((c) => h('li', {}, c.text, tag(c), h('small', {}, fmtDay(c.period_end))))));
   const ex = (m.expectations || []).filter((x) => x.kind !== 'step');
   $('mind-people').replaceChildren(
-    ...section('People', (m.people || []).map((p) => h('li', {}, h('b', {}, p.name), ` — ${p.notes}`))),
+    ...section('People', PUBLIC ? [] : (m.people || []).map((p) => h('li', {}, h('b', {}, p.name), ` — ${p.notes}`))),
     ...section('Days', (m.days || []).slice(0, 5).map((d) => h('li', {}, d.text, h('small', {}, fmtDay(d.period_end))))),
     ex.length ? h('p', { class: 'hint' }, `${ex.length} predictions recorded, ${ex.filter((x) => x.surprising).length} surprising.`) : null);
   const decisions = (m.night_decisions || []).slice(0, 6).map((d) => h('li', { class: d.undone ? 'done' : '' }, `#${d.id} ${d.summary}`,
@@ -609,12 +612,15 @@ function connect() {
 
 // ---- boot -------------------------------------------------------------------
 renderFilters();
-showTab(location.hash.slice(1) || store.get('tab', 'now'), false);
-setChatOpen(store.get('chatOpen', false), false);
 (async function boot() {
+  try { PUBLIC = (await api('/mode')).public; } catch { /* an older server: the full dashboard */ }
+  document.body.classList.toggle('public', PUBLIC);
+  if (PUBLIC) $('tabbar').prepend($('tab-btn-world')); // the map first
+  showTab(location.hash.slice(1) || (PUBLIC ? 'world' : store.get('tab', 'now')), false);
+  setChatOpen(!PUBLIC && store.get('chatOpen', false), false);
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), refreshLetters(), refreshWorks()]);
+    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {

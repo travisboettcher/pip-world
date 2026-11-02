@@ -100,6 +100,10 @@ class Settings:
     matrix_room_id: str = ""
     matrix_allowed: dict = field(default_factory=dict)   # {"@morgan:server": "Morgan"}
 
+    # The public, read-only view (docs/DESIGN-public-view.md): requests whose Host is listed are served the scrubbed, read-only surface
+    public_hosts: list = field(default_factory=list)
+    public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people Pip knows are hidden anyway)
+
     # Stat dynamics, per hour
     hunger_per_hour: float = 0.08
     energy_per_hour: float = 0.05
@@ -114,6 +118,8 @@ class Settings:
         e = os.environ.get
         return cls(
             db_path=e("DB_PATH", "/data/agent.db"),
+            public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],
+            public_redact=[n.strip() for n in (e("PUBLIC_REDACT") or "").split(",") if n.strip()],
             persona_path=e("PERSONA_PATH", "/srv/persona.md"),
             llm_backend=e("LLM_BACKEND") or "anthropic",
             llm_model=e("LLM_MODEL") or "claude-haiku-5-5",

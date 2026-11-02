@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response, StreamingResponse
+import json
+
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -15,6 +17,7 @@ from . import creations as cr
 from . import emotions as emo
 from . import invented_places as invented
 from . import places
+from . import public_view as pv
 from . import projects as proj
 from . import worldmap
 from .config import Settings
@@ -70,15 +73,51 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         task.cancel()
 
     app = FastAPI(title="pip-world", lifespan=lifespan)
+    app.state.settings = settings
+    app.state.public_streams = 0
+
+    @app.middleware("http")
+    async def public_view(request: Request, call_next):
+        """Requests on a PUBLIC_HOSTS host: default-deny, read-only, names hidden, cacheable (see public_view.py)."""
+        request.state.public = pv.is_public(request, settings)
+        if not request.state.public:
+            return await call_next(request)
+        if not pv.allowed(request.method, request.url.path):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        response = await call_next(request)
+        if response.headers.get("content-type", "").startswith("application/json") and response.status_code == 200:
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            data = pv.redact(json.loads(body), pv.names_to_hide(app.state.agent.state, settings))
+            response = JSONResponse(data, status_code=200)
+        if response.status_code == 200 and request.url.path != "/stream":
+            response.headers["Cache-Control"] = f"public, max-age={pv.CACHE_SECONDS}"
+        return response
+
+    @app.get("/mode")
+    def mode(request: Request):
+        return {"public": request.state.public}
 
     @app.get("/stream")
     async def stream(request: Request, after_id: int | None = None):
         """Live events (SSE). Starts after `after_id`, the Last-Event-ID header (auto-reconnect), or now."""
         state = app.state.agent.state
+        transform = None
+        if request.state.public:
+            if app.state.public_streams >= pv.MAX_PUBLIC_STREAMS:
+                return JSONResponse({"detail": "Too many viewers right now"}, status_code=503)
+            transform = pv.public_events(state, settings)
         if after_id is None:
             after_id = int(request.headers.get("last-event-id") or 0) or \
                        next((e["id"] for e in state.events(limit=1)), 0)
-        return StreamingResponse(event_stream(state, after_id, request.is_disconnected),
+        async def frames():
+            counted = request.state.public
+            app.state.public_streams += counted
+            try:
+                async for frame in event_stream(state, after_id, request.is_disconnected, transform=transform):
+                    yield frame
+            finally:
+                app.state.public_streams -= counted
+        return StreamingResponse(frames(),
                                  media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
@@ -87,9 +126,9 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         return {"ok": True}
 
     @app.get("/state")
-    def get_state():
+    def get_state(request: Request):
         agent: Agent = app.state.agent
-        return {
+        full = {
             "agent": agent.state.agent(),
             "usage": agent.state.usage_today(),
             "pending_inbox": len(agent.state.pending_inbox()),
@@ -99,10 +138,15 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             "pacing": agent.pacing.name,
             "tools": list(agent.tools),
         }
+        return pv.public_state(full) if request.state.public else full
 
     @app.get("/events")
-    def get_events(limit: int = 50, before_id: int | None = None, after_id: int | None = None):
-        return app.state.agent.state.events(min(limit, 500), before_id, after_id)
+    def get_events(request: Request, limit: int = 50, before_id: int | None = None, after_id: int | None = None):
+        events = app.state.agent.state.events(min(limit, 500), before_id, after_id)
+        if request.state.public:
+            shown = pv.public_events(app.state.agent.state, settings)
+            return [e for e in map(shown, events) if e]
+        return events
 
     @app.get("/notes")
     def get_notes(limit: int = 50, status: str | None = None):
@@ -217,9 +261,9 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 "items": o.state.outreach_rows(min(limit, 200))}
 
     @app.get("/memory")
-    def get_memory():
+    def get_memory(request: Request):
         st = app.state.agent.state
-        return {"self": st.meta("self_portrait"), "people": st.people(),
+        full = {"self": st.meta("self_portrait"), "people": st.people(),
                 "days": st.reflections("day", limit=30), "insights": st.reflections("insight", limit=50, by_importance=True),
                 "portraits": st.reflections("portrait", limit=20), "changes": st.reflections("change", limit=20),
                 "stats": [{"day": d, **v} for d, v in st.day_stats(14)],
@@ -228,6 +272,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 "night_decisions": st.decisions(20), "focus": st.focus(None, 20),
                 "turning": st.reflections("turning", limit=20), "turning_candidates": st.turning_points(20),
                 "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
+        return {k: v for k, v in full.items() if k != "people"} if request.state.public else full
 
     @app.get("/recall")
     def get_recall(q: str, limit: int = 5):

@@ -135,3 +135,6 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .map .map-pip-ring { fill: none; stroke: var(--bad); stroke-width: .35; animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes map-pulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.5); } }
 @media (prefers-reduced-motion: reduce) { .map .map-pip-ring { animation: none; opacity: .5; } }
+
+/* The public, read-only view (PUBLIC_HOSTS): no controls, no owner-only panels, no usage or model details */
+.public #wake, .public #usage-pill, .public #usage-pop, .public #chat-panel, .public #chat-toggle, .public .owner-only { display: none !important; }

@@ -174,7 +174,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [ ] First release tag (`v0.1.0`), and the original deployment moving to the published image.
 
 ### A public, read-only view of the dashboard (owner idea, 2026-11-01)
-- [ ] A live, read-only page showing Pip's world, linked from the new repo's README. Not designed yet; what any design has to respect:
+- [x] Built (`PUBLIC_HOSTS`, `app/public_view.py`, DESIGN-public-view.md). Still to do: the owner reads exactly what it exposes, then the public hostname, a README link and screenshot. The requirements it follows:
       - **Default deny, in the app**: a `PUBLIC_VIEW` mode where only an allowlist of GET endpoints answers (map, garden, belongings, creations, works, emotions, projects, the diary
         sections that are Pip's own) and everything else (writes, `/tick`, `/inbox`, letters, outreach, people, recall, memory internals, `/stream` as it is) is refused. A Traefik
         path rule alone is not enough: the next endpoint someone adds would be public by accident.
