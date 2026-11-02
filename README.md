@@ -43,6 +43,9 @@ Open <http://localhost:8000/ui/> for the dashboard. Talk to Pip from a terminal 
 
 Pip wakes by itself, so give it a few minutes. The dashboard shows what it is doing, its belongings and garden, the map, its projects and journal.
 
+**See it running:** <https://pip.techdebtor.io> is a live, read-only view of the author's own Pip (the map, belongings, garden, projects, journal and mind).
+It is the `PUBLIC_HOSTS` mode described in [docs/DESIGN-public-view.md](docs/DESIGN-public-view.md), so you can offer the same for yours.
+
 ### What it costs
 
 It makes about 125 model calls a day. Measured over a real day on the default small model: about 1.3 million input and 40 thousand output tokens, which at the
@@ -53,7 +56,7 @@ cap: ticks pause when it is reached. Start with the default and watch the dashbo
 
 The dashboard and API have **no login** and include write endpoints (messages, gifts, waking it). The compose file publishes the port on `127.0.0.1` only. Keep it
 that way unless something in front of it handles access (a VPN, or a reverse proxy with authentication). Anyone who can reach it can talk to Pip and send it
-text that ends up in its prompt.
+text that ends up in its prompt. To show it to the world, don't expose the dashboard: set `PUBLIC_HOSTS` and route only that hostname publicly (see docs/DESIGN-public-view.md); the owner hostname must stay private.
 
 ## Configuration
 
