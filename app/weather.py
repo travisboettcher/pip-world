@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
-import httpx
+from .httpclient import http_client  # noqa: F401  (providers use it; kept importable from here)
 
 REFRESH_EVERY = 600        # seconds between requests to a provider
 STALE_AFTER = 3600         # a reading older than this is not shown or used
@@ -66,22 +66,6 @@ def provider(settings):
     """The configured provider, or None if the name is unknown."""
     cls = PROVIDERS.get(settings.weather_provider)
     return cls(settings) if cls else None
-
-
-class http_client:
-    """`async with http_client(http) as client`: the caller's client if given (left open), else a fresh one."""
-    def __init__(self, client=None):
-        self.client, self.own = client, client is None
-
-    async def __aenter__(self):
-        if self.own:
-            self.client = httpx.AsyncClient()
-        return self.client
-
-    async def __aexit__(self, *exc):
-        if self.own:
-            await self.client.aclose()
-        return False
 
 
 # --- the stored reading ---------------------------------------------------------------------------------------------

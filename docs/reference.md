@@ -6,7 +6,7 @@ truth; `docker-compose.yml` is generated (`hllc build agent_world/agent_world.hl
 
 ## Run
 ```sh
-cp .env.tpl .env   # add ANTHROPIC_API_KEY (and TAVILY_API_KEY for web_search)
+cp .env.tpl .env   # add ANTHROPIC_API_KEY (and TAVILY_API_KEY for web_search; the source is a provider, see `search.py`)
 docker compose up -d --build
 ```
 Internal only: `https://agent-world.internal.example.io` (`/state`, `/events`, `POST /inbox`, `POST /tick`).

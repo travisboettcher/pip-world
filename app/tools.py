@@ -7,8 +7,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-import httpx
-
 from . import art
 from . import companions as comp
 from . import expectations as exp
@@ -19,6 +17,7 @@ from . import memory as mem
 from . import library as lib
 from . import neighbors as nb
 from . import places
+from . import search
 from . import weather
 from . import projects as proj
 from . import emotions as emo
@@ -442,17 +441,10 @@ async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
 @tool("web_search", "Search the web for something you are curious about.",
       _obj({"query": {"type": "string"}}, ["query"]))
 async def web_search(ctx: ToolContext, args: dict) -> ToolResult:
-    async with httpx.AsyncClient(timeout=30) as http:
-        r = await http.post(
-            "https://api.tavily.com/search",
-            json={"api_key": ctx.settings.tavily_api_key, "query": str(args["query"]),
-                  "max_results": 3, "include_answer": True},
-        )
-        r.raise_for_status()
-    d = r.json()
-    lines = [d.get("answer") or ""]
-    lines += [f"- {x['title']}: {x['content'][:200]}" for x in d.get("results", [])]
-    return ToolResult("\n".join(l for l in lines if l)[:1200], followup=True)
+    found = await search.run(ctx.settings, str(args["query"]))
+    if found is None:
+        return ToolResult("error: web search isn't set up", followup=True)
+    return ToolResult(found or "nothing came back for that search", followup=True)
 
 
 # --- projects ---------------------------------------------------------------------
@@ -795,7 +787,7 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue
         if name not in REGISTRY:
             raise ValueError(f"unknown tool {name!r}; options: {sorted(REGISTRY)}")
-        if name == "web_search" and not settings.tavily_api_key:
+        if name == "web_search" and not search.ready(settings):
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue

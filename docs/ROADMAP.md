@@ -174,6 +174,18 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [ ] Consume it here as a **published artifact** (container image from the new repo's CI) rather than a copy or
       submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
 
+### A public, read-only view of the dashboard (owner idea, 2026-11-01)
+- [ ] A live, read-only page showing Pip's world, linked from the new repo's README. Not designed yet; what any design has to respect:
+      - **Default deny, in the app**: a `PUBLIC_VIEW` mode where only an allowlist of GET endpoints answers (map, garden, belongings, creations, works, emotions, projects, the diary
+        sections that are Pip's own) and everything else (writes, `/tick`, `/inbox`, letters, outreach, people, recall, memory internals, `/stream` as it is) is refused. A Traefik
+        path rule alone is not enough: the next endpoint someone adds would be public by accident.
+      - **Private data stays private**: visitor and Matrix messages, names of real people, letters, anything from the owner's channels. Every endpoint and event kind needs a
+        public/owner-only classification, and the event stream needs a filtered public variant.
+      - **Viewers never cost anything or change anything**: no LLM call, no wake, no write from a public request; responses cached; Traefik rate limit; no `forwardAuth`.
+      - **The UI in view mode**: the existing dashboard with its forms and chat hidden (no "give Pip something", no message box), the Map and World tabs first.
+      - **Rollout**: a private/internal URL first, then a public hostname once the owner has read exactly what it exposes; the README embeds a link (and a screenshot).
+      Fits the extraction (DESIGN-extract.md): the public view belongs in the engine as a mode, so anyone running it can offer the same.
+
 ### Day, night and sleep (built; DESIGN-sleep.md)
 - [x] Time of day and "day N of your life here"; the `sleep` tool; no ticks while asleep; the reflection runs as Pip sleeps
 

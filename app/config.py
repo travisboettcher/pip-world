@@ -92,7 +92,8 @@ class Settings:
     walk_minutes: float = 10           # how long it takes to walk between places
     read_chars_per_minute: int = 700   # how much text a reading session covers
     tools: list[str] = field(default_factory=list)
-    tavily_api_key: str = ""
+    search_provider: str = "tavily"    # which web search source: see search.py (providers register by name)
+    tavily_api_key: str = ""     # the Tavily provider's key
     # Matrix channel (see matrix.py): the homeserver, Pip's account and token, the one room, and who may talk to Pip
     matrix_homeserver: str = ""
     matrix_user_id: str = ""
@@ -179,6 +180,7 @@ class Settings:
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
             tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle").split(",") if t.strip()],
+            search_provider=(e("SEARCH_PROVIDER") or "tavily").strip().lower(),
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),
             matrix_user_id=e("MATRIX_USER_ID", ""),
