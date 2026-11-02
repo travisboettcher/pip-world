@@ -200,7 +200,7 @@ for now (Not now: a keeper character).
 - Recall and firsts need nothing new: arrivals log `arrived` (the `place:` first already exists in `firsts.py`), hauls log
   `gathered`, and the mention itself logs a `heard_of_place` event so recall can answer "who told me about Saltholm?".
 
-## Testing (TDD, per agent_world/CLAUDE.md)
+## Testing (TDD, per CLAUDE.md)
 All with the `fake` backend (`FakeBackend.queue` a `report` tool call; `FakeBackend.calls` to assert what a prompt
 contained), a fixed `random.Random`, and a temp `State`. Red first for each:
 - `accept`: a field whose name isn't in the text is dropped; the four Saltholm spellings give one place with aliases;

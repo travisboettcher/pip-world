@@ -19,7 +19,7 @@ Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an e
 | M4 | Richer tools, optional exposure | Not started |
 
 ## M1 - Headless brain (done)
-- [x] Python/FastAPI service, plain asyncio loop, SQLite state in a named volume, generated from `agent_world.hll`
+- [x] Python/FastAPI service, plain asyncio loop, SQLite state in a named volume
 - [x] Pluggable LLM backend (`anthropic`, `openai_compat`, `fake`) and pacing policy (`heartbeat_events`, `fixed_tick`, `manual`)
 - [x] Stats that decay by time (hunger, energy); alerts wake the agent
 - [x] Tools: `say`, `set_activity`, `eat`, `rest`, `note_to_self`, `resolve_note`, `use_item`, `plant`, `harvest`, `web_search`
@@ -232,7 +232,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       were separate stacks, so counts looked wrong: plural and case variants now stack (`name_key`), and existing duplicates merge at startup. The clock's stages never listed
       the gifted `pendulum` (Pip writes the plan), so it was never used: a stage now also uses up owned materials its name plainly mentions (whole words, one unit, never tools),
       and tells Pip. Tools named in a stage are checked but kept (pinned by a test). Still open: a stage that started before the gift (the finished clock) keeps its old plan.
-- [ ] Mutation testing baseline (2026-10-30): score 63.2% (13061 killed, 7614 survived of 20717), against the 95% cutoff in `agent_world/CLAUDE.md`. Worst: `gm` (prompt text),
+- [ ] Mutation testing baseline (2026-10-30): score 63.2% (13061 killed, 7614 survived of 20717), against the 95% cutoff in `CLAUDE.md`. Worst: `gm` (prompt text),
       `memory`, `state`, `nightpass`, `config`, `loop`, `projects`. Plan: raise it module by module when touching them; consider excluding prompt-text mutants in `gm`
 - [x] Let Pip edit its own notes: `edit_note` for todo/wishlist/ambitions/learned (not the diary), and wishes are flagged
       when Pip has since received a related item

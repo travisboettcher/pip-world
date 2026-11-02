@@ -1,8 +1,8 @@
 # agent_world
 
 Autonomous AI agent ("Pip") that wakes on its own, looks at its state, and acts via tools.
-M1 is headless: a Python/FastAPI brain with an HTTP API. `agent_world.hll` is the source of
-truth; `docker-compose.yml` is generated (`hllc build agent_world/agent_world.hll`).
+M1 is headless: a Python/FastAPI brain with an HTTP API. It runs as one container; the top-level README
+has the quick start.
 
 ## Run
 ```sh

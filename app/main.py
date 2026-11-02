@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         yield
         task.cancel()
 
-    app = FastAPI(title="agent-world", lifespan=lifespan)
+    app = FastAPI(title="pip-world", lifespan=lifespan)
 
     @app.get("/stream")
     async def stream(request: Request, after_id: int | None = None):

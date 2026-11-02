@@ -1,0 +1,19 @@
+# secrets and local configuration
+.env
+persona.md
+books/
+
+# Python and tooling
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+mutants/
+
+# the world (database, anything Pip made) lives in the Docker volume, never in git
+*.db
+*.sqlite
+*.sqlite3

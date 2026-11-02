@@ -7,13 +7,13 @@ import pytest
 import yaml
 
 HERE = Path(__file__).resolve()
-IMAGE = "ghcr.io/travisboettcher/agent-world:latest"
+IMAGE = "ghcr.io/travisboettcher/pip-world:latest"
 
 
 def find_root() -> Path | None:
     for p in HERE.parents:
         for base in (p / "public", p):
-            if (base / "docker-compose.yml").is_file() and (base / "agent-world.hll").is_file():
+            if (base / "docker-compose.yml").is_file() and (base / "pip-world.hll").is_file():
                 return base
     return None
 
@@ -37,26 +37,26 @@ def steps(wf: dict, job: str) -> list[dict]:
 
 
 def test_the_default_compose_runs_the_published_image_and_does_not_build():
-    svc = load("docker-compose.yml")["services"]["agent-world"]
+    svc = load("docker-compose.yml")["services"]["pip-world"]
     assert svc["image"] == IMAGE and "build" not in svc
     assert svc["ports"] == ["127.0.0.1:8000:8000"]
 
 
 def test_the_hll_names_the_same_image():
-    hll = (ROOT / "agent-world.hll").read_text()
+    hll = (ROOT / "pip-world.hll").read_text()
     assert re.findall(r'^\s*image\s+"([^"]+)"', hll, re.M) == [IMAGE] and "build" not in re.sub(r"#.*", "", hll)
 
 
 def test_building_from_source_is_an_explicit_override_of_the_same_service():
     override = load("docker-compose.build.yml")
-    assert override == {"services": {"agent-world": {"build": "."}}}
+    assert override == {"services": {"pip-world": {"build": "."}}}
 
 
 def test_the_readme_starts_from_the_image_and_says_how_to_build_instead():
     readme = (ROOT / "README.md").read_text()
     quick = readme.split("## Quick start")[1].split("```sh")[1].split("```")[0]            # the commands a newcomer copies
     assert "docker compose up -d" in quick and "--build" not in quick
-    assert "docker-compose.build.yml" in readme and "hllc build agent-world.hll --out docker-compose.yml" in readme
+    assert "docker-compose.build.yml" in readme and "hllc build pip-world.hll --out docker-compose.yml" in readme
     assert IMAGE.rsplit(":", 1)[0] in readme
 
 
@@ -93,3 +93,26 @@ def test_every_action_is_pinned_to_a_major_version():
             for s in job["steps"]:
                 if "uses" in s:
                     assert re.fullmatch(r"[\w./-]+@v\d+", s["uses"]), s["uses"]
+
+
+def test_the_new_repo_ignores_secrets_and_builds_from_only_what_the_dockerfile_copies():
+    ignored = (ROOT / ".gitignore").read_text().splitlines()
+    assert {".env", ".venv/", "mutants/", "__pycache__/"} <= set(ignored)
+    dockerfile = next((p / "Dockerfile" for p in (ROOT, ROOT.parent / "brain", ROOT.parent) if (p / "Dockerfile").is_file()), None)
+    copied = {m.group(1).rstrip("/").split("/")[0] for m in re.finditer(r"^COPY\s+(\S+)\s", dockerfile.read_text(), re.M)}
+    allowed = {ln[1:].rstrip("/") for ln in (ROOT / ".dockerignore").read_text().splitlines() if ln.startswith("!")}
+    assert copied <= allowed and (ROOT / ".dockerignore").read_text().splitlines().count("*") == 1      # everything else is left out
+    assert "Dockerfile" in allowed
+
+
+def test_the_new_repos_claude_md_assumes_nothing_about_the_homelab_layout():
+    text = (ROOT / "CLAUDE.md").read_text()
+    for needle in ("../", "brain/", "cd brain", "agent_world.hll", "homelab"):
+        assert needle not in text, needle
+    assert "pip-world.hll" in text and "docs/DESIGN-" in text
+
+
+def test_nothing_in_the_public_files_still_carries_the_old_name():
+    for rel in ("docker-compose.yml", "docker-compose.build.yml", "pip-world.hll", "README.md", "CLAUDE.md", ".github/workflows/image.yml", ".github/workflows/ci.yml"):
+        assert "agent-world" not in (ROOT / rel).read_text(), rel
+    assert not (ROOT / "agent-world.hll").exists()

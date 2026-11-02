@@ -171,7 +171,7 @@ def test_the_app_is_named_serves_drawings_locked_down_and_mounts_the_web_dir(tmp
     monkeypatch.setenv("WEB_DIR", str(web))
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
-        assert c.app.title == "agent-world" and c.app.url_path_for("ui", path="/index.html") == "/ui/index.html"
+        assert c.app.title == "pip-world" and c.app.url_path_for("ui", path="/index.html") == "/ui/index.html"
         assert "hello" in c.get("/ui/index.html").text
         d = c.app.state.agent.state.add_work("drawing", "A circle", art.sanitize_svg(GOOD), "round")
         h = c.get(f"/works/{d}.svg").headers

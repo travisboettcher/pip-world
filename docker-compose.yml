@@ -1,11 +1,11 @@
 # Run agent_world: `cp .env.example .env`, set ANTHROPIC_API_KEY, then `docker compose up -d` (pulls the published image).
 # To build the image from this checkout instead:  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-# The same service is described in agent-world.hll (an alternative way to generate this file; see the README).
+# The same service is described in pip-world.hll (an alternative way to generate this file; see the README).
 services:
-  agent-world:
+  pip-world:
     # `latest` follows the main branch; pin a release (for example :v1.0.0) if you want upgrades to be a choice.
-    image: ghcr.io/travisboettcher/agent-world:latest
-    container_name: agent-world
+    image: ghcr.io/travisboettcher/pip-world:latest
+    container_name: pip-world
     restart: unless-stopped
     env_file:
       - .env
@@ -14,9 +14,9 @@ services:
       # (127.0.0.1) unless something in front of them handles access (a VPN, or a reverse proxy with auth).
       - "127.0.0.1:8000:8000"
     volumes:
-      - agent-world-data:/data     # the world: database and everything Pip has made
+      - pip-world-data:/data     # the world: database and everything Pip has made
       # Optional (uncomment, and create the file or folder first - Docker would otherwise create a directory):
       # - ./persona.md:/srv/persona.md:ro   # Pip's instructions, re-read every tick: edit it and Pip changes on its next wake
       # - ./books:/library:ro               # a folder of books (EPUB, PDF, text, Markdown) or a Calibre library, for Pip's library
 volumes:
-  agent-world-data:
+  pip-world-data:

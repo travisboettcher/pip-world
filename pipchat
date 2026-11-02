@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Talk to Pip, the agent_world agent. Stdlib only.
+"""Talk to Pip, the pip-world agent. Stdlib only.
 
   pipchat                       interactive chat (slash commands work inside it too)
   pipchat "hello there"         say something, print the reply, exit

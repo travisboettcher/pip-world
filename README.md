@@ -1,4 +1,4 @@
-# agent_world
+# pip-world
 
 A small world with an autonomous creature in it.
 
@@ -23,9 +23,9 @@ It is an experiment in long-running agents, built to be watched for weeks rather
 ## Quick start
 
 ```sh
-git clone https://github.com/travisboettcher/agent-world && cd agent-world
+git clone https://github.com/travisboettcher/pip-world && cd pip-world
 cp .env.example .env          # set ANTHROPIC_API_KEY
-docker compose up -d          # pulls the published image (ghcr.io/travisboettcher/agent-world)
+docker compose up -d          # pulls the published image (ghcr.io/travisboettcher/pip-world)
 ```
 
 To build the image from your checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
@@ -95,8 +95,8 @@ is a two-line example, not loaded by default). It is re-read every tick, so edit
 
 ## Deploying with hll (alternative)
 
-[`agent-world.hll`](agent-world.hll) describes the same service for [hll](https://github.com/travisboettcher/hl-lang), a small language that generates Compose files.
-If you already manage your services that way: `hllc build agent-world.hll --out docker-compose.yml`. `docker-compose.yml` is what the project ships and
+[`pip-world.hll`](pip-world.hll) describes the same service for [hll](https://github.com/travisboettcher/hl-lang), a small language that generates Compose files.
+If you already manage your services that way: `hllc build pip-world.hll --out docker-compose.yml`. `docker-compose.yml` is what the project ships and
 tests; the `.hll` is an alternative, not a requirement. Both run the published image.
 
 ## Development

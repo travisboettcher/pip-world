@@ -2,7 +2,7 @@ name: Publish image
 
 # Builds the container image and pushes it to GitHub's container registry (ghcr.io/<owner>/<repo>):
 #   main -> :latest and :sha-<commit>;  a tag like v1.2.3 -> :1.2.3, :1.2 and :sha-<commit>.
-# docker-compose.yml and agent-world.hll run this image. The tests must pass first.
+# docker-compose.yml and pip-world.hll run this image. The tests must pass first.
 
 on:
   push:

@@ -1,0 +1,8 @@
+# Keep the build context to what the Dockerfile copies (see its COPY lines).
+*
+!Dockerfile
+!requirements.txt
+!app
+!web
+**/__pycache__
+**/*.pyc
