@@ -1,0 +1,18 @@
+# The same service as docker-compose.yml, as an hll source: https://github.com/travisboettcher/hl-lang
+# Generate the Compose file with `hllc build agent-world.hll --out docker-compose.yml` (docker-compose.yml is what the
+# project ships and tests; this is an alternative for people who already manage their services with hll).
+volume agent-world-data {}
+
+service agent-world {
+  build "."
+  container_name "agent-world"
+  env_file ".env"
+  restart unless-stopped
+  # The dashboard and API have no login and include write endpoints: keep them on this machine
+  # unless something in front of them handles access (a VPN, or a reverse proxy with auth).
+  publish "127.0.0.1:8000" -> 8000
+  volume agent-world-data -> "/data"
+  # Optional: Pip's instructions (re-read every tick) and a folder of books for its library.
+  # volume "./persona.md" -> "/srv/persona.md" { read_only }
+  # volume "./books" -> "/library" { read_only }
+}
