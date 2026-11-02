@@ -167,11 +167,11 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       in words and numeric only in the API and `pipchat`
 
 ### Extract to a public repo
-- [ ] Split `agent_world/` with history (`git subtree split` / `filter-repo`); audit history for secrets first
-- [ ] Remove deployment specifics (hostnames, the library mount, owner-specific persona text); ship a plain
-      `docker-compose.yml` + `.env.example`, README, license, token-budget warning
-- [ ] Consume it here as a **published artifact** (container image from the new repo's CI) rather than a copy or
-      submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
+- [x] Split out of the original deployment's repository with its history. Audited first: a secret scan of every commit, a search for the real secret values, and the private domain and
+      personal names scrubbed from files and commit messages (authorship kept). See `DESIGN-extract.md`.
+- [x] Deployment specifics removed; a plain `docker-compose.yml`, `.env.example`, README, license and a cost warning ship, with an hll file as an alternative to the compose file.
+- [x] Built and published by CI as a container image (`ghcr.io/travisboettcher/pip-world`); deployments run the image instead of building it.
+- [ ] First release tag (`v0.1.0`), and the original deployment moving to the published image.
 
 ### A public, read-only view of the dashboard (owner idea, 2026-11-01)
 - [ ] A live, read-only page showing Pip's world, linked from the new repo's README. Not designed yet; what any design has to respect:
