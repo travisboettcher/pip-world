@@ -374,13 +374,13 @@ async def test_use_item_consumes_materials_not_tools(tmp_path):
 
 @pytest.mark.asyncio
 async def test_garden_plant_harvest_eat(tmp_path):
-    s, st, _, agent = make(tmp_path, garden_speed=1e6)  # grows instantly
+    s, st, _, agent = make(tmp_path, garden_speed=1e9)  # grows instantly
     r = await reg("plant")(agent.ctx, {"seed": "tomato"})
     assert "plot 1" in r.text and st.find_item("tomato seeds")[0]["qty"] == 2
     await reg("plant")(agent.ctx, {"seed": "carrot seeds", "plot": 3})
     assert "already growing" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 1})).text
     assert "numbered 1-3" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 9})).text
-    time.sleep(0.05)  # speed 1e6 still needs a few ms
+    time.sleep(0.05)  # speed 1e9 still needs a moment
     ready = [g["crop"] for g in st.garden_newly_ready()]
     assert sorted(ready) == ["carrots", "tomatoes"] and st.garden_newly_ready() == []  # reported once
     assert "harvested 3 tomatoes" in (await reg("harvest")(agent.ctx, {})).text
@@ -437,7 +437,7 @@ async def test_harvest_when_nothing_ripe(tmp_path):
 
 @pytest.mark.asyncio
 async def test_perception_shows_belongings_and_garden_and_ripe_wakes(tmp_path):
-    s, st, backend, agent = make(tmp_path, garden_speed=1e6)
+    s, st, backend, agent = make(tmp_path, garden_speed=1e9)
     agent.tools = tools_mod.enabled_tools(Settings(tools=["use_item", "plant", "harvest", "eat"]))
     await reg("plant")(agent.ctx, {"seed": "tomato"})
     time.sleep(0.05)

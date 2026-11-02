@@ -27,6 +27,7 @@ from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
 from .state import State, clean_sender
+from .text import span
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
 
@@ -341,7 +342,7 @@ class Agent:
                 elif g["state"] == "ready":
                     lines.append(f"- plot {g['plot']}: {g['crop']} are RIPE - harvest them")
                 else:
-                    lines.append(f"- plot {g['plot']}: {g['crop']} growing, ready in about {g['ready_in_min']} min")
+                    lines.append(f"- plot {g['plot']}: {g['crop']} growing, ready in about {span(g['ready_in_min'])}")
         return lines
 
     def _projects(self) -> list[str]:

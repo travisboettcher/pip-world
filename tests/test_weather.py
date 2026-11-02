@@ -159,10 +159,10 @@ async def test_planting_takes_the_weather_into_account(tmp_path):
     s, st, gm, agent = make(tmp_path)
     s.weather = True
     W.save(st, reading("rainy"), time.time())
-    r = await call(agent, "plant", seed="carrot seeds")        # 45 minutes of growing, 15% less in the rain
-    assert "ready in about 38 min" in r.text
+    r = await call(agent, "plant", seed="carrot seeds")        # 18 hours of growing, 15% less in the rain
+    assert "ready in about 15 hours" in r.text
     plot = st.garden()[0]
-    assert plot["ready_in_min"] in (38, 39)
+    assert plot["ready_in_min"] in (918, 919)
     s.weather = False
     r = await call(agent, "plant", seed="tomato seeds")
-    assert "ready in about 60 min" in r.text
+    assert "ready in about 24 hours" in r.text

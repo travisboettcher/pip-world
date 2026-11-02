@@ -10,6 +10,7 @@ from . import emotions as emo
 from . import projects as proj
 from . import sleep as sleepmod
 from .state import SECTIONS
+from .text import span
 
 COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
@@ -60,7 +61,7 @@ def _garden(state, settings, arg, now):
         elif g["state"] == "ready":
             lines.append(f"Plot {g['plot']}: {g['crop']}, ready to harvest")
         else:
-            lines.append(f"Plot {g['plot']}: {g['crop']}, growing (ready in about {g['ready_in_min']} min)")
+            lines.append(f"Plot {g['plot']}: {g['crop']}, growing (ready in about {span(g['ready_in_min'])})")
     return "Garden\n" + "\n".join(lines)
 
 

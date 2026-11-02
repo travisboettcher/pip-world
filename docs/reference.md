@@ -45,7 +45,7 @@ guide (the `journal` topic) tells it how and encourages it to keep them. HTTP: `
 ## Belongings and garden
 Pip owns items (kind `tool`: kept, `material`: used up by `use_item`, `food`: eaten, `seed`: planted) and has a small
 garden (`GARDEN_PLOTS`, default 3). It starts with tomato and carrot seeds (given once). Crops grow in real time
-(`GROW_SPEED` speeds that up), a ripe crop wakes Pip, and harvested produce is food that fills more than a plain meal.
+(about a day each: tomatoes 24 h, carrots 18 h; `GROW_SPEED` speeds that up for testing), a ripe crop wakes Pip, and harvested produce is food that fills more than a plain meal.
 ```sh
 ./pipchat give "tiny needle file" --message "for the clock!"          # tool (kept)
 ./pipchat give "spare brass" --kind material -q 5                     # used up as Pip works

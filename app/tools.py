@@ -27,7 +27,7 @@ from .config import Settings
 from .llm.base import ToolSpec
 from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
-from .text import clip
+from .text import clip, span
 from .world import FOOD_DEFAULT, SEEDS_PER_FOOD, seed_packet_for
 
 
@@ -417,7 +417,7 @@ async def plant(ctx: ToolContext, args: dict) -> ToolResult:
     grow = float(at["grow_minutes"]) * weather.grow_factor(ctx.state, ctx.settings, time.time())  # rain helps, snow hinders
     ctx.state.plant(plot, item["name"], at["crop"], grow, int(at["yield"]), float(at["food_value"]))
     mins = max(1, round(grow / ctx.settings.garden_speed))
-    return ToolResult(f"planted {item['name']} in plot {plot}; {at['crop']} will be ready in about {mins} min")
+    return ToolResult(f"planted {item['name']} in plot {plot}; {at['crop']} will be ready in about {span(mins)}")
 
 
 @tool("harvest", "Harvest a ripe crop from the garden. Gives you food to eat.",
@@ -430,7 +430,7 @@ async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
     ripe = [p for p in plots if p["state"] == "ready" and plot in (None, p["plot"])]
     if not ripe:
         growing = [p for p in plots if p["state"] == "growing"]
-        hint = f"; next ready in about {min(p['ready_in_min'] for p in growing)} min" if growing else "; nothing is planted"
+        hint = f"; next ready in about {span(min(p['ready_in_min'] for p in growing))}" if growing else "; nothing is planted"
         return ToolResult(f"nothing ripe to harvest{hint}")
     p = ripe[0]
     ctx.state.clear_plot(p["plot"])

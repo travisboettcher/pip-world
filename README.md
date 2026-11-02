@@ -69,7 +69,7 @@ Everything is an environment variable, listed with comments in [`.env.example`](
 | `PACING` | `heartbeat_events` (wake on events and a slow heartbeat), `fixed_tick`, or `manual` |
 | `DAILY_TOKEN_BUDGET` | the daily cap on tokens |
 | `TOOLS` | which tools Pip has (the parts of the world that need a tool, like the garden, only appear when it is enabled) |
-| `GROW_SPEED`, `WORK_SPEED` | make crops and work sessions pass faster than real time (handy for testing) |
+| `GROW_SPEED`, `WORK_SPEED` | make crops (which take about a day) and work sessions pass faster than real time (handy for testing) |
 | `OUTREACH_CHANNELS`, `MATRIX_*` | let Pip write to a chat room |
 
 ## Pluggable parts

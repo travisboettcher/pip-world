@@ -2,6 +2,12 @@
 import re
 
 
+def span(minutes) -> str:
+    """A wait as "45 min", or in whole hours once it is two hours or more ("24 hours")."""
+    minutes = int(minutes)
+    return f"{minutes} min" if minutes < 120 else f"{round(minutes / 60)} hours"
+
+
 def clip(text, limit: int) -> str:
     """Collapse whitespace and shorten to `limit` chars, cutting at a sentence end when there is one."""
     text = " ".join(str(text or "").split())

@@ -1,14 +1,15 @@
 """World content: item kinds, starter belongings, and defaults for seeds and food."""
 
 KINDS = ("tool", "material", "food", "seed")
-SEED_DEFAULTS = {"grow_minutes": 60, "yield": 3, "food_value": 0.4}
+SEED_DEFAULTS = {"grow_minutes": 1440,  # a crop takes about a day: a plot gives one harvest a day, so replanting forever cannot flood the pantry
+                 "yield": 3, "food_value": 0.4}
 FOOD_DEFAULT = 0.3  # hunger restored by a food item with no explicit food_value
 
 STARTER_ITEMS = [
     {"name": "tomato seeds", "qty": 3, "kind": "seed", "description": "a paper packet of tomato seeds",
-     "attrs": {"crop": "tomatoes", "grow_minutes": 60, "yield": 3, "food_value": 0.5}},
+     "attrs": {"crop": "tomatoes", "grow_minutes": 1440, "yield": 3, "food_value": 0.5}},
     {"name": "carrot seeds", "qty": 3, "kind": "seed", "description": "a paper packet of carrot seeds",
-     "attrs": {"crop": "carrots", "grow_minutes": 45, "yield": 3, "food_value": 0.4}},
+     "attrs": {"crop": "carrots", "grow_minutes": 1080, "yield": 3, "food_value": 0.4}},
 ]
 
 
