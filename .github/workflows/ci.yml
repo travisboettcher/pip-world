@@ -10,7 +10,15 @@ permissions:
 
 jobs:
   test:
+    # The same suite under several timezones at once: the world has a clock (days run from local midnight, bedtime), and a test that quietly depends
+    # on the hour it runs at would pass for the author in the afternoon and fail for someone else at 2 am.
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [UTC, Asia/Kolkata, Pacific/Kiritimati, America/Chicago, Pacific/Pago_Pago, Europe/London]
+    env:
+      TZ: ${{ matrix.tz }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

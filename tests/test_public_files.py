@@ -63,6 +63,8 @@ def test_the_readme_starts_from_the_image_and_says_how_to_build_instead():
 def test_ci_runs_the_tests_on_pushes_and_pull_requests_and_proves_the_image_builds():
     wf = workflow("ci.yml")
     assert set(wf["on"]) >= {"push", "pull_request"}
+    matrix = wf["jobs"]["test"]["strategy"]["matrix"]["tz"]
+    assert len(matrix) >= 5 and "UTC" in matrix and wf["jobs"]["test"]["env"]["TZ"] == "${{ matrix.tz }}"     # the suite runs under several local clocks
     run = " ".join(s.get("run", "") for s in steps(wf, "test"))
     assert "pytest" in run and "requirements-dev.txt" in run
     build = steps(wf, "image")

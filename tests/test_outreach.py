@@ -144,8 +144,7 @@ async def test_limits_per_day_gap_night_and_failures(tmp_path):
     assert "too soon after your last one" in r.text and "Next possible after" in r.text
     assert agent.outreach.can_send() is False and "send_postcard" not in [sp.name for sp in T.specs_for(agent.tools, "workshop")
                                                                            if agent.outreach.can_send()]
-    st.db.execute("UPDATE outreach SET ts = ts - 4 * 3600")                      # 4 hours later
-    st.db.commit()
+    s.outreach_min_gap_hours = 0                                                 # the gap has passed (a day runs from local midnight, so no shifting timestamps)
     assert "on its way" in (await call(agent, "send_postcard", text="Another, new discovery today")).text
     r = await call(agent, "send_postcard", text="One more unrelated notion")
     assert "as many conversations as you can today" in r.text

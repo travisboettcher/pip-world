@@ -93,11 +93,8 @@ async def test_pictures_and_writing_are_paced(tmp_path):
     s, st, agent = await drawer(tmp_path, works_per_day=2, works_min_gap_minutes=10)
     assert "finish a drawing" in (await call(agent, "draw", title="One", svg=GOOD)).text
     assert "only just finished something" in (await call(agent, "write_piece", title="Two", text="A short poem " * 5)).text
-    st.db.execute("UPDATE works SET ts = ts - 3600")
-    st.db.commit()
+    s.works_min_gap_minutes = 0                                                  # the gap has passed (a day runs from local midnight, so no shifting timestamps)
     assert "finish a piece" in (await call(agent, "write_piece", title="Two", text="A short poem about brass, quite long enough.")).text
-    st.db.execute("UPDATE works SET ts = ts - 3600")
-    st.db.commit()
     assert "as much as you can today (2)" in (await call(agent, "draw", title="Three", svg=GOOD)).text
 
 
