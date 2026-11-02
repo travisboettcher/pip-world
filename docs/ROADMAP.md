@@ -1,7 +1,6 @@
 # agent_world roadmap
 
-Autonomous AI agent ("Pip") in a small virtual world, running as a homelab service. Origin: the Obsidian project
-note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 2026-10-29). Day-to-day usage is in
+Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an exploration. Day-to-day usage is in
 [README.md](README.md); this file tracks what's done, what's next, and the decisions behind it.
 
 ## Status at a glance
@@ -30,18 +29,18 @@ note `1-Projects/Autonomous AI Agent Virtual World.md` (exploration, started 202
 - [x] Belongings and garden (real-time growth, starter seeds); visitors give items via `POST /items`
 - [x] Daily token budget (5M ~ $0.70/day on Haiku 5.5); `pipchat usage` shows cost
 - [x] `pipchat` CLI: chat, status, usage, health, notes, log, watch, tick, give, items, garden, `--json`
-- [x] Restic backup script (`restic/backup-agent-world.sh`, registered in `backup-all.sh`)
-- [x] Internal-only Traefik route (`agent-world.internal.example.io`)
+- [x] A backup script for the data volume (lives with the deployment, not in this project)
+- [x] Internal-only route through the reverse proxy
 
 ## M1.5 - Local LLM experiment (optional)
-- [ ] Separate `llm_local/` stack serving an OpenAI-compatible endpoint on `traefik-net`; point `LLM_BACKEND=openai_compat` at it
-- [ ] Try a 3-4B model on the Arc A310 (4 GB VRAM, shared with Jellyfin) via an Intel-capable runtime; measure tool-calling
+- [ ] Separate `llm_local/` stack serving an OpenAI-compatible endpoint on the shared Docker network; point `LLM_BACKEND=openai_compat` at it
+- [ ] Try a 3-4B model on a small GPU (a few GB of VRAM, shared with other services) via a runtime that supports it; measure tool-calling
       reliability and tokens/sec
 - [ ] If a dedicated NVIDIA GPU is added (12-16+ GB): stock Ollama with passthrough and a larger model
 - [ ] Compare against the Claude default through the same loop (cost vs quality)
 
 ## M2a - Web dashboard + chat (done)
-Browser equivalent of `pipchat`, served by the existing service at `https://agent-world.internal.example.io/ui/`
+Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 (plain HTML/JS in `brain/web/`, bind-mounted so edits show on refresh; live updates over SSE at `/stream`).
 - [x] Live status (activity, mood, hunger/energy, model/pacing/tools, token usage and cost)
 - [x] Event feed with group filters, live updates
@@ -139,19 +138,19 @@ is in my notes, not in the gears".
 
 ### Social
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
-      in the thread, never at night), the Matrix channel, and the `matrix/` homeserver on `matrix.example.io` with `bootstrap.py` and a restic backup.
+      in the thread, never at night), the Matrix channel, and a Matrix homeserver stack (outside this project) with a bootstrap script and a backup.
       Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.
 - [x] **Slash commands in the Matrix channel** (owner feedback, 2026-10-30; built 2026-10-31, `commands.py`): a message that starts with `/word` is answered by the engine from
       state: `/help /status /items /garden /projects /creations /notes [section] /usage`. No LLM call, nothing in Pip's inbox, no wake, no event; the reply goes into the same
       thread as kind `reply`. Unknown commands get a pointer to `/help`; strangers are still dropped by the channel; `OUTREACH=log` sends nothing. Works on every channel.
 - [ ] Outreach, remaining: Element Web for a desktop view; inbound photos; a Telegram or webhook channel if ever wanted; end-to-end encryption (later);
-      add the homeserver to Uptime Kuma
+      add the homeserver to uptime monitoring
 - [x] Companion creations talk (chatter + answers to `say(to=...)`), on a `characters` table meant to be reused
 - [x] **A neighbor** (built; DESIGN-neighbor.md; deploy: add `write_letter` to `TOOLS`): a second creature with its own persona exchanging letters with delivery delays, so Pip has
       relationships beyond Morgan. Build multi-agent support once and reuse it for `companion` creations
 - [x] Visitor identity: remember who visited and what they talked about, per person (M3 people notes)
 
-### Homelab tie-ins
+### Integrations with the host environment
 - [x] **Real weather / daylight from Home Assistant** (built 2026-11-01; [DESIGN-weather.md](DESIGN-weather.md); deploy: `WEATHER=1` and a `HASS_TOKEN` in `.env`): Pip is told the conditions and
       when the sun turns; rain speeds crops and snow slows them, within 15%. Read-only, two entities only. Still open: sunset moving bedtime; storms damaging plots (with random events).
 - [x] A bookshelf: the Calibre library is a place Pip walks to and reads in (M3.6, DESIGN-library.md)
@@ -169,7 +168,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 
 ### Extract to a public repo
 - [ ] Split `agent_world/` with history (`git subtree split` / `filter-repo`); audit history for secrets first
-- [ ] Remove homelab specifics: hostnames, Calibre mount, Morgan-specific persona text; ship a plain
+- [ ] Remove deployment specifics (hostnames, the library mount, owner-specific persona text); ship a plain
       `docker-compose.yml` + `.env.example`, README, license, token-budget warning
 - [ ] Consume it here as a **published artifact** (container image from the new repo's CI) rather than a copy or
       submodule: this repo keeps only `agent_world.hll` pointing at the image, plus `.env`, persona and mounts
@@ -242,7 +241,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       Consider per-moment coverage
 - [ ] Dollar-based budget cap (`DAILY_BUDGET_USD` + per-model prices) instead of tokens only; output tokens cost 5x input
 - [ ] Healthcheck delays Traefik registration by ~30 s after a recreate (404s meanwhile); tighten interval/start period
-- [x] Verified `restic/backup-agent-world.sh` against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
+- [x] Verified the backup script against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
 - [ ] Briar's letters are getting repetitive (owner, 2026-10-30). **Designed 2026-10-31: [DESIGN-neighbor-memory.md](DESIGN-neighbor-memory.md)** (she sees gists of her own letters and a list of what Pip already knows, not her own sentences; no matching; the notes below are the earlier thinking). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
@@ -265,4 +264,4 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - **Eating stays unlimited**; food is a bonus. Food can be grown in the garden.
 - **Guard rails over prompt tuning** where possible (stat-number and duplicate note refusal, event-driven diary moments);
   deliberately no diary rate limit.
-- **Hardware:** Arc A310 (4 GB) is shared with Jellyfin; a good local LLM likely needs a dedicated NVIDIA GPU.
+- **Hardware:** a small shared GPU won't do; a good local LLM likely needs a dedicated NVIDIA GPU.

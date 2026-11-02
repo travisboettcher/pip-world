@@ -75,17 +75,17 @@ class Channel(Protocol):
   so the **phone must be able to reach the homeserver**. UnifiedPush (ntfy as distributor) is an FCM-free alternative.
 
 ### Reachability: the one real decision
-The phone needs the homeserver whenever it is away from home, but everything else here is internal-only (IP whitelist, WireGuard for remote).
+The phone needs the homeserver whenever it is away from home, but everything else here is internal-only (an IP allowlist, a VPN for remote access).
 | Option | For | Against |
 |---|---|---|
-| **Public hostname** (`matrix.example.io` via Traefik/Let's Encrypt), federation off, registration off | works from anywhere with the native app | a login surface on the internet (mitigate: no federation, no registration, strong passwords, rate limits, keep it updated) |
-| **Internal only + always-on WireGuard on the phone** | nothing exposed | VPN must be on to chat; any lapse = no messages |
+| **Public hostname** (`matrix.example.org` via a reverse proxy with Let's Encrypt), federation off, registration off | works from anywhere with the native app | a login surface on the internet (mitigate: no federation, no registration, strong passwords, rate limits, keep it updated) |
+| **Internal only + an always-on VPN on the phone** | nothing exposed | VPN must be on to chat; any lapse = no messages |
 
 The recommendation is a public hostname with federation and registration disabled and the accounts created once by script, because "chat from the phone
 anywhere" is the point; the internal-only route stays available (same code).
 
 ### Deployment (new `matrix/` service, hll-defined like the others)
-A lightweight homeserver container on the `docker_default` network, one volume (included in restic), env for `server_name`, `allow_federation=false`,
+A lightweight homeserver container on the same Docker network as the reverse proxy, one volume (included in the backups), env for `server_name`, `allow_federation=false`,
 registration closed (a one-time registration token to create the two accounts, then removed). Traefik routes `/_matrix` (and `/.well-known/matrix/client`
 if the server name differs from the host). Optional: Element Web at its own internal hostname for chatting from a desktop browser. A `matrix/bootstrap`
 script creates `@pip` (the bot) and your account and an invite-only, unencrypted room; Pip's `.env` gets the bot's access token.
@@ -126,7 +126,7 @@ Events `outreach` `{id, text, delivered, error?, channel, conversation, kind}` a
 - The destination is fixed in `.env`; allowed ids are an allow-list; strangers and other rooms are ignored. Inbound text is untrusted like any visitor's, capped at 2000 characters.
 - Tokens are never shown to the model, never logged, never in events. A prompt-injected page or visitor message can at most make Pip say something short to the owner,
   within the daily cap, in a logged event.
-- The homeserver is a new internet-facing service if public: federation and registration off, rate limits on, restic-backed, monitored in Uptime Kuma, and updated (watchtower is already here).
+- The homeserver is a new internet-facing service if public: federation and registration off, rate limits on, backed up, monitored in uptime Kuma, and updated (watchtower is already here).
 
 ## Persona
 One short paragraph: you have a way to message a friend outside, in a thread; start a conversation rarely, for what is worth telling; you may answer replies or not. Not for status updates.
@@ -135,7 +135,7 @@ One short paragraph: you have a way to message a friend outside, in a thread; st
 1. **Core, channel-agnostic:** extract `deliver_visitor_message` from `POST /inbox`; `inbox` gains `source` and `conversation`; the `Channel` interface and registry; `FakeChannel` and the
    contract suite; the policy (limits, quiet hours, checks), `send_postcard`, reply routing, events, `GET /outreach`, `pipchat outreach`, firsts, day counts, persona line.
 2. **Matrix channel** (httpx over the Client-Server API) passing the contract against a fake homeserver, with `typing`, threads, receipts and image upload.
-3. **The service:** `matrix/matrix.hll` (homeserver, Traefik route, restic entry, bootstrap script), accounts and room, Element X on the phone.
+3. **The service:** `matrix/matrix.hll` (homeserver, reverse-proxy route, backup entry, bootstrap script), accounts and room, Element X on the phone.
 4. Later: Element Web, E2EE, a Telegram or webhook channel, inbound photos.
 
 ## Decisions

@@ -88,3 +88,10 @@ async def test_an_unusable_answer_gives_nothing_and_a_failure_is_left_to_the_cal
     assert await W.provider(settings()).fetch(unusable) is None
     with pytest.raises(OSError):
         await W.provider(settings()).fetch(FakeHA({}, fail=True))
+
+
+def test_the_default_address_is_the_standard_home_assistant_one_and_can_be_set(monkeypatch):
+    monkeypatch.delenv("HASS_URL", raising=False)
+    assert Settings().hass_url == "http://homeassistant.local:8123" and Settings.from_env().hass_url == "http://homeassistant.local:8123"
+    monkeypatch.setenv("HASS_URL", "http://ha.example:8123")
+    assert Settings.from_env().hass_url == "http://ha.example:8123"

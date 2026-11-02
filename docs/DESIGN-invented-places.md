@@ -180,7 +180,7 @@ for now (Not now: a keeper character).
 - **Inflation**: shops restock over a day, at most two tool entries, tools always rare; yields follow `gathering`'s
   depletion. The GM proposes names and tiers; the engine decides weights, quantities and counts.
 - **Everything clipped and validated** like `neighbors.clean_parcel`; an unusable design is a bare place, never a crash.
-- **Owner control and persistence**: the `places` table lives in the SQLite volume (so restic backs it up). `GET /places`,
+- **Owner control and persistence**: the `places` table lives in the SQLite volume (so it is backed up with the volume). `GET /places`,
   `pipchat places` (heard-of and real, with who mentioned them), `pipchat places rm Saltholm` (status `removed`; if Pip is
   there it can still `go_to` away, and nothing is offered there), and `PATCH /places/<key>` for walk, hours, description and
   loot through the same validator. The roadmap's `places.json` becomes an **overlay** read at startup: entries override

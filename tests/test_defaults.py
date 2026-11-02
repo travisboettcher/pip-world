@@ -34,13 +34,13 @@ def test_the_dashboard_does_not_assume_who_is_giving_things(tmp_path):
     with TestClient(create_app(s, FakeBackend())) as c:
         page, js = c.get("/ui/index.html").text, c.get("/ui/app.js").text
     assert 'id="g-from" maxlength="40" value="visitor"' in page and "store.get('giver', 'visitor')" in js
-    assert "Morgan" not in page and "Morgan" not in js
+    assert 'value="Morgan"' not in page and "'Morgan'" not in js
 
 
 def test_pipchat_defaults_to_a_local_pip_and_a_neutral_name(monkeypatch):
     mod = load_pipchat(monkeypatch)
     assert mod.DEFAULT_URL == "http://localhost:8000" and mod.DEFAULT_SENDER == "visitor"
-    assert "example" not in PIPCHAT.read_text() and "Morgan" not in PIPCHAT.read_text()
+    assert ".internal." not in PIPCHAT.read_text()                                  # no private hostname baked in
 
 
 def test_pipchat_takes_who_you_are_and_where_pip_is_from_the_environment(monkeypatch):

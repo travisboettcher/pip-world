@@ -4,15 +4,15 @@ Note (2026-11-01): where the books come from is now a provider (`library.py` cor
 default `auto`). This document describes the Calibre provider, which is where the library started.
 
 Status (2026-10-29): built and tested (unit tests with a synthetic Calibre library, and a real-model run against
-the homelab library); not yet deployed.
+a real Calibre library); not yet deployed.
 
-First real run: nudged by a visitor, Pip walked over (the GM described the room from the real shelves - Call of
-Cthulhu, Numenera, Pathfinder beside the Docker Cookbook), searched for something to help its clock, read 45 minutes
-of *Deep Magic 1: Clockwork* (a summary plus two quotes), wrote about it in its diary, walked home and went back to
+First real run: nudged by a visitor, Pip walked over (the GM described the room from the real shelves - tabletop
+sourcebooks beside programming books), searched for something to help its clock, read 45 minutes
+of a book on clockwork (a summary plus two quotes), wrote about it in its diary, walked home and went back to
 work. Calibre's `metadata.db` was byte-for-byte unchanged.
 
 ## Why
-`location` has always been "workshop" and never changes. The homelab already has a real library: calibre-web serves
+`location` has always been "workshop" and never changes. A real library already existed: calibre-web serves
 a Calibre library of ~300 books (programming, tabletop RPG sourcebooks, travel guides; mostly PDF, some EPUB/MOBI).
 Making that a place Pip can walk to gives the world a second location, and gives Pip something to read that isn't
 made up: what it learns there is real, and it can feed projects ("after reading about ... I want to build ...").

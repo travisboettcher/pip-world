@@ -9,7 +9,7 @@ truth; `docker-compose.yml` is generated (`hllc build agent_world/agent_world.hl
 cp .env.tpl .env   # add ANTHROPIC_API_KEY (and TAVILY_API_KEY for web_search; the source is a provider, see `search.py`)
 docker compose up -d --build
 ```
-Internal only: `https://agent-world.internal.example.io` (`/state`, `/events`, `POST /inbox`, `POST /tick`).
+Served on port 8000 (`/state`, `/events`, `POST /inbox`, `POST /tick`, and the dashboard at `/ui/`).
 
 ## Swapping parts (env + restart, no rebuild)
 - `LLM_BACKEND`: `anthropic` (default) | `openai_compat` (set `LLM_BASE_URL`, e.g. `http://ollama:11434/v1`) | `fake`

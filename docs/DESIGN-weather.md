@@ -3,7 +3,7 @@
 Status (2026-11-01): built and deployed. Home Assistant is the first provider; the source is pluggable (see Providers). Roadmap: "Real weather / daylight from Home Assistant (harmless sensors only)".
 
 ## Goal
-The sky over the homelab is the sky over Pip's garden. Pip is told the real conditions and sunrise/sunset, and the weather nudges
+The sky over the house is the sky over Pip's garden. Pip is told the real conditions and sunrise/sunset, and the weather nudges
 the garden a little. Nothing in the house can be read beyond the weather, and nothing can be controlled.
 
 ## Providers
@@ -20,7 +20,7 @@ plain words with no effect on the garden. To add a source (say Open-Meteo, which
 `weather_<name>.py` with its mapping from the source's codes to those condition names, register it, and import it at the bottom of `weather.py`.
 
 ## Source and safety: the Home Assistant provider
-`app/weather_homeassistant.py` talks to Home Assistant (`http://home-assistant:8123`, same `docker_default` network), which already has the `met`
+`app/weather_homeassistant.py` talks to Home Assistant (by default `http://homeassistant.local:8123`; under Docker, the service name on a shared network), which already has the `met`
 weather and `sun` integrations. It reads exactly two entities with read-only GETs:
 - `GET /api/states/<WEATHER_ENTITY>` (default `weather.forecast_home`): `state` (condition), `attributes.temperature`, `temperature_unit`.
 - `GET /api/states/sun.sun`: `attributes.next_rising`, `attributes.next_setting`, `state` (`above_horizon` / `below_horizon`).
