@@ -136,7 +136,7 @@ async def test_a_drawing_can_travel_with_a_postcard_where_the_channel_carries_pi
 
 
 def test_the_gallery_api_serves_only_the_sanitised_drawing_with_a_locked_down_policy(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
         d = st.add_work("drawing", "A circle", art.sanitize_svg(GOOD), "round")

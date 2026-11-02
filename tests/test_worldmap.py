@@ -169,7 +169,7 @@ def test_walk_progress_is_clamped_and_a_zero_length_walk_has_arrived(tmp_path):
 
 # --- the endpoint ---------------------------------------------------------------------------------------------------
 def test_the_map_endpoint_returns_the_snapshot_and_grows_the_map(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         body = c.get("/map").json()
         assert body["home"] == "workshop" and {p["key"] for p in body["places"]} >= {"workshop", "woods", "junkyard"}
@@ -181,7 +181,7 @@ def test_the_map_endpoint_returns_the_snapshot_and_grows_the_map(tmp_path):
 
 
 def test_the_dashboard_has_a_map_section_wired_to_the_endpoint(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         page, js, css = (c.get(f"/ui/{f}").text for f in ("index.html", "app.js", "style.css"))
     assert 'id="map"' in page and 'id="map-where"' in page and page.index('id="map"') < page.index('id="garden"')

@@ -25,8 +25,12 @@ It is an experiment in long-running agents, built to be watched for weeks rather
 ```sh
 git clone https://github.com/travisboettcher/agent-world && cd agent-world
 cp .env.example .env          # set ANTHROPIC_API_KEY
-docker compose up -d --build
+docker compose up -d          # pulls the published image (ghcr.io/travisboettcher/agent-world)
 ```
+
+To build the image from your checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+The image is built and published by CI (`.github/workflows/image.yml`): `:latest` follows `main`, and each release tag `vX.Y.Z` is published as `:X.Y.Z`;
+pin one in `docker-compose.yml` if you want upgrades to be a choice.
 
 Open <http://localhost:8000/ui/> for the dashboard. Talk to Pip from a terminal with the stdlib-only CLI:
 
@@ -79,17 +83,21 @@ Where something comes from is a provider chosen by a setting, so the engine neve
 
 Adding one is a small class registered by name; see `app/weather.py`, `app/library.py` and `app/search.py` for the pattern.
 
-## Pip's instructions
+## Who Pip is
 
-Pip is given a text file at every wake: `persona.md` in the image, or your own mounted at `/srv/persona.md` (see the commented volume in `docker-compose.yml`). It is
-re-read every tick, so editing it changes Pip on its next wake. At the moment that one file both explains how the world works and sets Pip's character; to give
-Pip a different character, replace it with your own version of that file.
+Pip is told two things at every wake. The **guide** is the engine's own manual for how the world works (the journal, the garden, projects, places and so on); it is
+written in a neutral voice and built from only the tools and features you have enabled. The **persona** is optional and yours: a text file saying who Pip is.
+**By default there is none**: Pip is told only its name ("You are Pip.") and left to find out the rest by living, which is what the journal, reflections and self-portrait
+are for.
+
+To give Pip a character, write a persona file and mount it at `/srv/persona.md` (see the commented volume in `docker-compose.yml`; [`persona.example.md`](persona.example.md)
+is a two-line example, not loaded by default). It is re-read every tick, so editing it changes Pip on its next wake. The guide's topics are in `app/guide/`.
 
 ## Deploying with hll (alternative)
 
 [`agent-world.hll`](agent-world.hll) describes the same service for [hll](https://github.com/travisboettcher/hl-lang), a small language that generates Compose files.
 If you already manage your services that way: `hllc build agent-world.hll --out docker-compose.yml`. `docker-compose.yml` is what the project ships and
-tests; the `.hll` is an alternative, not a requirement.
+tests; the `.hll` is an alternative, not a requirement. Both run the published image.
 
 ## Development
 

@@ -1,10 +1,11 @@
 # The same service as docker-compose.yml, as an hll source: https://github.com/travisboettcher/hl-lang
 # Generate the Compose file with `hllc build agent-world.hll --out docker-compose.yml` (docker-compose.yml is what the
 # project ships and tests; this is an alternative for people who already manage their services with hll).
+# To build from this checkout instead of pulling the published image, replace the `image` line with `build "."`.
 volume agent-world-data {}
 
 service agent-world {
-  build "."
+  image "ghcr.io/travisboettcher/agent-world:latest"
   container_name "agent-world"
   env_file ".env"
   restart unless-stopped

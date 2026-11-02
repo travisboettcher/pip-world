@@ -24,7 +24,6 @@ def _float(name: str, default: float) -> float:
 class Settings:
     db_path: str = "/data/agent.db"
     persona_path: str = "/srv/persona.md"
-    persona_default_path: str = "/srv/persona.default.md"
 
     llm_backend: str = "anthropic"
     llm_model: str = "claude-haiku-5-5"

@@ -1,8 +1,10 @@
-# Run agent_world: `cp .env.example .env`, set ANTHROPIC_API_KEY, then `docker compose up -d --build`.
+# Run agent_world: `cp .env.example .env`, set ANTHROPIC_API_KEY, then `docker compose up -d` (pulls the published image).
+# To build the image from this checkout instead:  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 # The same service is described in agent-world.hll (an alternative way to generate this file; see the README).
 services:
   agent-world:
-    build: .
+    # `latest` follows the main branch; pin a release (for example :v1.0.0) if you want upgrades to be a choice.
+    image: ghcr.io/travisboettcher/agent-world:latest
     container_name: agent-world
     restart: unless-stopped
     env_file:

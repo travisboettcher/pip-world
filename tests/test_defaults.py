@@ -30,7 +30,7 @@ def test_the_test_channel_has_a_neutral_default_sender():
 
 
 def test_the_dashboard_does_not_assume_who_is_giving_things(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         page, js = c.get("/ui/index.html").text, c.get("/ui/app.js").text
     assert 'id="g-from" maxlength="40" value="visitor"' in page and "store.get('giver', 'visitor')" in js

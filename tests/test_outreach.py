@@ -205,7 +205,7 @@ async def test_a_channel_that_cannot_start_does_not_stop_pip(tmp_path):
 
 
 def test_the_api_lists_channels_allowance_and_messages(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual",
                  outreach_channels=["fake"])
     with TestClient(create_app(s, FakeBackend())) as c:
         r = c.get("/outreach").json()

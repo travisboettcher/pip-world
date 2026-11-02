@@ -12,7 +12,7 @@ from app.main import create_app
 
 
 def test_api_roundtrip(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x",
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x",
                  pacing="manual", tools=["set_activity"])
     backend = FakeBackend([LLMResponse("hi", [ToolCall("1", "set_activity", {"activity": "Painting", "description": "mixing blues"})], Usage(5, 5))])
     with TestClient(create_app(s, backend)) as c:
@@ -31,7 +31,7 @@ def test_api_roundtrip(tmp_path):
 
 
 def test_events_after_id_is_ascending(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         c.post("/inbox", json={"text": "a"})
         c.post("/inbox", json={"text": "b"})
@@ -41,7 +41,7 @@ def test_events_after_id_is_ascending(tmp_path):
 
 
 def test_notes_endpoint(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         c.app.state.agent.state.add_memory("a wish", "wishlist")
         notes = c.get("/notes").json()
@@ -50,7 +50,7 @@ def test_notes_endpoint(tmp_path):
 
 
 def test_gift_endpoint_and_inventory(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         r = c.post("/items", json={"name": "tiny needle file", "kind": "tool", "sender": "Morgan",
                                    "message": "For the clock!"}).json()
@@ -65,7 +65,7 @@ def test_gift_endpoint_and_inventory(tmp_path):
 
 
 def test_ui_is_served_and_root_redirects(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         r = c.get("/", follow_redirects=False)
         assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
@@ -77,7 +77,7 @@ def test_ui_is_served_and_root_redirects(tmp_path):
 
 
 def test_gift_inbox_event_is_flagged(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         c.post("/items", json={"name": "file"})
         c.post("/inbox", json={"text": "hello"})
@@ -118,7 +118,7 @@ def test_event_stream_stops_on_disconnect(tmp_path):
 
 
 def test_gift_points_at_matching_wish(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
         wish = st.add_memory("A small brass set of fine gears and a tiny file", "wishlist")
@@ -130,7 +130,7 @@ def test_gift_points_at_matching_wish(tmp_path):
 
 
 def test_projects_and_creations_endpoints(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
         p = st.add_project("kite", "fly", "sewing", 2, [{"name": "cut", "minutes": 30, "materials": {},
@@ -153,7 +153,7 @@ def test_ui_files_are_revalidated_not_cached_blindly(tmp_path, monkeypatch):
     (web / "index.html").write_text("<p>hi</p>")
     (web / "style.css").write_text("p{}")
     monkeypatch.setenv("WEB_DIR", str(web))
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         for path in ("/ui/", "/ui/style.css"):
             r = c.get(path)
@@ -169,7 +169,7 @@ def test_the_app_is_named_serves_drawings_locked_down_and_mounts_the_web_dir(tmp
     web.mkdir()
     (web / "index.html").write_text("<p>hello</p>")
     monkeypatch.setenv("WEB_DIR", str(web))
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         assert c.app.title == "agent-world" and c.app.url_path_for("ui", path="/index.html") == "/ui/index.html"
         assert "hello" in c.get("/ui/index.html").text

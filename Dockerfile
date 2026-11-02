@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY web ./web
-COPY persona.md ./persona.default.md
 RUN useradd -u 10001 -m agent && mkdir /data && chown agent /data
 USER agent
 EXPOSE 8000

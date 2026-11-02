@@ -936,7 +936,7 @@ def test_patch_hours_only_apply_to_a_shop_and_loot_only_to_a_real_place(tmp_path
 def test_the_places_endpoints_list_patch_and_remove(tmp_path):
     from fastapi.testclient import TestClient
     from app.main import create_app
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual",
                  neighbor=False)
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
@@ -955,7 +955,7 @@ def test_the_places_endpoints_list_patch_and_remove(tmp_path):
 def test_the_places_endpoint_lists_who_lives_at_each_place_even_once_removed(tmp_path):
     from fastapi.testclient import TestClient
     from app.main import create_app
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual",
                  neighbor=False)
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state

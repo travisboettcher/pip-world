@@ -10,6 +10,7 @@ from . import abilities
 from . import creations as cr
 from . import expectations as exp
 from . import gathering
+from . import guide
 from . import library as lib
 from . import memory as mem
 from . import neighbors as nb
@@ -36,6 +37,9 @@ DIARY_SHOWN = 4
 LIST_SHOWN = 10
 LEARNED_SHOWN = 5
 HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
+
+
+DEFAULT_PERSONA = "You are Pip."  # what the agent is told about itself when the deployment supplies no persona
 
 
 class Agent:
@@ -195,10 +199,10 @@ class Agent:
         """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
         async with self._reflecting:
             started, shown = time.time(), {}
-            result = await mem.reflect(self.state, self.s, self.gm, self._persona(), shown_out=shown)
+            result = await mem.reflect(self.state, self.s, self.gm, self._system_prompt(), shown_out=shown)
             if result:  # a reflection that found something to go over is followed by the night pass
                 try:
-                    await np.run(self.state, self.s, self.gm, self._persona(), result, shown, tuple(self.tools),
+                    await np.run(self.state, self.s, self.gm, self._system_prompt(), result, shown, tuple(self.tools),
                                  since_ts=started)
                 except Exception as e:  # never let it break the reflection
                     log.exception("night pass failed")
@@ -262,7 +266,7 @@ class Agent:
 
             await self.outreach.typing([m["id"] for m in inbox])  # "typing..." wherever Pip is about to answer
             resp = await self.backend.complete(
-                system=self._persona(), messages=messages, tools=specs,
+                system=self._system_prompt(), messages=messages, tools=specs,
                 max_tokens=self.s.llm_max_tokens,
             )
             self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
@@ -313,11 +317,14 @@ class Agent:
                            **({"images": result.images} if result.images and self.backend.vision else {}))
         return out
 
-    def _persona(self) -> str:
-        for p in (self.s.persona_path, self.s.persona_default_path):
-            if os.path.exists(p):
-                return open(p).read()
-        return "You are a small autonomous creature living in a room."
+    def _system_prompt(self) -> str:
+        """Who the agent is (the deployment's optional persona file, re-read every time; by default just a name) followed by how the world works
+        (the guide, built from what is enabled)."""
+        persona = ""
+        if os.path.exists(self.s.persona_path):
+            with open(self.s.persona_path) as f:
+                persona = f.read().strip()
+        return (persona or DEFAULT_PERSONA) + "\n\n" + guide.render(self.tools, self.s, self.library is not None)
 
     def _belongings(self) -> list[str]:
         lines: list[str] = []

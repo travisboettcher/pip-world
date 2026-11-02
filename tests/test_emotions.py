@@ -327,7 +327,7 @@ def test_the_api_shows_the_state_and_why(tmp_path):
     from app.config import Settings
     from app.llm.fake import FakeBackend
     from app.main import create_app
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         r = c.get("/emotions").json()
         assert r["mode"] == "on" and [e["name"] for e in r["emotions"]] == list(emo.NAMES) and r["log"] == []

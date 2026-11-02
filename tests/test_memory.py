@@ -40,7 +40,7 @@ async def test_perception_and_moments_name_the_visitor(tmp_path):
 
 
 def test_inbox_api_takes_a_sender(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual")
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         c.post("/inbox", json={"text": "hi", "sender": "  Jade   B "})
         c.post("/inbox", json={"text": "anon"})
@@ -103,7 +103,7 @@ async def test_reflection_consolidates_the_day_in_pips_voice(tmp_path):
     st.log("tick", text="(not material)")
     data = await agent.reflect()
     call0 = gm.calls[0]
-    assert "asleep" in call0["system"] and "small autonomous creature" in call0["system"]  # Pip's own persona
+    assert "asleep" in call0["system"] and call0["system"].startswith("You are Pip.")  # Pip's own instructions
     task = call0["messages"][0]["content"]
     assert "Morgan said to you: How's the clock?" in task and "Morgan gave you 2 x brass wire" in task
     assert "You wrote (diary): Morgan's wire came just in time." in task and "not material" not in task
@@ -169,7 +169,7 @@ async def test_monitor_runs_the_reflection_when_due(tmp_path):
 
 
 def test_memory_api(tmp_path):
-    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", persona_default_path="/x", pacing="manual",
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual",
                  reflect_hour=99)
     backend = FakeBackend([report(**REFLECTION)])
     with TestClient(create_app(s, backend)) as c:

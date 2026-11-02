@@ -18,7 +18,9 @@ Served on port 8000 (`/state`, `/events`, `POST /inbox`, `POST /tick`, and the d
 - `TOOLS`: comma list of registered tools. `DAILY_TOKEN_BUDGET` (default 5M, ~$0.70/day on Haiku 5.5) caps spend; ticks pause when hit.
 
 Add a backend in `brain/app/llm/` and register it in `llm/__init__.py`; add a pacing policy in `pacing.py`.
-`brain/persona.md` is re-read every tick.
+Pip is told two things at every wake: the **guide** (how the world works: `brain/app/guide/*.md`, one file per topic, put together from only the tools and
+features that are enabled) and an optional **persona** (who Pip is: the file at `PERSONA_PATH`, default `/srv/persona.md`, re-read every tick). With no persona file it is
+only told its name ("You are Pip."). This deployment's persona is `persona.md` next to this README.
 
 ## Tests
 `cd brain && pip install -r requirements-dev.txt && pytest`
@@ -38,7 +40,7 @@ Stdlib-only CLI (`./pipchat`, or symlink it onto your PATH). Defaults to `http:/
 ## Pip's journal
 `note_to_self` writes to one of five sections (`diary`, `todo`, `wishlist`, `ambitions`, `learned`); `resolve_note`
 crosses off a todo/wishlist/ambition item. Open items and the latest diary entries are shown to Pip every tick, and the
-persona (`brain/persona.md`, re-read live) encourages it to keep them. HTTP: `GET /notes`.
+guide (the `journal` topic) tells it how and encourages it to keep them. HTTP: `GET /notes`.
 
 ## Belongings and garden
 Pip owns items (kind `tool`: kept, `material`: used up by `use_item`, `food`: eaten, `seed`: planted) and has a small
