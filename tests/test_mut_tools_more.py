@@ -17,7 +17,7 @@ class ReadGM(StubGM):
 async def test_putting_a_book_down_early_still_records_what_was_read(tmp_path, clock):
     path = calibre(tmp_path / "calibre")
     ctx, st = make(tmp_path, library_path=path, work_speed=60.0, read_chars_per_minute=10)
-    ctx.library = lib.Library(path)
+    ctx.library = lib.open_library(ctx.settings)
     ctx.gm = ReadGM()
     lib.start_reading(st, ctx.settings, ctx.library.book(1), 60)
     clock[0] += 3600                                                     # an hour at work_speed 60: the full hour

@@ -11,7 +11,7 @@ from app.config import Settings
 from app.llm.fake import FakeBackend
 from app.main import create_app
 
-PIPCHAT = Path(__file__).resolve().parents[2] / "pipchat"
+PIPCHAT = next(p / "pipchat" for p in Path(__file__).resolve().parents if (p / "pipchat").is_file())   # also under mutants/
 
 
 def load_pipchat(monkeypatch, **env):

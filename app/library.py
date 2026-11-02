@@ -1,17 +1,20 @@
-"""The library: a read-only window onto the homelab's Calibre library (the folder calibre-web serves).
+"""The library: a read-only window onto a collection of books (see DESIGN-library.md, DESIGN-extract.md).
 
-The catalogue comes from Calibre's metadata.db (opened read-only); book text from EPUB (zipfile + HTML-to-text over
-the spine) or PDF (pypdf, page by page). A reading position is (section, offset): a section is a PDF page or an
-EPUB chapter. Raw text never reaches Pip's prompt - a reading session's stretch of text is condensed by the GM.
-See DESIGN-library.md.
+Where the catalogue comes from is a *provider*, registered by name: `library_calibre.py` reads a Calibre library's metadata.db,
+`library_folder.py` reads a plain folder of books. This module is everything that does not care which: the `Library` base (finding a
+book), ranking a search, the format readers (EPUB: zipfile + HTML-to-text over the spine; PDF: pypdf, page by page; plain text in
+sections), and the reading session itself. A reading position is (section, offset): a section is a PDF page, an EPUB chapter or a
+stretch of a text file. Raw text never reaches Pip's prompt - a reading session's stretch of text is condensed by the GM.
+Pick the provider with `LIBRARY_PROVIDER` (`auto` tries Calibre, then a folder). To add one, write a module that registers a
+`Library` subclass and import it at the bottom.
 """
 import asyncio
 import logging
+import math
 import os
 import posixpath
 import random
 import re
-import sqlite3
 import time
 import xml.etree.ElementTree as ET
 import zipfile
@@ -20,7 +23,8 @@ from html.parser import HTMLParser
 from .text import clip
 
 log = logging.getLogger("library")
-READABLE = ("EPUB", "PDF")  # in order of preference
+READABLE = ("EPUB", "PDF", "TXT")  # in order of preference
+TEXT_SECTION_CHARS = 3000  # a plain text file is read in sections of about this size, so progress moves
 MAX_READ_CHARS = 24000
 READ_MINUTES = (15, 90)
 EMPTY_RUN_LIMIT = 40  # this many textless sections in a row: treat the rest as pictures
@@ -54,70 +58,62 @@ def html_to_text(html: str) -> str:
     return re.sub(r"\n\s*\n+", "\n\n", re.sub(r"[ \t\r\f\v]+", " ", text)).strip()
 
 
+# --- providers --------------------------------------------------------------------------------------------------------
+PROVIDERS: dict = {}     # name -> Library subclass, built from the library's path
+
+
+def register(name: str):
+    def add(cls):
+        PROVIDERS[name] = cls
+        return cls
+    return add
+
+
+def open_library(settings):
+    """The configured library, or None if there isn't one (`auto`: a Calibre library if the path holds one, else a folder of books)."""
+    name = settings.library_provider
+    for cls in ([PROVIDERS[n] for n in ("calibre", "folder") if n in PROVIDERS] if name == "auto" else [PROVIDERS[name]] if name in PROVIDERS else []):
+        found = cls(settings.library_path)
+        if found.available():
+            return found
+    return None
+
+
+def rank(books: list[dict], query, limit: int = 8) -> list[dict]:
+    """The books that match a query: a hit in the title counts three, anywhere else (author, shelf, series, blurb) one; ties by id."""
+    words = [w for w in re.findall(r"\w+", str(query).lower()) if len(w) > 1][:6]
+    if not words:
+        return []
+    scored = []
+    for b in books:
+        title, rest = b["title"].lower(), f"{b['authors']} {b['tags']} {b['series']} {b['description']}".lower()
+        score = sum(3 * (w in title) + (w in rest) for w in words)
+        if score:
+            scored.append((score, b["id"], b))
+    return [b for _, _, b in sorted(scored, key=lambda x: (-x[0], x[1]))[:limit]]
+
+
 class Library:
-    def __init__(self, path: str):
-        self.path = path
-        self.db_path = os.path.join(path, "metadata.db")
+    """What a provider offers. Books are dicts: id, title, authors, tags (comma-separated shelves), series, description, formats,
+    and format (the one that can be read, or None). Subclasses give `available`, `book`, `search`, `wander`, `overview`, `extract`."""
 
     def available(self) -> bool:
-        return os.path.isfile(self.db_path)
-
-    def _db(self) -> sqlite3.Connection:
-        db = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
-        db.row_factory = sqlite3.Row
-        return db
-
-    BOOK_SQL = """
-      SELECT b.id, b.title, b.path,
-        (SELECT group_concat(a.name, ' & ') FROM books_authors_link l JOIN authors a ON a.id = l.author
-          WHERE l.book = b.id) AS authors,
-        (SELECT group_concat(t.name, ', ') FROM books_tags_link l JOIN tags t ON t.id = l.tag
-          WHERE l.book = b.id) AS tags,
-        (SELECT s.name FROM books_series_link l JOIN series s ON s.id = l.series WHERE l.book = b.id) AS series,
-        (SELECT c.text FROM comments c WHERE c.book = b.id) AS description,
-        (SELECT group_concat(d.format || ':' || d.name, '|') FROM data d WHERE d.book = b.id) AS files
-      FROM books b"""
-
-    @staticmethod
-    def _book(r) -> dict:
-        files = dict(f.split(":", 1) for f in (r["files"] or "").split("|") if ":" in f)
-        fmt = next((f for f in READABLE if f in files), None)
-        return {"id": r["id"], "title": r["title"], "authors": r["authors"] or "Unknown", "tags": r["tags"] or "",
-                "series": r["series"] or "", "description": clip(html_to_text(r["description"] or ""), 300),
-                "formats": sorted(files), "format": fmt, "path": r["path"], "file": files.get(fmt) if fmt else None}
+        raise NotImplementedError
 
     def book(self, book_id: int) -> dict | None:
-        with self._db() as db:
-            r = db.execute(self.BOOK_SQL + " WHERE b.id = ?", (book_id,)).fetchone()
-        return self._book(r) if r else None
+        raise NotImplementedError
 
     def search(self, query: str, limit: int = 8) -> list[dict]:
-        words = [w for w in re.findall(r"\w+", str(query).lower()) if len(w) > 1][:6]
-        if not words:
-            return []
-        with self._db() as db:
-            rows = db.execute(self.BOOK_SQL).fetchall()
-        scored = []
-        for r in rows:
-            b = self._book(r)
-            title, rest = b["title"].lower(), f"{b['authors']} {b['tags']} {b['series']} {b['description']}".lower()
-            score = sum(3 * (w in title) + (w in rest) for w in words)
-            if score:
-                scored.append((score, b["id"], b))
-        return [b for _, _, b in sorted(scored, key=lambda x: (-x[0], x[1]))[:limit]]
+        raise NotImplementedError
 
     def wander(self, rng: random.Random, limit: int = 8) -> tuple[str, list[dict]]:
-        """A few books from one or two shelves (tags), or anywhere if nothing is tagged."""
-        with self._db() as db:
-            tags = [r[0] for r in db.execute("SELECT name FROM tags")]
-            rows = db.execute(self.BOOK_SQL).fetchall()
-        books = [self._book(r) for r in rows]
-        if tags and rng.random() < 0.7:
-            tag = rng.choice(tags)
-            shelf = [b for b in books if tag in b["tags"].split(", ")]
-            if shelf:
-                return f"the {tag} shelf", rng.sample(shelf, min(limit, len(shelf)))
-        return "the shelves", rng.sample(books, min(limit, len(books)))
+        raise NotImplementedError
+
+    def overview(self) -> str:
+        raise NotImplementedError
+
+    def extract(self, b: dict, section: int, offset: int, max_chars: int) -> dict:
+        raise NotImplementedError
 
     def find(self, query) -> tuple[dict | None, str]:
         q = str(query).strip().lstrip("#")
@@ -132,62 +128,78 @@ class Library:
             return None, f"you can't find a book like {query!r} (try browse)"
         return None, "which one? " + "; ".join(f"#{b['id']} {b['title']}" for b in hits)
 
-    def overview(self) -> str:
-        """A line about what's on the shelves (for describing the place)."""
-        with self._db() as db:
-            n = db.execute("SELECT COUNT(*) FROM books").fetchone()[0]
-            tags = [r[0] for r in db.execute(
-                "SELECT t.name FROM tags t JOIN books_tags_link l ON l.tag = t.id GROUP BY t.id ORDER BY COUNT(*) DESC LIMIT 6")]
-            titles = [r[0] for r in db.execute("SELECT title FROM books ORDER BY random() LIMIT 8")]
-        return (f"about {n} books" + (f"; shelves include {', '.join(tags)}" if tags else "")
-                + f"; some titles: {'; '.join(titles)}")
 
-    # --- text -----------------------------------------------------------------------
-    def _file(self, b: dict) -> str:
-        return os.path.join(self.path, b["path"], f"{b['file']}.{b['format'].lower()}")
+# --- reading the files ------------------------------------------------------------------------------------------------
+def epub_chapters(z: zipfile.ZipFile) -> list[str]:
+    ns = {"c": "urn:oasis:names:tc:opendocument:xmlns:container"}
+    opf_path = ET.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", ns).get("full-path")
+    opf = ET.fromstring(z.read(opf_path))
+    base = posixpath.dirname(opf_path)
+    items = {i.get("id"): i.get("href") for i in opf.iter("{http://www.idpf.org/2007/opf}item")}
+    return [posixpath.normpath(posixpath.join(base, items[r.get("idref")]))
+            for r in opf.iter("{http://www.idpf.org/2007/opf}itemref") if r.get("idref") in items]
 
-    def _epub_chapters(self, z: zipfile.ZipFile) -> list[str]:
-        ns = {"c": "urn:oasis:names:tc:opendocument:xmlns:container", "o": "http://www.idpf.org/2007/opf"}
-        opf_path = ET.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", ns).get("full-path")
-        opf = ET.fromstring(z.read(opf_path))
-        base = posixpath.dirname(opf_path)
-        items = {i.get("id"): i.get("href") for i in opf.iter("{http://www.idpf.org/2007/opf}item")}
-        return [posixpath.normpath(posixpath.join(base, items[r.get("idref")]))
-                for r in opf.iter("{http://www.idpf.org/2007/opf}itemref") if r.get("idref") in items]
 
-    def extract(self, b: dict, section: int, offset: int, max_chars: int) -> dict:
-        """The next stretch of text from (section, offset). Blocking: call via asyncio.to_thread."""
-        if b["format"] == "EPUB":
-            z = zipfile.ZipFile(self._file(b))
-            chapters = self._epub_chapters(z)
-            total = len(chapters)
-            get = lambda i: html_to_text(z.read(chapters[i]).decode("utf-8", "replace"))  # noqa: E731
+def epub_metadata(path: str) -> dict:
+    """The title, authors and blurb an EPUB's package file carries (only what it has); {} for anything that is not a readable EPUB."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            ns = {"c": "urn:oasis:names:tc:opendocument:xmlns:container", "dc": "http://purl.org/dc/elements/1.1/"}
+            opf_path = ET.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", ns).get("full-path")
+            opf = ET.fromstring(z.read(opf_path))
+    except Exception:
+        return {}
+    text = lambda tag: [e.text.strip() for e in opf.iter(f"{{{ns['dc']}}}{tag}") if e.text and e.text.strip()]  # noqa: E731
+    out = {}
+    if text("title"):
+        out["title"] = clip(text("title")[0], 300)
+    if text("creator"):
+        out["authors"] = clip(" & ".join(text("creator")), 300)
+    if text("description"):
+        out["description"] = clip(html_to_text(text("description")[0]), 300)  # strip the markup first, then clip
+    return out
+
+
+def extract_file(path: str, fmt: str, section: int, offset: int, max_chars: int) -> dict:
+    """The next stretch of text from (section, offset) of a book file. Blocking: call via asyncio.to_thread."""
+    if fmt == "EPUB":
+        z = zipfile.ZipFile(path)
+        chapters = epub_chapters(z)
+        total = len(chapters)
+        get = lambda i: html_to_text(z.read(chapters[i]).decode("utf-8", "replace"))  # noqa: E731
+    elif fmt == "TXT":
+        with open(path, encoding="utf-8", errors="replace") as f:
+            whole = f.read()
+        total = max(1, math.ceil(len(whole) / TEXT_SECTION_CHARS))
+        get = lambda i: whole[i * TEXT_SECTION_CHARS:(i + 1) * TEXT_SECTION_CHARS]  # noqa: E731
+    else:
+        from pypdf import PdfReader  # imported lazily: only reading needs it
+        logging.getLogger("pypdf").setLevel(logging.ERROR)
+        reader = PdfReader(path)
+        total = len(reader.pages)
+        get = lambda i: reader.pages[i].extract_text() or ""  # noqa: E731
+    parts, got, empty_run = [], 0, 0
+    while section < total and got < max_chars:
+        text = re.sub(r"[ \t]+", " ", get(section)).strip()
+        chunk = text[offset:offset + (max_chars - got)]
+        if chunk.strip():
+            parts.append(chunk)
+            got += len(chunk)
+            empty_run = 0
         else:
-            from pypdf import PdfReader  # imported lazily: only reading needs it
-            logging.getLogger("pypdf").setLevel(logging.ERROR)
-            reader = PdfReader(self._file(b))
-            total = len(reader.pages)
-            get = lambda i: reader.pages[i].extract_text() or ""  # noqa: E731
-        parts, got, empty_run = [], 0, 0
-        while section < total and got < max_chars:
-            text = re.sub(r"[ \t]+", " ", get(section)).strip()
-            chunk = text[offset:offset + (max_chars - got)]
-            if chunk.strip():
-                parts.append(chunk)
-                got += len(chunk)
-                empty_run = 0
-            else:
-                empty_run += 1
-                if empty_run >= EMPTY_RUN_LIMIT and not parts:
-                    break
-            if offset + len(chunk) < len(text):
-                offset += len(chunk)
-            else:
-                section, offset = section + 1, 0
-        done = section >= total
-        return {"text": "\n".join(parts), "section": section, "offset": offset, "total": total,
-                "percent": 100 if done else int(100 * section / max(1, total)), "done": done,
-                "pictures": not parts and empty_run >= EMPTY_RUN_LIMIT}
+            empty_run += 1
+            if empty_run >= EMPTY_RUN_LIMIT and not parts:
+                break
+        if offset + len(chunk) < len(text):
+            offset += len(chunk)
+        else:
+            section, offset = section + 1, 0
+    done = section >= total
+    return {"text": "\n".join(parts), "section": section, "offset": offset, "total": total,
+            "percent": 100 if done else int(100 * section / max(1, total)), "done": done,
+            "pictures": not parts and empty_run >= EMPTY_RUN_LIMIT}
+
+
 
 
 def line(b: dict, state=None) -> str:
@@ -260,3 +272,6 @@ def perception(state, library) -> list[str]:
         lines.append("Books you're partway through:")
         lines += [f"- #{m['book_id']} {m['title']} ({m['percent']}% in)" for m in reading]
     return lines
+
+
+from . import library_calibre, library_folder  # noqa: E402,F401  (register the "calibre" and "folder" providers)

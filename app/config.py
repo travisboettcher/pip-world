@@ -87,7 +87,8 @@ class Settings:
     parcels_per_day: int = 1           # parcels the neighbor may send per 24 h
     invented_places_per_day: int = 2   # new heard-of places characters may add per 24 h (DESIGN-invented-places.md)
     invented_places_max: int = 12      # invented places in all, heard-of and real together
-    library_path: str = "/library"     # a Calibre library (read-only); the library place exists only if it's there
+    library_path: str = "/library"     # where the books are (read-only); the library place exists only if there is a library there
+    library_provider: str = "auto"     # auto | calibre | folder (see library.py); auto tries Calibre, then a plain folder of books
     walk_minutes: float = 10           # how long it takes to walk between places
     read_chars_per_minute: int = 700   # how much text a reading session covers
     tools: list[str] = field(default_factory=list)
@@ -174,6 +175,7 @@ class Settings:
             invented_places_per_day=_int("INVENTED_PLACES_PER_DAY", 2),
             invented_places_max=_int("INVENTED_PLACES_MAX", 12),
             library_path=e("LIBRARY_PATH") or "/library",
+            library_provider=(e("LIBRARY_PROVIDER") or "auto").strip().lower(),
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
             tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle").split(",") if t.strip()],

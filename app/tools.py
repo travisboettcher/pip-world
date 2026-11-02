@@ -39,7 +39,7 @@ class ToolContext:
     visitor_ids: list[int] = field(default_factory=list)  # inbox items being answered this tick
     gm: Any = None  # GameMaster, or None (world content falls back to templates)
     rng: random.Random = field(default_factory=random.Random)
-    library: Any = None  # library.Library, or None when no Calibre library is mounted
+    library: Any = None  # a library.Library, or None when there is no library
     outreach: Any = None  # outreach.Outreach, or None
     vision: bool = False  # can the model look at pictures this turn?
 
@@ -803,8 +803,8 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue
         if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
             continue  # no way out configured
-        if name in ("browse", "read") and not lib.Library(settings.library_path).available():
-            continue  # no Calibre library mounted
+        if name in ("browse", "read") and not lib.open_library(settings):
+            continue  # no library mounted
         out[name] = REGISTRY[name]
     return out
 

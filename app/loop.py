@@ -45,8 +45,7 @@ class Agent:
         self.tools = enabled_tools(settings)
         self.rng = rng or random.Random()
         self.gm = GameMaster(gm_backend or backend, state)
-        library = lib.Library(settings.library_path)
-        self.library = library if library.available() else None
+        self.library = lib.open_library(settings)
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
         invented.backfill(state)

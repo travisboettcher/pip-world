@@ -1,4 +1,7 @@
-# Design: places, and the library (Calibre)
+# Design: places, and the library (Calibre, or any folder of books)
+
+Note (2026-11-01): where the books come from is now a provider (`library.py` core; `library_calibre.py` and `library_folder.py` register by name; `LIBRARY_PROVIDER`,
+default `auto`). This document describes the Calibre provider, which is where the library started.
 
 Status (2026-10-29): built and tested (unit tests with a synthetic Calibre library, and a real-model run against
 the homelab library); not yet deployed.

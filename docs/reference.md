@@ -120,11 +120,12 @@ In the Matrix room, `/help`, `/status`, `/items`, `/garden`, `/projects`, `/crea
 
 ## Places and the library
 Design: [DESIGN-library.md](DESIGN-library.md). Pip lives in its `workshop` (projects and garden happen there) and
-can `go_to` the **library**: the homelab's Calibre library (`../calibre/library`, the folder calibre-web serves),
-mounted **read-only** at `/library`. A walk takes `WALK_MINUTES`. At the library Pip can `browse_library` (search or
-wander the shelves) and `read(book, minutes)`: when the session ends, the next stretch of the book (EPUB or PDF
-text, from Pip's bookmark) is condensed by the GM into what Pip read, which feeds memory, recall and reflection.
-No library mounted = no library place and no library tools.
+can `go_to` the **library**: any collection of books, mounted **read-only** at `LIBRARY_PATH` (default `/library`). Where the
+books come from is a provider (`LIBRARY_PROVIDER`, default `auto`): a Calibre library (its `metadata.db`), or a plain folder of
+EPUB, PDF, text and Markdown files, where a sub-folder is a shelf and an EPUB's own metadata gives the title and author. A walk
+takes `WALK_MINUTES`. At the library Pip can `browse` (search or wander the shelves) and `read(book, minutes)`: when the session
+ends, the next stretch of the book (from Pip's bookmark) is condensed by the GM into what Pip read, which feeds memory, recall and
+reflection. No library mounted = no library place and no library tools. To add another source, see `library.py`.
 ```sh
 ./pipchat library                 # what Pip is reading, and how far in
 ./pipchat library numenera        # search the catalogue

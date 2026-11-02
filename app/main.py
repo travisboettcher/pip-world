@@ -284,7 +284,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     def library_search(q: str = "", limit: int = 10):
         agent: Agent = app.state.agent
         if not agent.library:
-            raise HTTPException(status_code=404, detail="no Calibre library mounted")
+            raise HTTPException(status_code=404, detail="no library mounted")
         return [{k: b[k] for k in ("id", "title", "authors", "tags", "series", "description", "formats", "format")}
                 for b in agent.library.search(q, min(limit, 50))]
 
