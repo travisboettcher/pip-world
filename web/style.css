@@ -124,15 +124,32 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .emo .bar { position: relative; height: .45rem; }
 .emo .bar u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .55; text-decoration: none; }
 
-/* map: home in the middle, places at fixed spots, Pip's marker moving along its walk */
-.map svg { width: 100%; max-height: 28rem; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-.map .map-path { stroke: var(--line); stroke-width: .35; stroke-dasharray: .8 1; } .map .map-path.unseen { opacity: .5; }
-.map .map-walk { stroke: var(--accent); stroke-width: .6; }
-.map .map-place text { font-size: 2.3px; fill: var(--ink); } .map .map-place { fill: var(--muted); stroke: var(--card); stroke-width: .3; }
+/* map: home in the middle, places at fixed spots, Pip's marker moving along its walk. Sizes are set in the SVG (in viewBox units, scaled so a label is
+   always about 12px), colours here; a place's shape says what it is too (house, square for a shop or market, circle otherwise). */
+:root { --trade: #8a6a12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --trade: #e3bd4f; } }
+:root[data-theme="dark"] { --trade: #e3bd4f; }
+.map svg { width: 100%; max-height: 32rem; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.map .map-ring { fill: none; stroke: var(--line); }
+.map .map-ring-label { fill: var(--muted); opacity: .8; }
+.map .map-path { stroke: var(--muted); opacity: .45; } .map .map-path.unseen { opacity: .25; }
+.map .map-walk { stroke: var(--accent); }
+.map .map-place { fill: var(--muted); stroke: var(--bg); }
+.map .map-place text { fill: var(--ink); stroke: var(--bg); paint-order: stroke; stroke-linejoin: round; }
 .map .kind-home { fill: var(--accent); } .map .kind-wild { fill: var(--good); } .map .kind-neighbor { fill: var(--warn); } .map .kind-library { fill: var(--ink); }
-.map .unseen { opacity: .5; } .map .heard circle { stroke: var(--muted); stroke-dasharray: .6 .5; fill: var(--card); }
-.map .map-pip { fill: var(--bad); stroke: var(--card); stroke-width: .35; }
-.map .map-pip-ring { fill: none; stroke: var(--bad); stroke-width: .35; animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.map .kind-shop, .map .kind-market { fill: var(--trade); }
+.map .unseen { opacity: .6; } .map .unseen text { opacity: .85; }
+.map .heard circle, .map .heard rect { stroke: var(--muted); stroke-dasharray: .3em .3em; fill: var(--card); }
+.map .map-pip { fill: var(--bad); stroke: var(--bg); }
+.map .map-pip-halo { fill: none; stroke: var(--bad); opacity: .6; }
+.map .map-pip-ring { fill: none; stroke: var(--bad); animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.map-legend { display: flex; flex-wrap: wrap; gap: .25rem .9rem; margin: .6rem 0 0; font-size: .8rem; color: var(--muted); }
+.map-legend .lg::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .35em; border-radius: 50%; background: currentColor; }
+.map-legend .lg-home { color: var(--accent); } .map-legend .lg-wild { color: var(--good); } .map-legend .lg-neighbor { color: var(--warn); }
+.map-legend .lg-library { color: var(--ink); } .map-legend .lg-pip { color: var(--bad); }
+.map-legend .lg-trade { color: var(--trade); } .map-legend .lg-trade::before { border-radius: 1px; }
+.map-legend .lg-home::before { border-radius: 2px 2px 0 0; }
+.map-legend .lg-note { flex-basis: 100%; }
 @keyframes map-pulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.5); } }
 @media (prefers-reduced-motion: reduce) { .map .map-pip-ring { animation: none; opacity: .5; } }
 
