@@ -95,7 +95,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/mode")
     def mode(request: Request):
-        return {"public": request.state.public}
+        return {"public": request.state.public, "version": settings.version, "revision": settings.revision}
 
     @app.get("/stream")
     async def stream(request: Request, after_id: int | None = None):

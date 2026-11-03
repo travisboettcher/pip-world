@@ -650,7 +650,14 @@ function connect() {
 // ---- boot -------------------------------------------------------------------
 renderFilters();
 (async function boot() {
-  try { PUBLIC = (await api('/mode')).public; } catch { /* an older server: the full dashboard */ }
+  try {
+    const mode = await api('/mode');
+    PUBLIC = mode.public;
+    if (mode.version) { // what is running, so a deploy can be checked at a glance
+      const tag = /^v?\d+\.\d+/.test(mode.version) ? h('a', { href: `https://github.com/travisboettcher/pip-world/releases/tag/${mode.version}`, rel: 'noopener' }, mode.version) : mode.version;
+      $('version').replaceChildren('pip-world ', tag, mode.revision ? ` · ${mode.revision}` : '');
+    }
+  } catch { /* an older server: the full dashboard */ }
   document.body.classList.toggle('public', PUBLIC);
   if (PUBLIC) $('tabbar').prepend($('tab-btn-world')); // the map first
   showTab(location.hash.slice(1) || (PUBLIC ? 'world' : store.get('tab', 'now')), false);

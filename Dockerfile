@@ -1,5 +1,7 @@
 FROM python:3.12-slim
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ARG VERSION=dev
+ARG REVISION=
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_VERSION=$VERSION PIP_REVISION=$REVISION
 WORKDIR /srv
 COPY requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*

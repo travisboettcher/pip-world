@@ -33,11 +33,11 @@ def test_public_hosts_come_from_the_environment(monkeypatch):
 def test_the_owner_host_is_unchanged(client):
     assert client.post("/inbox", json={"text": "hi"}).json()["queued"] is True
     assert "pending_inbox" in client.get("/state").json()
-    assert client.get("/mode").json() == {"public": False}
+    assert client.get("/mode").json() == {"public": False, "version": "dev", "revision": ""}
 
 
 def test_mode_reports_public(client):
-    assert client.get("/mode", headers=PUBLIC).json() == {"public": True}
+    assert client.get("/mode", headers=PUBLIC).json() == {"public": True, "version": "dev", "revision": ""}
 
 
 @pytest.mark.parametrize("method,path", [
@@ -59,7 +59,7 @@ def test_a_public_write_changes_nothing(client):
 
 
 def test_the_host_port_and_case_do_not_matter(client):
-    assert client.get("/mode", headers={"host": "PIP.example.org:443"}).json() == {"public": True}
+    assert client.get("/mode", headers={"host": "PIP.example.org:443"}).json()["public"] is True
 
 
 @pytest.mark.parametrize("path", ["/state", "/events", "/notes", "/items", "/emotions", "/garden", "/projects",
@@ -198,3 +198,21 @@ def test_the_event_transform_drops_private_events_and_hides_names(client):
     shown = pv.public_events(st, client.app.state.settings)
     assert shown({"id": 1, "ts": 1.0, "kind": "inbox", "data": {"text": "x"}}) is None
     assert shown({"id": 2, "ts": 1.0, "kind": "tick", "data": {"text": "Morgan came"}})["data"]["text"] == "someone came"
+
+
+def test_the_running_version_is_reported_on_both_hosts(tmp_path, monkeypatch):
+    monkeypatch.setenv("PIP_VERSION", "v1.2.3")
+    monkeypatch.setenv("PIP_REVISION", "0123456789abcdef0123456789abcdef01234567")
+    s = Settings.from_env()
+    s.db_path, s.persona_path, s.pacing, s.public_hosts = str(tmp_path / "t.db"), "/x", "manual", ["pip.example.org"]
+    with TestClient(create_app(s, FakeBackend())) as c:
+        for headers in ({}, PUBLIC):
+            got = c.get("/mode", headers=headers).json()
+            assert got["version"] == "v1.2.3" and got["revision"] == "0123456"                 # the short revision
+
+
+def test_a_build_without_a_version_says_dev(monkeypatch):
+    monkeypatch.delenv("PIP_VERSION", raising=False)
+    monkeypatch.delenv("PIP_REVISION", raising=False)
+    s = Settings.from_env()
+    assert s.version == "dev" and s.revision == ""

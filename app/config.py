@@ -100,6 +100,10 @@ class Settings:
     matrix_room_id: str = ""
     matrix_allowed: dict = field(default_factory=dict)   # {"@morgan:server": "Morgan"}
 
+    # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
+    version: str = "dev"
+    revision: str = ""
+
     # The public, read-only view (docs/DESIGN-public-view.md): requests whose Host is listed are served the scrubbed, read-only surface
     public_hosts: list = field(default_factory=list)
     public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people Pip knows are hidden anyway)
@@ -118,6 +122,8 @@ class Settings:
         e = os.environ.get
         return cls(
             db_path=e("DB_PATH", "/data/agent.db"),
+            version=e("PIP_VERSION") or "dev",
+            revision=(e("PIP_REVISION") or "")[:7],
             public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],
             public_redact=[n.strip() for n in (e("PUBLIC_REDACT") or "").split(",") if n.strip()],
             persona_path=e("PERSONA_PATH", "/srv/persona.md"),

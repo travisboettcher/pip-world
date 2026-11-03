@@ -156,3 +156,6 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 
 /* The public, read-only view (PUBLIC_HOSTS): no controls, no owner-only panels, no usage or model details */
 .public #wake, .public #usage-pill, .public #usage-pop, .public #chat-panel, .public #chat-toggle, .public .owner-only { display: none !important; }
+
+.version { text-align: center; color: var(--muted); font-size: .75rem; padding: 1.2rem 16px 5rem; }
+.version a { color: inherit; }
