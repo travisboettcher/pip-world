@@ -349,3 +349,10 @@ the prompt seams), `place_kinds.py` (the kind registry), the `places` table in `
 - **Owner control**: `GET /places` (every row, all statuses, plus the built-in keys), `PATCH /places/<key>`
   (`walk_minutes`, `hours`, `description`, `loot`; anything else, or a bad value, is a 422), `DELETE /places/<key>`
   (status `removed`), `pipchat places` and `pipchat places rm NAME`. No `pipchat places add` or `export`.
+
+## Stated distance and hours (0.3.1)
+A mention keeps the sentence naming a place plus up to two following sentences that carry facts (`THERE_CHARS` is 240 now). From those words the engine
+reads a stated walk ("an hour west", "twenty minutes' walk") and stated hours ("open 9am - 5pm", "open from nine to five") instead of only the near/far
+band and the shop default. The engine still owns the numbers: a stated walk is clamped to `WALK_CAP` (50 minutes), and one beyond `STATED_WALK_MAX`
+(120) is too far to walk; hours are clamped into a shop's 7-10 / 16-19 range and are ignored for kinds without opening hours. A later mention that
+states these facts updates a heard-of place; a place that has been designed keeps its numbers.

@@ -20,7 +20,7 @@ from .world import normalize_attrs
 DAY = 86400
 FORGET_AFTER = 30 * DAY        # a heard-of place nobody mentions again and Pip never visits is forgotten
 MENTIONS_KEPT = 6
-THERE_CHARS = 120
+THERE_CHARS = 240             # what a character said is there: the sentence naming it, and up to two after it that carry facts
 BANDS = {"near": (12, 20), "far": (20, 35)}   # walking minutes; "very far" is heard-of but too far to walk
 VERY_FAR = "very far"
 DISTANCES = ("near", "far", VERY_FAR)
@@ -118,6 +118,96 @@ def _forget_stale(state, now: float) -> None:
             state.update_place(r["key"], status="forgotten")
 
 
+# --- facts a speaker states: how far, and when it is open --------------------------------------------------------
+# "an hour west", "twenty minutes' walk" and "open 9am - 5pm" are kept as numbers, not just near/far and the shop default. The
+# engine still owns the minutes: a stated walk is clamped to WALK_CAP, and one beyond a day trip is too far to walk at all.
+NUMBERS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+           "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "forty-five": 45,
+           "fifty": 50, "sixty": 60}
+STATED_WALK_MAX = 120   # minutes: a longer stated trip is "too far to walk"
+FOLLOWING = 2           # sentences after the one naming a place that may carry its facts
+TRAVEL = re.compile(r"\b(?:walk|walking|stroll|journey|trip|ride|on foot|away|from (?:here|you|your)|north|south|east|west)\b", re.I)
+DURATION = re.compile(r"\b(half an hour|(?:an?|one)\s+hours?['’]?s?\s+and\s+a\s+half|(\d+|[a-z-]+)\s+(hours?|minutes?|mins?)\b)", re.I)
+HOUR = r"(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?"
+HOUR_WORDS = {w: n for w, n in NUMBERS.items() if 1 <= n <= 12 and w not in ("a", "an")}
+OPEN_RANGE = re.compile(HOUR + r"\s*(?:-|–|—|to|till|until)\s*" + HOUR, re.I)
+OPEN_AT = re.compile(r"open\w*\s+(?:at|from)?\s*" + HOUR + r".{0,25}?clos\w*\s+(?:at|by)?\s*" + HOUR, re.I)
+OPEN_WORD = re.compile(r"\b(?:open|opens|opening|hours)\b", re.I)
+
+
+def _sentences(text: str) -> list[str]:
+    return [t.strip() for t in re.split(r"(?<=[.!?])\s+|\n", text) if t.strip()]
+
+
+def stated_minutes(text: str) -> int | None:
+    """How long a walk the words say it is ("an hour west", "twenty minutes' walk from here"), or None. The duration and a word
+    about travel have to be in the same sentence, so "open for an hour" is not a distance."""
+    for sentence in _sentences(text):
+        if not TRAVEL.search(sentence):
+            continue
+        m = DURATION.search(sentence)
+        if not m:
+            continue
+        whole = m.group(1).lower()
+        if whole == "half an hour":
+            return 30
+        if "and a half" in whole:
+            return 90
+        n = int(m.group(2)) if m.group(2).isdigit() else NUMBERS.get(m.group(2).lower())
+        if n:
+            return n * (60 if m.group(3).lower().startswith("hour") else 1)
+    return None
+
+
+def _hour(num: str, marker: str | None, after: int | None = None) -> int | None:
+    n = int(num) if num.isdigit() else HOUR_WORDS.get(num.lower())
+    if n is None or not 0 <= n <= 24:
+        return None
+    marker = (marker or "")[:1].lower()
+    if marker == "p":
+        return n % 12 + 12
+    if marker == "a":
+        return n % 12
+    if after is not None and n <= after and n < 12:   # "9 to 5": the 5 is the afternoon
+        return n + 12
+    return n
+
+
+def stated_hours(text: str) -> tuple[int, int] | None:
+    """(opens, closes) as 24-hour clock hours from "open 9am - 5pm", "open from nine to five" or "opens at 8 and closes at 6"."""
+    for sentence in _sentences(text):
+        if not OPEN_WORD.search(sentence):
+            continue
+        for pattern in (OPEN_AT, OPEN_RANGE):
+            m = pattern.search(sentence)
+            if not m:
+                continue
+            o = _hour(m.group(1), m.group(3))
+            c = _hour(m.group(4), m.group(6), after=o)
+            if o is not None and c is not None and 0 <= o < c <= 24:
+                return o, c
+    return None
+
+
+def _stated_walk(minutes: int) -> tuple[str, float | None]:
+    if minutes > STATED_WALK_MAX:
+        return VERY_FAR, None
+    walk = max(1, min(WALK_CAP, minutes))
+    return ("near" if walk <= BANDS["near"][1] else "far"), float(walk)
+
+
+def _facts(kind: str, there: str) -> dict:
+    """The place-row fields a mention's stated walk and hours set (hours only for a kind that keeps them)."""
+    out = {}
+    minutes = stated_minutes(there)
+    if minutes is not None:
+        out["distance"], out["walk_minutes"] = _stated_walk(minutes)
+    hours = stated_hours(there)
+    if hours and kinds.KINDS[kind].shop_hours:
+        out["hours"], out["daylight_only"] = list(kinds.hours_for(kind, *hours)), 0
+    return out
+
+
 def accept(state, speaker: str, text: str, raw, now: float | None = None, rng: random.Random | None = None) -> dict | None:
     """A character's `mentions_place` ({place, there, distance, items?}) checked against their own words. A known place
     gains the mention (add_to); a new one is recorded as heard-of if the caps allow. Returns the record, or None."""
@@ -144,10 +234,11 @@ def accept(state, speaker: str, text: str, raw, now: float | None = None, rng: r
     hours = kinds.hours_for(kind)
     key = key_for(name)
     alias = _alias(name)
-    rec = state.add_place(key, c, aliases=[alias] if alias != key.lower() else [], kind=kind, distance=distance,
-                          walk_minutes=walk, hours=list(hours) if hours else None, daylight_only=int(not hours),
-                          mentions=[mention], created_at=now, heard_at=now)
-    state.log("heard_of_place", place=key, by=mention["by"], there=mention["there"], distance=distance)
+    fields = {"distance": distance, "walk_minutes": walk, "hours": list(hours) if hours else None, "daylight_only": int(not hours),
+              **_facts(kind, mention["there"])}
+    rec = state.add_place(key, c, aliases=[alias] if alias != key.lower() else [], kind=kind, mentions=[mention],
+                          created_at=now, heard_at=now, **fields)
+    state.log("heard_of_place", place=key, by=mention["by"], there=mention["there"], distance=fields["distance"])
     return rec
 
 
@@ -162,6 +253,7 @@ def add_to(state, place, speaker: str, text: str, raw, now: float | None = None,
         return None
     mention = _mention(speaker, raw, now)
     fields = {"mentions": (rec["mentions"] + [mention])[-MENTIONS_KEPT:], "heard_at": now,
+              **(_facts(rec["kind"], mention["there"]) if rec["status"] != "real" else {}),   # a real place has been designed: its numbers stay
               **_grow(state, rec, mention, rng or random.Random())}
     name = _name(raw)
     alias = _alias(name) if name else ""
@@ -227,10 +319,32 @@ def _voices(state, limit: int, scan: int) -> list[tuple[str, str]]:
     return out
 
 
-def _sentence(text: str, start: int, end: int) -> str:
+def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:
     lo = max(text.rfind(c, 0, start) for c in ".!?:\n") + 1
     hi = min([i for i in (text.find(c, end) for c in ".!?\n") if i >= 0] or [len(text) - 1]) + 1
+    return lo, hi
+
+
+def _sentence(text: str, start: int, end: int) -> str:
+    lo, hi = _sentence_span(text, start, end)
     return text[lo:hi].strip()
+
+
+def _context(text: str, start: int, end: int) -> str:
+    """The sentence naming a place, plus those of the next FOLLOWING sentences that state how far it is or when it is open."""
+    lo, pos = _sentence_span(text, start, end)
+    parts = [text[lo:pos].strip()]
+    for _ in range(FOLLOWING):
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos >= len(text):
+            break
+        stops = [i for i in (text.find(c, pos) for c in ".!?\n") if i >= 0]
+        nxt = text[pos:min(stops) + 1 if stops else len(text)].strip()
+        pos = min(stops) + 1 if stops else len(text)
+        if nxt and (stated_minutes(nxt) is not None or stated_hours(nxt) is not None):
+            parts.append(nxt)
+    return " ".join(parts)
 
 
 def _sentence_start(text: str, at: int) -> bool:
@@ -248,7 +362,7 @@ def _spot(name: str, text: str, proper: bool) -> tuple[str, str] | None:
             said = m.group(0)
             if proper and (not said[0].isupper() or _sentence_start(text, m.start())):
                 continue
-            return said, _sentence(text, m.start(), m.end())
+            return said, _context(text, m.start(), m.end())
     return None
 
 
@@ -324,7 +438,7 @@ def chat_mentions(text: str) -> list[dict]:
             if core(name) in seen:
                 continue
             seen.add(core(name))
-            sentence = _sentence(text, m.start(), m.end())
+            sentence = _context(text, m.start(), m.end())
             out.append({"place": name, "there": sentence, "distance": guess_distance(sentence)})
     return out
 
