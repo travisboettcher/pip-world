@@ -374,9 +374,10 @@ function renderState() {
   if (!state) return;
   const a = state.agent, u = state.usage;
   $('now').replaceChildren(h('b', {}, a.activity), a.description ? ` — ${a.description}` : '');
-  $('meters').replaceChildren(meter('Hunger', a.hunger, 'hunger'), meter('Energy', a.energy));
-  if (PUBLIC) { $('meta').replaceChildren(...[['Mood', a.mood], ['Location', a.location], ['Ticks since start', state.ticks]].flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])); return; }
-  const meta = [['Mood', a.mood], ['Location', a.location], ['Model', `${state.model} via ${state.backend}`],
+  const coins = state.coins == null ? null : h('div', { class: 'meter coins', title: `${state.coins} coins` }, h('span', {}, 'Coins'), h('b', {}, String(state.coins)));
+  $('meters').replaceChildren(...[meter('Hunger', a.hunger, 'hunger'), meter('Energy', a.energy), coins].filter(Boolean));
+  if (PUBLIC) { $('meta').replaceChildren(...[['Mood', a.mood], ['Location', a.location], ['Coins', state.coins], ['Ticks since start', state.ticks]].flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])); return; }
+  const meta = [['Mood', a.mood], ['Location', a.location], ['Coins', state.coins], ['Model', `${state.model} via ${state.backend}`],
                 ['Pacing', state.pacing], ['Ticks since start', state.ticks], ['Inbox waiting', state.pending_inbox],
                 ['Tools', state.tools.join(', ')]];
   $('meta').replaceChildren(...meta.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
