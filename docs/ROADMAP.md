@@ -121,8 +121,8 @@ is in my notes, not in the gears".
 - [x] **Small economy, phase 1** (DESIGN-market.md): coins, shop and market booths, `buy`/`sell`/`pay`, prices that move a little, a daily till as the throttle.
 - [ ] Small economy, phase 2: Pip's own booth with simulated customers, booths run by other characters, letters that offer goods, selling creations and works
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
-- [ ] **Happenings** (owner, 2026-11-03; designed in [DESIGN-happenings.md](DESIGN-happenings.md)): small events from a fixed category menu, rolled deterministically
-      (good/bad/neutral, size), written by the model within caps, and seen through the emotion lens with Pip able to take them in stride. Replaces the LLM-free surprises idea
+- [ ] **Happenings** (owner, 2026-11-03; designed in [DESIGN-happenings.md](DESIGN-happenings.md)): small events from a fixed category menu: a 10% chance per three-hour slot, severity
+      50/45/5 (minor/medium/major) as the limiter, the emotion lens rolled independently of the outcome, and Pip's own reading of it (`feel`). Live from the first release. Replaces the LLM-free surprises idea
 - [ ] Scarcity: gifts currently grant wishes within minutes; consider delivery delays or partial gifts so wants persist
 - [x] **Pip changes its world** (built 2026-10-30; generic registry): a finished project can carry a `world` capability naming an effect from
       `world_effects.py`; the GM only proposes it for work that plainly made that kind of change, and the engine checks (the effect exists, difficulty
