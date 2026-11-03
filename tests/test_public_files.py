@@ -118,3 +118,10 @@ def test_nothing_in_the_public_files_still_carries_the_old_name():
     for rel in ("docker-compose.yml", "docker-compose.build.yml", "pip-world.hll", "README.md", "CLAUDE.md", ".github/workflows/image.yml", ".github/workflows/ci.yml"):
         assert "agent-world" not in (ROOT / rel).read_text(), rel
     assert not (ROOT / "agent-world.hll").exists()
+
+
+def test_the_image_is_checked_every_two_seconds_while_it_starts_so_a_proxy_picks_it_up_at_once():
+    """Docker's first probe otherwise waits a whole interval, and a proxy that only routes to healthy containers answers 404 for that long."""
+    line = next(l for l in (ROOT / "Dockerfile").read_text().splitlines() if l.startswith("HEALTHCHECK"))
+    opts = dict(re.findall(r"--([a-z-]+)=(\S+)", line))
+    assert opts["start-interval"] == "2s" and opts["start-period"] == "30s" and opts["interval"] == "30s"

@@ -226,14 +226,37 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult("said it")
 
 
+WAIT_MINUTES = (5, 240)   # how long set_activity(minutes=...) may ask to be left alone
+
+
+def _wait_minutes(raw) -> int | None:
+    """The wait asked for, clamped to WAIT_MINUTES, or None for no (sensible) number."""
+    if isinstance(raw, bool):
+        return None
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(WAIT_MINUTES[0], min(WAIT_MINUTES[1], minutes)) if minutes >= 1 else None
+
+
 @tool("set_activity",
       "Choose what you are doing right now. `activity` is a short label (1-3 words, e.g. "
-      "'tinkering', 'painting'); `description` is one sentence about what exactly you're doing.",
+      "'tinkering', 'painting'); `description` is one sentence about what exactly you're doing. If you are waiting on "
+      "something slow (a crop, a letter, a clock), give `minutes` so you are left alone for that long.",
       _obj({"activity": {"type": "string", "description": "short label, max ~3 words"},
             "description": {"type": "string", "description": "one sentence of detail"},
-            "mood": {"type": "string"}}, ["activity"]))
+            "mood": {"type": "string"},
+            "minutes": {"type": "integer", "description": "optional: you are waiting; leave you to it for about this long (5-240)"}},
+           ["activity"]))
 async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     activity = str(args["activity"])[:40].strip().lower() or "idle"
+    wait = _wait_minutes(args.get("minutes"))
+    held = f"; you'll be left to it for about {wait} min unless something happens" if wait else ""
+
+    def hold(label: str) -> None:
+        ctx.state.set_meta(wait_until=str(time.time() + wait * 60 if wait else 0), wait_label=label)
+
     fields = {"activity": activity, "description": str(args.get("description") or "")[:200].strip()}
     if args.get("mood"):
         fields["mood"] = str(args["mood"])[:40]
@@ -242,9 +265,12 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     if (same_label or ctx.state.session()) and fields["description"] and a["description"] and (
             difflib.SequenceMatcher(None, fields["description"].lower(), a["description"].lower()).ratio()
             >= ACTIVITY_SAME) and (not args.get("mood") or fields.get("mood") == a["mood"]):
-        return ToolResult(f"no change - you're already {a['activity']}: {a['description']}", noop=True)
+        if not ctx.state.session():
+            hold(a["activity"])
+        return ToolResult(f"no change - you're already {a['activity']}: {a['description']}{held}", noop=True)
     if same_label and not fields["description"] and not args.get("mood"):
-        return ToolResult(f"no change - you're already {a['activity']}", noop=True)
+        hold(a["activity"])
+        return ToolResult(f"no change - you're already {a['activity']}{held}", noop=True)
     sess = ctx.state.session()
     if sess:  # describing the work doesn't stop it; rest (or finishing) does
         fields.pop("activity")
@@ -253,7 +279,8 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
         ctx.state.update_agent(**fields)
         return ToolResult(f"(still busy) {busy(ctx)}")
     ctx.state.update_agent(**fields)
-    return ToolResult(f"now {activity}")
+    hold(activity)
+    return ToolResult(f"now {activity}{held}")
 
 
 @tool("eat", "Eat. With no `item` you have a plain meal (lowers hunger). Name a food item you own (e.g. "

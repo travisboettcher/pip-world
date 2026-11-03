@@ -241,7 +241,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [ ] Diary moments: any diary entry clears all offered moments, so a visit and a garden event may share one entry.
       Consider per-moment coverage
 - [ ] Dollar-based budget cap (`DAILY_BUDGET_USD` + per-model prices) instead of tokens only; output tokens cost 5x input
-- [ ] Healthcheck delays Traefik registration by ~30 s after a recreate (404s meanwhile); tighten interval/start period
+- [x] Healthcheck delayed Traefik registration by ~30 s after a recreate (404s meanwhile): the image now probes every 2 s during its 30 s start period (0.4.0)
 - [x] Verified the backup script against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
@@ -251,7 +251,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       door is the one that rattles") that reads as forgetful, not as a deliberate motif. Fix target: no verbatim repeat of a sentence from recent
       letters (deterministic check + one retry); a recurring *motif* is fine if varied or acknowledged. Ideas: list recent openings/topics to avoid, give Briar a small evolving agenda (events with a due date, things
       they ask Pip), a deterministic repeat check (shared opening words / topic overlap) with one retry, and letters that react to Pip's world facts
-- [ ] Pip reuses identical activity text across ticks while waiting on slow things (crops); consider an explicit "waiting" state
+- [x] Pip reuses identical activity text across ticks while waiting on slow things (crops): `set_activity(minutes=N)` is an explicit wait (5-240 min); the heartbeat leaves Pip alone for that long, while visitors, ripe crops and alerts still wake it (0.4.0)
 - [x] `rest(minutes)`: timed rest; the heartbeat sleeps through it (Pip was resting every 60 s tick)
 - [x] Todos pile up as near-duplicate restatements: new open to-dos/wishes/ambitions that cover the same ground as an
       open one (3+ shared content words, 60% of the shorter) are refused with a pointer to `edit_note`

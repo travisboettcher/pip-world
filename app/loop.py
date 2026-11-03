@@ -100,6 +100,9 @@ class Agent:
             until = self.state.meta("rest_until")
             if delay is not None and until and self.state.agent()["activity"] == "resting":  # resting: sleep through (events still wake)
                 delay = max(delay, float(until) - time.time())
+            wait = self.state.meta("wait_until")
+            if delay is not None and wait and self.state.agent()["activity"] == self.state.meta("wait_label"):  # waiting: left to it (events still wake)
+                delay = max(delay, float(wait) - time.time())
             if self._wake.is_set():
                 self._wake.clear()
                 if self._force:

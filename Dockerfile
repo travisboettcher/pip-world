@@ -9,5 +9,5 @@ COPY web ./web
 RUN useradd -u 10001 -m agent && mkdir /data && chown agent /data
 USER agent
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz')"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz')"
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

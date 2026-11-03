@@ -246,3 +246,7 @@ gallery (`GET /works`, the Work tab, `pipchat gallery`), are paced by `WORKS_PER
 Design: [DESIGN-market.md](DESIGN-market.md). Pip has a purse (10 coins to start; `GET /state` shows `coins`). At a shop or market (a place kind
 that trades) the tools `buy`, `sell` and `pay` appear, and `browse` lists the day's prices. Prices move a little with trade and drift back, a booth
 pays 60% of what it charges and has only a day's coins to pay out, and anything Pip can find can be bought. Add `buy,sell,pay` to `TOOLS`.
+
+## Waiting
+`set_activity` takes an optional `minutes` (5-240) for when Pip is only waiting on something slow (a crop, a letter, a clock). The world then skips the heartbeat
+until that time is up; a visitor, a ripe crop, a stat alert or a different activity still ends the wait early. Without `minutes`, any earlier wait is over.
