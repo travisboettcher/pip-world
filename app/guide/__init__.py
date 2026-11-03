@@ -53,6 +53,7 @@ SECTIONS = (
     Section("answering", tool("say"), bullet=True),
     Section("search", tool("web_search"), bullet=True),
     Section("brevity", always, bullet=True),
+    Section("handover", lambda tools, s, lib: "write_letter" in tools and s.neighbor, bullet=True),
 )
 
 

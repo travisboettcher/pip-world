@@ -513,13 +513,15 @@ class GameMaster:
                if heard else f"Pip has just arrived{'' if at else ' at the door'}; greet it as {name} would.")
             + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
             f"{name} stays at {at or 'home'} and can't do more than they plausibly could"
-            + ("" if can_give else ", and hands Pip nothing") + f". Report the line as `text`, "
+            + ("" if can_give else ", and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, "
+               "tipping out or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had "
+               "today") + f". Report the line as `text`, "
             "and:\n"
             + self._remembering(name, "line") + ("Optional:\n" + self._news("talk") if at else "")
             + (f"- `give`: only if {name} really hands Pip something small right now "
                "(`name`, `kind`: material, seed, food or tool, `qty` 1-3, `description`). Pip receives exactly this and "
-               "nothing else, so never describe handing over, offering a pinch of, or giving anything you do not report "
-               "here\n" if can_give else "")
+               "nothing else, so never describe handing over, offering a pinch of, letting Pip take or help themselves to, or giving anything "
+               "you do not report here\n" if can_give else "")
             + (f"- {mention}\n" if mention else "")
         )
         out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING,

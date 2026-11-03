@@ -96,7 +96,8 @@ GREETING_BARE = (
     "Right now Pip is visiting Briar at home. It is raining.\n"
     "Pip has just arrived at the door; greet it as Briar would. One to three short sentences, spoken aloud, in "
     "character; a small action in *asterisks* is fine. Briar stays at home and can't do more than they "
-    "plausibly could, and hands Pip nothing. Report the line as `text`, and:\n"
+    "plausibly could, and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out "
+    "or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
     'and asked how its walk went")\n'
     "- `told`: 0-3 short phrases for things about Briar or their world that this line tells Pip for the first "
@@ -119,8 +120,9 @@ TALK_FULL = (
     "Right now Pip is visiting Briar at home. It is raining.\n"
     'Pip just said: "hi" / "how are you"\n'
     "Answer Pip as Briar, face to face. One to three short sentences, spoken aloud, in character; a small "
-    "action in *asterisks* is fine. Briar stays at home and can't do more than they plausibly could, and hands Pip nothing. Report "
-    "the line as `text`, and:\n"
+    "action in *asterisks* is fine. Briar stays at home and can't do more than they plausibly could, and hands Pip nothing: nothing changes hands today, so never "
+    "describe giving, counting out, tipping out or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be "
+    "had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
     'and asked how its walk went")\n'
     "- `told`: 0-3 short phrases for things about Briar or their world that this line tells Pip for the first "
@@ -162,7 +164,8 @@ RESIDENT_GREETING = (
     "Right now Pip is at Saltholm, with Mr Teague. It is raining.\n"
     "Pip has just arrived; greet it as Mr Teague would. One to three short sentences, spoken aloud, in "
     "character; a small action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they "
-    "plausibly could, and hands Pip nothing. Report the line as `text`, and:\n"
+    "plausibly could, and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out "
+    "or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
     'and asked how its walk went")\n'
     "- `told`: 0-3 short phrases for things about Mr Teague or their world that this line tells Pip for the first "
@@ -184,7 +187,8 @@ RESIDENT_TALK = (
     'Pip just said: "any wire?"\n'
     "Answer Pip as Mr Teague, face to face. One to three short sentences, spoken aloud, in character; a small "
     "action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they plausibly could, "
-    "and hands Pip nothing. Report the line as `text`, and:\n"
+    "and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out or letting Pip take or help "
+    "themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
     'and asked how its walk went")\n'
     "- `told`: 0-3 short phrases for things about Mr Teague or their world that this line tells Pip for the first "
@@ -370,7 +374,8 @@ async def test_a_neighbor_may_hand_pip_something_only_through_give(tmp_path):
     assert "hands Pip nothing" not in t and "could. Report the line as `text`, and:\n" in t
     assert ("- `give`: only if Briar really hands Pip something small right now "
             "(`name`, `kind`: material, seed, food or tool, `qty` 1-3, `description`). Pip receives exactly this and nothing "
-            "else, so never describe handing over, offering a pinch of, or giving anything you do not report here\n") in t
+            "else, so never describe handing over, offering a pinch of, letting Pip take or help themselves to, or giving anything you do not "
+            "report here\n") in t
     assert "give" in b.schemas[0]["properties"] and b.schemas[0]["properties"]["give"]["type"] == "object"
     await gm.speak_in_person("Briar", "An owl.", [], [], ["got any seeds?"], "It is raining.")
     assert "give" not in b.schemas[1]["properties"] and "`give`" not in task(b, 1)

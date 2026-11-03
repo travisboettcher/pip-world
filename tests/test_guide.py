@@ -178,3 +178,9 @@ def test_a_mounted_library_is_described_to_the_agent_and_a_missing_one_is_not(tm
     assert "a library full of real books" not in agent._system_prompt()
     agent.library = FakeLibrary()
     assert "a library full of real books" in agent._system_prompt()
+
+
+def test_the_guidelines_say_only_what_is_in_your_belongings_is_yours():
+    text = norm(render())
+    assert "not yours until it is in your belongings" in text and "check your belongings before you cross off" in text
+    assert "not yours until it is in your belongings" not in norm(render(Settings(tools=ALL, neighbor=False)))
