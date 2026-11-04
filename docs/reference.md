@@ -257,3 +257,7 @@ picks the category, whether it is good, bad or neutral, its severity (`HAPPENING
 through; the model writes two or three sentences; the engine appends what really changed in brackets. Pip is told, and `feel(emotion)` says how it takes it (any of the eight
 emotions, or `nothing`), which decides where the event's meaning lands. `HAPPENINGS=on|log|off`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SLOT_HOURS`; HTTP `GET /happenings`; `./pipchat happenings` lists them and `--replay ID` rolls one's dice again. There are eleven categories (the garden, a creature, the pantry, a find, the body, the market,
 a mishap in the workshop, news of a neighbor, a memory, a kindness, the atmosphere); a major mishap can leave a creation needing a part before it can be tended again. The Now tab has a "Lately" card. A night's sleep rolls too (once per slot slept, found on waking), and the season (`HEMISPHERE`, `HAPPENINGS_SEASONS`) makes some kinds likelier.
+
+## Pip's stall and wishes
+At a market, `sell` with an `ask` sets goods out on Pip's own stall (`ask` 0 takes them back); customers stop only while Pip is there. See [DESIGN-market.md](DESIGN-market.md). The wishlist takes a `kind` (thing,
+activity, ability, idea); wishes that are not things are told to Pip's friend, one a day (`WISH_SHARE`). See [DESIGN-wishes.md](DESIGN-wishes.md).

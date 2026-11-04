@@ -18,7 +18,9 @@ from . import nightpass as np
 from .outreach import Outreach
 from . import places
 from . import happenings
+from . import market
 from . import weather
+from . import wishes
 from . import worldmap
 from . import emotions as emo
 from . import sleep as sleepmod
@@ -55,6 +57,7 @@ class Agent:
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
         invented.backfill(state)
+        invented.backfill_stock(state)
         self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
                                vision=bool(getattr(self.backend, "vision", False)))
         self.last_tick = 0.0
@@ -161,6 +164,7 @@ class Agent:
         if cr.tick(self.state, self.rng):
             self.request_wake()
         emo.drift(self.state, self.s)
+        market.stall_step(self.state, self.s, self.rng)          # customers stop at Pip's stall while it is at the market
         worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
 
     async def resolve_world(self) -> None:
@@ -172,6 +176,7 @@ class Agent:
             self.request_wake()
         if await happenings.step(self.state, self.s, self.gm):
             self.request_wake()
+        await wishes.share_step(self.state, self.s, self.outreach)
         await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
         await nb.recall_told(self.state, self.gm, self._told_tries)
         if await nb.step(self.state, self.s, self.gm, self.rng, library=self.library):
@@ -342,6 +347,7 @@ class Agent:
                       for i in items] or ["- (nothing)"]
         if any(t in self.tools for t in ("buy", "sell", "pay")):
             lines.append(f"Coins: {self.state.coins()}")
+            lines += market.stall_lines(self.state, self.state.agent()["location"], time.time())
         if "plant" in self.tools:
             lines.append("Your garden:")
             for g in self.state.garden():
@@ -527,6 +533,8 @@ class Agent:
             got = [i["name"] for i in belongings if i["ts"] > since and State.related(i["name"], m["text"])]
             note = (f"  [you've since received: {', '.join(got)} - is this wish met? resolve_note it, or "
                     "edit_note it down to what's still missing]") if got else ""
+            if m.get("kind") in ("", "thing") and (where := wishes.sources(self.state, m["text"], time.time())):
+                note += f"  [you could try: {'; '.join(where)}]"
             return fmt(m) + note
 
         visits = [(c["name"], ts) for c in self.state.characters("neighbor")
@@ -623,6 +631,8 @@ class Agent:
                 elif e["kind"] == "letter_sent":
                     lines.append(f"- you wrote to {d['to']}: {d['text'][:200]}"
                                  + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
+                elif e["kind"] == "stall_sale":
+                    lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "heard_of_place":
                     lines.append(f"- {d['by']} told you about {places.label(d['place'])}"
                                  + (f": {d['there']}" if d["there"] else ""))

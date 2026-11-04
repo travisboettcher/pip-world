@@ -523,6 +523,40 @@ def build_loot(entries, kind: str, known: dict, promises: list[dict], rng: rando
     return out
 
 
+STAPLE_COUNT = 8   # how many kinds of thing a trading place keeps when its design named none
+
+
+def staples(kind: str, rng: random.Random) -> list[list]:
+    """The standard stock of a shop or market whose design came back with nothing to sell: a spread of what Pip can find elsewhere in the world,
+    so a trading place is never bare. The kind's tool limit holds."""
+    from . import gathering
+    k = kinds.KINDS[kind]
+    pool = [e for table in (gathering.WOODS, gathering.JUNKYARD) for e in table if e[1] in k.loot_kinds]
+    out, tools = [], 0
+    for e in rng.sample(pool, len(pool)):
+        if e[1] == "tool" and tools >= k.max_tools:
+            continue
+        tools += e[1] == "tool"
+        out.append([e[0], e[1], e[2], list(e[3]), e[4], dict(e[5])])
+        if len(out) >= STAPLE_COUNT:
+            break
+    return out
+
+
+def backfill_stock(state, rng: random.Random | None = None) -> list[str]:
+    """A trading place that became real with nothing to sell is given the standard stock (and the verbs a stocked place has). Returns the places fixed."""
+    rng = rng or random.Random()
+    fixed = []
+    for rec in state.place_rows():
+        k = kinds.KINDS.get(rec["kind"])
+        if rec["status"] == "real" and k and k.trades and not rec["loot"]:
+            loot = staples(rec["kind"], rng)
+            state.update_place(rec["key"], loot=loot, verbs={v: [short, gerund] for v, (short, gerund) in k.verbs.items()})
+            state.log("stocked", place=rec["key"], items=[e[0] for e in loot])
+            fixed.append(rec["key"])
+    return fixed
+
+
 def design(state, rec: dict, raw, rng: random.Random | None = None, now: float | None = None) -> dict | None:
     """Keep a GM design for a heard-of place, checked and clamped: the record becomes real. An unusable design keeps
     it heard-of (bare), and the next arrival tries again."""
@@ -534,6 +568,8 @@ def design(state, rec: dict, raw, rng: random.Random | None = None, now: float |
     k = kinds.KINDS[kind]
     known = known_items(state)
     loot = build_loot(raw.get("loot"), kind, known, promised(rec, known), rng) if k.loot_kinds else []
+    if not loot and k.trades:
+        loot = staples(kind, rng)                      # a shop or market is never bare
     verbs = {v: [clip(raw.get(f"{v}_help"), 80) or short, (clip(raw.get("gerund"), 40) or gerund) if gerund else None]
              for v, (short, gerund) in k.verbs.items()} if loot else {}
     hours = kinds.hours_for(kind, raw.get("opens"), raw.get("closes"))

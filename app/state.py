@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS memories (
   section TEXT NOT NULL DEFAULT 'diary',
   status TEXT NOT NULL DEFAULT 'open',
   outcome TEXT NOT NULL DEFAULT '',
-  edited_at REAL
+  edited_at REAL,
+  kind TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,6 +139,11 @@ CREATE TABLE IF NOT EXISTS market_prices (   -- how far one booth's price for on
   place TEXT NOT NULL, item TEXT NOT NULL, local REAL NOT NULL, local_at REAL NOT NULL, day TEXT NOT NULL DEFAULT '',
   sold_today INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (place, item)
 );
+CREATE TABLE IF NOT EXISTS stalls (   -- Pip's own stall at a market (see market.py)
+  place TEXT NOT NULL, item TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', attrs TEXT NOT NULL DEFAULT '{}',
+  qty INTEGER NOT NULL, ask INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, earned INTEGER NOT NULL DEFAULT 0,
+  sold_today INTEGER NOT NULL DEFAULT 0, day TEXT NOT NULL DEFAULT '', PRIMARY KEY (place, item)
+);
 CREATE TABLE IF NOT EXISTS tills (place TEXT PRIMARY KEY, coins INTEGER NOT NULL, day TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS happenings (     -- small events from the world (see happenings.py)
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, slot TEXT NOT NULL, category TEXT NOT NULL, tone TEXT NOT NULL,
@@ -222,6 +228,7 @@ class State:
                 ("memories", "section", "TEXT NOT NULL DEFAULT 'diary'"),
                 ("memories", "status", "TEXT NOT NULL DEFAULT 'open'"),
                 ("memories", "outcome", "TEXT NOT NULL DEFAULT ''"),
+                ("memories", "kind", "TEXT NOT NULL DEFAULT ''"),
                 ("memories", "edited_at", "REAL"),
                 ("inbox", "sender", "TEXT NOT NULL DEFAULT 'A visitor'"),
                 ("inbox", "gift", "INTEGER NOT NULL DEFAULT 0"),
@@ -482,13 +489,14 @@ class State:
             self.db.commit()
 
     # --- memories (the journal) ----------------------------------------
-    def add_memory(self, text: str, section: str = "diary") -> int:
+    def add_memory(self, text: str, section: str = "diary", kind: str = "") -> int:
+        """Write a note; a wish may have a `kind` (see wishes.py)."""
         if section not in SECTIONS:
             raise ValueError(f"unknown section {section!r}; options: {list(SECTIONS)}")
         with self.lock:
             now = time.time()
             cur = self.db.execute(
-                "INSERT INTO memories (ts, text, section) VALUES (?, ?, ?)", (now, text, section))
+                "INSERT INTO memories (ts, text, section, kind) VALUES (?, ?, ?, ?)", (now, text, section, kind))
             self._index(f"note:{section}", cur.lastrowid, now, text, commit=False)
             self.db.commit()
             return cur.lastrowid
@@ -622,6 +630,26 @@ class State:
                             "ON CONFLICT(place, item) DO UPDATE SET local = excluded.local, local_at = excluded.local_at, "
                             "day = excluded.day, sold_today = excluded.sold_today",
                             (place, item, local, local_at, day, sold_today))
+            self.db.commit()
+
+    def stall_rows(self, place: str) -> list[dict]:
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM stalls WHERE place = ? ORDER BY item", (place,)).fetchall()
+        return [{**dict(r), "attrs": json.loads(r["attrs"])} for r in rows]
+
+    def set_stall(self, place: str, item: str, **fields) -> None:
+        """Create or change one line of a stall (`item` is the name key); a new line needs name, kind, qty and ask."""
+        vals = {k: json.dumps(v) if k == "attrs" else v for k, v in fields.items()}
+        with self.lock:
+            if self.db.execute("SELECT 1 FROM stalls WHERE place = ? AND item = ?", (place, item)).fetchone():
+                self.db.execute(f"UPDATE stalls SET {', '.join(f'{k} = ?' for k in vals)} WHERE place = ? AND item = ?", (*vals.values(), place, item))
+            else:
+                self.db.execute(f"INSERT INTO stalls (place, item, {', '.join(vals)}) VALUES (?, ?, {', '.join('?' for _ in vals)})", (place, item, *vals.values()))
+            self.db.commit()
+
+    def delete_stall(self, place: str, item: str) -> None:
+        with self.lock:
+            self.db.execute("DELETE FROM stalls WHERE place = ? AND item = ?", (place, item))
             self.db.commit()
 
     def till_row(self, place: str) -> dict | None:

@@ -1,6 +1,6 @@
 # Design: markets and coins
 
-Status (2026-11-02): phase 1 built (`app/market.py`, `tests/test_market.py`); phases 2-3 not yet. Where the build differs from the plan below: a
+Status (2026-11-04): phase 1 built (0.3.0) and **Pip's own stall built (0.8.0)**; phase 1 built (`app/market.py`, `tests/test_market.py`); phases 2-3 not yet. Where the build differs from the plan below: a
 booth's stock for the day is `max(2, 2 * the table's biggest quantity)` per item (no restocking mid-day), tills reset daily (not accumulate),
 and `pay` settles the whole account at once. Grew out of the tomato glut (81 tomatoes after a day of scoop-seeds-and-replant):
 crops had no demand. Crops now take about a day (v0.2.1); this gives the surplus somewhere to go, and gives Pip a reason to
@@ -80,3 +80,10 @@ Add `coins` and the market tab data (prices, Pip's till) to the public allowlist
 - Should a booth ever refuse to deal with Pip (reputation)? Left out of v1.
 - Do keepers keep coins between days (a rich merchant) or reset? Fixed refill keeps it simple; v1 resets to `TILL_PER_DAY`.
 - Existing worlds: Pip's purse starts at 10 when the table is first created; Saltholm's debt is priced at the day it is converted.
+
+## Pip's own stall (0.8.0)
+At a market (a place kind with `stalls`; shops are for selling to the keeper), `sell(item, quantity?, ask)` sets goods out: they leave Pip's belongings and wait on the stall
+(up to three kinds). `sell(item, ask=0)` takes them back. Customers stop **only while Pip is at the market, awake, not walking and it is open**: about two an hour at the going price (`fair_price`,
+what a booth here would charge today), fewer as the ask climbs (none beyond 1.6 times it, more for a cheap ask), at most eight of one thing a day. Each customer pays the ask, goes straight to Pip's
+purse, slips the local price by 4%, and logs a `stall_sale` (a little joy for Pip; the first is a first). Deviations from the plan above: proceeds go to the purse at once (there is no till to collect, since
+customers only come while Pip is there); a stall is for markets only; the prompt and `browse` show the stall where Pip stands.

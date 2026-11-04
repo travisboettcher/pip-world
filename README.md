@@ -70,6 +70,7 @@ Everything is an environment variable, listed with comments in [`.env.example`](
 | `DAILY_TOKEN_BUDGET` | the daily cap on tokens |
 | `TOOLS` | which tools Pip has (the parts of the world that need a tool, like the garden, only appear when it is enabled) |
 | `HAPPENINGS` (`on`, `log`, `off`), `HAPPENINGS_CHANCE`, `HAPPENINGS_SLOT_HOURS`, `HAPPENINGS_SEVERITY`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SEASONS`, `HEMISPHERE` | small events from the world: each slot of awake time has a chance of one (default 10% per 3 hours), sized minor / medium / major (50, 45, 5); a night's sleep rolls too, and the season makes some kinds likelier; `log` writes them without changing anything ([design](docs/DESIGN-happenings.md)) |
+| `WISH_SHARE` (`on`, `off`) | Pip's wishes that are not things (something it would like to do, wishes it could do, wants to understand) are told to its friend, one a day, as a postcard ([design](docs/DESIGN-wishes.md)) |
 | `GROW_SPEED`, `WORK_SPEED` | make crops (which take about a day) and work sessions pass faster than real time (handy for testing) |
 | `OUTREACH_CHANNELS`, `MATRIX_*` | let Pip write to a chat room |
 

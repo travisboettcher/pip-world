@@ -42,6 +42,7 @@ import random
 import pytest
 
 from app import invented_places as IP
+from app import place_kinds as K
 from tests.test_outreach import daytime
 
 TIP = "You'll want the ironmonger in Saltholm; he keeps thin brass wire, the fishing-hook gauge."
@@ -464,11 +465,11 @@ def test_an_unusable_design_leaves_the_place_heard_of(tmp_path, raw):
     assert IP.design(st, rec, raw, random.Random(1)) is None and st.place_row("Saltholm")["status"] == "heard"
 
 
-def test_a_shop_with_nothing_in_its_table_offers_nothing_to_do(tmp_path):
+def test_a_shop_designed_with_nothing_in_its_table_is_given_the_standard_stock(tmp_path):
     s, st = fresh(tmp_path)
     rec = IP.accept(st, "Briar", "Saltholm has a shop.", {"place": "Saltholm", "there": "a shop"})
     out = IP.design(st, rec, {"kind": "shop", "description": "A shop, shut up and empty.", "loot": []}, random.Random(1))
-    assert out["kind"] == "shop" and out["loot"] == [] and out["verbs"] == {}
+    assert out["kind"] == "shop" and len(out["loot"]) == IP.STAPLE_COUNT and set(out["verbs"]) == {"browse", "gather"}
 
 
 async def test_gm_design_place_is_told_the_mentions_kinds_and_existing_names(tmp_path):
@@ -1369,3 +1370,67 @@ def test_the_backfill_looks_past_a_name_said_first_in_a_sentence(tmp_path):
     st.log("companion", name="Briar", text="Saltholm is lovely. Ask the man in Saltholm.")
     st.add_memory("go to Saltholm", "todo")
     assert [r["key"] for r in IP.backfill(st)] == ["Saltholm"]
+
+
+# --- a trading place is never bare ------------------------------------------------------------------------------
+def test_a_market_designed_with_nothing_for_sale_is_given_the_standard_stock(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Travis", "The market is in Brygdon, an hour west.", {"place": "Brygdon", "there": "The market is in Brygdon.", "distance": "far"}, now=1000.0)
+    row = IP.design(st, rec, {"kind": "market", "description": "A busy square ringed with booths.", "loot": []}, random.Random(3), now=5000.0)
+    assert row["kind"] == "market" and len(row["loot"]) == IP.STAPLE_COUNT and set(row["verbs"]) == {"browse"}
+    names = [e[0] for e in row["loot"]]
+    assert len(set(names)) == len(names) and sum(e[1] == "tool" for e in row["loot"]) <= K.KINDS["market"].max_tools
+    assert all(e[1] in K.KINDS["market"].loot_kinds and e[2] > 0 and len(e[3]) == 2 and e[3][0] <= e[3][1] and isinstance(e[5], dict) for e in row["loot"])
+    again = IP.staples("market", random.Random(3))
+    assert again == row["loot"]                                                         # the same dice, the same stock
+
+
+def test_a_shop_with_a_bad_design_is_stocked_too_and_a_sight_keeps_nothing(tmp_path):
+    s, st = fresh(tmp_path)
+    rec = IP.accept(st, "Briar", "Try the ironmonger in Saltholm.", {"place": "Saltholm", "there": "an ironmonger", "distance": "far"}, now=1000.0)
+    row = IP.design(st, rec, {"kind": "shop", "description": "A cramped shop.", "loot": "nothing"}, random.Random(1), now=5000.0)
+    assert len(row["loot"]) == IP.STAPLE_COUNT and set(row["verbs"]) == {"browse", "gather"}
+    rec2 = IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=1000.0)
+    lake = IP.design(st, rec2, {"kind": "sight", "description": "A still lake.", "loot": []}, random.Random(1), now=6000.0)
+    assert lake["loot"] == [] and lake["verbs"] == {}
+
+
+def test_a_designed_stock_is_kept_as_it_is(tmp_path):
+    s, st = fresh(tmp_path)
+    s.invented_places_per_day = 3
+    row = real_shop(st)
+    assert [e[0] for e in row["loot"]][:2] == ["brass wire", "fish hooks"] and len(row["loot"]) < IP.STAPLE_COUNT
+
+
+def test_the_staples_respect_the_tool_limit_and_cannot_run_out_of_a_small_pool(monkeypatch):
+    from app import gathering
+    monkeypatch.setattr(gathering, "WOODS", [("sticks", "material", 5, (1, 2), "s", {})])
+    monkeypatch.setattr(gathering, "JUNKYARD", [("awl", "tool", 5, (1, 1), "a", {}), ("saw", "tool", 5, (1, 1), "b", {}), ("file", "tool", 5, (1, 1), "c", {}),
+                                                ("vice", "tool", 5, (1, 1), "d", {}), ("tin", "material", 5, (1, 2), "e", {})])
+    got = IP.staples("market", random.Random(1))
+    assert sorted(e[0] for e in got if e[1] == "material") == ["sticks", "tin"] and sum(e[1] == "tool" for e in got) == K.KINDS["market"].max_tools
+    assert len(got) == 5 and IP.staples("shop", random.Random(1)) and sum(e[1] == "tool" for e in IP.staples("shop", random.Random(1))) == K.KINDS["shop"].max_tools
+
+
+def test_an_already_real_bare_market_is_stocked_once_when_the_world_starts(tmp_path):
+    s, st = fresh(tmp_path)
+    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=1.0, heard_at=1.0, loot=[], verbs={})
+    st.add_place("Saltholm", "saltholm", kind="shop", status="real", created_at=1.0, heard_at=1.0, loot=[["brass wire", "material", 20, [1, 2], "w", {}]], verbs={"browse": ["b", None]})
+    st.add_place("Lake", "lake", kind="sight", status="real", created_at=1.0, heard_at=1.0, loot=[])
+    st.add_place("Fen", "fen", kind="market", status="heard", created_at=1.0, heard_at=1.0, loot=[])
+    assert IP.backfill_stock(st, random.Random(2)) == ["Brygdon"]
+    row = st.place_row("Brygdon")
+    assert len(row["loot"]) == IP.STAPLE_COUNT and list(row["verbs"]) == ["browse"]
+    assert [e["data"]["place"] for e in st.events(5) if e["kind"] == "stocked"] == ["Brygdon"]
+    assert [e["data"]["items"] for e in st.events(5) if e["kind"] == "stocked"][0] == [e[0] for e in row["loot"]]
+    assert st.place_row("Saltholm")["loot"] == [["brass wire", "material", 20, [1, 2], "w", {}]] and st.place_row("Lake")["loot"] == [] and st.place_row("Fen")["loot"] == []
+    assert IP.backfill_stock(st, random.Random(9)) == []                               # once
+
+
+def test_the_agent_stocks_a_bare_market_when_it_starts(tmp_path):
+    from tests.test_projects import make
+    s, st, gm, agent = make(tmp_path)
+    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=1.0, heard_at=1.0, loot=[], verbs={})
+    from app.loop import Agent
+    Agent(s, st, agent.backend, agent.pacing)
+    assert len(st.place_row("Brygdon")["loot"]) == IP.STAPLE_COUNT

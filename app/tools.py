@@ -18,9 +18,11 @@ from . import creations as cr
 from . import memory as mem
 from . import library as lib
 from . import neighbors as nb
+from . import place_kinds as kinds
 from . import places
 from . import search
 from . import weather
+from . import wishes
 from . import projects as proj
 from . import emotions as emo
 from . import sleep as sleepmod
@@ -342,18 +344,26 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
 
 @tool("note_to_self",
       "Write in your journal. Sections: diary (rare, important moments only: discoveries and your reflections on them, visitors), todo (concrete tasks "
-      "you plan to do soon), wishlist (things you want - objects, experiences, people), ambitions (bigger goals you want to work toward over time), "
+      "you plan to do soon), wishlist (anything you wish for: something to have, something you'd like to do, something you wish you could do but can't, "
+      "something you wish you understood), ambitions (bigger goals you want to work toward over time), "
       "learned (facts or skills you picked up). Entries are remembered across wakes.",
       _obj({"section": {"type": "string", "enum": list(SECTIONS)},
-            "text": {"type": "string", "description": "1-2 sentences"}}, ["section", "text"]))
+            "text": {"type": "string", "description": "1-2 sentences"},
+            "kind": {"type": "string", "enum": list(wishes.KINDS), "description": "for the wishlist: a thing to have, an activity to do, an ability you wish you had, or an idea you wish you understood"}},
+           ["section", "text"]))
 async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
     section = args.get("section", "diary")
     if section not in SECTIONS:
         return ToolResult(f"error: section must be one of {list(SECTIONS)}", followup=True)
     text = str(args["text"])[:500]
+    kind = ""
+    if section == "wishlist":
+        kind = str(args.get("kind") or "thing").strip().lower()
+        if kind not in wishes.KINDS:
+            return ToolResult(f"error: a wish's kind is one of {', '.join(wishes.KINDS)}", followup=True)
     if problem := check_note(ctx, section, text):
         return ToolResult(f"not written: {problem}")
-    ctx.state.add_memory(text, section)
+    ctx.state.add_memory(text, section, kind)
     return ToolResult(f"wrote in {section}")
 
 
@@ -755,9 +765,9 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
-    table = gathering.loot_for(ctx.state, here)
+    table = market.stock_table(ctx.state, here) or gathering.loot_for(ctx.state, here)
     rec = ctx.state.place_row(here) if table and here not in gathering.LOOT else None
-    if rec and rec["kind"] == "shop":
+    if rec and kinds.KINDS[rec["kind"]].trades:
         return ToolResult(shop_stock(ctx, here, table, rec), followup=True)
     if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
         seen = gathering.glimpse(ctx.rng, here, table=table)
@@ -782,8 +792,10 @@ def shop_stock(ctx, here: str, table: list, rec: dict) -> str:
     seen = [e for e in table if e[0] in gathering.glimpse(ctx.rng, here, n, table) and market.stock_left(ctx.state, here, e, now)]
     lines = [f"In stock at {places.label(here)} today: "
              + ", ".join(f"{e[0]} ({market.sell_price(ctx.state, here, e, now)} coins)" for e in seen)
-             + f". You have {ctx.state.coins()} coins. buy what you need; gather to pick through the drawers on account." if seen else
+             + f". You have {ctx.state.coins()} coins. buy what you need; "
+             + ("sell what you have, or set out a stall with an ask." if kinds.KINDS[rec["kind"]].stalls else "gather to pick through the drawers on account.") if seen else
              f"The shelves at {places.label(here)} are bare today; they restock slowly, so come back in a day or so."]
+    lines += market.stall_lines(ctx.state, here, now)
     if rec["on_account"]:
         owed = market.owed(ctx.state, here, now)
         lines.append("On account here: " + ", ".join(f"{q} {name}" for name, q in rec["on_account"].items())
@@ -812,13 +824,29 @@ async def buy(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(text if ok else f"error: {text}", followup=True)
 
 
-@tool("sell", "Sell something you have to a booth here. It pays less than it charges, and only has so many coins a day.",
-      _obj(_TRADE_ITEM, ["item"]), where=("market",))
+@tool("sell", "Sell something you have to a booth here: it pays less than it charges, and only has so many coins a day. At a market you can instead set out "
+      "a stall: give `ask` (coins each) and customers stop while you are here, paying your price; an ask of 0 takes it back off the stall.",
+      _obj({**_TRADE_ITEM, "ask": {"type": "integer", "description": "optional, at a market: your price in coins each, to set out a stall (0: take it back)"}}, ["item"]),
+      where=("market",))
 async def sell(ctx: ToolContext, args: dict) -> ToolResult:
+    here = ctx.state.agent()["location"]
+    if args.get("ask") is not None:
+        ask = args["ask"]
+        if isinstance(ask, bool) or not isinstance(ask, int):
+            return ToolResult("error: an ask is a whole number of coins", followup=True)
+        if ask == 0:
+            ok, text = market.take_back(ctx.state, here, str(args.get("item") or ""))
+        else:
+            have, _ = ctx.state.find_item(str(args.get("item") or ""))
+            qty = _qty(args) if "quantity" in args else (have["qty"] if have else 1)
+            if qty is None:
+                return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
+            ok, text = market.list_on_stall(ctx.state, here, str(args.get("item") or ""), qty, ask, time.time())
+        return ToolResult(text if ok else f"error: {text}", followup=True)
     qty = _qty(args)
     if qty is None:
         return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
-    ok, text = market.sell(ctx.state, ctx.state.agent()["location"], str(args.get("item") or ""), qty, time.time())
+    ok, text = market.sell(ctx.state, here, str(args.get("item") or ""), qty, time.time())
     return ToolResult(text if ok else f"error: {text}", followup=True)
 
 
@@ -948,7 +976,7 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         if key == places.HOME:
             continue
         finds = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
-        stocked = [e[0] for e in gathering.loot_for(ctx.state, key) or ()] if p.invented else []
+        stocked = [e[0] for e in market.stock_table(ctx.state, key) or gathering.loot_for(ctx.state, key) or ()] if p.invented else []
         knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))
                               | content_words(" ".join(m["there"] for m in p.mentions)) | content_words(" ".join(stocked))))
         if not (finds or knows):

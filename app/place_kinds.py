@@ -25,6 +25,7 @@ class PlaceKind:
     shop_hours: bool = False                    # bounded opening hours (else: open in daylight)
     session: tuple[int, int] = DEFAULT_SESSION  # how long a gather there may be
     trades: bool = False                        # has booths: buy, sell and pay work here (see market.py)
+    stalls: bool = False                        # Pip may set out a stall of its own here, and customers stop while it is there
 
 
 KINDS: dict[str, PlaceKind] = {k.name: k for k in (
@@ -46,7 +47,7 @@ KINDS: dict[str, PlaceKind] = {k.name: k for k in (
     PlaceKind("market", "somewhere with several booths to buy from and sell to: a market square, a bazaar, a quayside market",
               ("market", "bazaar", "quay"),
               {"browse": ("walk the booths and see what's on offer and at what price", None)},
-              ("tool", "material", "food", "seed"), max_tools=3, capacity=80, refill=4, shop_hours=True, trades=True),
+              ("tool", "material", "food", "seed"), max_tools=3, capacity=80, refill=4, shop_hours=True, trades=True, stalls=True),
     PlaceKind("sight", "somewhere just to go and see: a lighthouse, a ruin, a lake with a view", ()),
 )}
 FALLBACK = "sight"

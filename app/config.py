@@ -119,6 +119,8 @@ class Settings:
     hemisphere: str = "north"              # which way round the seasons go (happenings; see DESIGN-happenings.md)
     happenings_seasons: bool = True         # what is likelier in which season
 
+    wish_share: str = "off"                 # on: wishes that are not things are shared with Pip's friend, one a day (off here so a bare Settings() sends nothing)
+
     # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
     version: str = "dev"
     revision: str = ""
@@ -148,6 +150,7 @@ class Settings:
             happenings_max_per_day=_int("HAPPENINGS_MAX_PER_DAY", 3),
             hemisphere=(e("HEMISPHERE") or "north").lower() if (e("HEMISPHERE") or "north").lower() in ("north", "south") else "north",
             happenings_seasons=(e("HAPPENINGS_SEASONS") or "on").lower() not in ("off", "0", "false", "no"),
+            wish_share=(e("WISH_SHARE") or "on").lower() if (e("WISH_SHARE") or "on").lower() in ("on", "off") else "on",
             version=e("PIP_VERSION") or "dev",
             revision=(e("PIP_REVISION") or "")[:7],
             public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],

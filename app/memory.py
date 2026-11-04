@@ -298,6 +298,9 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
         "so is a quiet day. Don't repeat what you already believed unless it changed.\n"
         "- `people`: for each person who mattered here, `name` and `notes` (1-3 sentences: who they are to you "
         f"now). Only these names: {', '.join(names) if names else '(nobody came by)'}.\n"
+        "- `wishes`: at most two things you found yourself wishing for since you last slept - something you'd like to do, something you wish you could do "
+        "but can't (say what stops you), or something you wish you understood. Each has `kind` (activity, ability or idea) and `text` (one sentence). "
+        "None is fine.\n"
         "- `self`: describe yourself afresh in under 120 words - who you are, what you care about, what you're "
         "working toward - keeping what's still true from before. Describe what you can do from the counts above, "
         "not from what you'd like to be true.\n"
@@ -318,6 +321,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
     out = await gm.ask(task, {
         "summary": {"type": "string"}, "insights": {"type": "array", "items": insight},
         "people": {"type": "array", "items": person}, "self": {"type": "string"},
+        "wishes": {"type": "array", "items": {"type": "object", "properties": {"kind": {"type": "string"}, "text": {"type": "string"}}, "required": ["kind", "text"]}},
         "changed": {"type": "array", "items": insight}, "turning_points": {"type": "array", "items": insight},
     }, ["summary", "self"], "reflect", system=system, max_tokens=REFLECT_MAX_TOKENS) if gm else None
     if not out or not clip(out.get("summary"), 10):
@@ -326,6 +330,8 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
         return None
     summary = clip(out["summary"], 700)
     state.add_reflection("day", summary, 5, since, now)
+    from . import wishes  # wishes needs the state module, which needs this one
+    wishes.add_reflected(state, out.get("wishes"), now)
     insights = await cited_insights(state, settings, gm, out.get("insights"), shown, earlier_text, since, now)
     changes = await cited_insights(state, settings, gm, out.get("changed"), shown, earlier_text, since, now,
                                    kind="change", limit=MAX_CHANGES)

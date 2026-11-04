@@ -55,6 +55,8 @@ SECTIONS = (
     Section("brevity", always, bullet=True),
     Section("waiting", tool("set_activity"), bullet=True),
     Section("happenings", lambda tools, s, lib: s.happenings != "off" and "feel" in tools, bullet=True),
+    Section("wishes", tool("note_to_self"), bullet=True),
+    Section("wishes_shared", lambda tools, s, lib: "note_to_self" in tools and s.wish_share == "on", bullet=True),
     Section("handover", lambda tools, s, lib: "write_letter" in tools and s.neighbor, bullet=True),
 )
 

@@ -124,7 +124,9 @@ function describe(e) {
     case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
+    case 'stall_sale': return { group: 'world', cls: 'world', text: `Pip sold ${d.qty} ${d.item} at its stall for ${d.coins} coin${d.coins === 1 ? '' : 's'}${d.left ? ` (${d.left} left)` : ' (sold out)'}` };
     case 'happening': return { group: 'world', cls: d.tone === 'bad' ? 'warn' : 'world', text: `Something happened — ${d.title}: ${d.text}${d.effects ? ` ${d.effects}` : ''}` };
+    case 'wished': return { group: 'journal', text: `Pip wishes (${d.wish}): ${d.text}` };
     case 'happening_felt': return { group: 'journal', text: `Pip took “${d.title}” as ${d.read_as}${d.read_as === d.lens ? '' : ` (it was written as ${d.lens})`}` };
     case 'emotion': return { group: 'world', cls: 'world', text: `Pip's ${d.emotion} is high (${d.value}): ${d.cause}` };
     case 'settled': return { group: 'actions', text: `Pip settles its ${d.emotion} (${d.from} → ${d.to})` + (d.how ? `: ${d.how}` : '') };
@@ -434,7 +436,7 @@ function renderNotes() {
   }, `${s} (${(notes[s] || []).filter((m) => !status || status === 'archived' || m.status === status).length})`)));
   const items = (notes[noteTab] || []).filter((m) => !status || status === 'archived' || m.status === status).reverse();
   $('notes').replaceChildren(...(items.length ? items.map((m) => h('li', {},
-    h('div', { class: m.status === 'done' ? 'done' : '' }, `#${m.id} ${m.text}`),
+    h('div', { class: m.status === 'done' ? 'done' : '' }, `#${m.id} ${m.text}`, m.kind && m.kind !== 'thing' ? h('span', { class: 'tag' }, m.kind) : null),
     h('small', {}, fmtDay(m.ts) + (m.status === 'done' ? ` · done${m.outcome ? `: ${m.outcome}` : ''}` : m.status === 'archived' ? ' · archived' : '')
       + (m.edited_at ? ` · edited ${fmtDay(m.edited_at)}` : '')),
   )) : [h('li', { class: 'empty' }, 'nothing here')]));

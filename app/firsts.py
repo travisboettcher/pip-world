@@ -109,6 +109,8 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
         add(f"work_made:{d.get('what')}", you("finished a drawing" if d.get("what") == "drawing" else "finished a piece of writing to share"), MAJOR)
     elif kind == "world_changed":
         add(f"world:{d.get('effect')}", you("changed the world around you"), MAJOR)
+    elif kind == "stall_sale":
+        add("stall:sale", you("sold something at your own stall"), MAJOR)
     elif kind == "happening":
         if d.get("category") in HAPPENING_FIRSTS and d.get("status") == "applied":
             add(f"happening:{d['category']}", you(HAPPENING_FIRSTS[d["category"]]))
