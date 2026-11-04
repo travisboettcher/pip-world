@@ -170,6 +170,17 @@ introspection-accuracy fact; it moves nothing. `settle` stays what it is.
 3. The first jolt is surprise at 30% and the rest is meaning at 70%. Different split?
 4. Pip reading an event as `nothing` drops the meaning entirely. Fine, or should a shrug still leave a trace?
 
+## Night happenings and seasons (0.7.0)
+**Night.** Slots only roll while Pip is awake, so a sleep used to be a gap. Now, when Pip wakes, the engine rolls once for each whole slot it slept through (an eight-hour night
+with three-hour slots is two rolls, a long nap one, a short one none) at the usual chance. A hit is a happening that took place in the night and is found on waking: the author is
+told to tell it in the past tense, and the categories that need Pip awake in the world (`market`, `neighbor`: rumours and news) are left out. Each sleep is rolled once, within two
+hours of waking (a service that was down is not given a late roll), never while a happening is unread or the day's limit is reached, and each slot is recorded as `night:<woke event id>#<k>`,
+so replay works on them. The effects, the lens and Pip's reading are unchanged.
+**Seasons.** The month gives a meteorological season (December to February is winter; `HEMISPHERE=south` turns it round). A season leans two things, neither of which can stop anything
+happening: which categories come up (winter: less garden, more pantry, body, mishap and atmosphere; spring: more garden, creatures and finds; summer: more pantry spoilage and market talk;
+autumn: more finds, creatures, memories and market talk) and the tone within a category (a rough winter body, a good spring garden, summer food turning, wistful autumn memories). The author
+is told the season (and so may mention it). Seasons do not change how fast crops grow, so the weather feed and `GROW_SPEED` stay in charge of that. `HAPPENINGS_SEASONS=off` removes it.
+
 ## What is built (0.5.0 and 0.6.0)
 **0.5.0:** slots and rolls (`happening_rolls`), severity, tone with the pity rule, lens with the crossover, the caps, effects and their descriptions, the model author with its
 validator and templates, the two-step appraisal (`happening` then `happening_felt`) through the existing emotion table, the `feel` tool, the prompt block, feed lines,
@@ -183,4 +194,4 @@ Deviations from the design above:
 - Found coins are a fixed range per severity (1-3, 3-10, 8-25); only a *loss* is capped by a share of the purse.
 - A happening is resolved by its status (`applied` to `resolved`), not a flag in the meaning.
 - Replay re-rolls the slot and shows the recorded decisions; it does not rebuild the choice, since that depends on the world as it was.
-Still open: happenings that offer a choice, night happenings written for waking, happenings a neighbor originates, a seasonal layer.
+Still open: happenings that offer a choice, and happenings a neighbor originates.

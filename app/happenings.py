@@ -44,6 +44,22 @@ FOUND_COINS = {"minor": (1, 3), "medium": (3, 10), "major": (8, 25)}
 FOUND_ITEMS = {"minor": (1, 1), "medium": (2, 4), "major": (4, 6)}
 YIELD_BAD = {"minor": 1, "medium": 2, "major": 3}
 YIELD_GOOD = {"minor": 1, "medium": 2, "major": 3}
+SEASONS = ("winter", "spring", "summer", "autumn")
+SEASON_OF_MONTH = ("winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter")   # January first
+# What a season makes likelier (a missing entry is 1): which categories come up, and the tone of a category (see DESIGN-happenings.md, "Seasons").
+SEASON_CATEGORY = {
+    "winter": {"garden": 0.5, "creature": 1.2, "pantry": 1.3, "body": 1.3, "mishap": 1.2, "atmosphere": 1.4, "found": 0.8},
+    "spring": {"garden": 1.5, "creature": 1.3, "found": 1.2, "kindness": 1.1, "atmosphere": 1.1},
+    "summer": {"garden": 1.2, "pantry": 1.5, "creature": 1.1, "market": 1.2, "body": 0.9},
+    "autumn": {"found": 1.4, "creature": 1.2, "memory": 1.5, "market": 1.2, "atmosphere": 1.2, "garden": 0.9},
+}
+SEASON_TONE = {
+    "winter": {("body", "bad"): 1.5, ("garden", "bad"): 1.3, ("body", "good"): 0.8},
+    "spring": {("garden", "good"): 1.4, ("body", "good"): 1.3},
+    "summer": {("pantry", "bad"): 1.4, ("garden", "good"): 1.1},
+    "autumn": {("memory", "bad"): 1.4, ("found", "good"): 1.2},
+}
+NIGHT_STALE_HOURS = 2             # a night is rolled within this long of waking, or not at
 MENDING_QTY = (1, 3)                                                    # units of a material a major mishap asks for
 OLD_NOTE_DAYS = 2                                                       # a note this old can come back to mind
 MIN_DIARY = 7
@@ -102,12 +118,27 @@ def pick_severity(rng: random.Random, weights) -> str:
     return rng.choices(SEVERITIES, weights=weights)[0]
 
 
-def pick_tone(rng: random.Random, allowed, recent) -> str | None:
-    """Good, bad or neutral from the base weights, bad much less likely after two bad ones in a row."""
+def season_of(now: float, hemisphere: str = "north") -> str:
+    """The meteorological season of a timestamp (December to February is winter in the north; the south is half a year along)."""
+    month = datetime.fromtimestamp(now).month - 1
+    return SEASON_OF_MONTH[(month + (6 if hemisphere == "south" else 0)) % 12]
+
+
+def category_weight(season: str | None, category: str) -> float:
+    return SEASON_CATEGORY.get(season, {}).get(category, 1)
+
+
+def tone_factor(season: str | None, category: str, tone: str) -> float:
+    return SEASON_TONE.get(season, {}).get((category, tone), 1)
+
+
+def pick_tone(rng: random.Random, allowed, recent, factors: dict | None = None) -> str | None:
+    """Good, bad or neutral from the base weights (times the season's factors), bad much less likely after two bad ones in a row."""
     tones = [t for t in TONE_WEIGHTS if t in allowed]
     if not tones:
         return None
-    weights = [TONE_WEIGHTS[t] * (PITY if t == "bad" and list(recent[:2]) == ["bad", "bad"] else 1) for t in tones]
+    factors = factors or {}
+    weights = [TONE_WEIGHTS[t] * factors.get(t, 1) * (PITY if t == "bad" and list(recent[:2]) == ["bad", "bad"] else 1) for t in tones]
     return rng.choices(tones, weights=weights)[0]
 
 
@@ -153,6 +184,7 @@ def world(state, settings, now: float) -> dict:
     creations = state.creations()
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(), "hunger": agent["hunger"], "energy": agent["energy"],
+            "season": season_of(now, settings.hemisphere) if settings.happenings_seasons else None,
             "low": agent["hunger"] >= LOW_HUNGER or agent["energy"] <= LOW_ENERGY,
             "plots": plots, "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
             "neighbors": [c["name"] for c in state.characters("neighbor")],
@@ -315,6 +347,7 @@ class Category:
     tones: tuple
     needs: object      # (world) -> bool
     plan: object       # (world, tone, severity, rng) -> Plan | None
+    night: bool = True # can it happen while Pip sleeps (and be found on waking)?
 
 
 CATEGORIES = {c.name: c for c in (
@@ -323,24 +356,25 @@ CATEGORIES = {c.name: c for c in (
     Category("pantry", ("bad", "neutral"), lambda w: True, _plan_pantry),
     Category("found", ("good", "bad", "neutral"), lambda w: True, _plan_found),
     Category("body", ("good", "bad", "neutral"), lambda w: True, _plan_body),
-    Category("market", ("good", "bad", "neutral"), lambda w: bool(w["booths"]), _plan_market),
+    Category("market", ("good", "bad", "neutral"), lambda w: bool(w["booths"]), _plan_market, night=False),
     Category("mishap", ("bad", "neutral"), lambda w: bool(w["stoppable"] or w["tools"]), _plan_mishap),
-    Category("neighbor", ("good", "bad", "neutral"), lambda w: bool(w["neighbors"]), _plan_neighbor),
+    Category("neighbor", ("good", "bad", "neutral"), lambda w: bool(w["neighbors"]), _plan_neighbor, night=False),
     Category("memory", ("good", "bad", "neutral"), lambda w: w["diary_count"] >= MIN_DIARY and bool(w["old_notes"]), _plan_memory),
     Category("kindness", ("good",), lambda w: bool(w["neighbors"]), _plan_kindness),
     Category("atmosphere", ("neutral",), lambda w: True, _plan_atmosphere),
 )}
 
 
-def build(state, settings, w: dict, now: float, rng: random.Random) -> dict | None:
+def build(state, settings, w: dict, now: float, rng: random.Random, night: bool = False) -> dict | None:
     """Choose a happening for the world as it is: category, tone, severity, effects and lens. None when nothing is possible."""
     recent = state.happenings(2 * len(CATEGORIES) + 10)       # more than the categories there are, so every one in its cooldown is seen
     cooling = {h["category"] for h in recent if now - h["ts"] < COOLDOWN_HOURS * 3600 and h["status"] != "skipped"}
     last_tones = [h["tone"] for h in recent]
-    options = [c for c in CATEGORIES.values() if c.name not in cooling and c.needs(w)]
+    options = [c for c in CATEGORIES.values() if c.name not in cooling and c.needs(w) and (c.night or not night)]
+    season = w.get("season")
     while options:
-        cat = _one_of(rng, options)
-        tone = pick_tone(rng, cat.tones, last_tones)
+        cat = rng.choices(options, weights=[category_weight(season, c.name) for c in options])[0]
+        tone = pick_tone(rng, cat.tones, last_tones, {t: tone_factor(season, cat.name, t) for t in cat.tones})
         severity = "minor" if tone == "neutral" else pick_severity(rng, settings.happenings_severity)
         plan = cat.plan(w, tone, severity, rng)
         if plan is not None:
@@ -503,19 +537,20 @@ def _today_start(now: float) -> float:
     return datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-async def create(state, settings, gm, w: dict, now: float, slot: str, rng: random.Random) -> dict | None:
+async def create(state, settings, gm, w: dict, now: float, slot: str, rng: random.Random, night: bool = False) -> dict | None:
     """One happening for this slot: chosen, written, applied (unless HAPPENINGS=log) and logged. None when nothing fits."""
-    c = build(state, settings, w, now, rng)
+    c = build(state, settings, w, now, rng, night)
     if not c:
         return None
     recent = [h["title"] for h in state.happenings(5)]
-    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"]}
+    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"],
+             **({"season": w["season"]} if w.get("season") else {}), **({"night": True} if night else {})}
     title, text, who = await author(gm, c, facts, recent)
     amount = lens_amount(c["tone"], c["severity"])
     jolt, meaning = split_amount(amount)
     logged = settings.happenings == "log"
     row = state.add_happening(ts=now, slot=slot, category=c["category"], tone=c["tone"], severity=c["severity"], lens=c["lens"],
-                              seed=f"{salt(state)}:{slot}", context={"period": w["period"], "names": c["names"], **c["facts"]}, effects=c["effects"],
+                              seed=f"{salt(state)}:{slot}", context={"period": w["period"], "names": c["names"], **c["facts"], **({"night": True} if night else {})}, effects=c["effects"],
                               effects_line=c["line"], meaning={"emotion": c["lens"], "amount": meaning, "jolt": jolt, "shown_at": None},
                               text=text, title=title, author=who, status="logged" if logged else "applied")
     if not logged:
@@ -594,12 +629,34 @@ def resolve_due(state, now: float) -> bool:
 
 
 # --- the monitor's step ------------------------------------------------------------------------------------------
+async def _night(state, settings, gm, now: float) -> bool:
+    """When Pip has woken, roll once for each slot it slept through; a hit is something that happened in the night, found on waking."""
+    woke = next((e for e in state.events(200) if e["kind"] == "woke"), None)
+    if not woke or sleepmod.asleep(state) or state.meta("happenings_night") == str(woke["id"]):
+        return False
+    state.set_meta(happenings_night=woke["id"])                                      # one go per sleep, whatever comes of it
+    slots = int(woke["data"]["hours"] // settings.happenings_slot_hours)
+    if slots < 1 or now - woke["ts"] > NIGHT_STALE_HOURS * 3600:
+        return False
+    if unresolved(state) or sum(1 for h in state.happenings(20) if h["ts"] >= _today_start(now)) >= settings.happenings_max_per_day:
+        return False
+    key = f"night:{woke['id']}"
+    hits = [k for k in range(slots) if roll_slot(state, settings, f"{key}#{k}", now)]        # every slot is rolled and recorded
+    if not hits:
+        return False
+    slot = f"{key}#{hits[0]}"
+    rng = random.Random(hashlib.sha256(f"{salt(state)}:{slot}:build".encode()).hexdigest())
+    return await create(state, settings, gm, world(state, settings, now), now, slot, rng, night=True) is not None
+
+
 async def step(state, settings, gm, now: float | None = None) -> bool:
     """Resolve what is due and, at the start of a slot, roll for a new happening. True when something happened that Pip should hear about."""
     if settings.happenings == "off":
         return False
     now = now or time.time()
     resolve_due(state, now)
+    if await _night(state, settings, gm, now):
+        return True
     slot = current_slot(settings, now)
     if now - slot[1] > SLOT_WINDOW or state.happening_roll(slot[0]):
         return False

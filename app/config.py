@@ -116,6 +116,9 @@ class Settings:
     happenings_severity: tuple = (50, 45, 5)  # weights: minor, medium, major
     happenings_max_per_day: int = 3
 
+    hemisphere: str = "north"              # which way round the seasons go (happenings; see DESIGN-happenings.md)
+    happenings_seasons: bool = True         # what is likelier in which season
+
     # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
     version: str = "dev"
     revision: str = ""
@@ -143,6 +146,8 @@ class Settings:
             happenings_slot_hours=max(0.5, _float("HAPPENINGS_SLOT_HOURS", 3)),
             happenings_severity=_weights(e("HAPPENINGS_SEVERITY"), (50, 45, 5)),
             happenings_max_per_day=_int("HAPPENINGS_MAX_PER_DAY", 3),
+            hemisphere=(e("HEMISPHERE") or "north").lower() if (e("HEMISPHERE") or "north").lower() in ("north", "south") else "north",
+            happenings_seasons=(e("HAPPENINGS_SEASONS") or "on").lower() not in ("off", "0", "false", "no"),
             version=e("PIP_VERSION") or "dev",
             revision=(e("PIP_REVISION") or "")[:7],
             public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],
