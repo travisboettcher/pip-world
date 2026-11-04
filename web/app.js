@@ -124,6 +124,8 @@ function describe(e) {
     case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
+    case 'happening': return { group: 'world', cls: d.tone === 'bad' ? 'warn' : 'world', text: `Something happened — ${d.title}: ${d.text}${d.effects ? ` ${d.effects}` : ''}` };
+    case 'happening_felt': return { group: 'journal', text: `Pip took “${d.title}” as ${d.read_as}${d.read_as === d.lens ? '' : ` (it was written as ${d.lens})`}` };
     case 'emotion': return { group: 'world', cls: 'world', text: `Pip's ${d.emotion} is high (${d.value}): ${d.cause}` };
     case 'settled': return { group: 'actions', text: `Pip settles its ${d.emotion} (${d.from} → ${d.to})` + (d.how ? `: ${d.how}` : '') };
     case 'alert': return { group: 'world', cls: 'warn', text: `Pip's ${d.stat} needs attention` };

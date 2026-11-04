@@ -54,6 +54,7 @@ SECTIONS = (
     Section("search", tool("web_search"), bullet=True),
     Section("brevity", always, bullet=True),
     Section("waiting", tool("set_activity"), bullet=True),
+    Section("happenings", lambda tools, s, lib: s.happenings != "off" and "feel" in tools, bullet=True),
     Section("handover", lambda tools, s, lib: "write_letter" in tools and s.neighbor, bullet=True),
 )
 

@@ -494,6 +494,22 @@ class GameMaster:
         return await self.ask(task, {"summary": {"type": "string"}, "quotes": {"type": "array", "items": {"type": "string"}}},
                               ["summary"], "read_summary", max_tokens=1024)
 
+    async def write_happening(self, category: str, tone: str, severity: str, lens: str, line: str, facts: dict, recent: list[str]) -> dict | None:
+        """The words for a happening the engine has already decided (see happenings.py): `title` and `text`, written through `lens`."""
+        task = (
+            f"Write a small event that happens to Pip, who lives alone in a workshop with a garden. Category: {category}. "
+            f"Outcome: {tone}. Size: {severity}"
+            + (" (a passing moment; keep it in proportion)" if severity == "minor" or tone == "neutral" else "")
+            + f". Write it through {lens}: let that feeling colour how it is told, whatever the outcome (a bad turn can still be told with joy).\n"
+            + (f"What really changes, which you must not contradict or add to: {line}\n" if line else "Nothing changes in the world; it is only a moment.\n")
+            + f"It is {facts.get('period', 'day')}. Names you may use: {', '.join(facts.get('names') or []) or 'none'}. Do not name anyone else.\n"
+            + (f"Recent events, so you do not repeat them: {'; '.join(recent)}\n" if recent else "")
+            + "Two or three sentences, second person (you), plain and concrete. Do not mention numbers or objects beyond what really changes, "
+            "do not promise anything for later, and do not say how Pip feels or what it should do. Report `title` (a few words) and `text`."
+        )
+        out = await self.ask(task, {"title": {"type": "string"}, "text": {"type": "string"}}, ["title", "text"], "write_happening")
+        return out
+
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
                               places: str = "", mention: str = "", at: str = "", can_give: bool = False) -> dict | None:

@@ -17,6 +17,7 @@ from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
 from . import places
+from . import happenings
 from . import weather
 from . import worldmap
 from . import emotions as emo
@@ -168,6 +169,8 @@ class Agent:
         if await self.finish_work():
             self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
+            self.request_wake()
+        if await happenings.step(self.state, self.s, self.gm):
             self.request_wake()
         await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
         await nb.recall_told(self.state, self.gm, self._told_tries)
@@ -585,6 +588,7 @@ class Agent:
         lines += np.perception(self.state, self.s)
         lines += self.outreach.perception()
         lines += self._gallery()
+        lines += happenings.perception(self.state, self.tools, time.time()) if self.s.happenings != "off" else []
         lines += self._belongings()
         lines += self._projects()
         lines += nb.perception(self.state)

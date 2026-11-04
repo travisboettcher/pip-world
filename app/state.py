@@ -139,6 +139,14 @@ CREATE TABLE IF NOT EXISTS market_prices (   -- how far one booth's price for on
   sold_today INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (place, item)
 );
 CREATE TABLE IF NOT EXISTS tills (place TEXT PRIMARY KEY, coins INTEGER NOT NULL, day TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS happenings (     -- small events from the world (see happenings.py)
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, slot TEXT NOT NULL, category TEXT NOT NULL, tone TEXT NOT NULL,
+  severity TEXT NOT NULL, lens TEXT NOT NULL, seed TEXT NOT NULL, context TEXT NOT NULL DEFAULT '{}', effects TEXT NOT NULL DEFAULT '[]',
+  effects_line TEXT NOT NULL DEFAULT '', meaning TEXT NOT NULL DEFAULT '{}', read_as TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT 'template', status TEXT NOT NULL DEFAULT 'applied',
+  ticks_seen INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS happening_rolls (slot TEXT PRIMARY KEY, ts REAL NOT NULL, roll REAL NOT NULL, hit INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS facets (
   key TEXT PRIMARY KEY, label TEXT NOT NULL, tier TEXT NOT NULL, first_event_id INTEGER,
   first_ts REAL NOT NULL, last_ts REAL NOT NULL, count INTEGER NOT NULL DEFAULT 1, shown INTEGER NOT NULL DEFAULT 0
@@ -625,6 +633,59 @@ class State:
         with self.lock:
             self.db.execute("INSERT INTO tills (place, coins, day) VALUES (?, ?, ?) "
                             "ON CONFLICT(place) DO UPDATE SET coins = excluded.coins, day = excluded.day", (place, int(coins), day))
+            self.db.commit()
+
+    # --- happenings (see happenings.py) ---------------------------------
+    HAPPENING_JSON = ("context", "effects", "meaning")
+
+    def _happening(self, row) -> dict:
+        return {**dict(row), **{k: json.loads(row[k]) for k in self.HAPPENING_JSON}}
+
+    def add_happening(self, **fields) -> dict:
+        vals = {k: json.dumps(v) if k in self.HAPPENING_JSON else v for k, v in fields.items()}
+        with self.lock:
+            cur = self.db.execute(f"INSERT INTO happenings ({', '.join(vals)}) VALUES ({', '.join('?' for _ in vals)})", tuple(vals.values()))
+            self.db.commit()
+        return self.happening(cur.lastrowid)
+
+    def happening(self, happening_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM happenings WHERE id = ?", (happening_id,)).fetchone()
+        return self._happening(row) if row else None
+
+    def happenings(self, limit: int = 20) -> list[dict]:
+        """Newest first."""
+        with self.lock:
+            return [self._happening(r) for r in self.db.execute("SELECT * FROM happenings ORDER BY id DESC LIMIT ?", (limit,))]
+
+    def update_happening(self, happening_id: int, **fields) -> None:
+        vals = {k: json.dumps(v) if k in self.HAPPENING_JSON else v for k, v in fields.items()}
+        with self.lock:
+            self.db.execute(f"UPDATE happenings SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), happening_id))
+            self.db.commit()
+
+    def happening_roll(self, slot: str) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM happening_rolls WHERE slot = ?", (slot,)).fetchone()
+        return dict(row) if row else None
+
+    def add_happening_roll(self, slot: str, ts: float, roll: float, hit: bool) -> None:
+        with self.lock:
+            self.db.execute("INSERT OR IGNORE INTO happening_rolls (slot, ts, roll, hit) VALUES (?, ?, ?, ?)", (slot, ts, roll, int(hit)))
+            self.db.commit()
+
+    def scale_plot_time(self, plot: int, factor: float, now: float | None = None) -> None:
+        """Make the time a growing plot has left `factor` times as long."""
+        now = now or time.time()
+        with self.lock:
+            row = self.db.execute("SELECT ready_at FROM garden WHERE plot = ?", (plot,)).fetchone()
+            if row:
+                self.db.execute("UPDATE garden SET ready_at = ? WHERE plot = ?", (now + max(0.0, row["ready_at"] - now) * factor, plot))
+                self.db.commit()
+
+    def add_plot_yield(self, plot: int, delta: int) -> None:
+        with self.lock:
+            self.db.execute("UPDATE garden SET yield = MAX(1, yield + ?) WHERE plot = ?", (int(delta), plot))
             self.db.commit()
 
     # --- garden ----------------------------------------------------------

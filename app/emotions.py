@@ -102,6 +102,10 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
         return {"joy": 3}, f"{data.get('crop', 'a crop')} ripened"
     if kind == "alert":
         return dict(ALERT.get(data.get("stat"), {})), f"{data.get('stat')} needs attention"
+    if kind == "happening":   # the startle lands at once; the meaning waits for Pip's reading (happenings.py)
+        return ({"surprise": data["jolt"]} if data.get("jolt") else {}), f"something happened: {data.get('title', 'an event')}"
+    if kind == "happening_felt":
+        return dict(data.get("moves") or {}), f"{data.get('title', 'an event')}, read as {data.get('read_as')}"
     if kind == "tool" and str(data.get("result", "")).startswith("error"):
         return {"anger": 2}, f"{data.get('tool')} failed"
     if kind == "outreach" and data.get("what") == "postcard" and data.get("delivered"):

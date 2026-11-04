@@ -1,6 +1,7 @@
 # Design: happenings (small, unscripted events from the world)
 
-Status (2026-11-03): **design v2**, nothing built. v1 went to the owner with five questions; this version folds in the answers: a percentage chance per
+Status (2026-11-03): **phase 1 built (0.5.0)**: the engine, the author, `feel`, live; see "What 0.5.0 builds" at the end for what is still to come.
+Design v2 follows. v1 went to the owner with five questions; this version folds in the answers: a percentage chance per
 three-hour slot instead of a daily count, a severity scale (50 minor / 45 medium / 5 major) as the main limit instead of off-limits categories, coins on the
 table, the emotion lens independent of whether the outcome is good or bad, Pip's own reading of the event decided by Pip through the same emotion system, and
 live from the first release.
@@ -168,3 +169,14 @@ introspection-accuracy fact; it moves nothing. `settle` stays what it is.
 2. `feel` is a new tool (it was already planned for introspection). Are you happy with a dedicated tool, rather than extending `settle`?
 3. The first jolt is surprise at 30% and the rest is meaning at 70%. Different split?
 4. Pip reading an event as `nothing` drops the meaning entirely. Fine, or should a shrug still leave a trace?
+
+## What 0.5.0 builds (and what it leaves for later)
+Built: slots and rolls (`happening_rolls`), severity, tone with the pity rule, lens with the crossover, the caps, effects and their descriptions, six categories
+(`garden`, `creature`, `pantry`, `found`, `body`, `market`), the model author with its validator and templates, the two-step appraisal (`happening` then
+`happening_felt`) through the existing emotion table, the `feel` tool, the prompt block, feed lines, `GET /happenings` (owner and public), importance and recall,
+`HAPPENINGS=on|log|off`. Deviations from the design above:
+- Found coins are a fixed range per severity (1-3, 3-10, 8-25); only a *loss* is capped by a share of the purse.
+- A happening is resolved by its status (`applied` to `resolved`), not a flag in the meaning.
+- `hunger` effects exist in the menu but no category emits one yet.
+Later: the categories `mishap`, `neighbor`, `memory`, `kindness`, `atmosphere`; the Now-tab "Lately" card; `pipchat happenings` and replay of a seed; firsts for a new category;
+the major creation repair.

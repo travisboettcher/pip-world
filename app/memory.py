@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -52,6 +52,8 @@ def recall_text(kind: str, d: dict) -> str | None:
             + (f" ({d['expectation']})" if d.get("expectation") else ""))
     if kind == "world_changed":
         return d["text"]
+    if kind == "happening":
+        return f"Something happened: {d['title']}. {d['text']} {d.get('effects', '')}".rstrip()
     if kind == "revised_work":
         return f"You looked at your drawing '{d['title']}' and redrew it"
     if kind == "made_work":
@@ -99,6 +101,10 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
         base = 6
     elif kind in ("made_work", "revised_work"):
         base = 5
+    elif kind == "happening":
+        base = {"minor": 3, "medium": 5, "major": 7}.get(d.get("severity"), 3)
+    elif kind == "happening_felt":
+        base = 2
     elif kind == "outreach":
         base = 5 if d.get("what") == "postcard" else 3
     elif kind == "reflection":

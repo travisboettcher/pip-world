@@ -11,7 +11,7 @@ CACHE_SECONDS = 5
 
 PUBLIC_PATHS = frozenset({
     "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/garden", "/projects",
-    "/creations", "/works", "/map", "/places", "/memory",
+    "/creations", "/works", "/map", "/places", "/memory", "/happenings",
 })
 PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"))
 
@@ -40,6 +40,8 @@ EVENT_FIELDS = {
     "resident": ("name", "place", "about"),
     "neighbor": ("name", "about"),
     "alert": ("stat",),
+    "happening": ("id", "category", "severity", "lens", "title", "text", "effects"),
+    "happening_felt": ("id", "title", "lens", "read_as"),
 }
 ALWAYS = ("firsts", "returns")
 
@@ -47,7 +49,7 @@ ALWAYS = ("firsts", "returns")
 TOOLS_WITH_RESULT = frozenset({
     "set_activity", "eat", "rest", "use_item", "plant", "harvest", "start_project", "work_on", "abandon_project", "tend",
     "go_to", "browse", "read", "gather", "where_to", "experiment", "revise_plan", "sleep", "resume_project", "draw",
-    "write_piece", "look", "settle", "note_to_self", "edit_note", "resolve_note", "web_search", "buy", "sell", "pay",
+    "write_piece", "look", "settle", "note_to_self", "edit_note", "resolve_note", "web_search", "buy", "sell", "pay", "feel",
 })
 
 GENERIC_NAMES = frozenset({"a visitor", "visitor", "someone", "anonymous", "guest"})

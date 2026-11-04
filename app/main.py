@@ -16,6 +16,7 @@ from . import art
 from . import creations as cr
 from . import emotions as emo
 from . import invented_places as invented
+from . import happenings
 from . import places
 from . import public_view as pv
 from . import projects as proj
@@ -163,6 +164,11 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     def get_emotions(limit: int = 50):
         st = app.state.agent.state
         return {"mode": settings.emotions, **emo.snapshot(st), "log": st.emotion_log(min(limit, 500))}
+
+    @app.get("/happenings")
+    def get_happenings(request: Request, limit: int = 20):
+        rows = app.state.agent.state.happenings(min(limit, 100))
+        return [happenings.public_row(h) for h in rows] if request.state.public else rows
 
     @app.get("/garden")
     def get_garden():

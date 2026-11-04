@@ -250,3 +250,9 @@ pays 60% of what it charges and has only a day's coins to pay out, and anything 
 ## Waiting
 `set_activity` takes an optional `minutes` (5-240) for when Pip is only waiting on something slow (a crop, a letter, a clock). The world then skips the heartbeat
 until that time is up; a visitor, a ripe crop, a stat alert or a different activity still ends the wait early. Without `minutes`, any earlier wait is over.
+
+## Happenings
+Design: [DESIGN-happenings.md](DESIGN-happenings.md). Small events from the world, a few a week: each three-hour slot of awake time rolls `HAPPENINGS_CHANCE` (10%) for one. The engine
+picks the category, whether it is good, bad or neutral, its severity (`HAPPENINGS_SEVERITY`, 50/45/5 minor/medium/major), the effects and their caps, and the emotion it is told
+through; the model writes two or three sentences; the engine appends what really changed in brackets. Pip is told, and `feel(emotion)` says how it takes it (any of the eight
+emotions, or `nothing`), which decides where the event's meaning lands. `HAPPENINGS=on|log|off`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SLOT_HOURS`; HTTP `GET /happenings`.

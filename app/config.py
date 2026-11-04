@@ -16,6 +16,15 @@ def _parse_people(raw: str) -> dict:
     return out
 
 
+def _weights(raw, default: tuple) -> tuple:
+    """'50,45,5' as three non-negative numbers that are not all zero; anything else is the default."""
+    try:
+        w = tuple(float(x) for x in str(raw).split(","))
+    except ValueError:
+        return default
+    return w if len(w) == 3 and all(x >= 0 for x in w) and sum(w) > 0 else default
+
+
 def _float(name: str, default: float) -> float:
     return float(os.environ.get(name) or default)
 
@@ -100,6 +109,13 @@ class Settings:
     matrix_room_id: str = ""
     matrix_allowed: dict = field(default_factory=dict)   # {"@morgan:server": "Morgan"}
 
+    # Happenings: small events from the world (DESIGN-happenings.md). on | log (rolls and writes, applies nothing) | off
+    happenings: str = "off"                 # off here so a bare Settings() (tests, library use) rolls nothing; the environment default (from_env) is on
+    happenings_chance: float = 0.10          # chance per slot
+    happenings_slot_hours: float = 3         # awake time is cut into slots this long, from the wake hour
+    happenings_severity: tuple = (50, 45, 5)  # weights: minor, medium, major
+    happenings_max_per_day: int = 3
+
     # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
     version: str = "dev"
     revision: str = ""
@@ -122,6 +138,11 @@ class Settings:
         e = os.environ.get
         return cls(
             db_path=e("DB_PATH", "/data/agent.db"),
+            happenings=(e("HAPPENINGS") or "on").lower() if (e("HAPPENINGS") or "on").lower() in ("on", "log", "off") else "on",
+            happenings_chance=max(0.0, min(1.0, _float("HAPPENINGS_CHANCE", 0.10))),
+            happenings_slot_hours=max(0.5, _float("HAPPENINGS_SLOT_HOURS", 3)),
+            happenings_severity=_weights(e("HAPPENINGS_SEVERITY"), (50, 45, 5)),
+            happenings_max_per_day=_int("HAPPENINGS_MAX_PER_DAY", 3),
             version=e("PIP_VERSION") or "dev",
             revision=(e("PIP_REVISION") or "")[:7],
             public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],
@@ -190,7 +211,7 @@ class Settings:
             library_provider=(e("LIBRARY_PROVIDER") or "auto").strip().lower(),
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,buy,sell,pay").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,buy,sell,pay,feel").split(",") if t.strip()],
             search_provider=(e("SEARCH_PROVIDER") or "tavily").strip().lower(),
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),

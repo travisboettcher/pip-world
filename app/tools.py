@@ -11,6 +11,7 @@ from . import art
 from . import companions as comp
 from . import expectations as exp
 from . import gathering
+from . import happenings
 from . import invented_places as invented
 from . import market
 from . import creations as cr
@@ -860,7 +861,7 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue
-        if name == "settle" and settings.emotions == "off":
+        if name in ("settle", "feel") and settings.emotions == "off":
             continue
         if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
             continue  # no way out configured
@@ -879,6 +880,16 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
 async def settle(ctx: ToolContext, args: dict) -> ToolResult:
     ok, text = emo.settle(ctx.state, ctx.settings, args.get("emotion", ""), str(args.get("how") or ""))
     return ToolResult(text, followup=not ok)
+
+
+@tool("feel",
+      "Say how you take something: one of joy, sadness, anger, fear, trust, disgust, surprise, anticipation, or nothing. When something has just happened to you "
+      "this is how you read it, and it decides which feeling it leaves; otherwise it only notes how you feel.",
+      _obj({"emotion": {"type": "string", "description": "joy, sadness, anger, fear, trust, disgust, surprise, anticipation or nothing"},
+            "about": {"type": "integer", "description": "optional: the number of what happened"}}, ["emotion"]))
+async def feel(ctx: ToolContext, args: dict) -> ToolResult:
+    ok, text = happenings.feel(ctx.state, ctx.settings, args.get("emotion", ""), args.get("about") or None)
+    return ToolResult(text if ok else f"error: {text}", followup=not ok)
 
 
 @tool("undo_decision",
