@@ -133,7 +133,9 @@ def set_clock(c: dict, now: float, face: float | None = None) -> None:
 
 
 def _needs(c: dict) -> str:
-    return f"it needs tending ({c['spec']['capabilities']['upkeep']['verb']})"
+    part = c["runtime"].get("needs_part")
+    mend = f"{part['qty']} {part['name']} to mend it, then " if part else ""
+    return f"it needs {mend}tending ({c['spec']['capabilities']['upkeep']['verb']})"
 
 
 # --- engine tick (no LLM) -----------------------------------------------------
@@ -205,6 +207,13 @@ def tend(state, c: dict, now: float | None = None) -> str:
     caps, rt = c["spec"]["capabilities"], c["runtime"]
     if "upkeep" not in caps:
         return f"error: your {c['name']} doesn't need tending"
+    part = rt.get("needs_part")
+    if part:  # a mishap broke something: it has to be mended with a real part before it can be tended
+        have, _ = state.find_item(part["name"], kind="material")
+        if not have or have["qty"] < part["qty"]:
+            return f"error: your {c['name']} needs {part['qty']} {part['name']} to mend it before it can be tended"
+        state.take_item(have["id"], part["qty"])
+        rt.pop("needs_part")
     if "timekeeper" in caps and not running(c, now):
         set_clock(c, now, clock_face(c, now))  # it starts again from the time it stopped at, so it's now behind
     up = caps["upkeep"]

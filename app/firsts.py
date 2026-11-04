@@ -21,6 +21,11 @@ TOOL_LABELS = {
 TOOL_MAJOR = {"sleep"}
 WORK_RESULTS = {"setback": "had a setback on a project", "blowup": "had a try blow up",
                 "breakthrough": "had a breakthrough"}
+HAPPENING_FIRSTS = {
+    "garden": "had the garden change on its own", "creature": "had a small creature come by", "pantry": "found some of your food had turned",
+    "found": "came across something unexpected", "body": "woke up feeling different", "market": "heard talk of the market",
+    "mishap": "had something go wrong in the workshop", "neighbor": "heard news of a neighbor", "memory": "had an old thought come back",
+    "kindness": "was given something by someone unseen", "atmosphere": "noticed something in the air"}
 ALERTS = {"hunger": "your hunger alert went off", "energy": "your energy alert went off"}
 
 
@@ -104,6 +109,12 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
         add(f"work_made:{d.get('what')}", you("finished a drawing" if d.get("what") == "drawing" else "finished a piece of writing to share"), MAJOR)
     elif kind == "world_changed":
         add(f"world:{d.get('effect')}", you("changed the world around you"), MAJOR)
+    elif kind == "happening":
+        if d.get("category") in HAPPENING_FIRSTS and d.get("status") == "applied":
+            add(f"happening:{d['category']}", you(HAPPENING_FIRSTS[d["category"]]))
+    elif kind == "happening_felt":
+        if d.get("differs") and d.get("read_as") != "nothing":
+            add("happening:read_differently", you("took something that happened differently from how it was told"), MAJOR)
     elif kind == "night_pass":
         if d.get("applied"):
             add("night_pass", you("changed your plans in your sleep"), MAJOR)

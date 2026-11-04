@@ -170,13 +170,17 @@ introspection-accuracy fact; it moves nothing. `settle` stays what it is.
 3. The first jolt is surprise at 30% and the rest is meaning at 70%. Different split?
 4. Pip reading an event as `nothing` drops the meaning entirely. Fine, or should a shrug still leave a trace?
 
-## What 0.5.0 builds (and what it leaves for later)
-Built: slots and rolls (`happening_rolls`), severity, tone with the pity rule, lens with the crossover, the caps, effects and their descriptions, six categories
-(`garden`, `creature`, `pantry`, `found`, `body`, `market`), the model author with its validator and templates, the two-step appraisal (`happening` then
-`happening_felt`) through the existing emotion table, the `feel` tool, the prompt block, feed lines, `GET /happenings` (owner and public), importance and recall,
-`HAPPENINGS=on|log|off`. Deviations from the design above:
+## What is built (0.5.0 and 0.6.0)
+**0.5.0:** slots and rolls (`happening_rolls`), severity, tone with the pity rule, lens with the crossover, the caps, effects and their descriptions, the model author with its
+validator and templates, the two-step appraisal (`happening` then `happening_felt`) through the existing emotion table, the `feel` tool, the prompt block, feed lines,
+`GET /happenings` (owner and public), importance and recall, `HAPPENINGS=on|log|off`.
+**0.6.0:** all eleven categories (`garden`, `creature`, `pantry`, `found`, `body`, `market`, plus `mishap`, `neighbor`, `memory`, `kindness`, `atmosphere`); the major
+creation repair (a stopped creation may need a part of a junkyard material before it can be tended again, shown in its status line); neighbor news joins the neighbor's life
+as the happening's title; a memory happening brings back a real note older than two days; `body` also moves appetite; firsts (the first of each category, and the first time Pip
+reads something differently from how it was told); the "Lately" card on the Now tab; `pipchat happenings` and `pipchat happenings --replay ID` (also `GET /happenings/{id}/replay`, owner
+only), which rolls a slot again from its stored seed to check the dice.
+Deviations from the design above:
 - Found coins are a fixed range per severity (1-3, 3-10, 8-25); only a *loss* is capped by a share of the purse.
 - A happening is resolved by its status (`applied` to `resolved`), not a flag in the meaning.
-- `hunger` effects exist in the menu but no category emits one yet.
-Later: the categories `mishap`, `neighbor`, `memory`, `kindness`, `atmosphere`; the Now-tab "Lately" card; `pipchat happenings` and replay of a seed; firsts for a new category;
-the major creation repair.
+- Replay re-rolls the slot and shows the recorded decisions; it does not rebuild the choice, since that depends on the world as it was.
+Still open: happenings that offer a choice, night happenings written for waking, happenings a neighbor originates, a seasonal layer.

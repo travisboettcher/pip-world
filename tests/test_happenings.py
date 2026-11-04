@@ -158,7 +158,9 @@ def food(name="tomatoes", qty=91):
 def w(**kw):
     base = {"now": NOW, "coins": 78, "hunger": 0.2, "energy": 0.8, "low": False, "plots": [plot()], "foods": [food()],
             "booths": [{"key": "Saltholm", "loot": [["brass wire", "material", 20, [1, 2], "wire", {}]]}], "period": "afternoon",
-            "neighbors": ["Oriel Vantosh"], "creations": ["Gear Clock"]}
+            "neighbors": ["Oriel Vantosh"], "creations": ["Gear Clock"],
+            "stoppable": [{"id": 1, "name": "Gear Clock"}], "tools": ["needle file"], "diary_count": 9,
+            "old_notes": [{"id": 4, "text": "Oriel taught me to feel for the round grains in the tin.", "ts": NOW - 5 * 86400}]}
     return {**base, **kw}
 
 
@@ -231,11 +233,13 @@ def test_a_find_is_a_small_item_or_a_few_coins_and_a_loss_is_capped_by_the_purse
 
 
 @pytest.mark.parametrize("severity", H.SEVERITIES)
-def test_the_body_gains_or_loses_a_little_energy_and_a_low_pip_is_spared(severity):
-    assert plans("body", "good", severity)[0].effects == [{"kind": "energy", "delta": H.ENERGY[severity]}]
-    assert plans("body", "bad", severity)[0].effects == [{"kind": "energy", "delta": -H.ENERGY[severity]}]
+def test_the_body_gains_or_loses_a_little_energy_or_appetite_and_a_low_pip_is_spared(severity):
+    good = [p.effects[0] for p in plans("body", "good", severity)]
+    assert {(e["kind"], e["delta"]) for e in good} == {("energy", H.ENERGY[severity]), ("hunger", -H.ENERGY[severity])}
+    bad = [p.effects[0] for p in plans("body", "bad", severity)]
+    assert {(e["kind"], e["delta"]) for e in bad} == {("energy", -H.ENERGY[severity]), ("hunger", H.ENERGY[severity])}
     assert H.CATEGORIES["body"].plan(w(low=True), "bad", severity, random.Random(1)) is None
-    assert H.CATEGORIES["body"].plan(w(low=True), "good", severity, random.Random(1)).effects == [{"kind": "energy", "delta": H.ENERGY[severity]}]
+    assert {e["kind"] for p in plans("body", "good", severity, w(low=True)) for e in p.effects} == {"energy", "hunger"}
     assert plans("body", "neutral", severity)[0].effects == []
 
 
@@ -369,8 +373,10 @@ def test_an_infeasible_choice_falls_back_to_another_category(tmp_path):
     poor = w(coins=0, foods=[], plots=[], booths=[], low=True)
     seen = [H.build(st, s, poor, NOW, random.Random(i)) for i in range(200)]
     assert all(c is not None for c in seen)
-    assert {(c["category"], c["tone"]) for c in seen} <= {("creature", "good"), ("creature", "neutral"), ("pantry", "neutral"), ("found", "good"),
-                                                          ("found", "neutral"), ("body", "good"), ("body", "neutral")}
+    got = {(c["category"], c["tone"]) for c in seen}
+    assert not {cat for cat, _ in got} & {"garden", "market"}                               # no crop, no booth
+    assert ("found", "bad") not in got and ("body", "bad") not in got and ("pantry", "bad") not in got and ("creature", "bad") not in got
+    assert {("mishap", "bad"), ("neighbor", "good"), ("kindness", "good"), ("atmosphere", "neutral"), ("memory", "bad")} <= got
 
 
 # --- the words ---------------------------------------------------------------------------------------------------
@@ -419,7 +425,7 @@ class StubGM:
         return self.outs.pop(0) if self.outs else None
 
 
-CAND = {"category": "pantry", "tone": "bad", "severity": "minor", "lens": "joy", "effects": [], "names": ["tomatoes"], "line": LINE}
+CAND = {"category": "pantry", "tone": "bad", "severity": "minor", "lens": "joy", "effects": [], "names": ["tomatoes"], "facts": {}, "line": LINE}
 FACTS = {"period": "morning", "names": ["Oriel Vantosh"]}
 GOOD = {"title": " A bold mouse. ", "text": "A mouse has been at the pantry in the night, small and bold."}
 
@@ -453,7 +459,7 @@ def test_the_author_may_name_what_the_facts_offer():
 
 # --- making one and logging it -----------------------------------------------------------------------------------
 FOUND = {"category": "found", "tone": "good", "severity": "medium", "lens": "sadness", "effects": [{"kind": "coins", "delta": 5}],
-         "names": [], "line": "(You find 5 coins.)"}
+         "names": [], "facts": {}, "line": "(You find 5 coins.)"}
 STORY = {"title": "A coat lining", "text": "You turn out an old coat and find something sewn into the lining, which makes you wistful."}
 
 
@@ -477,6 +483,7 @@ def test_a_happening_is_written_applied_stored_and_logged(tmp_path, monkeypatch)
     assert row["meaning"] == {"emotion": "sadness", "amount": 6, "jolt": 3, "shown_at": None}               # 9 points: a startle of 3 and a meaning of 6
     assert row["seed"] == f"{st.meta('happenings_salt')}:2026-03-05#2" and row["context"]["period"] == "afternoon"
     ev = [e for e in st.events(10) if e["kind"] == "happening"][0]["data"]
+    assert ev.pop("firsts") == [{"key": "happening:found", "label": "the first time you came across something unexpected", "tier": "minor"}]
     assert ev == {"id": row["id"], "category": "found", "tone": "good", "severity": "medium", "lens": "sadness", "title": "A coat lining",
                   "text": STORY["text"], "effects": "(You find 5 coins.)", "jolt": 3, "status": "applied"}
     assert levels_now(st)["surprise"] == pytest.approx(13, abs=0.2) and levels_now(st)["sadness"] == pytest.approx(15, abs=0.2)   # the startle, not yet the meaning
@@ -868,8 +875,9 @@ def test_the_public_feed_carries_what_happened_and_how_pip_read_it_but_not_the_d
         st.log("felt", emotion="joy", levels={"joy": 50})
         feed = c.get("/events?limit=20", headers={"host": "pip.example.org"}).json()
         by = {e["kind"]: e["data"] for e in feed}
-        assert by["happening"] == {"id": 1, "category": "found", "severity": "minor", "lens": "sadness", "title": "A hole", "text": "A hole.", "effects": "(You lose 1 coin.)"}
-        assert by["happening_felt"] == {"id": 1, "title": "A hole", "lens": "sadness", "read_as": "joy"}
+        assert {k: v for k, v in by["happening"].items() if k != "firsts"} == {"id": 1, "category": "found", "severity": "minor", "lens": "sadness", "title": "A hole",
+                                                                              "text": "A hole.", "effects": "(You lose 1 coin.)"}
+        assert {k: v for k, v in by["happening_felt"].items() if k != "firsts"} == {"id": 1, "title": "A hole", "lens": "sadness", "read_as": "joy"}
         assert "felt" not in by
         assert "tone" not in by["happening"] and "jolt" not in by["happening"]
 
@@ -1067,7 +1075,7 @@ def test_the_world_as_the_dice_see_it(tmp_path):
 def test_create_passes_its_own_time_and_the_amount_follows_the_tone(tmp_path, monkeypatch):
     s, st = fresh(tmp_path)
     price = {"category": "market", "tone": "neutral", "severity": "minor", "lens": "surprise",
-             "effects": [{"kind": "price", "place": "Quay", "item": "peas", "units": 1}], "names": ["Quay"], "line": "(x)"}
+             "effects": [{"kind": "price", "place": "Quay", "item": "peas", "units": 1}], "names": ["Quay"], "facts": {}, "line": "(x)"}
     force(monkeypatch, price)
     st.set_price_row("Quay", "pea", 1.0, 0, "x", 0)
     row = run(H.create(st, s, None, w(), NOW, "x", random.Random(1)))
@@ -1154,3 +1162,319 @@ def test_the_feel_report_levels_are_the_numbers_at_that_time(tmp_path):
     H.feel(st, s, "fear", None, NOW + 20 * 60 * 6)                                           # six half-lives later
     ev = [e for e in st.events(5) if e["kind"] == "felt"][0]["data"]
     assert ev["levels"]["fear"] == round(10 + 40 * 0.5 ** (20 * 6 / 120 * 1.0)) or ev["levels"]["fear"] < 50
+
+
+# --- the other five categories, mending, firsts, replay --------------------------------------------------------------
+UPKEEP = {"capabilities": {"upkeep": {"verb": "wind", "hours": 24}}, "quirks": [], "scars": []}
+
+
+def clock(st, name="Gear Clock", spec=UPKEEP, now=None):
+    from app import creations as cr
+    now = now or time.time()
+    return st.add_creation(name, "a clock", None, "sound", spec, cr.initial_runtime(spec, now))
+
+
+@pytest.mark.parametrize("severity", H.SEVERITIES)
+def test_a_mishap_costs_a_little_energy_or_stops_a_creation(severity):
+    assert H.CATEGORIES["mishap"].tones == ("bad", "neutral")
+    plan = plans("mishap", "bad", severity)
+    if severity == "minor":
+        assert all(p.effects == [{"kind": "energy", "delta": -H.ENERGY["minor"]}] and p.names == ["needle file"] for p in plan)
+    else:
+        for p in plan:
+            (e,) = p.effects
+            assert e["kind"] == "creation_stop" and e["id"] == 1 and e["name"] == "Gear Clock"
+            assert (e["part"] is None) == (severity == "medium")
+            assert p.names == ["Gear Clock"] + ([e["part"]["name"]] if e["part"] else [])
+            if e["part"]:
+                from app import gathering
+                assert e["part"]["name"] in {m[0] for m in gathering.JUNKYARD if m[1] == "material"} and 1 <= e["part"]["qty"] <= 3
+    assert plans("mishap", "neutral", severity)[0].effects == [] and plans("mishap", "neutral", severity)[0].names == ["needle file"]
+
+
+def test_a_mishap_needs_something_to_go_wrong_and_spares_a_low_pip():
+    none = w(stoppable=[], tools=[])
+    assert not H.CATEGORIES["mishap"].needs(none) and H.CATEGORIES["mishap"].needs(w(stoppable=[])) and H.CATEGORIES["mishap"].needs(w(tools=[]))
+    assert H.CATEGORIES["mishap"].plan(w(low=True), "bad", "minor", random.Random(1)) is None
+    for severity in ("medium", "major"):
+        assert H.CATEGORIES["mishap"].plan(w(stoppable=[]), "bad", severity, random.Random(1)) is None
+    assert H.CATEGORIES["mishap"].plan(w(tools=[]), "neutral", "minor", random.Random(1)).names == []
+
+
+def test_a_neighbor_happening_is_news_of_someone_pip_knows():
+    for tone in ("good", "bad"):
+        for p in plans("neighbor", tone, "medium"):
+            assert p.effects == [{"kind": "news", "name": "Oriel Vantosh", "tone": tone}] and p.names == ["Oriel Vantosh"]
+    assert plans("neighbor", "neutral", "minor")[0].effects == [] and plans("neighbor", "neutral", "minor")[0].names == ["Oriel Vantosh"]
+    assert not H.CATEGORIES["neighbor"].needs(w(neighbors=[]))
+
+
+def test_a_memory_brings_back_a_real_old_note_and_needs_enough_of_them():
+    p = plans("memory", "good", "minor")[0]
+    assert p.effects == [] and p.facts == {"memory": "Oriel taught me to feel for the round grains in the tin."} and p.names == ["Oriel"]
+    assert plans("memory", "neutral", "minor", w(old_notes=[{"id": 1, "text": "x" * 300, "ts": 0}]))[0].facts["memory"] == "x" * 200 + "..."
+    cat = H.CATEGORIES["memory"]
+    assert cat.needs(w()) and not cat.needs(w(diary_count=6)) and cat.needs(w(diary_count=7)) and not cat.needs(w(old_notes=[]))
+
+
+def test_a_kindness_is_a_gift_from_someone_unseen():
+    assert H.CATEGORIES["kindness"].tones == ("good",)
+    kinds = set()
+    for p in plans("kindness", "good", "medium", seeds=range(80)):
+        (e,) = p.effects
+        kinds.add(e["kind"])
+        assert e["gift"] is True and "Oriel Vantosh" in p.names
+        assert (e["kind"] == "coins" and 3 <= e["delta"] <= 10 and p.names == ["Oriel Vantosh"]) or (e["kind"] == "item" and p.names == [e["name"], "Oriel Vantosh"])
+    assert kinds == {"item", "coins"} and not H.CATEGORIES["kindness"].needs(w(neighbors=[]))
+
+
+def test_the_atmosphere_is_only_a_moment():
+    assert H.CATEGORIES["atmosphere"].tones == ("neutral",) and H.CATEGORIES["atmosphere"].needs(w(plots=[], neighbors=[], booths=[]))
+    assert plans("atmosphere", "neutral", "minor")[0].effects == [] and plans("atmosphere", "neutral", "minor")[0].names == []
+
+
+@pytest.mark.parametrize("effect, text", [
+    ({"kind": "coins", "delta": 3, "gift": True}, "You are given 3 coins."), ({"kind": "coins", "delta": 3}, "You find 3 coins."),
+    ({"kind": "coins", "delta": -3, "gift": True}, "You lose 3 coins."),
+    ({"kind": "item", "name": "bark", "qty": 2, "gift": True}, "You are given 2 bark."), ({"kind": "item", "name": "bark", "qty": 2}, "You find 2 bark."),
+    ({"kind": "creation_stop", "id": 1, "name": "Gear Clock", "part": None}, "Your Gear Clock stops; it needs tending."),
+    ({"kind": "creation_stop", "id": 1, "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}, "Your Gear Clock stops; it needs 2 brass wire to mend, then tending."),
+    ({"kind": "news", "name": "Oriel Vantosh", "tone": "good"}, "You hear news of Oriel Vantosh."),
+    ({"kind": "hunger", "delta": 0.12}, "Your hunger rises by 12%."),
+])
+def test_the_new_effects_are_described(effect, text):
+    assert H.describe(effect) == text
+
+
+def test_a_mishap_stops_a_creation_that_needs_tending_and_only_that(tmp_path):
+    from app import creations as cr
+    s, st = fresh(tmp_path)
+    c = clock(st)
+    plain = clock(st, "Keepsake", {"capabilities": {}, "quirks": [], "scars": []})
+    assert cr.running(st.find_creation("Gear Clock")[0], time.time())
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}], NOW)
+    stopped = st.find_creation("Gear Clock")[0]
+    assert stopped["runtime"]["halted_at"] == NOW and stopped["runtime"]["needs_part"] == {"name": "brass wire", "qty": 2}
+    H.apply_effects(st, [{"kind": "creation_stop", "id": plain["id"], "name": "Keepsake", "part": None}, {"kind": "creation_stop", "id": 999, "name": "x", "part": None}], NOW)
+    assert "halted_at" not in st.find_creation("Keepsake")[0]["runtime"]                      # nothing to stop in a keepsake
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": None}], NOW + 5)
+    assert st.find_creation("Gear Clock")[0]["runtime"]["halted_at"] == NOW + 5
+
+
+def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_is_tended(tmp_path):
+    from app import creations as cr
+    s, st = fresh(tmp_path)
+    c = clock(st)
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}], NOW)
+    stopped = st.find_creation("Gear Clock")[0]
+    assert cr._needs(stopped) == "it needs 2 brass wire to mend it, then tending (wind)"
+    assert "STOPPED - it needs 2 brass wire to mend it, then tending (wind)" in cr.describe(stopped, NOW + 10)
+    assert cr.tend(st, stopped, NOW + 10) == "error: your Gear Clock needs 2 brass wire to mend it before it can be tended"
+    st.add_item("brass wire", 1, "material", "")
+    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 10).startswith("error: your Gear Clock needs 2 brass wire")
+    assert st.find_item("brass wire")[0]["qty"] == 1                                         # nothing taken until it can be mended
+    st.add_item("brass wire", 4, "material", "")
+    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 10).startswith("you tend your Gear Clock (wind)")
+    mended = st.find_creation("Gear Clock")[0]
+    assert st.find_item("brass wire")[0]["qty"] == 3 and "needs_part" not in mended["runtime"] and "halted_at" not in mended["runtime"]
+    st.add_item("brass wire", 1, "tool", "")
+    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 20).startswith("you tend")          # a plain stop needs only tending
+
+
+def test_a_part_must_be_a_material_and_a_plain_stop_is_just_tended(tmp_path):
+    from app import creations as cr
+    s, st = fresh(tmp_path)
+    c = clock(st)
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 1}}], NOW)
+    st.add_item("springs", 3, "tool", "")                                                   # not a material: it does not count
+    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW).startswith("error: your Gear Clock needs 1 springs")
+
+
+def test_news_joins_a_neighbors_life_as_the_title(tmp_path):
+    from app import neighbors
+    s, st = fresh(tmp_path)
+    ch = st.add_character("Oriel Vantosh", "neighbor", None, "p", 60, NOW + 99 * HOUR, about="x")
+    news = [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}]
+    for i in range(neighbors.LIFE_KEPT + 2):
+        H.apply_effects(st, news, NOW, f"News {i}")
+    life = st.characters("neighbor")[0]["life"]
+    assert life == [f"News {i}" for i in range(2, neighbors.LIFE_KEPT + 2)]                  # the latest few
+    H.apply_effects(st, news, NOW, "")
+    H.apply_effects(st, [{"kind": "news", "name": "Nobody", "tone": "good"}], NOW, "Ignored")
+    assert st.characters("neighbor")[0]["life"] == life
+    H.apply_effects(st, news, NOW, "x" * 300)
+    assert st.characters("neighbor")[0]["life"][-1] == "x" * 200 + "..."
+
+
+def test_a_neighbor_happening_reaches_the_neighbor_through_create(tmp_path, monkeypatch):
+    s, st = fresh(tmp_path)
+    st.add_character("Oriel Vantosh", "neighbor", None, "p", 60, NOW + 99 * HOUR, about="x")
+    force(monkeypatch, {"category": "neighbor", "tone": "good", "severity": "minor", "lens": "joy", "effects": [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}],
+                        "names": ["Oriel Vantosh"], "facts": {}, "line": "(You hear news of Oriel Vantosh.)"})
+    gm = StubGM({"title": "Her heron is back", "text": "Word comes across the marsh that the heron has come back to Oriel, who is delighted about it."})
+    run(H.create(st, s, gm, w(), NOW, "x", random.Random(1)))
+    assert st.characters("neighbor")[0]["life"] == ["Her heron is back"]
+
+
+def test_a_memory_happening_hands_the_note_to_the_author_and_stores_it(tmp_path, monkeypatch):
+    s, st = fresh(tmp_path)
+    force(monkeypatch, {"category": "memory", "tone": "bad", "severity": "minor", "lens": "sadness", "effects": [], "names": ["Oriel"],
+                        "facts": {"memory": "Oriel taught me the tin."}, "line": ""})
+    gm = StubGM({"title": "The tin", "text": "Out of nowhere you remember Oriel and the tin by the door, and it aches a little."})
+    row = run(H.create(st, s, gm, w(), NOW, "x", random.Random(1)))
+    assert gm.calls[0][5]["memory"] == "Oriel taught me the tin." and row["context"]["memory"] == "Oriel taught me the tin." and row["author"] == "gm"
+
+
+@pytest.mark.asyncio
+async def test_the_author_is_told_the_memory_that_comes_back(tmp_path):
+    from app.llm.base import LLMResponse, ToolCall, Usage
+    from tests.test_gm_prompts import master, task
+    gm, b, _ = master(tmp_path, LLMResponse("", [ToolCall("1", "report", {"title": "T", "text": "x"})], Usage(1, 1)))
+    await gm.write_happening("memory", "good", "minor", "joy", "", {"period": "evening", "names": [], "memory": "Oriel taught me the tin."}, [])
+    assert 'Something Pip once wrote comes back to mind: "Oriel taught me the tin." Build the moment from it, in your own words.\n' in task(b)
+    gm2, b2, _ = master(tmp_path / "b" if (tmp_path / "b").mkdir() is None else tmp_path, LLMResponse("", [ToolCall("1", "report", {"title": "T", "text": "x"})], Usage(1, 1)))
+    await gm2.write_happening("garden", "good", "minor", "joy", "", {"period": "evening", "names": []}, [])
+    assert "comes back to mind" not in task(b2)
+
+
+def test_the_world_knows_what_can_stop_what_tools_there_are_and_which_notes_are_old(tmp_path):
+    s, st = fresh(tmp_path)
+    now = time.time()
+    clock(st)
+    clock(st, "Keepsake", {"capabilities": {}, "quirks": [], "scars": []})
+    stopped = clock(st, "Old Bell")
+    H.apply_effects(st, [{"kind": "creation_stop", "id": stopped["id"], "name": "Old Bell", "part": None}], now)
+    st.add_item("needle file", 1, "tool", "")
+    st.add_item("bark", 1, "material", "")
+    for i in range(8):
+        st.add_memory(f"note {i}", "diary")
+    st.add_memory("a todo", "todo")
+    got = H.world(st, s, now)
+    assert [c["name"] for c in got["stoppable"]] == ["Gear Clock"]                           # has upkeep and is going
+    assert got["tools"] == ["needle file"] and got["diary_count"] == 8 and got["old_notes"] == []
+    later = H.world(st, s, now + 3 * 86400)
+    assert len(later["old_notes"]) == 8 and later["diary_count"] == 8
+    assert len(H.world(st, s, now + 2 * 86400 - 5)["old_notes"]) == 0                         # two days is the line
+    assert len(H.world(st, s, now + 2 * 86400 + 5)["old_notes"]) == 8
+
+
+def test_every_category_is_in_its_cooldown_after_one_each(tmp_path):
+    s, st = fresh(tmp_path)
+    assert len(H.CATEGORIES) == 11
+    for name in H.CATEGORIES:
+        st.add_happening(ts=NOW - HOUR, slot="x", category=name, tone="good", severity="minor", lens="joy", seed="s")
+    assert H.build(st, s, w(), NOW, random.Random(1)) is None                                  # all eleven are seen, not only the latest ten
+
+
+def test_the_new_categories_each_turn_up_in_a_rich_world(tmp_path):
+    s, st = fresh(tmp_path)
+    seen = {H.build(st, s, w(), NOW, random.Random(i))["category"] for i in range(600)}
+    assert seen == set(H.CATEGORIES)
+
+
+def test_a_first_happening_of_each_kind_is_a_first_and_reading_it_differently_is_a_major_one():
+    from app import firsts
+    assert set(firsts.HAPPENING_FIRSTS) == set(H.CATEGORIES)
+    got = firsts.facets("happening", {"category": "garden", "status": "applied"}, None, 0)
+    assert got == [("happening:garden", "the first time you had the garden change on its own", "minor")]
+    assert firsts.facets("happening", {"category": "garden", "status": "logged"}, None, 0) == []            # a logged one did not happen
+    assert firsts.facets("happening", {"category": "unknown", "status": "applied"}, None, 0) == []
+    assert firsts.facets("happening_felt", {"differs": True, "read_as": "joy"}, None, 0) == [
+        ("happening:read_differently", "the first time you took something that happened differently from how it was told", "major")]
+    assert firsts.facets("happening_felt", {"differs": True, "read_as": "nothing"}, None, 0) == []
+    assert firsts.facets("happening_felt", {"differs": False, "read_as": "joy"}, None, 0) == []
+
+
+def test_a_happening_is_a_first_in_the_log(tmp_path, monkeypatch):
+    s, st = fresh(tmp_path)
+    force(monkeypatch)
+    run(H.create(st, s, StubGM(STORY), w(), NOW, "x", random.Random(1)))
+    ev = [e for e in st.events(10) if e["kind"] == "happening"][0]["data"]
+    assert [f["key"] for f in ev["firsts"]] == ["happening:found"]
+
+
+def test_replaying_a_happening_rolls_its_slot_again(tmp_path):
+    s, st = step_state(tmp_path)
+    st.set_meta(happenings_salt="fixed")
+    stepped(s, st, StubGM(STORY), at(12, 5))
+    h = st.happenings()[0]
+    r = H.replay(st, s, h)
+    assert r["slot"] == "2026-03-05#2" and r["seed"] == "fixed:2026-03-05#2" and r["roll"] == random.Random("fixed:2026-03-05#2").random()
+    assert r["recorded_roll"] == r["roll"] and r["matches"] is True and r["chance"] == 1.0 and r["would_hit"] is True
+    assert r["decided"] == {k: h[k] for k in ("category", "tone", "severity", "lens")} and r["id"] == h["id"]
+    assert H.replay(st, settings(happenings_chance=0.0), h)["would_hit"] is False
+    st.db.execute("UPDATE happening_rolls SET roll = 0.5")
+    assert H.replay(st, s, h)["matches"] is False
+    st.db.execute("DELETE FROM happening_rolls")
+    assert H.replay(st, s, h)["recorded_roll"] is None and H.replay(st, s, h)["matches"] is False
+
+
+def test_the_replay_is_for_the_owner_only(tmp_path):
+    with api(tmp_path) as c:
+        st = c.app.state.agent.state
+        st.add_happening(ts=NOW, slot="2026-03-05#2", category="found", tone="good", severity="minor", lens="joy", seed="s:2026-03-05#2", status="resolved")
+        got = c.get("/happenings/1/replay").json()
+        assert got["id"] == 1 and got["slot"] == "2026-03-05#2" and got["recorded_roll"] is None and got["decided"]["category"] == "found"
+        assert c.get("/happenings/99/replay").status_code == 404
+        assert c.get("/happenings/1/replay", headers={"host": "pip.example.org"}).status_code == 404
+
+
+# --- more details, found by the mutation run --------------------------------------------------------------------------
+def test_the_world_counts_every_diary_note_and_draws_the_two_day_line_exactly(tmp_path):
+    s, st = fresh(tmp_path)
+    now = time.time()
+    for i in range(12):
+        st.add_memory(f"note {i}", "diary")
+    clock(st)
+    got = H.world(st, s, now)
+    assert got["diary_count"] == 12 and got["stoppable"] == [{"id": st.creations()[0]["id"], "name": "Gear Clock"}]
+    st.db.execute("UPDATE memories SET ts = ?", (now - 2 * 86400,))
+    assert len(H.world(st, s, now)["old_notes"]) == 0                                          # exactly two days is not yet old
+    st.db.execute("UPDATE memories SET ts = ?", (now - 2 * 86400 - 0.5,))
+    assert len(H.world(st, s, now)["old_notes"]) == 12
+
+
+def test_a_ruin_names_the_crop_and_a_major_mishap_draws_a_part_by_weight():
+    from app import gathering
+    ruins = [e for p in plans("garden", "bad", "major", seeds=range(200)) for e in p.effects if e["kind"] == "crop_ruin"]
+    assert ruins and all(e == {"kind": "crop_ruin", "plot": 1, "crop": "tomatoes"} for e in ruins)
+    rng = random.Random(4)
+    parts = [H._mending_part(rng)["name"] for _ in range(6000)]
+    pool = [e for e in gathering.JUNKYARD if e[1] == "material"]
+    total = sum(e[2] for e in pool)
+    for e in pool:
+        assert parts.count(e[0]) / len(parts) == pytest.approx(e[2] / total, abs=0.03)
+
+
+def test_a_mishap_names_one_tool_and_a_minor_one_really_happens():
+    world_ = w(tools=["needle file", "tweezers"])
+    minor = plans("mishap", "bad", "minor", world_)
+    assert minor and all(p.names == ["needle file"] and len(p.effects) == 1 for p in minor)
+    assert plans("mishap", "neutral", "minor", world_)[0].names == ["needle file"]
+    assert plans("mishap", "bad", "minor", w(low=False)) and plans("mishap", "bad", "major")
+
+
+def test_a_kindness_can_be_food_a_seed_or_a_material():
+    kinds = {p.effects[0]["item_kind"] for p in plans("kindness", "good", "minor", seeds=range(300)) if p.effects[0]["kind"] == "item"}
+    assert kinds == {"food", "seed", "material"}
+
+
+def test_news_without_a_title_or_for_a_resident_changes_nothing(tmp_path):
+    s, st = fresh(tmp_path)
+    st.add_character("Oriel Vantosh", "neighbor", None, "p", 60, NOW + 99 * HOUR, about="x")
+    st.add_character("Mr Teague", "resident", None, "p", 60, NOW + 99 * HOUR, about="x", place="Saltholm")
+    H.apply_effects(st, [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}], NOW)                 # no title given
+    H.apply_effects(st, [{"kind": "news", "name": "Mr Teague", "tone": "good"}], NOW, "News")
+    assert [c["life"] for c in st.characters()] == [[], []]
+
+
+def test_a_part_the_pip_has_exactly_is_enough_and_tending_clears_the_stop_flag(tmp_path):
+    from app import creations as cr
+    s, st = fresh(tmp_path)
+    c = clock(st)
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 2}}], NOW)
+    st.add_item("springs", 2, "material", "")
+    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 5).startswith("you tend")
+    assert st.find_item("springs")[0] is None                                                        # all two were used
+    rt = st.find_creation("Gear Clock")[0]["runtime"]
+    assert rt["stop_logged"] is False and rt["tended_until"] == NOW + 5 + 24 * 3600

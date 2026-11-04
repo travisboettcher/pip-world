@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from . import emotions as emo
+from . import creations as cr
 from . import gathering, market
 from . import sleep as sleepmod
 from .state import name_key
@@ -43,6 +44,9 @@ FOUND_COINS = {"minor": (1, 3), "medium": (3, 10), "major": (8, 25)}
 FOUND_ITEMS = {"minor": (1, 1), "medium": (2, 4), "major": (4, 6)}
 YIELD_BAD = {"minor": 1, "medium": 2, "major": 3}
 YIELD_GOOD = {"minor": 1, "medium": 2, "major": 3}
+MENDING_QTY = (1, 3)                                                    # units of a material a major mishap asks for
+OLD_NOTE_DAYS = 2                                                       # a note this old can come back to mind
+MIN_DIARY = 7
 LOSS_SHARE = {"medium": (0.10, 0.25, 10), "major": (0.25, 0.50, 25)}   # (low, high, most units) of a stack
 
 DENY = re.compile(r"\b(die|dies|died|dead|death|dying|kill|kills|killed|blood|bleed|bleeding|corpse|suicide|hospital)\b", re.I)
@@ -146,17 +150,23 @@ def world(state, settings, now: float) -> dict:
     plots = [g for g in state.garden(now) if g["state"] == "growing"]
     foods = sorted((i for i in state.items() if i["kind"] == "food"), key=lambda i: -i["qty"])
     booths = [r for r in state.place_rows() if r["status"] == "real" and "buy" in places.invented_place(r).verbs]
+    creations = state.creations()
+    diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(), "hunger": agent["hunger"], "energy": agent["energy"],
             "low": agent["hunger"] >= LOW_HUNGER or agent["energy"] <= LOW_ENERGY,
             "plots": plots, "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
             "neighbors": [c["name"] for c in state.characters("neighbor")],
-            "creations": [c["name"] for c in state.creations()]}
+            "creations": [c["name"] for c in creations],
+            "stoppable": [{"id": c["id"], "name": c["name"]} for c in creations if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now)],
+            "tools": [i["name"] for i in state.items() if i["kind"] == "tool"],
+            "old_notes": [m for m in diary if m["ts"] < now - OLD_NOTE_DAYS * 86400], "diary_count": len(diary)}
 
 
 @dataclass
 class Plan:
     effects: list = field(default_factory=list)   # structured, applied by apply_effects
     names: list = field(default_factory=list)     # names the text may use
+    facts: dict = field(default_factory=dict)     # extra facts for the author (a memory that surfaces)
 
 
 def _one_of(rng: random.Random, seq):
@@ -232,11 +242,11 @@ def _plan_found(w, tone, severity, rng):
 def _plan_body(w, tone, severity, rng):
     if tone == "neutral":
         return Plan()
-    if tone == "good":
-        return Plan([{"kind": "energy", "delta": ENERGY[severity]}], [])
-    if w["low"]:
+    sign = 1 if tone == "good" else -1
+    if tone == "bad" and w["low"]:
         return None
-    return Plan([{"kind": "energy", "delta": -ENERGY[severity]}], [])
+    stat = _one_of(rng, ("energy", "hunger"))
+    return Plan([{"kind": stat, "delta": sign * ENERGY[severity] * (1 if stat == "energy" else -1)}])
 
 
 def _plan_market(w, tone, severity, rng):
@@ -251,6 +261,52 @@ def _plan_market(w, tone, severity, rng):
         return Plan([], [booth["key"], item])
     units = PRICE_UNITS[severity] * (1 if tone == "good" else -1)
     return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": units}], [booth["key"], item])
+
+
+def _mending_part(rng):
+    pool = [e for e in gathering.JUNKYARD if e[1] == "material"]
+    entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
+    return {"name": entry[0], "qty": rng.randint(*MENDING_QTY)}
+
+
+def _plan_mishap(w, tone, severity, rng):
+    if tone == "neutral":
+        return Plan([], w["tools"][:1])
+    if severity == "minor":
+        return None if w["low"] else Plan([{"kind": "energy", "delta": -ENERGY["minor"]}], w["tools"][:1])
+    if not w["stoppable"]:
+        return None
+    c = _one_of(rng, w["stoppable"])
+    part = _mending_part(rng) if severity == "major" else None
+    return Plan([{"kind": "creation_stop", "id": c["id"], "name": c["name"], "part": part}], [c["name"]] + ([part["name"]] if part else []))
+
+
+def _plan_neighbor(w, tone, severity, rng):
+    name = _one_of(rng, w["neighbors"])
+    return Plan([] if tone == "neutral" else [{"kind": "news", "name": name, "tone": tone}], [name])
+
+
+def _proper_nouns(text: str) -> list[str]:
+    return sorted(set(re.findall(r"\b[A-Z][a-z]+\b", text)))      # Pip's own words: any capitalised word may be a name, sentence-first or not
+
+
+def _plan_memory(w, tone, severity, rng):
+    note = _one_of(rng, w["old_notes"])
+    text = clip(note["text"], 200)
+    return Plan([], _proper_nouns(text), {"memory": text})
+
+
+def _plan_kindness(w, tone, severity, rng):
+    name = _one_of(rng, w["neighbors"])
+    if rng.random() < 0.5:
+        item = {**_found_item(rng, severity, ("food", "seed", "material")), "gift": True}
+        return Plan([item], [item["name"], name])
+    lo, hi = FOUND_COINS[severity]
+    return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), "gift": True}], [name])
+
+
+def _plan_atmosphere(w, tone, severity, rng):
+    return Plan()
 
 
 @dataclass(frozen=True)
@@ -268,12 +324,17 @@ CATEGORIES = {c.name: c for c in (
     Category("found", ("good", "bad", "neutral"), lambda w: True, _plan_found),
     Category("body", ("good", "bad", "neutral"), lambda w: True, _plan_body),
     Category("market", ("good", "bad", "neutral"), lambda w: bool(w["booths"]), _plan_market),
+    Category("mishap", ("bad", "neutral"), lambda w: bool(w["stoppable"] or w["tools"]), _plan_mishap),
+    Category("neighbor", ("good", "bad", "neutral"), lambda w: bool(w["neighbors"]), _plan_neighbor),
+    Category("memory", ("good", "bad", "neutral"), lambda w: w["diary_count"] >= MIN_DIARY and bool(w["old_notes"]), _plan_memory),
+    Category("kindness", ("good",), lambda w: bool(w["neighbors"]), _plan_kindness),
+    Category("atmosphere", ("neutral",), lambda w: True, _plan_atmosphere),
 )}
 
 
 def build(state, settings, w: dict, now: float, rng: random.Random) -> dict | None:
     """Choose a happening for the world as it is: category, tone, severity, effects and lens. None when nothing is possible."""
-    recent = state.happenings(10)
+    recent = state.happenings(2 * len(CATEGORIES) + 10)       # more than the categories there are, so every one in its cooldown is seen
     cooling = {h["category"] for h in recent if now - h["ts"] < COOLDOWN_HOURS * 3600 and h["status"] != "skipped"}
     last_tones = [h["tone"] for h in recent]
     options = [c for c in CATEGORIES.values() if c.name not in cooling and c.needs(w)]
@@ -284,7 +345,7 @@ def build(state, settings, w: dict, now: float, rng: random.Random) -> dict | No
         plan = cat.plan(w, tone, severity, rng)
         if plan is not None:
             return {"category": cat.name, "tone": tone, "severity": severity, "lens": pick_lens(rng, tone),
-                    "effects": plan.effects, "names": plan.names, "line": effects_line(plan.effects)}
+                    "effects": plan.effects, "names": plan.names, "facts": plan.facts, "line": effects_line(plan.effects)}
         options.remove(cat)
     return None
 
@@ -297,9 +358,14 @@ def _percent(delta: float) -> int:
 def describe(e: dict) -> str:
     kind = e["kind"]
     if kind == "coins":
-        return f"You {'find' if e['delta'] > 0 else 'lose'} {market.coins_text(abs(e['delta']))}."
+        return f"You {('are given' if e.get('gift') else 'find') if e['delta'] > 0 else 'lose'} {market.coins_text(abs(e['delta']))}."
     if kind == "item":
-        return f"You find {e['qty']} {e['name']}."
+        return f"You {'are given' if e.get('gift') else 'find'} {e['qty']} {e['name']}."
+    if kind == "creation_stop":
+        mend = f"{e['part']['qty']} {e['part']['name']} to mend, then " if e.get("part") else ""
+        return f"Your {e['name']} stops; it needs {mend}tending."
+    if kind == "news":
+        return f"You hear news of {e['name']}."
     if kind == "food_loss":
         return f"You lose {e['qty']} {e['name']}."
     if kind == "crop_time":
@@ -321,7 +387,7 @@ def effects_line(effects: list) -> str:
     return "(" + " ".join(describe(e) for e in effects) + ")" if effects else ""
 
 
-def apply_effects(state, effects: list, now: float) -> None:
+def apply_effects(state, effects: list, now: float, title: str = "") -> None:
     for e in effects:
         kind = e["kind"]
         if kind == "coins":
@@ -344,6 +410,19 @@ def apply_effects(state, effects: list, now: float) -> None:
             state.update_agent(hunger=max(0.0, min(HUNGER_CEILING, state.agent()["hunger"] + e["delta"])))
         elif kind == "price":
             market.nudge(state, e["place"], e["item"], e["units"], now)
+        elif kind == "creation_stop":
+            c = next((c for c in state.creations() if c["id"] == e["id"]), None)
+            if c and "upkeep" in c["spec"]["capabilities"]:
+                rt = dict(c["runtime"])
+                rt["halted_at"] = now
+                if e.get("part"):
+                    rt["needs_part"] = e["part"]
+                state.set_runtime(c["id"], rt)
+        elif kind == "news":
+            from . import neighbors
+            ch = next((c for c in state.characters("neighbor") if c["name"] == e["name"]), None)
+            if ch and title:
+                state.update_character(ch["id"], life=(ch["life"] + [clip(title, 200)])[-neighbors.LIFE_KEPT:])
 
 
 # --- the words ----------------------------------------------------------------------------------------------------
@@ -368,6 +447,16 @@ TEMPLATES = {
     ("market", "good"): ("Good word", "You hear that things are selling well."),
     ("market", "bad"): ("Bad word", "You hear the shelves are full and buyers are few."),
     ("market", "neutral"): ("Market talk", "You hear some idle talk about the market."),
+    ("mishap", "bad"): ("Something slips", "Something in the workshop slips, jars or gives way."),
+    ("mishap", "neutral"): ("A squeak", "Something in the workshop squeaks, and nothing is wrong."),
+    ("neighbor", "good"): ("Good news", "Word comes from a neighbor that things are going well."),
+    ("neighbor", "bad"): ("A small worry", "Word comes from a neighbor of a small worry."),
+    ("neighbor", "neutral"): ("Neighbourly talk", "You hear a little idle talk about a neighbor."),
+    ("memory", "good"): ("A fond thought", "An old thought of your own comes back to you."),
+    ("memory", "bad"): ("A wistful thought", "An old thought of your own comes back, and lingers."),
+    ("memory", "neutral"): ("A thought returns", "An old thought of your own comes back and puzzles you."),
+    ("kindness", "good"): ("Left for you", "Someone has left something for you and gone."),
+    ("atmosphere", "neutral"): ("In the air", "You notice a sound, a light, a smell, and then it is gone."),
 }
 
 
@@ -420,17 +509,17 @@ async def create(state, settings, gm, w: dict, now: float, slot: str, rng: rando
     if not c:
         return None
     recent = [h["title"] for h in state.happenings(5)]
-    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]]}
+    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"]}
     title, text, who = await author(gm, c, facts, recent)
     amount = lens_amount(c["tone"], c["severity"])
     jolt, meaning = split_amount(amount)
     logged = settings.happenings == "log"
     row = state.add_happening(ts=now, slot=slot, category=c["category"], tone=c["tone"], severity=c["severity"], lens=c["lens"],
-                              seed=f"{salt(state)}:{slot}", context={"period": w["period"], "names": c["names"]}, effects=c["effects"],
+                              seed=f"{salt(state)}:{slot}", context={"period": w["period"], "names": c["names"], **c["facts"]}, effects=c["effects"],
                               effects_line=c["line"], meaning={"emotion": c["lens"], "amount": meaning, "jolt": jolt, "shown_at": None},
                               text=text, title=title, author=who, status="logged" if logged else "applied")
     if not logged:
-        apply_effects(state, c["effects"], now)
+        apply_effects(state, c["effects"], now, title)
     state.log("happening", id=row["id"], category=c["category"], tone=c["tone"], severity=c["severity"], lens=c["lens"], title=title,
               text=text, effects=c["line"], jolt=0 if logged else jolt, status=row["status"])
     return row
@@ -521,6 +610,15 @@ async def step(state, settings, gm, now: float | None = None) -> bool:
         return False
     rng = random.Random(hashlib.sha256(f"{salt(state)}:{slot[0]}:build".encode()).hexdigest())
     return await create(state, settings, gm, world(state, settings, now), now, slot[0], rng) is not None
+
+
+def replay(state, settings, h: dict) -> dict:
+    """Roll a happening's slot again from its stored seed, to check the dice: the recorded roll, whether it still matches, and what the chance says now."""
+    roll = random.Random(h["seed"]).random()
+    recorded = state.happening_roll(h["slot"])
+    return {"id": h["id"], "slot": h["slot"], "seed": h["seed"], "roll": roll, "recorded_roll": recorded["roll"] if recorded else None,
+            "matches": bool(recorded) and recorded["roll"] == roll, "chance": settings.happenings_chance, "would_hit": roll < settings.happenings_chance,
+            "decided": {k: h[k] for k in ("category", "tone", "severity", "lens")}}
 
 
 def public_row(h: dict) -> dict:

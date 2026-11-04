@@ -255,4 +255,5 @@ until that time is up; a visitor, a ripe crop, a stat alert or a different activ
 Design: [DESIGN-happenings.md](DESIGN-happenings.md). Small events from the world, a few a week: each three-hour slot of awake time rolls `HAPPENINGS_CHANCE` (10%) for one. The engine
 picks the category, whether it is good, bad or neutral, its severity (`HAPPENINGS_SEVERITY`, 50/45/5 minor/medium/major), the effects and their caps, and the emotion it is told
 through; the model writes two or three sentences; the engine appends what really changed in brackets. Pip is told, and `feel(emotion)` says how it takes it (any of the eight
-emotions, or `nothing`), which decides where the event's meaning lands. `HAPPENINGS=on|log|off`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SLOT_HOURS`; HTTP `GET /happenings`.
+emotions, or `nothing`), which decides where the event's meaning lands. `HAPPENINGS=on|log|off`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SLOT_HOURS`; HTTP `GET /happenings`; `./pipchat happenings` lists them and `--replay ID` rolls one's dice again. There are eleven categories (the garden, a creature, the pantry, a find, the body, the market,
+a mishap in the workshop, news of a neighbor, a memory, a kindness, the atmosphere); a major mishap can leave a creation needing a part before it can be tended again. The Now tab has a "Lately" card.

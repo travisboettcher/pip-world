@@ -467,6 +467,15 @@ function renderGarden() {
       h('div', { class: 'bar' }, h('i', { style: `width:${pct(done)}` })));
   }));
 }
+// ---- lately: the small things that have happened (see DESIGN-happenings.md) ---------------------------------------
+function renderLately(rows) {
+  $('lately-card').hidden = !rows.length;
+  $('lately').replaceChildren(...rows.map((x) => h('li', { class: `lately-item tone-${x.tone}` },
+    h('div', { class: 'lately-head' }, h('b', {}, x.title), h('small', {}, `${fmtDay(x.ts)} · ${x.category}${x.severity === 'minor' ? '' : ` · ${x.severity}`}`)),
+    h('p', {}, x.text), x.effects_line ? h('p', { class: 'lately-effects' }, x.effects_line) : null,
+    h('small', { class: 'lately-read' }, x.status === 'resolved' ? (x.read_as === x.lens ? `Pip took it as ${x.read_as}` : `told as ${x.lens}; Pip took it as ${x.read_as}`) : x.status === 'applied' ? 'Pip has yet to take it in' : ''))));
+}
+const refreshLately = async () => { try { renderLately(await api('/happenings?limit=6')); } catch { /* an older server has no happenings */ } };
 const refreshGarden = async () => { gardenData = await api('/garden'); renderGarden(); };
 
 let projectData = { projects: [], skills: {} };
@@ -633,6 +642,7 @@ function handleEvent(e, live) {
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'garden', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
   if (e.kind === 'garden') debounce('garden', refreshGarden);
+  if (['happening', 'happening_felt'].includes(e.kind)) { debounce('lately', refreshLately); debounce('state', refreshState, 1200); debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (e.kind === 'arrived' || (e.kind === 'tool' && t === 'go_to')) debounce('map', refreshMap);
   if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
   if (e.kind === 'made_work') debounce('works', refreshWorks);
@@ -666,7 +676,7 @@ renderFilters();
   setChatOpen(!PUBLIC && store.get('chatOpen', false), false);
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks()]);
+    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks(), refreshLately()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {
