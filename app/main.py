@@ -287,8 +287,9 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 "capabilities": (st.capability_snapshots(1) or [(None, None)])[0][1],
                 "night_decisions": st.decisions(20), "focus": st.focus(None, 20),
                 "turning": st.reflections("turning", limit=20), "turning_candidates": st.turning_points(20),
+                "on_mind": next((e["data"] for e in st.events(200) if e["kind"] == "reminded"), None),
                 "last_reflection_ts": float(st.meta("last_reflection_ts") or 0) or None}
-        return {k: v for k, v in full.items() if k != "people"} if request.state.public else full
+        return {k: v for k, v in full.items() if k not in ("people", "on_mind")} if request.state.public else full
 
     @app.get("/recall")
     def get_recall(q: str, limit: int = 5):

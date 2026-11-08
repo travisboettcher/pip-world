@@ -1,6 +1,6 @@
 # Design: "this reminds you of..." (memory step 3)
 
-Status (2026-11-08): designed, not built. Extends [DESIGN-memory.md](DESIGN-memory.md) step 3, and folds in three mechanisms from
+Status (2026-11-08): **built (0.10.0)**, on from the start (owner's choice); two slots, one in a conversation scene; being shown is not a use. Extends [DESIGN-memory.md](DESIGN-memory.md) step 3, and folds in three mechanisms from
 [RESEARCH-self.md](RESEARCH-self.md) that belong to the same machinery: episodes stored with their context (Pink et al. 2025; Tulving's
 recall frame), activation that fades with time and is refreshed by use (ACT-R, MemoryBank), and a small competition for the prompt's
 attention whose winners and losers are logged (Global Workspace / LIDA).
@@ -109,7 +109,20 @@ not by being shown; fading at the threshold, logged once, recall still finds it 
 exclusions (in view, too young, faded, cooldown, cooldown lifted by a new person); scoring order and per-kind cap; nothing shown below
 the bar; the block's exact wording with partial frames; the `reminded` event; `REMINDERS=log|off`; the talk scene's single slot.
 
-## Open questions
-1. Two slots in the world turn and one in a conversation scene, or fewer?
-2. Should simply being shown count as a weak use after all? (Proposed: no.)
-3. Start with `REMINDERS=on`, or `log` for a few days to look at what would have come to mind first?
+## Decisions (2026-11-08)
+1. Two slots in the world turn, one in a conversation scene.
+2. Being shown is not a use.
+3. `REMINDERS=on` from the start.
+
+## As built (`app/reminders.py`, `State._context_now`, `tests/test_reminders.py`)
+- **Relevance is absolute, not relative to the best match**: BM25 / `REL_FULL` (4.0), capped at 1. Measured on the live index: a name in half the
+  memories ("Oriel") scores about 0.2, an ordinary word ("tomato") about 1.9, a rare one ("Saltholm", "kettle") 4-5. Scaling to the best match
+  would make the top hit fully relevant even when it only shares a common word.
+- The fade line scales `FADE_DAYS` by importance / 5, clamped to x0.5..x2 (a routine line fades in about a week, a day that mattered in four).
+  The first check after the upgrade fades the oldest routine lines at once; they are logged as one `faded` event.
+- The cue's words: the inbox, the in-person partner's latest line this visit, the active project's current stage, and happening titles and
+  gift names from the last six hours.
+- Taken up: Pip's tool arguments and thoughts since the reminder, checked once Pip has used a tool (so a reminder shown just before a sleep
+  is judged on the next waking turn).
+- `GET /memory` -> `on_mind` (owner only): the latest `reminded` event. The dashboard feed shows what came to mind and when memories fade.
+  A guide page tells Pip what the block is and that it may let it pass.

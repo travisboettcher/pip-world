@@ -120,6 +120,9 @@ class Settings:
     happenings_seasons: bool = True         # what is likelier in which season
 
     talk_scenes: str = "off"                # on: talk with someone in person runs as its own scene (talk.py); off here so a bare Settings() keeps the old way
+    reminders: str = "off"                  # on: old memories come to mind by themselves (reminders.py); log: chosen and logged, not shown; off here for tests
+    reminders_shown: int = 2                # slots in a world turn (a conversation scene has one)
+    remind_cooldown_hours: float = 12       # a memory brought to mind stays out of mind this long, unless someone or somewhere new cues it
     wish_share: str = "off"                 # on: wishes that are not things are shared with Pip's friend, one a day (off here so a bare Settings() sends nothing)
 
     # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
@@ -152,6 +155,9 @@ class Settings:
             hemisphere=(e("HEMISPHERE") or "north").lower() if (e("HEMISPHERE") or "north").lower() in ("north", "south") else "north",
             happenings_seasons=(e("HAPPENINGS_SEASONS") or "on").lower() not in ("off", "0", "false", "no"),
             talk_scenes=(e("TALK_SCENES") or "on").lower() if (e("TALK_SCENES") or "on").lower() in ("on", "off") else "on",
+            reminders=(e("REMINDERS") or "on").lower() if (e("REMINDERS") or "on").lower() in ("on", "log", "off") else "on",
+            reminders_shown=_int("REMINDERS_SHOWN", 2),
+            remind_cooldown_hours=_float("REMIND_COOLDOWN_HOURS", 12),
             wish_share=(e("WISH_SHARE") or "on").lower() if (e("WISH_SHARE") or "on").lower() in ("on", "off") else "on",
             version=e("PIP_VERSION") or "dev",
             revision=(e("PIP_REVISION") or "")[:7],

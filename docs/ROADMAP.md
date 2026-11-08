@@ -67,7 +67,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [x] Visitor identity: inbox `sender`, shown in perception, moments and the feed
 - [x] Nightly reflection in Pip's voice: day summaries, insights with importance, people notes, self-portrait
 - [x] `recall(query)` over journal, events, reflections and people (SQLite FTS5)
-- [ ] Step 3: "this reminds you of..." - **designed: [DESIGN-reminders.md](DESIGN-reminders.md)**. Episodes keep their context (where, who, doing, mood);
+- [x] Step 3: "this reminds you of..." (0.10.0; [DESIGN-reminders.md](DESIGN-reminders.md)). Episodes keep their context (where, who, doing, mood);
       activation that fades and is refreshed by use (ACT-R), with faded memories still found by `recall`; a cue from the situation and a two-slot
       competition whose winners and losers are logged (Global Workspace); recall results framed with when, where and how Pip was (Tulving)
 - [ ] Step 4: forgetting - stop indexing raw events covered by summaries (insights losing rank is part of step 3's activation)
@@ -203,7 +203,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] Night pass: archive/merge/resolve notes, pause/resume projects, adopt a goal, set a focus; cited, reversible
       (`undo_decision`), `NIGHT_PASS=off|log|apply`
 - [ ] Life periods / chapters: group days by place, people and goals
-- [ ] Recall frame: show Pip's state at the time of a recalled memory (Tulving) - part of memory step 3 (DESIGN-reminders.md)
+- [x] Recall frame: show Pip's state at the time of a recalled memory (Tulving) - built with memory step 3 (0.10.0)
 - [ ] Precedents (Soar): a project crossroads Pip resolves is stored as situation -> approach -> outcome, so later it can truthfully see
       "I've faced this before" or "I have no precedent for this"
 - [ ] Self-prediction (Binder et al. 2024): now and then Pip predicts its own next action; the log scores the hit rate (expectations cover

@@ -172,6 +172,12 @@ CREATE TABLE IF NOT EXISTS people (
   name TEXT PRIMARY KEY COLLATE NOCASE, notes TEXT NOT NULL, first_seen REAL NOT NULL, last_seen REAL NOT NULL
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS recall_index USING fts5(text, source UNINDEXED, ref UNINDEXED, ts UNINDEXED);
+CREATE TABLE IF NOT EXISTS memory_context (
+  source TEXT NOT NULL, ref TEXT NOT NULL, ts REAL NOT NULL, place TEXT, people TEXT NOT NULL DEFAULT '[]', activity TEXT,
+  mood TEXT, feeling TEXT, project TEXT, importance INTEGER NOT NULL DEFAULT 3, uses TEXT NOT NULL DEFAULT '[]',
+  shown_at REAL NOT NULL DEFAULT 0, shown_with TEXT NOT NULL DEFAULT '[]', faded INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (source, ref)
+);
 CREATE TABLE IF NOT EXISTS usage (
   day TEXT PRIMARY KEY, input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0
@@ -179,6 +185,8 @@ CREATE TABLE IF NOT EXISTS usage (
 """
 
 STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
+NOTE_IMPORTANCE = {"diary": 4, "learned": 4, "ambitions": 4}  # other notes: 3
+USES_KEPT = 20                                                  # uses of a memory kept for its activation (reminders.py)
 RECALL_INDEX_VERSION = "2"  # bump to rebuild the recall index from stored data on the next start
 SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
 RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
@@ -270,6 +278,8 @@ class State:
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
                 self._backfill_recall()
+            if self.meta("memory_context") != "1":
+                self._backfill_memory_context()
             self.merge_duplicate_items()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
                 for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
@@ -333,7 +343,8 @@ class State:
                             (json.dumps({**data, **extra}),
                              event_importance(kind, data, new), cur.lastrowid))
             if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
-                self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False)
+                self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False, data=data,
+                            importance=event_importance(kind, data, new))
             self.db.commit()
         for fn in list(self.listeners):
             try:
@@ -497,7 +508,7 @@ class State:
             now = time.time()
             cur = self.db.execute(
                 "INSERT INTO memories (ts, text, section, kind) VALUES (?, ?, ?, ?)", (now, text, section, kind))
-            self._index(f"note:{section}", cur.lastrowid, now, text, commit=False)
+            self._index(f"note:{section}", cur.lastrowid, now, text, commit=False, importance=NOTE_IMPORTANCE.get(section, 3))
             self.db.commit()
             return cur.lastrowid
 
@@ -1098,7 +1109,7 @@ class State:
                                   (now, kind, text, importance, period_start, period_end, int(grounded), support))
             self.db.executemany("INSERT INTO reflection_cites VALUES (?, ?, ?)",
                                 [(cur.lastrowid, k, i) for k, i in cites])
-            self._index(kind, cur.lastrowid, period_end, text, commit=False)
+            self._index(kind, cur.lastrowid, period_end, text, commit=False, importance=importance)
             self.db.commit()
             return cur.lastrowid
 
@@ -1251,7 +1262,7 @@ class State:
             cur = self.db.execute("INSERT INTO works (ts, kind, title, body, caption, location) VALUES (?, ?, ?, ?, ?, ?)",
                                   (now, kind, title, body, caption, location))
             text = f"{title}. {caption}" + (f" {body}" if kind == "writing" else "")
-            self._index(f"work:{kind}", cur.lastrowid, now, text.strip(), commit=False)
+            self._index(f"work:{kind}", cur.lastrowid, now, text.strip(), commit=False, importance=5)
             self.db.commit()
             return cur.lastrowid
 
@@ -1431,16 +1442,153 @@ class State:
             self.db.execute("INSERT INTO people VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET "
                             "notes = excluded.notes, last_seen = MAX(last_seen, excluded.last_seen)",
                             (name, notes, seen, seen))
-            self._index("person", name, seen, f"{name}: {notes}", commit=False)
+            self._index("person", name, seen, f"{name}: {notes}", commit=False, data={"name": name}, importance=5)
             self.db.commit()
 
-    def _index(self, source: str, ref, ts: float, text: str, commit: bool = True) -> None:
-        """(Re)index one remembered thing for recall. Caller holds the lock."""
+    def _index(self, source: str, ref, ts: float, text: str, commit: bool = True, data: dict | None = None,
+               importance: int = 3, fresh: bool = True) -> None:
+        """(Re)index one remembered thing for recall. Caller holds the lock. A fresh write also records its context (where Pip was,
+        with whom, doing what, feeling how: see reminders.py); writing an existing memory again (an edit) counts as a use of it."""
         self.db.execute("DELETE FROM recall_index WHERE source = ? AND ref = ?", (source, str(ref)))
         self.db.execute("INSERT INTO recall_index (text, source, ref, ts) VALUES (?, ?, ?, ?)",
                         (text, source, str(ref), ts))
+        if fresh:
+            row = self.db.execute("SELECT uses FROM memory_context WHERE source = ? AND ref = ?", (source, str(ref))).fetchone()
+            if row:
+                self._add_uses(source, str(ref), json.loads(row["uses"]), time.time())
+            else:
+                ctx = self._context_now(source, data or {})
+                self.db.execute("INSERT INTO memory_context (source, ref, ts, place, people, activity, mood, feeling, project, importance, uses) "
+                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                (source, str(ref), ts, ctx["place"], json.dumps(ctx["people"]), ctx["activity"], ctx["mood"],
+                                 ctx["feeling"], ctx["project"], importance, json.dumps([ts])))
         if commit:
             self.db.commit()
+
+    @staticmethod
+    def _people_in(source: str, data: dict) -> list[str]:
+        """The people a remembered thing is about: who wrote, spoke, was spoken to or told Pip something."""
+        keys = ("sender", "to", "by") + (("name",) if source in ("event:companion", "person") else ())
+        names = [str(data[k]).strip() for k in keys if isinstance(data.get(k), str) and data[k].strip()]
+        return list(dict.fromkeys(n for n in names if n.lower() not in ("pip", "a visitor")))
+
+    def _context_now(self, source: str, data: dict) -> dict:
+        """Where Pip is, with whom, doing what, feeling how: a memory's context, captured as it is written."""
+        from . import places
+        from .emotions import BASELINE, NOTABLE
+        a = self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone()
+        sess = self.db.execute("SELECT * FROM work_session WHERE id = 1").fetchone()
+        place = None if sess and sess["kind"] == "walk" else a["location"]
+        people = self._people_in(source, data) + [c["name"] for c in places.company_at(self, place)]
+        project = None
+        if sess and sess["kind"] in ("work", "experiment"):
+            r = self.db.execute("SELECT name FROM projects WHERE id = ?", (sess["project_id"],)).fetchone()
+            project = r["name"] if r else None
+        excess = {r["name"]: r["value"] - BASELINE[r["name"]] for r in self.db.execute("SELECT name, value FROM emotions")}
+        feeling = max(excess, key=excess.get, default=None)
+        return {"place": place, "people": list(dict.fromkeys(people)), "activity": a["activity"],
+                "mood": a["mood"], "feeling": feeling if feeling and excess[feeling] >= NOTABLE else None,
+                "project": project}
+
+    def _add_uses(self, source: str, ref: str, uses: list, now: float) -> None:
+        self.db.execute("UPDATE memory_context SET uses = ?, faded = 0 WHERE source = ? AND ref = ?",
+                        (json.dumps((uses + [now])[-USES_KEPT:]), source, ref))
+
+    def _backfill_memory_context(self) -> None:
+        """Memories written before contexts were kept: who they were about and how much they mattered (where and how Pip was are unknown)."""
+        have = {(r["source"], r["ref"]) for r in self.db.execute("SELECT source, ref FROM memory_context")}
+        for r in self.db.execute("SELECT source, ref, ts FROM recall_index").fetchall():
+            if (r["source"], r["ref"]) in have:
+                continue
+            data = {}
+            if r["source"].startswith("event:"):
+                e = self.db.execute("SELECT data, importance FROM events WHERE id = ?", (int(r["ref"]),)).fetchone()
+                data, importance = (json.loads(e["data"]), e["importance"] or 3) if e else ({}, 3)
+            elif r["source"].startswith("note:"):
+                importance = NOTE_IMPORTANCE.get(r["source"][5:], 3)
+            elif r["source"] == "person":
+                data, importance = {"name": r["ref"]}, 5
+            elif r["source"].startswith("work:"):
+                importance = 5
+            else:
+                e = self.db.execute("SELECT importance FROM reflections WHERE id = ?", (int(r["ref"]),)).fetchone()
+                importance = e["importance"] if e else 5
+            ts = float(r["ts"])
+            self.db.execute("INSERT INTO memory_context (source, ref, ts, people, importance, uses) VALUES (?, ?, ?, ?, ?, ?)",
+                            (r["source"], r["ref"], ts, json.dumps(self._people_in(r["source"], data)), importance, json.dumps([ts])))
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('memory_context', '1')")
+
+    # --- memory contexts (reminders.py) ----------------------------------
+    @staticmethod
+    def _ctx(row) -> dict:
+        d = dict(row)
+        d["people"], d["uses"], d["shown_with"] = json.loads(d["people"]), json.loads(d["uses"]), json.loads(d["shown_with"])
+        return d
+
+    def memory_context(self, source: str, ref) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM memory_context WHERE source = ? AND ref = ?", (source, str(ref))).fetchone()
+        return self._ctx(row) if row else None
+
+    def memory_contexts(self, faded: bool | None = None) -> list[dict]:
+        q = "SELECT * FROM memory_context" + ("" if faded is None else " WHERE faded = ?")
+        with self.lock:
+            return [self._ctx(r) for r in self.db.execute(q, () if faded is None else (int(faded),))]
+
+    def use_memories(self, keys, now: float | None = None) -> None:
+        """Pip used these memories (recalled them, or took up a reminder): each use makes them easier to bring to mind."""
+        now = now or time.time()
+        with self.lock:
+            for source, ref in keys:
+                row = self.db.execute("SELECT uses FROM memory_context WHERE source = ? AND ref = ?", (source, str(ref))).fetchone()
+                if row:
+                    self._add_uses(source, str(ref), json.loads(row["uses"]), now)
+            self.db.commit()
+
+    def mark_shown(self, keys, now: float, cue_with: list[str]) -> None:
+        with self.lock:
+            self.db.executemany("UPDATE memory_context SET shown_at = ?, shown_with = ? WHERE source = ? AND ref = ?",
+                                [(now, json.dumps(cue_with), s, str(r)) for s, r in keys])
+            self.db.commit()
+
+    def set_faded(self, keys) -> None:
+        with self.lock:
+            self.db.executemany("UPDATE memory_context SET faded = 1 WHERE source = ? AND ref = ?", [(s, str(r)) for s, r in keys])
+            self.db.commit()
+
+    def recall_scored(self, words: list[str], limit: int) -> list[dict]:
+        """Like recall, but every match with its BM25 score (lower is better), best first."""
+        terms = list(dict.fromkeys(words))[:24]           # already plain words (reminders.words)
+        if not terms:
+            return []
+        match = " OR ".join(f'"{t}"*' for t in terms)
+        with self.lock:
+            return [dict(r) for r in self.db.execute("SELECT text, source, ref, ts, bm25(recall_index) AS score FROM recall_index "
+                                                     "WHERE recall_index MATCH ? ORDER BY score LIMIT ?", (match, limit))]
+
+    def recall_text_of(self, source: str, ref) -> str | None:
+        with self.lock:
+            row = self.db.execute("SELECT text FROM recall_index WHERE source = ? AND ref = ?", (source, str(ref))).fetchone()
+        return row["text"] if row else None
+
+    def memories_about(self, people: list[str], place: str | None, project: str | None, limit: int) -> list[dict]:
+        """The newest remembered things that share a person, the place or the project with the situation."""
+        where, args = [], []
+        for p in people:
+            where.append("c.people LIKE ?")
+            args.append(f'%{json.dumps(p)}%')
+        if place:
+            where.append("c.place = ?")
+            args.append(place)
+        if project:
+            where.append("c.project = ?")
+            args.append(project)
+        if not where:
+            return []
+        with self.lock:
+            return [dict(r) for r in self.db.execute(
+                "SELECT r.text, r.source, r.ref, r.ts FROM memory_context c JOIN recall_index r ON r.source = c.source AND r.ref = c.ref "
+                f"WHERE c.faded = 0 AND ({' OR '.join(where)}) ORDER BY c.ts DESC LIMIT ?", (*args, limit))]
 
     def _normalize_crafts(self) -> None:
         """Older plans stored long craft names ('clockmaking (gear train, escap'); fold them into the core skill."""
@@ -1458,15 +1606,15 @@ class State:
         self.db.execute("DELETE FROM recall_index")
         for r in self.db.execute("SELECT * FROM memories").fetchall():
             text = r["text"] + (f" (done: {r['outcome']})" if r["status"] == "done" and r["outcome"] else "")
-            self._index(f"note:{r['section']}", r["id"], r["ts"], text, commit=False)
+            self._index(f"note:{r['section']}", r["id"], r["ts"], text, commit=False, fresh=False)
         marks = ",".join("?" * len(RECALL_EVENT_KINDS))
         for r in self.db.execute(f"SELECT * FROM events WHERE kind IN ({marks})", RECALL_EVENT_KINDS).fetchall():
             if text := recall_text(r["kind"], json.loads(r["data"])):
-                self._index(f"event:{r['kind']}", r["id"], r["ts"], text, commit=False)
+                self._index(f"event:{r['kind']}", r["id"], r["ts"], text, commit=False, fresh=False)
         for r in self.db.execute("SELECT * FROM reflections").fetchall():
-            self._index(r["kind"], r["id"], r["period_end"], r["text"], commit=False)
+            self._index(r["kind"], r["id"], r["period_end"], r["text"], commit=False, fresh=False)
         for r in self.db.execute("SELECT * FROM people").fetchall():
-            self._index("person", r["name"], r["last_seen"], f"{r['name']}: {r['notes']}", commit=False)
+            self._index("person", r["name"], r["last_seen"], f"{r['name']}: {r['notes']}", commit=False, fresh=False)
         self.db.execute("INSERT OR REPLACE INTO meta VALUES ('recall_indexed', ?)", (RECALL_INDEX_VERSION,))
 
     def recall(self, query: str, limit: int = 5) -> list[dict]:

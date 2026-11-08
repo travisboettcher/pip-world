@@ -37,6 +37,7 @@ SECTIONS = (
     Section("creations", tool("start_project")),
     Section("memory", lambda tools, s, lib: s.reflect_hour < 24),
     Section("recall", tool("recall")),
+    Section("reminders", lambda tools, s, lib: s.reminders == "on"),
     Section("neighbor", lambda tools, s, lib: "write_letter" in tools and s.neighbor),
     Section("home", tool("go_to")),
     Section("library", lambda tools, s, lib: lib and any(n in tools for n in ("browse", "read"))),

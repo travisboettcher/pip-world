@@ -19,7 +19,7 @@ from .outreach import Outreach
 from . import places
 from . import conversation as conv
 from . import happenings
-from . import talk
+from . import reminders, talk
 from . import market
 from . import weather
 from . import wishes
@@ -42,7 +42,7 @@ EVENT_CONTEXT = 15
 DIARY_SHOWN = 4
 LIST_SHOWN = 10
 LEARNED_SHOWN = 5
-HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
+HIDDEN_EVENT_KINDS = {"alert", "tick_start", "reminded", "faded"}
 
 
 DEFAULT_PERSONA = "You are Pip."  # what the agent is told about itself when the deployment supplies no persona
@@ -365,8 +365,9 @@ class Agent:
                 if self.state.budget_exceeded():
                     ended = "budget"
                     break
+                on_mind = reminders.step(self.state, self.s, reminders.cue(self.state, [], time.time(), ch), time.time(), 1)
                 resp = await self.backend.complete(system=talk.system(self._persona(), ch),
-                                                   messages=[{"role": "user", "content": talk.prompt(self.state, ch, clock_line(time.time()), time.time())}],
+                                                   messages=[{"role": "user", "content": talk.prompt(self.state, ch, clock_line(time.time()), time.time(), on_mind)}],
                                                    tools=talk.specs(self.tools), max_tokens=self.s.llm_max_tokens)
                 self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
                 self.state.log("tick", reason="talk", step=turns, text=resp.text, tokens=resp.usage.input_tokens + resp.usage.output_tokens,
@@ -695,6 +696,8 @@ class Agent:
         lines += self._calibration()
         lines += places.perception(self.state, self.s, self.library)
         lines += mem.perception(self.state)
+        lines += reminders.step(self.state, self.s, reminders.cue(self.state, inbox, time.time(), talk.partner(self.state)), time.time(),
+                                self.s.reminders_shown)
         lines += np.perception(self.state, self.s)
         lines += self.outreach.perception()
         lines += self._gallery()

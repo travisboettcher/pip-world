@@ -74,7 +74,7 @@ A tool that lets Pip search its own past on purpose ("what did Morgan say about 
   come back oldest-first with a relative time ("3 days ago (diary): ...").
 - Results are a follow-up, so Pip can act on them in the same wake. Nothing found is an answer too.
 
-## Step 3 (designed, not built): "this reminds you of..."
+## Step 3 (built 0.10.0): "this reminds you of..."
 Each tick, build a query from the situation (visitor's words and name, active project, creation in view) and put the
 top 2-3 recall hits in the prompt, scored recency x importance x relevance, within a fixed token budget. The full design,
 with context per memory, activation and fading, and a logged competition: [DESIGN-reminders.md](DESIGN-reminders.md).

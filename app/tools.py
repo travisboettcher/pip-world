@@ -17,6 +17,7 @@ from . import invented_places as invented
 from . import market
 from . import creations as cr
 from . import memory as mem
+from . import reminders
 from . import library as lib
 from . import neighbors as nb
 from . import place_kinds as kinds
@@ -704,7 +705,7 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
             texts = [ctx.state.event_text(i) if k == "event" else ctx.state.reflection_text(i)
                      for k, i in ctx.state.reflection_cites(int(h["ref"]))]
             because[(h["source"], str(h["ref"]))] = [t for t in texts if t][:2]
-    return ToolResult("You remember:\n" + mem.format_recall(hits, because=because), followup=True)
+    return ToolResult("You remember:\n" + reminders.recall_lines(ctx.state, hits, because, time.time()), followup=True)
 
 
 @tool("write_letter", "Write a letter to one of your neighbors. It takes a few hours to arrive, and they'll write "

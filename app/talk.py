@@ -49,7 +49,7 @@ def system(persona: str, ch: dict) -> str:
             "Answer only by calling a tool.")
 
 
-def prompt(state, ch: dict, clock: str, now: float) -> str:
+def prompt(state, ch: dict, clock: str, now: float, on_mind: list[str] = ()) -> str:
     """Pip's turn in a talk: who it is with, why it came, what it has with it, and everything said this visit."""
     people = {p["name"]: p["notes"] for p in state.people()}
     about = people.get(ch["name"]) or ch.get("about") or ""
@@ -62,7 +62,7 @@ def prompt(state, ch: dict, clock: str, now: float) -> str:
          *( [f"What you think of {ch['name']}: {about}"] if about else []),
          *( ["What you meant to do about them:"] + [f"- {clip(t, 160)}" for t in todos] if todos else []),
          f"You were {a['activity']}" + (f" ({a['description']})" if a["description"] else "") + f", feeling {a['mood']}.",
-         f"You have with you: {', '.join(carried) if carried else 'nothing much'}; {state.coins()} coins.",
+         f"You have with you: {', '.join(carried) if carried else 'nothing much'}; {state.coins()} coins.", *on_mind,
          f"Talking with {ch['name']} (this visit, oldest first):", *[f"  {l}" for l in said],
          "Your turn: answer what was just said, with say. Don't open with thanks or say back what you were told; ask something, or tell "
          "something of your own. When the talk has run its course, say goodbye (say with goodbye true). You may also feel something."])

@@ -72,7 +72,7 @@ async def test_recall_tool_formats_with_relative_time(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.add_memory("I planted the first tomatoes.", "diary")
     r = await call(agent, "recall", query="tomatoes")
-    assert r.followup and r.text == "You remember:\n- just now (diary): I planted the first tomatoes."
+    assert r.followup and r.text == "You remember:\n- just now, feeling curious (diary): I planted the first tomatoes."
     assert (await call(agent, "recall", query="volcano")).text == "nothing comes to mind"
 
 
