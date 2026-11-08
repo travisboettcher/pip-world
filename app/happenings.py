@@ -389,19 +389,28 @@ def _percent(delta: float) -> int:
     return round(abs(delta) * 100)
 
 
+def _count(qty: int, name: str) -> str:
+    """'1 stick', '3 sticks': a name is kept as the world spells it, but one of it is one."""
+    from .state import _singular
+    if qty != 1:
+        return f"{qty} {name}"
+    words = name.split()
+    return f"1 {' '.join(words[:-1] + [_singular(words[-1])])}"
+
+
 def describe(e: dict) -> str:
     kind = e["kind"]
     if kind == "coins":
         return f"You {('are given' if e.get('gift') else 'find') if e['delta'] > 0 else 'lose'} {market.coins_text(abs(e['delta']))}."
     if kind == "item":
-        return f"You {'are given' if e.get('gift') else 'find'} {e['qty']} {e['name']}."
+        return f"You {'are given' if e.get('gift') else 'find'} {_count(e['qty'], e['name'])}."
     if kind == "creation_stop":
         mend = f"{e['part']['qty']} {e['part']['name']} to mend, then " if e.get("part") else ""
         return f"Your {e['name']} stops; it needs {mend}tending."
     if kind == "news":
         return f"You hear news of {e['name']}."
     if kind == "food_loss":
-        return f"You lose {e['qty']} {e['name']}."
+        return f"You lose {_count(e['qty'], e['name'])}."
     if kind == "crop_time":
         return f"Plot {e['plot']}'s {e['crop']} will be ready about {span(abs(e['minutes']))} {'sooner' if e['minutes'] > 0 else 'later'}."
     if kind == "crop_yield":
@@ -496,7 +505,19 @@ TEMPLATES = {
 
 def template(c: dict) -> tuple[str, str]:
     title, text = TEMPLATES[(c["category"], c["tone"])]
+    memory = (c.get("facts") or {}).get("memory")
+    if memory:                                                  # the thought itself, not just that there was one
+        text = f"An old thought of your own comes back to you: \"{memory}\""
     return title, f"{text} {LENS_CLAUSE[c['lens']]}"
+
+
+def trim(text: str) -> str:
+    """A text a little over the limit is cut at the last sentence that fits, rather than thrown away."""
+    if len(text) <= MAX_TEXT:
+        return text
+    cut = text[:MAX_TEXT]
+    end = max(cut.rfind(mark) for mark in ".!?")
+    return cut[:end + 1].rstrip() if end + 1 >= MIN_TEXT else text
 
 
 def valid_text(text: str, line: str, names, severity: str, tone: str) -> tuple[bool, str]:
@@ -518,16 +539,20 @@ def valid_text(text: str, line: str, names, severity: str, tone: str) -> tuple[b
     return True, ""
 
 
-async def author(gm, c: dict, facts: dict, recent: list[str]) -> tuple[str, str, str]:
-    """(title, text, who wrote it): the model's if it passes the checks (one retry), else the template for the category."""
+async def author(gm, c: dict, facts: dict, recent: list[str], log=None) -> tuple[str, str, str]:
+    """(title, text, who wrote it): the model's if it passes the checks (one retry), else the template for the category. `log(reason, attempt)`
+    hears why a try was turned down."""
     if gm:
-        for _ in range(2):
+        for attempt in (1, 2):
             out = await gm.write_happening(c["category"], c["tone"], c["severity"], c["lens"], c["line"], facts, recent)
-            text = " ".join(str((out or {}).get("text") or "").split())
+            text = trim(" ".join(str((out or {}).get("text") or "").split()))
             title = clip((out or {}).get("title"), TITLE_MAX).strip(" .")
-            ok, _ = valid_text(text, c["line"], c["names"] + facts.get("names", []), c["severity"], c["tone"])
+            names = c["names"] + facts.get("names", []) + ([facts["memory"]] if facts.get("memory") else [])
+            ok, why = valid_text(text, c["line"] + " " + facts.get("memory", ""), names, c["severity"], c["tone"])
             if ok and title:
                 return title, text, "gm"
+            if log:
+                log(why if not ok else "no title", attempt)
     title, text = template(c)
     return title, text, "template"
 
@@ -545,7 +570,8 @@ async def create(state, settings, gm, w: dict, now: float, slot: str, rng: rando
     recent = [h["title"] for h in state.happenings(5)]
     facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"],
              **({"season": w["season"]} if w.get("season") else {}), **({"night": True} if night else {})}
-    title, text, who = await author(gm, c, facts, recent)
+    title, text, who = await author(gm, c, facts, recent,
+                                    lambda why, n: state.log("happening_rejected", category=c["category"], reason=why, attempt=n))
     amount = lens_amount(c["tone"], c["severity"])
     jolt, meaning = split_amount(amount)
     logged = settings.happenings == "log"

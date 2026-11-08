@@ -51,6 +51,26 @@ def sources(state, text: str, now: float) -> list[str]:
     return (sold + found)[:MAX_SOURCES]
 
 
+MAKING = re.compile(r"\b(make|making|made|build|building|craft|create|mend|repair|design|invent|carve|forge|tinker)\w*", re.I)
+
+
+def doings(state, settings, library, text: str, tools) -> list[str]:
+    """Where a wish to do something (or be able to) could be tried: places Pip knows whose verbs share its words, and a project when it is about making."""
+    from .tools import content_words
+    want = content_words(text)
+    out = []
+    for key, p in places.registry(state, settings, library).items():
+        if p.heard:
+            continue
+        for verb, (short, _) in p.verbs.items():
+            if verb in tools and want & content_words(short):
+                out.append(f"at {places.label(key)}: {short}")
+                break
+    if "start_project" in tools and MAKING.search(text):
+        out.append("start_project could make a start on it")
+    return out[:MAX_SOURCES]
+
+
 def _same(text: str, other: str) -> bool:
     from .tools import overlapping
     return difflib.SequenceMatcher(None, text.lower(), other.lower()).ratio() >= SIMILAR or overlapping(text, other)

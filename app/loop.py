@@ -17,6 +17,7 @@ from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
 from . import places
+from . import conversation as conv
 from . import happenings
 from . import market
 from . import weather
@@ -44,6 +45,11 @@ HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
 
 
 DEFAULT_PERSONA = "You are Pip."  # what the agent is told about itself when the deployment supplies no persona
+
+
+def clock_line(now: float) -> str:
+    """The day and time, so a "Thursday at half past four" can be kept."""
+    return "It is " + time.strftime("%A %-d %B, %-I:%M %p", time.localtime(now)).replace("AM", "am").replace("PM", "pm") + "."
 
 
 class Agent:
@@ -338,6 +344,19 @@ class Agent:
                 persona = f.read().strip()
         return (persona or DEFAULT_PERSONA) + "\n\n" + guide.render(self.tools, self.s, self.library is not None)
 
+    def _talk(self, inbox: list[dict]) -> list[str]:
+        """The conversations Pip is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
+        now, lines = time.time(), []
+        here = self.state.agent()["location"]
+        for ch in self.state.characters("neighbor"):
+            if places.home_of(ch) == here and (said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0))):
+                lines += [f"Talking with {ch['name']} (this visit, oldest first):"] + [f"  {l}" for l in said]
+        waiting = {m["id"] for m in inbox}
+        for sender in dict.fromkeys(m["sender"] for m in inbox if not m["gift"]):
+            if said := conv.thread_lines(self.state, sender, now, skip_ids=waiting):
+                lines += [f"Your conversation with {sender} so far (oldest first):"] + [f"  {l}" for l in said]
+        return lines
+
     def _belongings(self) -> list[str]:
         lines: list[str] = []
         if "use_item" in self.tools:
@@ -533,7 +552,11 @@ class Agent:
             got = [i["name"] for i in belongings if i["ts"] > since and State.related(i["name"], m["text"])]
             note = (f"  [you've since received: {', '.join(got)} - is this wish met? resolve_note it, or "
                     "edit_note it down to what's still missing]") if got else ""
-            if m.get("kind") in ("", "thing") and (where := wishes.sources(self.state, m["text"], time.time())):
+            if m.get("kind") in ("", "thing"):
+                where = wishes.sources(self.state, m["text"], time.time())
+            else:
+                where = wishes.doings(self.state, self.s, self.library, m["text"], self.tools)
+            if where:
                 note += f"  [you could try: {'; '.join(where)}]"
             return fmt(m) + note
 
@@ -583,6 +606,7 @@ class Agent:
             f"State: hunger {a['hunger']:.2f} (1=starving), energy {a['energy']:.2f} (0=exhausted), "
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
+            clock_line(time.time()),
         ]
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
@@ -631,6 +655,8 @@ class Agent:
                 elif e["kind"] == "letter_sent":
                     lines.append(f"- you wrote to {d['to']}: {d['text'][:200]}"
                                  + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
+                elif e["kind"] == "outreach" and d.get("what") == "postcard" and d.get("delivered"):
+                    lines.append(f"- you sent a postcard ({d.get('channel')}): {d['text']}")
                 elif e["kind"] == "stall_sale":
                     lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "heard_of_place":
@@ -658,6 +684,7 @@ class Agent:
                 return f"- {m['text']}"
             via = f" (via {m['source']})" if m.get("source", "web") != "web" else ""
             return f"- {m['sender']}{via}: {m['text']}"
+        lines += self._talk(inbox)
         fresh, again = [m for m in inbox if not m.get("offers")], [m for m in inbox if m.get("offers")]
         if fresh:
             lines.append("Inbox (visitors) - they only hear you if you use `say`:")

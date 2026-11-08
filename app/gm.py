@@ -318,7 +318,8 @@ class GameMaster:
             + (f"Pip just said to {name}: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}."
                if heard else f"Nobody spoke to {name}; say something on its own that fits the moment, or do a small "
                              "action (in *asterisks*) if words don't fit.")
-            + " One short line, at most 2 sentences, in character. It can't do more than such a thing plausibly could."
+            + " One short line, at most 2 sentences, in character, and not something already said in the conversation above. It can't do more than "
+              "such a thing plausibly could."
         )
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "speak")
         return clip(out["text"], 300) if out else None
@@ -501,12 +502,12 @@ class GameMaster:
             f"Outcome: {tone}. Size: {severity}"
             + (" (a passing moment; keep it in proportion)" if severity == "minor" or tone == "neutral" else "")
             + f". Write it through {lens}: let that feeling colour how it is told, whatever the outcome (a bad turn can still be told with joy).\n"
-            + (f"What really changes, which you must not contradict or add to: {line}\n" if line else "Nothing changes in the world; it is only a moment.\n")
+            + (f"What really changes, which you must not contradict or add to: {line}\n" if line else "Nothing in the world changes: nothing breaks, moves, grows, appears or is lost; it is only a moment.\n")
             + ("It happened in the night, while Pip slept, and Pip finds out on waking: tell it in the past tense.\n" if facts.get("night") else "")
             + f"It is {facts.get('period', 'day')}{' in ' + facts['season'] if facts.get('season') else ''}. Names you may use: {', '.join(facts.get('names') or []) or 'none'}. Do not name anyone else.\n"
             + (f"Something Pip once wrote comes back to mind: \"{facts['memory']}\" Build the moment from it, in your own words.\n" if facts.get("memory") else "")
             + (f"Recent events, so you do not repeat them: {'; '.join(recent)}\n" if recent else "")
-            + "Two or three sentences, second person (you), plain and concrete. Do not mention numbers or objects beyond what really changes, "
+            + "Two or three sentences, under 300 characters, second person (you), plain and concrete. Do not mention numbers or objects beyond what really changes, "
             "do not promise anything for later, and do not say how Pip feels or what it should do. Report `title` (a few words) and `text`."
         )
         out = await self.ask(task, {"title": {"type": "string"}, "text": {"type": "string"}}, ["title", "text"], "write_happening")
@@ -514,7 +515,7 @@ class GameMaster:
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
-                              places: str = "", mention: str = "", at: str = "", can_give: bool = False) -> dict | None:
+                              places: str = "", mention: str = "", at: str = "", can_give: bool = False, again: bool = False) -> dict | None:
         """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
         it's the greeting. A neighbor is at home; a resident (`at` their place) has no letters, so their life moves
         on in talk: they may report a `life_update` too."""
@@ -529,7 +530,10 @@ class GameMaster:
             + f" {situation}\n"
             + (f"Pip just said: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}, face to face."
                if heard else f"Pip has just arrived{'' if at else ' at the door'}; greet it as {name} would.")
-            + " One to three short sentences, spoken aloud, in character; a small action in *asterisks* is fine. "
+            + " One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
+            "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
+            "or what you think, disagree, or bring the talk to a close when it has run its course; don't keep giving instructions or say again what "
+            "has already been said. "
             f"{name} stays at {at or 'home'} and can't do more than they plausibly could"
             + ("" if can_give else ", and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, "
                "tipping out or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had "
@@ -541,6 +545,7 @@ class GameMaster:
                "nothing else, so never describe handing over, offering a pinch of, letting Pip take or help themselves to, or giving anything "
                "you do not report here\n" if can_give else "")
             + (f"- {mention}\n" if mention else "")
+            + (f"Your first try said again what had already been said; say something new this time.\n" if again else "")
         )
         out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING,
                                     **(self._NEWS if at else {}), **self._mentions(mention),

@@ -261,3 +261,6 @@ a mishap in the workshop, news of a neighbor, a memory, a kindness, the atmosphe
 ## Pip's stall and wishes
 At a market, `sell` with an `ask` sets goods out on Pip's own stall (`ask` 0 takes them back); customers stop only while Pip is there. See [DESIGN-market.md](DESIGN-market.md). The wishlist takes a `kind` (thing,
 activity, ability, idea); wishes that are not things are told to Pip's friend, one a day (`WISH_SHARE`). See [DESIGN-wishes.md](DESIGN-wishes.md).
+
+## Conversation
+Pip sees a visit and a visitor's chat in full, and is stopped from saying the same thing twice; a neighbor who repeats herself is asked once more. See [DESIGN-conversation.md](DESIGN-conversation.md).

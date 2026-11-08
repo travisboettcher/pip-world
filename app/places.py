@@ -160,6 +160,8 @@ def invented_place(rec: dict) -> Place:
     verbs = {v: (short, _verb_help(rec, v, short)) for v, (short, _) in rec["verbs"].items()}
     if not heard_of and kinds.KINDS[rec["kind"]].trades:
         verbs.update({v: (short, None) for v, short in TRADE_VERBS.items()})
+        if kinds.KINDS[rec["kind"]].stalls:
+            verbs["sell"] = ("sell something you have to a booth here, or set out a stall of your own (sell with an ask)", None)
     since = [m for m in rec["mentions"] if m["ts"] > (rec["real_at"] or 0)]
     blurb = said_about(rec["mentions"]) if heard_of else rec["blurb"] + (f" ({said_about(since, 1)})" if since else "")
     return Place(rec["key"], blurb, rec["walk_minutes"] or 0,

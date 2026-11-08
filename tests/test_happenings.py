@@ -826,7 +826,7 @@ async def test_the_author_is_asked_for_the_words_and_nothing_else(tmp_path):
     await gm3.write_happening("body", "neutral", "major", "surprise", "", {}, [])
     p3 = task(b3)
     assert "Size: major (a passing moment; keep it in proportion)." in p3                       # a neutral one is always small
-    assert "Nothing changes in the world; it is only a moment.\n" in p3 and "Names you may use: none." in p3 and "Recent events" not in p3
+    assert "Nothing in the world changes: nothing breaks, moves, grows, appears or is lost; it is only a moment.\n" in p3 and "Names you may use: none." in p3 and "Recent events" not in p3
     gm4, b4, _ = master(tmp_path / "d" if (tmp_path / "d").mkdir() is None else tmp_path,
                         LLMResponse("", [ToolCall("1", "report", {"title": "T", "text": "x"})], Usage(1, 1)))
     await gm4.write_happening("garden", "good", "major", "joy", "(Plot 1's tomatoes will give 3 more.)", {}, [])
@@ -1478,3 +1478,55 @@ def test_a_part_the_pip_has_exactly_is_enough_and_tending_clears_the_stop_flag(t
     assert st.find_item("springs")[0] is None                                                        # all two were used
     rt = st.find_creation("Gear Clock")[0]["runtime"]
     assert rt["stop_logged"] is False and rt["tended_until"] == NOW + 5 + 24 * 3600
+
+
+# --- 0.8.1: the writer's text kept, not thrown away --------------------------------------------------------------------------
+def test_a_text_a_little_too_long_is_cut_at_the_last_sentence_that_fits():
+    long = "The wind came in over the marsh. " * 10 + "And then it stopped."
+    got = H.trim(long)
+    assert len(got) <= H.MAX_TEXT and got.endswith(".") and got.startswith("The wind came in")
+    assert H.trim("short and fine.") == "short and fine."
+    assert H.trim("x" * 500) == "x" * 500                                                         # nothing to cut at: left for the check to turn down
+    exact = "y" * (H.MAX_TEXT - 1) + "."
+    assert H.trim(exact) == exact
+
+
+def test_every_turned_down_try_is_logged_with_its_reason(tmp_path, monkeypatch):
+    s, st = fresh(tmp_path)
+    force(monkeypatch)
+    gm = StubGM({"title": "A", "text": "A mouse called Fred got at the pantry in the night, small and bold."}, None)
+    row = run(H.create(st, s, gm, w(), NOW, "x", random.Random(1)))
+    assert row["author"] == "template"
+    got = [e["data"] for e in st.events(10) if e["kind"] == "happening_rejected"]
+    assert got == [{"category": "found", "reason": "length", "attempt": 2}, {"category": "found", "reason": "a name that was not offered: Fred", "attempt": 1}]
+    seen = []
+    gm2 = StubGM({"title": "", "text": STORY["text"]}, STORY)
+    assert run(H.author(gm2, FOUND, FACTS, [], lambda why, n: seen.append((why, n))))[2] == "gm"
+    assert seen == [("no title", 1)]
+
+
+def test_a_memory_happening_quotes_the_memory_and_may_use_its_words():
+    c = {"category": "memory", "tone": "bad", "lens": "joy", "facts": {"memory": "Oriel taught me the tin by the door, plot 2 first."}}
+    title, text = H.template(c)
+    assert text == 'An old thought of your own comes back to you: "Oriel taught me the tin by the door, plot 2 first." You can\'t help smiling.'
+    gm = StubGM({"title": "The tin", "text": "Out of nowhere you think of Oriel and the tin, and of plot 2 going first, and it warms you."})
+    cand = {**CAND, "category": "memory", "names": [], "facts": c["facts"], "line": ""}
+    assert run(H.author(gm, cand, {**FACTS, "memory": c["facts"]["memory"]}, []))[2] == "gm"                # Oriel and the 2 come from the memory
+
+
+@pytest.mark.parametrize("qty, name, said", [(1, "sticks", "1 stick"), (2, "sticks", "2 sticks"), (1, "brass wire", "1 brass wire"),
+                                            (1, "fine brass gears", "1 fine brass gear"), (1, "tomatoes", "1 tomato"), (3, "tomatoes", "3 tomatoes")])
+def test_one_of_a_thing_is_one(qty, name, said):
+    assert H._count(qty, name) == said
+    assert H.describe({"kind": "item", "name": name, "qty": qty}) == f"You find {said}."
+    assert H.describe({"kind": "food_loss", "name": name, "qty": qty}) == f"You lose {said}."
+
+
+@pytest.mark.asyncio
+async def test_the_author_is_given_a_length_and_told_nothing_moves_in_a_quiet_moment(tmp_path):
+    from app.llm.base import LLMResponse, ToolCall, Usage
+    from tests.test_gm_prompts import master, task
+    gm, b, _ = master(tmp_path, LLMResponse("", [ToolCall("1", "report", {"title": "T", "text": "x"})], Usage(1, 1)))
+    await gm.write_happening("atmosphere", "neutral", "minor", "fear", "", {}, [])
+    p = task(b)
+    assert "Two or three sentences, under 300 characters," in p and "nothing breaks, moves, grows, appears or is lost" in p

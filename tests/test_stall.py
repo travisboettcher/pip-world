@@ -451,3 +451,13 @@ def test_the_step_credits_the_time_since_the_last_look_and_uses_the_dice_it_is_g
         else:
             got.append(M.stall_tick(st2, "Brygdon", NOW + 3600, 3600, random.Random(7)))
     assert got[0] == got[1] and got[0]
+
+
+def test_a_quick_sale_at_a_market_says_what_a_stall_would_fetch(tmp_path):
+    s, st, agent = market(tmp_path)
+    st.add_item("tomatoes", 4, "food", "", {"food_value": 0.5})
+    ok, text = M.sell(st, "Brygdon", "tomatoes", 2, NOW)
+    fair = M.fair_price(st, "Brygdon", "tomatoes", "food", {"food_value": 0.5}, NOW)
+    assert ok and text.endswith(f"; a customer at a stall of your own here would pay about {M.coins_text(fair)} each (sell with an ask)")
+    ok, text = M.sell(st, "Saltholm", "tomatoes", 1, NOW)
+    assert ok and "stall" not in text                                                                  # a shop has no stalls

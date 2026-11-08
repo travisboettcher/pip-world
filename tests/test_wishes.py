@@ -407,3 +407,25 @@ def test_a_second_wish_is_clipped_shorter_and_the_card_may_be_exactly_full(tmp_p
     out2 = StubOutreach()
     share(s2, st2, out2)
     assert len(out2.sent[0][0]) == W.SHARE_TEXT_MAX == 230 and out2.sent[0][0].endswith("B" * 87) and "Also:" in out2.sent[0][0]
+
+
+# --- 0.8.1: wishes to do something, tied to what the world offers -------------------------------------------------------------------
+def test_a_wish_to_do_something_is_shown_where_it_can_be_done(tmp_path):
+    s, st, agent = world(tmp_path)
+    tools = {"sell": 1, "start_project": 1}
+    got = W.doings(st, s, None, "I'd love to sit at a real market stall in Brygdon and watch people choose.", tools)
+    assert got == ["at Brygdon: sell something you have to a booth here, or set out a stall of your own (sell with an ask)"]
+    assert W.doings(st, s, None, "I'd love to sit at a real market stall.", {"start_project": 1}) == []           # no sell tool, no hint
+    assert W.doings(st, s, None, "I wish I could make a second walking creature.", tools) == ["start_project could make a start on it"]
+    assert W.doings(st, s, None, "I wish I could make a stall for the market.", tools) == [
+        "at Brygdon: sell something you have to a booth here, or set out a stall of your own (sell with an ask)", "start_project could make a start on it"]
+    assert W.doings(st, s, None, "I wish I could make a second walking creature.", {"sell": 1}) == []
+    assert W.doings(st, s, None, "To understand the tides.", tools) == []
+
+
+def test_the_prompt_shows_a_doing_wish_with_its_hint(tmp_path):
+    s, st, agent = world(tmp_path)
+    agent.tools.update({n: __import__("app.tools", fromlist=["x"]).REGISTRY[n] for n in ("sell", "start_project")})
+    st.add_memory("I'd love to sit at a real market stall in Brygdon.", "wishlist", "activity")
+    line = [l for l in agent._journal() if "market stall" in l][0]
+    assert line.endswith("  [you could try: at Brygdon: sell something you have to a booth here, or set out a stall of your own (sell with an ask)]")

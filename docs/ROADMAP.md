@@ -269,3 +269,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - **Hardware:** a small shared GPU won't do; a good local LLM likely needs a dedicated NVIDIA GPU.
 
 - [x] Wishes of every kind (0.8.0; DESIGN-wishes.md): a kind on each wish, hints for where a thing could be had, the night's reflection adds wishes, wishes that are not things are told to the friend, and a trading place is never bare.
+- [x] Conversation, part 1 (0.8.1; DESIGN-conversation.md): no saying the same thing twice, the visit and the chat shown whole, the neighbor told to talk like a person, the day and time in the prompt.
+- [ ] Conversation, part 2: the conversation scene for in-person talk; the letter repeat fix.
+- [x] Happening writer (0.8.1): a length in the prompt, slightly long text cut at a sentence, every turned-down try logged (`happening_rejected`), the memory quoted, "1 stick".
+- [x] Wishes to do something are shown where they can be done, and a quick sale at a market says what a stall would fetch (0.8.1).

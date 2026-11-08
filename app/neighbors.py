@@ -14,6 +14,7 @@ import time
 
 from . import invented_places as invented
 from . import places
+from . import conversation as conv
 from .companions import conversation as talk_lines
 from .memory import ago
 from .text import brief, clip
@@ -23,6 +24,7 @@ PIP = "Pip"
 JITTER = (0.7, 1.3)
 LIFE_KEPT = 5
 CORRESPONDENCE_SHOWN = 6
+REPEAT_LOOKBACK = 8        # a neighbor's own last lines a new one must not repeat
 TOLD_KEPT = 30
 TOLD_PER_CALL = 3
 UPCOMING_KEPT = 3
@@ -245,10 +247,12 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
         talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
         talk = talk[-CORRESPONDENCE_SHOWN * 2:]
         can_give = _can_give(state, settings, now)
-        out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk,
-                                       [h["text"] for h in ch["heard"]] if answering else [], situation,
-                                       told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give,
-                                       **_places(state, settings, library, ch)) if gm else None
+        ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, **_places(state, settings, library, ch))
+        heard = [h["text"] for h in ch["heard"]] if answering else []
+        out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, **ask) if gm else None
+        mine = [e["data"]["text"] for e in state.events(200) if e["kind"] == "companion" and e["data"].get("name") == ch["name"]][:REPEAT_LOOKBACK]
+        if out and conv.repeats(out["text"], mine):                 # one more try at saying something new
+            out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, again=True, **ask) or out
         state.set_meta(**{f"greeted:{ch['id']}": visit})
         fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
                   **({**_told(ch, out), **_happened(ch, now)} if out else {})}

@@ -200,7 +200,12 @@ def sell(state, place: str, item: str, qty: int, now: float) -> tuple[bool, str]
     state.add_coins("pip", earned)
     _set_till(state, place, left, now)
     short = f" (that's all the till could pay; {qty - sold} left over)" if sold < qty else ""
-    return True, f"you sold {sold} {have['name']} for {coins_text(earned)}{short} ({state.coins()} now)"
+    from . import place_kinds
+    row = state.place_row(place)
+    stall = ""
+    if row and place_kinds.KINDS[row["kind"]].stalls:                 # a better price is to be had, for the waiting
+        stall = f"; a customer at a stall of your own here would pay about {coins_text(fair_price(state, place, have['name'], have['kind'], have['attrs'], now))} each (sell with an ask)"
+    return True, f"you sold {sold} {have['name']} for {coins_text(earned)}{short} ({state.coins()} now){stall}"
 
 
 def owed(state, place: str, now: float) -> int:

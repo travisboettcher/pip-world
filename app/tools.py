@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable
 from . import art
 from . import companions as comp
 from . import expectations as exp
+from . import conversation as conv
 from . import gathering
 from . import happenings
 from . import invented_places as invented
@@ -206,12 +207,18 @@ def _obj(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
+SAY_LOOKBACK = 2 * 3600     # Pip's own lines a new one must not repeat
+
+
 @tool("say", "Speak out loud. This is the only way a visitor can hear you. To talk to something you made that "
       "has a mind of its own, give its name in `to`.",
       _obj({"text": {"type": "string"}, "to": {"type": "string", "description": "optional: one of your creations"}},
            ["text"]))
 async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
+    mine = [e["data"]["text"] for e in ctx.state.events(100) if e["kind"] == "say" and time.time() - e["ts"] < SAY_LOOKBACK][:6]
+    if conv.repeats(text, mine):
+        return ToolResult("not said: you said that a moment ago. Say something new, ask something, or say goodbye.", followup=True)
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
         where = places.place_of(ctx.state, ch) if ch else None

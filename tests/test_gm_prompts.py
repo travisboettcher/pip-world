@@ -94,8 +94,10 @@ LETTER_FULL = (
 GREETING_BARE = (
     "Voice Briar, Pip's neighbor. Who Briar is: An owl.\n"
     "Right now Pip is visiting Briar at home. It is raining.\n"
-    "Pip has just arrived at the door; greet it as Briar would. One to three short sentences, spoken aloud, in "
-    "character; a small action in *asterisks* is fine. Briar stays at home and can't do more than they "
+    "Pip has just arrived at the door; greet it as Briar would. One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
+    "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
+    "or what you think, disagree, or bring the talk to a close when it has run its course; don't keep giving instructions or say again what "
+    "has already been said. Briar stays at home and can't do more than they "
     "plausibly could, and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out "
     "or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
@@ -119,8 +121,10 @@ TALK_FULL = (
     "Briar: hello\n"
     "Right now Pip is visiting Briar at home. It is raining.\n"
     'Pip just said: "hi" / "how are you"\n'
-    "Answer Pip as Briar, face to face. One to three short sentences, spoken aloud, in character; a small "
-    "action in *asterisks* is fine. Briar stays at home and can't do more than they plausibly could, and hands Pip nothing: nothing changes hands today, so never "
+    "Answer Pip as Briar, face to face. One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
+    "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
+    "or what you think, disagree, or bring the talk to a close when it has run its course; don't keep giving instructions or say again what "
+    "has already been said. Briar stays at home and can't do more than they plausibly could, and hands Pip nothing: nothing changes hands today, so never "
     "describe giving, counting out, tipping out or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be "
     "had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
@@ -162,8 +166,10 @@ LIFE_UPDATE = (
 RESIDENT_GREETING = (
     "Voice Mr Teague, who Pip meets at Saltholm. Who Mr Teague is: An ironmonger.\n"
     "Right now Pip is at Saltholm, with Mr Teague. It is raining.\n"
-    "Pip has just arrived; greet it as Mr Teague would. One to three short sentences, spoken aloud, in "
-    "character; a small action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they "
+    "Pip has just arrived; greet it as Mr Teague would. One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
+    "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
+    "or what you think, disagree, or bring the talk to a close when it has run its course; don't keep giving instructions or say again what "
+    "has already been said. Mr Teague stays at Saltholm and can't do more than they "
     "plausibly could, and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out "
     "or letting Pip take or help themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
@@ -185,8 +191,10 @@ RESIDENT_TALK = (
     "Mr Teague: hello\n"
     "Right now Pip is at Saltholm, with Mr Teague. It is raining.\n"
     'Pip just said: "any wire?"\n'
-    "Answer Pip as Mr Teague, face to face. One to three short sentences, spoken aloud, in character; a small "
-    "action in *asterisks* is fine. Mr Teague stays at Saltholm and can't do more than they plausibly could, "
+    "Answer Pip as Mr Teague, face to face. One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
+    "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
+    "or what you think, disagree, or bring the talk to a close when it has run its course; don't keep giving instructions or say again what "
+    "has already been said. Mr Teague stays at Saltholm and can't do more than they plausibly could, "
     "and hands Pip nothing: nothing changes hands today, so never describe giving, counting out, tipping out or letting Pip take or help "
     "themselves to anything; if Pip asks for something, say it isn't to be had today. Report the line as `text`, and:\n"
     '- `gist`: one sentence, third person, of what this line says (e.g. "Told Pip the tide times for the week '
