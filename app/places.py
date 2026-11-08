@@ -41,7 +41,8 @@ def place_of(state, ch: dict) -> str | None:
     """Where a character can be met in person: a neighbor at home, a resident at their place while it's in the world.
     None for a companion, or for a resident whose place the owner removed (they're kept, but out of reach)."""
     if ch["kind"] == "neighbor":
-        return home_of(ch)
+        from .market import away_at          # on their market day a neighbor with wares keeps a stall there, not at home
+        return away_at(state, ch, time.time()) or home_of(ch)
     rec = state.place_row(ch["place"]) if ch["kind"] == "resident" else None
     return rec["key"] if rec and rec["status"] == "real" else None
 

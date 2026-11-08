@@ -129,6 +129,9 @@ function describe(e) {
     case 'happening': return { group: 'world', cls: d.tone === 'bad' ? 'warn' : 'world', text: `Something happened — ${d.title}: ${d.text}${d.effects ? ` ${d.effects}` : ''}` };
     case 'reminded': return d.shown && d.shown.length ? { group: 'journal', text: `On Pip's mind: ${d.shown.map((m) => m.text).join(' · ')}` } : null;
     case 'faded': return { group: 'journal', text: `${d.count} old memor${d.count === 1 ? 'y' : 'ies'} faded (recall can still find ${d.count === 1 ? 'it' : 'them'})` };
+    case 'wares': return { group: 'world', cls: 'world', text: `${d.name} has things for sale: ${d.wares.join(', ')}` };
+    case 'offered': return { group: 'system', text: `${d.name}'s next letter may offer ${d.item} (${d.price} coins${d.wished ? ', something Pip wished for' : ''})` };
+    case 'sold_creation': return { group: 'world', cls: 'world', text: `Pip sold ${d.name} at ${d.place} for ${d.coins} coin${d.coins === 1 ? '' : 's'}` };
     case 'wished': return { group: 'journal', text: `Pip wishes (${d.wish}): ${d.text}` };
     case 'happening_felt': return { group: 'journal', text: `Pip took “${d.title}” as ${d.read_as}${d.read_as === d.lens ? '' : ` (it was written as ${d.lens})`}` };
     case 'emotion': return { group: 'world', cls: 'world', text: `Pip's ${d.emotion} is high (${d.value}): ${d.cause}` };

@@ -210,7 +210,7 @@ def test_shops_and_markets_trade_and_other_kinds_do_not():
     assert not any(K.KINDS[k].trades for k in ("wild", "yard", "sight"))
     assert K.guess("a bazaar by the quay") == "market"
     assert K.KINDS["market"].shop_hours and set(K.KINDS["market"].verbs) == {"browse"}
-    assert set(M.TILL_PER_DAY) == {"shop", "market"} and M.TILL_PER_DAY["market"] > M.TILL_PER_DAY["shop"]
+    assert set(M.TILL_PER_DAY) == {"shop", "market", "neighbor", "stall"} and M.TILL_PER_DAY["market"] > M.TILL_PER_DAY["shop"] > M.TILL_PER_DAY["stall"] > M.TILL_PER_DAY["neighbor"]
 
 
 def test_browse_at_a_shop_shows_todays_prices_and_your_purse(tmp_path):

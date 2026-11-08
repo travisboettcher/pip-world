@@ -17,13 +17,18 @@ LOCAL_MIN, LOCAL_MAX = 0.6, 1.6
 DRIFT_PER_DAY = 0.9      # the part of a price's distance from normal that is still there a day later
 MOOD_RANGE = 8           # percent, either way
 BUY_RATE = 0.6           # a booth pays this share of what it charges
-TILL_PER_DAY = {"shop": 40, "market": 80}
+TILL_PER_DAY = {"shop": 40, "market": 80, "neighbor": 20, "stall": 30}   # a neighbor at home; a character's stall at a market
 STALL_DEMAND_PER_HOUR = 2.0   # customers an hour at a fair ask
 STALL_DAILY_UNITS = 8         # the most of one thing a market takes off a stall in a day
 STALL_MAX_KINDS = 3
 STALL_STEP_CAP = 3600         # seconds of selling credited in one look
 STOCK_FLOOR = 2          # the least a booth keeps of anything for a day
 UNKNOWN_KIND_PRICE = 3
+QUALITY_PRICE = {"rough": 8, "sound": 15, "fine": 25, "masterwork": 40}   # one of Pip's creations, by its quality
+WORK_PRICE = {"drawing": 4, "writing": 3}                                    # a copy of one of Pip's works
+WORK_COPIES_MAX = 5          # copies of one work set out at once
+STALL_SUFFIX = "'s stall"    # a character's booth at a market (its key, for prices and till)
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def day_of(now: float) -> str:
@@ -41,6 +46,10 @@ def base_price(name: str, kind: str, attrs: dict | None, weight: float | None = 
         return 12
     if kind == "material":
         return max(1, min(12, round(30 / weight))) if weight else UNKNOWN_KIND_PRICE
+    if kind == "creation":
+        return QUALITY_PRICE.get(attrs.get("quality"), QUALITY_PRICE["rough"])
+    if kind == "work":
+        return WORK_PRICE.get(attrs.get("work"), WORK_PRICE["writing"])
     return UNKNOWN_KIND_PRICE
 
 
@@ -95,6 +104,9 @@ def stock_table(state, place: str) -> list:
     found = gathering.loot_for(state, place)
     if found:
         return found
+    owner = keeper(state, place)
+    if owner:
+        return wares_table(owner)
     rec = state.place_row(place)
     if rec and rec["status"] == "real" and place_kinds.KINDS[rec["kind"]].trades:
         return [(n, k, w, tuple(q), d, a) for n, k, w, q, d, a in rec["loot"]]
@@ -109,7 +121,9 @@ def _kind_of(state, place: str) -> str | None:
 def till(state, place: str, now: float) -> int:
     """The coins the keeper can pay out today; it fills up again each morning."""
     row = state.till_row(place)
-    full = TILL_PER_DAY.get(_kind_of(state, place), TILL_PER_DAY["shop"])
+    from .places import HOME_SUFFIX
+    kind = "stall" if place.endswith(STALL_SUFFIX) else "neighbor" if place.endswith(HOME_SUFFIX) else _kind_of(state, place)
+    full = TILL_PER_DAY.get(kind, TILL_PER_DAY["shop"])
     if not row or row["day"] != day_of(now):
         state.set_till(place, full, day_of(now))
         return full
@@ -155,6 +169,11 @@ def coins_text(n: int) -> str:
 
 
 def buy(state, place: str, item: str, qty: int, now: float) -> tuple[bool, str]:
+    """Buy from the booth here that keeps it: the place's own, or a character's (at their home, or their stall on their market day)."""
+    for key, _, table in booths(state, place, now):
+        if _entry(table, item):
+            place = key
+            break
     table = stock_table(state, place)
     entry = _entry(table, item)
     if not entry:
@@ -176,8 +195,39 @@ def buy(state, place: str, item: str, qty: int, now: float) -> tuple[bool, str]:
     return True, f"you bought {qty} {name} for {coins_text(total)} ({state.coins()} left)"
 
 
+def own_thing(state, query: str) -> dict | None:
+    """One of Pip's creations or works by name, shaped like a belonging (kind 'creation' or 'work'), or None."""
+    c, _ = state.find_creation(query)
+    if c:
+        return {"name": c["name"], "kind": "creation", "qty": 1, "description": c["description"], "attrs": {"quality": c["quality"], "creation_id": c["id"]}}
+    q = name_key(query)
+    w = next((w for w in state.works(limit=500) if q and name_key(w["title"]) == q), None)
+    if w:
+        return {"name": w["title"], "kind": "work", "qty": WORK_COPIES_MAX, "description": f"a copy of your {w['kind']}",
+                "attrs": {"work": w["kind"]}}
+    return None
+
+
+def sell_creation(state, place: str, c: dict, now: float) -> tuple[bool, str]:
+    """A keeper buys one of Pip's creations outright, at what it is worth less the booth's cut, if the till can pay."""
+    pay = max(1, int(_price(state, place, c["name"], "creation", c["attrs"], None, now) * BUY_RATE))
+    left = till(state, place, now)
+    if pay > left:
+        return False, f"{place}'s till can't pay for {c['name']} today (it would fetch {coins_text(pay)}; {coins_text(left)} left); try a stall with an ask, or come back tomorrow"
+    _set_till(state, place, left - pay, now)
+    state.add_coins("pip", pay)
+    owner = keeper(state, place)
+    state.give_creation(c["attrs"]["creation_id"], owner["name"] if owner else f"the keeper at {place}")
+    state.log("sold_creation", name=c["name"], place=place, coins=pay, stall=False)
+    return True, f"you sold {c['name']} for {coins_text(pay)} ({state.coins()} now); it is theirs now"
+
+
 def sell(state, place: str, item: str, qty: int, now: float) -> tuple[bool, str]:
     have, err = state.find_item(item)
+    if not have and (thing := own_thing(state, item)):
+        if thing["kind"] == "work":
+            return False, f"keepers don't buy copies of your {thing['attrs']['work']}s; set copies out on a stall at a market, with an ask"
+        return sell_creation(state, place, thing, now)
     if not have:
         return False, f"you don't have {item!r}"
     qty = min(qty, have["qty"])
@@ -269,6 +319,7 @@ def list_on_stall(state, place: str, item: str, qty: int, ask: int, now: float) 
     if ask < 1:
         return False, "an ask is at least 1 coin"
     have, err = state.find_item(item)
+    have = have or own_thing(state, item)
     if not have:
         return False, err
     if qty < 1:
@@ -278,6 +329,14 @@ def list_on_stall(state, place: str, item: str, qty: int, ask: int, now: float) 
     lines = state.stall_rows(place)
     if not any(r["item"] == key for r in lines) and len(lines) >= STALL_MAX_KINDS:
         return False, f"your stall has room for {STALL_MAX_KINDS} kinds of thing; take something back first"
+    if have["kind"] in ("creation", "work"):                       # it stays Pip's until it sells: a creation once, copies of a work
+        there = next((r for r in lines if r["item"] == key), None)
+        qty = min(have["qty"], qty + (there["qty"] if there and have["kind"] == "work" else 0)) if have["kind"] == "work" else 1
+        state.set_stall(place, key, name=have["name"], kind=have["kind"], description=have["description"], attrs=have["attrs"], qty=qty, ask=ask)
+        fair = fair_price(state, place, have["name"], have["kind"], have["attrs"], now)
+        what = f"{qty} cop{'y' if qty == 1 else 'ies'} of {have['name']}" if have["kind"] == "work" else have["name"]
+        return True, (f"you set out {what} at {coins_text(ask)} each; the going price here is {fair}"
+                      + ("; at that price nobody will stop" if stall_factor(ask / fair) == 0 else ""))
     state.take_item(have["id"], qty)
     there = next((r for r in lines if r["item"] == key), None)
     if there:
@@ -294,7 +353,8 @@ def take_back(state, place: str, item: str) -> tuple[bool, str]:
     there = next((r for r in state.stall_rows(place) if r["item"] == key), None)
     if not there:
         return False, f"you have no {item} on the stall"
-    state.add_item(there["name"], there["qty"], there["kind"], there["description"], there["attrs"])
+    if there["kind"] not in ("creation", "work"):                  # those never left Pip
+        state.add_item(there["name"], there["qty"], there["kind"], there["description"], there["attrs"])
     state.delete_stall(place, key)
     return True, f"you take {there['qty']} {there['name']} back off the stall"
 
@@ -306,6 +366,9 @@ def stall_tick(state, place: str, now: float, seconds: float, rng) -> list[dict]
         return sales
     today = day_of(now)
     for row in state.stall_rows(place):
+        if row["kind"] == "creation" and not any(c["id"] == row["attrs"].get("creation_id") for c in state.creations()):
+            state.delete_stall(place, row["item"])                # given away or sold elsewhere meanwhile
+            continue
         sold_today = row["sold_today"] if row["day"] == today else 0
         fair = fair_price(state, place, row["name"], row["kind"], row["attrs"], now)
         customers = poisson(rng, STALL_DEMAND_PER_HOUR * stall_factor(row["ask"] / fair) * seconds / 3600)
@@ -314,13 +377,16 @@ def stall_tick(state, place: str, now: float, seconds: float, rng) -> list[dict]
             continue
         coins = units * row["ask"]
         left = row["qty"] - units
+        if row["kind"] == "creation":
+            state.give_creation(row["attrs"]["creation_id"], f"a buyer at {place}")
         state.add_coins("pip", coins)
         nudge(state, place, row["item"], -units, now)
         if left:
             state.set_stall(place, row["item"], qty=left, sold=row["sold"] + units, earned=row["earned"] + coins, sold_today=sold_today + units, day=today)
         else:
             state.delete_stall(place, row["item"])
-        sale = {"place": place, "item": row["name"], "qty": units, "coins": coins, "left": left}
+        sale = {"place": place, "item": row["name"], "qty": units, "coins": coins, "left": left,
+                **({"what": row["kind"]} if row["kind"] in ("creation", "work") else {})}
         state.log("stall_sale", **sale)
         sales.append(sale)
     return sales
@@ -346,3 +412,74 @@ def stall_lines(state, place: str, now: float) -> list[str]:
     return [f"Your stall here: {r['qty']} {r['name']} at {coins_text(r['ask'])} each ("
             + ("nothing sold yet" if not r["sold"] else f"sold {r['sold']} for {coins_text(r['earned'])} so far") + ")."
             for r in state.stall_rows(place)]
+
+
+# --- other characters' booths (docs/DESIGN-market.md, phase 2b) -------------------------------------------------------
+# A neighbor with wares (invented once from who they are: neighbors.ensure_wares) sells them at home, and on one weekday takes a stall at a market,
+# where Pip may meet them. Prices, stock and till work as for any booth, keyed by the booth: their home, or "<name>'s stall".
+def wares_table(ch: dict) -> list:
+    return [(w["name"], w["kind"], w["weight"], (1, w["per_day"]), w["description"], w["attrs"]) for w in ch.get("wares") or []]
+
+
+def keeper(state, booth: str) -> dict | None:
+    """The character a booth belongs to: whose home it is, or whose market stall."""
+    from . import places
+    for ch in state.characters("neighbor"):
+        if ch.get("wares") and booth in (places.home_of(ch), ch["name"] + STALL_SUFFIX):
+            return ch
+    return None
+
+
+def market_day(ch: dict) -> int:
+    """The weekday (0 = Monday) a character takes their wares to market: fixed for them, from their name."""
+    return zlib.crc32(ch["name"].encode()) % 7
+
+
+def the_market(state) -> str | None:
+    """Where characters take a stall: the first real market."""
+    from . import place_kinds
+    return next((r["key"] for r in state.place_rows() if r["status"] == "real" and place_kinds.KINDS[r["kind"]].stalls), None)
+
+
+def away_at(state, ch: dict, now: float) -> str | None:
+    """The market a neighbor is at right now (their market day, while it is open), or None: they are at home."""
+    from . import places
+    if ch["kind"] != "neighbor" or not ch.get("wares"):
+        return None
+    where = the_market(state)
+    if not where or time.localtime(now).tm_wday != market_day(ch):
+        return None
+    rec = state.place_row(where)
+    hours = rec.get("hours") or [9, 17]
+    return where if hours[0] <= time.localtime(now).tm_hour < hours[1] else None
+
+
+def booths(state, place: str, now: float) -> list[tuple[str, str, list]]:
+    """The booths at `place`: (key, whose, table) for the place's own and every character selling here now."""
+    from . import places, place_kinds
+    out = []
+    rec = state.place_row(place)
+    if rec and place_kinds.KINDS[rec["kind"]].trades and (own := stock_table(state, place)):
+        out.append((place, "", own))
+    for ch in state.characters("neighbor"):
+        if not ch.get("wares"):
+            continue
+        if places.home_of(ch) == place and not away_at(state, ch, now):
+            out.append((place, ch["name"], wares_table(ch)))
+        elif away_at(state, ch, now) == place:
+            out.append((ch["name"] + STALL_SUFFIX, ch["name"], wares_table(ch)))
+    return out
+
+
+def wares_line(state, key: str, whose: str, table: list, now: float) -> str:
+    there = [f"{e[0]} ({sell_price(state, key, e, now)} coins)" for e in table if stock_left(state, key, e, now)]
+    return (f"{whose} has for sale: " + ", ".join(there) + "." if there else f"{whose} has sold out of everything today.")
+
+
+def selling_where(state, ch: dict) -> str:
+    """How a character's trade reads: what they sell, at home and on which day at which market."""
+    if not ch.get("wares"):
+        return ""
+    names = ", ".join(w["name"] for w in ch["wares"][:4])
+    market = the_market(state)
+    return f"sells {names} at home" + (f", and at {market} on {WEEKDAYS[market_day(ch)]}s" if market else "")

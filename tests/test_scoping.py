@@ -17,7 +17,7 @@ def test_every_tool_has_a_scope_and_the_table_matches_the_design():
     assert set(T.SCOPES) == set(T.REGISTRY)
     assert {n for n, sc in T.SCOPES.items() if sc == ("home",)} == HOME_ONLY
     assert {n for n, sc in T.SCOPES.items() if sc == ("library",)} == {"read"}
-    assert T.SCOPES["browse"] == ("library", "junkyard") and T.SCOPES["gather"] == ("woods", "junkyard")
+    assert T.SCOPES["browse"] == ("library", "junkyard", "neighbor") and T.SCOPES["gather"] == ("woods", "junkyard")
     assert T.SCOPES["where_to"] == ("anywhere",)
     assert all(T.SCOPES[n] == ("anywhere",) for n in ("say", "eat", "rest", "recall", "go_to", "start_project", "write_letter"))
 
@@ -28,7 +28,7 @@ def test_the_tool_list_depends_on_where_pip_is():
     marigold = names(T.specs_for(everything, "Marigold's home"))
     assert HOME_ONLY <= home and not LIBRARY_ONLY & home
     assert LIBRARY_ONLY <= library and not HOME_ONLY & library
-    assert not HOME_ONLY & marigold and not LIBRARY_ONLY & marigold
+    assert not HOME_ONLY & marigold and "read" not in marigold and {"browse", "buy", "sell"} <= marigold   # a neighbor may have wares
     assert {"say", "go_to", "note_to_self", "recall"} <= home & library & marigold      # always there
     assert places.scope_of("Marigold's home") == "neighbor" and places.scope_of(places.HOME) == "home"
 

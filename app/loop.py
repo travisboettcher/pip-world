@@ -428,7 +428,7 @@ class Agent:
         now, lines = time.time(), []
         here = self.state.agent()["location"]
         for ch in self.state.characters("neighbor"):
-            if places.home_of(ch) == here and (said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0))):
+            if places.place_of(self.state, ch) == here and (said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0))):
                 lines += [f"Talking with {ch['name']} (this visit, oldest first):"] + [f"  {l}" for l in said]
         waiting = {m["id"] for m in inbox}
         for sender in dict.fromkeys(m["sender"] for m in inbox if not m["gift"]):
@@ -446,6 +446,9 @@ class Agent:
         if any(t in self.tools for t in ("buy", "sell", "pay")):
             lines.append(f"Coins: {self.state.coins()}")
             lines += market.stall_lines(self.state, self.state.agent()["location"], time.time())
+            if places.present_at(self.state):
+                lines += [market.wares_line(self.state, k, who + (" (at a stall here today)" if k.endswith(market.STALL_SUFFIX) else ""), t, time.time())
+                          for k, who, t in market.booths(self.state, self.state.agent()["location"], time.time()) if who]
         if "plant" in self.tools:
             lines.append("Your garden:")
             for g in self.state.garden():
@@ -743,6 +746,8 @@ class Agent:
                     lines.append(f"- you talked with {d['name']} ({d['turns']} of your lines; "
                                  + ("you said goodbye" if d["ended"] == "pip" else f"{d['name']} said goodbye" if d["ended"] == d["name"]
                                     else "it trailed off") + ")")
+                elif e["kind"] == "sold_creation":
+                    lines.append(f"- you sold {d['name']} at {places.label(d['place'])} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "stall_sale":
                     lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "heard_of_place":

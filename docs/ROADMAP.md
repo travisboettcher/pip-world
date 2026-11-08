@@ -122,7 +122,7 @@ is in my notes, not in the gears".
 - [ ] Places, remaining: a user-editable `places.json` (places, hours, loot). (Markets are built: DESIGN-market.md.)
 - [x] **Small economy, phase 1** (DESIGN-market.md): coins, shop and market booths, `buy`/`sell`/`pay`, prices that move a little, a daily till as the throttle.
 - [x] Small economy, phase 2a (0.8.0): Pip's own stall with simulated customers.
-- [ ] Small economy, phase 2b: booths run by other characters, letters that offer goods, selling creations and works
+- [x] Small economy, phase 2b (0.11.0; DESIGN-market.md): neighbors sell at home and at the market one day a week, their letters offer wares, Pip sells creations and copies of works
 - [x] **Skills that grow with practice**: per-craft xp from work minutes; feeds the referee's odds
 - [x] **Happenings (0.5.0, completed in 0.6.0)** (owner, 2026-11-03; designed in [DESIGN-happenings.md](DESIGN-happenings.md)): small events from a fixed category menu: a 10% chance per three-hour slot, severity
       50/45/5 (minor/medium/major) as the limiter, the emotion lens rolled independently of the outcome, and Pip's own reading of it (`feel`). Live from the first release. Replaces the LLM-free surprises idea. Built: all eleven categories, the Now-tab card, pipchat, firsts, the creation repair, night happenings and a seasonal layer (0.7.0). Open: choices, neighbor-originated.

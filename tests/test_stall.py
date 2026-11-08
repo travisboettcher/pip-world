@@ -336,7 +336,7 @@ def test_a_sale_pleases_pip_a_little_and_is_a_first(tmp_path):
 
 def test_the_public_feed_shows_stall_sales_and_the_stall_only_to_the_owner(tmp_path):
     from app import public_view as pv
-    assert pv.EVENT_FIELDS["stall_sale"] == ("place", "item", "qty", "coins", "left")
+    assert pv.EVENT_FIELDS["stall_sale"] == ("place", "item", "qty", "coins", "left", "what")
     assert pv.public_event({"id": 1, "ts": 1.0, "kind": "stall_sale", "data": {"place": "Brygdon", "item": "tomatoes", "qty": 2, "coins": 12, "left": 3, "x": 1}}) == \
         {"id": 1, "ts": 1.0, "kind": "stall_sale", "importance": None, "data": {"place": "Brygdon", "item": "tomatoes", "qty": 2, "coins": 12, "left": 3}}
 

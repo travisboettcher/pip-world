@@ -37,7 +37,7 @@ def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
     assert T.SCOPES["plant"] == ("home",) and T.SCOPES["harvest"] == ("home",) and T.SCOPES["sleep"] == ("home",)
     assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
-    assert T.SCOPES["browse"] == ("library", "junkyard") and T.SCOPES["read"] == ("library",)
+    assert T.SCOPES["browse"] == ("library", "junkyard", "neighbor") and T.SCOPES["buy"] == T.SCOPES["sell"] == ("market", "neighbor") and T.SCOPES["read"] == ("library",)
     assert T.SCOPES["gather"] == ("woods", "junkyard")
 
 

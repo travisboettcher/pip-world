@@ -773,13 +773,23 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
 
 @tool("browse", "Look through what is on offer where you are. At the library: look for books - give a query (a subject, "
       "title or author), or leave it out to wander the shelves and see what's there.",
-      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
+      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard", "neighbor"))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
+    theirs = [b for b in market.booths(ctx.state, here, time.time()) if b[1]]
+    if places.scope_of(here) == "neighbor":                      # at a neighbor's: what they have for sale, if anything
+        if not theirs:
+            ch = places.neighbor_at(ctx.state, here)
+            away = market.away_at(ctx.state, ch, time.time()) if ch else None
+            return ToolResult(f"{ch['name']} is at a stall in {places.label(away)} today, with their wares" if away
+                              else f"there's nothing for sale at {places.label(here)}", followup=True)
+        return ToolResult(market.wares_line(ctx.state, theirs[0][0], theirs[0][1], theirs[0][2], time.time())
+                          + f" You have {ctx.state.coins()} coins. buy what you want, or sell them some of yours.", followup=True)
     table = market.stock_table(ctx.state, here) or gathering.loot_for(ctx.state, here)
     rec = ctx.state.place_row(here) if table and here not in gathering.LOOT else None
     if rec and kinds.KINDS[rec["kind"]].trades:
-        return ToolResult(shop_stock(ctx, here, table, rec), followup=True)
+        return ToolResult("\n".join([shop_stock(ctx, here, table, rec)] + [market.wares_line(ctx.state, k, f"{who}, at a stall here today,", t, time.time())
+                                                                            for k, who, t in theirs]), followup=True)
     if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
         seen = gathering.glimpse(ctx.rng, here, table=table)
         return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
@@ -826,7 +836,7 @@ _TRADE_ITEM = {"item": {"type": "string"}, "quantity": {"type": "integer", "desc
 
 
 @tool("buy", "Buy something from a booth here with your coins. Prices change a little every day and as things are bought.",
-      _obj(_TRADE_ITEM, ["item"]), where=("market",))
+      _obj(_TRADE_ITEM, ["item"]), where=("market", "neighbor"))
 async def buy(ctx: ToolContext, args: dict) -> ToolResult:
     qty = _qty(args)
     if qty is None:
@@ -836,9 +846,10 @@ async def buy(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("sell", "Sell something you have to a booth here: it pays less than it charges, and only has so many coins a day. At a market you can instead set out "
-      "a stall: give `ask` (coins each) and customers stop while you are here, paying your price; an ask of 0 takes it back off the stall.",
+      "a stall: give `ask` (coins each) and customers stop while you are here, paying your price; an ask of 0 takes it back off the stall. "
+      "A creation of yours can be sold too (it is theirs after that), and copies of a drawing or writing can be set out on a stall (`item` is its title).",
       _obj({**_TRADE_ITEM, "ask": {"type": "integer", "description": "optional, at a market: your price in coins each, to set out a stall (0: take it back)"}}, ["item"]),
-      where=("market",))
+      where=("market", "neighbor"))
 async def sell(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
     if args.get("ask") is not None:

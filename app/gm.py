@@ -384,7 +384,7 @@ class GameMaster:
     async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
                               received: str | None, enclosed: str, parcel_allowed: bool,
                               told: list[str] = (), agenda: list[str] = (), places: str = "",
-                              mention: str = "", again: bool = False) -> dict | None:
+                              mention: str = "", again: bool = False, trade: str = "") -> dict | None:
         task = (
             f"Write as {name}, Pip's neighbor. Who {name} is: {persona}\n"
             + (f"What's already happening in {name}'s life (not news any more): {' '.join(life)}\n" if life else "")
@@ -397,7 +397,7 @@ class GameMaster:
             + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what Pip said if anything, and "
             f"sharing something from their own life. Don't reuse a sentence, image or daily ritual from your earlier letters; tell something new."
             + (" Your first try repeated an earlier letter; write it afresh." if again else "") + f" Pip can walk over to visit {name} at home (you can invite it), "
-            f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
+            + (f"and {trade} " if trade else f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. ") + "Also report:\n"
             + self._remembering(name, "letter") + "Optional:\n" + self._news("letters")
             + f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
             "`what` (a few words) and `in_days` (1-14)\n"
@@ -412,6 +412,23 @@ class GameMaster:
             **self._REMEMBERING,
             **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
         }, ["text"], "neighbor_letter")
+
+    async def invent_wares(self, name: str, persona: str, life: list[str], told: list[str]) -> dict | None:
+        task = (
+            f"{name} is Pip's neighbor. Who {name} is: {persona}\n"
+            + (f"Lately: {' '.join(life[-3:])}\n" if life else "")
+            + (f"Things {name} has told Pip: {'; '.join(told[-8:])}\n" if told else "")
+            + f"\n{name} has a few things to spare and sells them, at home and from a stall at the market one day a week. "
+            "List 2-5 plain, physical things that fit their life and work (what they find, grow, make or keep), as `wares`, each with:\n"
+            "- `name`: a few words, as you'd write it on a label (\"cork floats\", \"carrot seeds\")\n"
+            "- `kind`: material, food, seed or tool (at most one tool)\n"
+            "- `description`: one short line\n"
+            "- `per_day`: how many they can spare in a day, 1-3\n"
+            "No services, nothing alive, nothing magical or rare beyond what this small world has."
+        )
+        ware = {"type": "object", "properties": {"name": {"type": "string"}, "kind": {"type": "string"}, "description": {"type": "string"},
+                                                  "per_day": {"type": "integer"}}, "required": ["name", "kind"]}
+        return await self.ask(task, {"wares": {"type": "array", "items": ware}}, ["wares"], "invent_wares")
 
     async def recall_told(self, name: str, persona: str, said: list[str]) -> list[str] | None:
         task = (

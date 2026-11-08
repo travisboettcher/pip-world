@@ -41,7 +41,8 @@ EVENT_FIELDS = {
     "neighbor": ("name", "about"),
     "alert": ("stat",),
     "wished": ("id", "wish", "text"),
-    "stall_sale": ("place", "item", "qty", "coins", "left"),
+    "stall_sale": ("place", "item", "qty", "coins", "left", "what"),
+    "sold_creation": ("name", "place", "coins"),
     "happening": ("id", "category", "severity", "lens", "title", "text", "effects"),
     "happening_felt": ("id", "title", "lens", "read_as"),
 }

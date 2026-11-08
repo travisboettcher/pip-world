@@ -17,6 +17,7 @@ from . import places
 from . import conversation as conv
 from .companions import conversation as talk_lines
 from .memory import ago
+from .state import State
 from .text import brief, clip
 from .world import KINDS
 
@@ -162,10 +163,78 @@ def _deliver_to_pip(state, lt: dict, now: float) -> None:
     state.update_letter(lt["id"], delivered_at=now)
 
 
+WARES_MAX = 5
+WARE_KINDS = ("material", "food", "seed", "tool")
+OFFER_CHANCE = 0.25          # a letter with no wish to answer still offers one of the neighbor's wares this often
+
+
+def clean_wares(raw) -> list[dict]:
+    """A neighbor's wares as the engine keeps them: plain kinds, 1-3 a day, at most one tool; a thing the world already knows (a gather
+    table's carrot seeds) keeps that thing's kind, weight and qualities, so it plants and prices like the one Pip could find."""
+    from . import gathering
+    from .state import name_key
+    from .world import normalize_attrs
+    known = {name_key(e[0]): e for table in gathering.LOOT.values() for e in table}
+    out, seen = [], set()
+    for w in raw if isinstance(raw, list) else []:
+        if not isinstance(w, dict):
+            continue
+        name, kind = clip(w.get("name"), 40), str(w.get("kind") or "").strip().lower()
+        if not name or kind not in WARE_KINDS or name_key(name) in seen or (kind == "tool" and any(o["kind"] == "tool" for o in out)):
+            continue
+        per_day = max(1, min(3, w["per_day"])) if isinstance(w.get("per_day"), int) and not isinstance(w["per_day"], bool) else 1
+        if e := known.get(name_key(name)):
+            ware = {"name": e[0], "kind": e[1], "weight": e[2], "description": e[4], "attrs": dict(e[5])}
+        else:
+            ware = {"name": name, "kind": kind, "weight": None, "description": clip(w.get("description"), 120),
+                    "attrs": normalize_attrs(name, kind, {})}
+        out.append({**ware, "per_day": per_day})
+        seen.add(name_key(name))
+        if len(out) == WARES_MAX:
+            break
+    return out if len(out) >= 2 else []
+
+
+async def ensure_wares(state, settings, gm, now: float) -> None:
+    """Give each neighbor without wares a few things to sell, invented once from who they are (retried hourly if that fails)."""
+    if settings.character_booths != "on" or not gm:
+        return
+    for ch in state.characters("neighbor"):
+        retry = f"wares_retry_at:{ch['id']}"
+        if ch["wares"] or now < float(state.meta(retry) or 0):
+            continue
+        raw = await gm.invent_wares(ch["name"], ch["persona"], ch["life"], ch["told"])
+        wares = clean_wares((raw or {}).get("wares"))
+        if not wares:
+            state.set_meta(**{retry: str(now + RETRY_AFTER)})
+            continue
+        state.update_character(ch["id"], wares=wares)
+        state.log("wares", name=ch["name"], wares=[w["name"] for w in wares])
+
+
+def trade_note(state, ch: dict, rng, now: float) -> str:
+    """What a neighbor's letter is told about their trade: where they sell, and now and then a ware to offer Pip (one it wishes for, first)."""
+    from . import market
+    if not ch.get("wares"):
+        return ""
+    where = market.selling_where(state, ch)
+    note = f"{ch['name']} {where}; Pip can buy there."
+    wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=30)]
+    wanted = next((w for w in ch["wares"] if any(State.related(w["name"], t) for t in wishes)), None)
+    offer = wanted or (rng.choice(ch["wares"]) if rng.random() < OFFER_CHANCE else None)
+    if offer:
+        price = market.sell_price(state, places.home_of(ch), market._entry(market.wares_table(ch), offer["name"]), now)
+        note += (f" Pip has wished for something like {offer['name']}; {ch['name']} could offer it ({price} coins each)." if wanted
+                 else f" If it fits, {ch['name']} could offer Pip {offer['name']} ({price} coins each).")
+        state.log("offered", name=ch["name"], item=offer["name"], price=price, wished=bool(wanted))
+    return note
+
+
 async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict | None, library=None) -> bool:
     """The neighbor writes a letter (an answer, or out of the blue). Returns False if the GM failed."""
     parcel_ok = state.letters_since_parcel(now - DAY) < settings.parcels_per_day
-    ask = dict(told=ch["told"], agenda=agenda(ch, now), **_places(state, settings, library, ch))
+    ask = dict(told=ch["told"], agenda=agenda(ch, now), **_places(state, settings, library, ch),
+               **({"trade": t} if (t := trade_note(state, ch, rng, now)) else {}))
     args = (ch["name"], ch["persona"], ch["life"], correspondence(state, ch["name"]), answering["text"] if answering else None,
             answering["enclosed"] if answering else "", parcel_ok)
     out = await gm.neighbor_letter(*args, **ask) if gm else None
@@ -218,6 +287,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
         else:
             state.update_letter(lt["id"], attempts=lt["attempts"] + 1, deliver_at=now + RETRY_AFTER)
     wake = await _visits(state, settings, gm, now, library) or wake
+    await ensure_wares(state, settings, gm, now)
     for ch in state.characters("neighbor"):
         in_flight = state.letters(between=ch["name"], undelivered=True, limit=5)
         if not in_flight and now >= ch["next_chatter_at"]:
@@ -235,7 +305,10 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     recent = [t for t in ch["replies"] if now - t < 3600]
     a = state.agent()
     situation = f"Pip seems {a['mood']}."
-    at = "" if ch["kind"] == "neighbor" else places.label(where)  # a resident is met at their place
+    if ch["kind"] == "neighbor" and where != places.home_of(ch):
+        from . import market
+        situation += f" {ch['name']} is minding a stall at {places.label(where)} today ({market.selling_where(state, ch)})."
+    at = "" if ch["kind"] == "neighbor" and where == places.home_of(ch) else places.label(where)  # a resident at their place; a neighbor at her stall
     talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
     talk = talk[-CORRESPONDENCE_SHOWN * 2:]
     can_give = _can_give(state, settings, now)
@@ -249,7 +322,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     state.set_meta(**{f"greeted:{ch['id']}": visit})
     fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
               **({**_told(ch, out), **_happened(ch, now)} if out else {})}
-    if out and at:  # no letters: a resident's life moves on in talk
+    if out and at and ch["kind"] != "neighbor":  # no letters: a resident's life moves on in talk
         fields.update(_news(fields.get("life", ch["life"]), out))
     if fields:
         state.update_character(ch["id"], **fields)
@@ -321,7 +394,9 @@ def perception(state, now: float | None = None) -> list[str]:
     lines = ["Your neighbors (they live nearby: visit them with go_to, or write with write_letter):"]
     for c in neighbors:
         visited = state.last_arrived(places.home_of(c))
-        lines.append(f"- {c['name']}: {c['about']}" + (f" (you last visited {ago(visited, now)})" if visited else ""))
+        from . import market
+        sells = market.selling_where(state, c)
+        lines.append(f"- {c['name']}: {c['about']}" + (f" ({sells})" if sells else "") + (f" (you last visited {ago(visited, now)})" if visited else ""))
     for lt in state.letters(undelivered=True, limit=20):
         if lt["sender"] == PIP:
             lines.append(f"- your letter to {lt['recipient']} (sent {ago(lt['ts'], now)}) is on its way")

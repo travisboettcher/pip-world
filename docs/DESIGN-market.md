@@ -1,6 +1,6 @@
 # Design: markets and coins
 
-Status (2026-11-04): phase 1 built (0.3.0) and **Pip's own stall built (0.8.0)**; phase 1 built (`app/market.py`, `tests/test_market.py`); phases 2-3 not yet. Where the build differs from the plan below: a
+Status (2026-11-08): phase 1 built (0.3.0), **Pip's own stall built (0.8.0)**, **phase 2b built (0.11.0)**: neighbors' booths, letters that offer goods, selling creations and works; phase 1 built (`app/market.py`, `tests/test_market.py`); phases 2-3 not yet. Where the build differs from the plan below: a
 booth's stock for the day is `max(2, 2 * the table's biggest quantity)` per item (no restocking mid-day), tills reset daily (not accumulate),
 and `pay` settles the whole account at once. Grew out of the tomato glut (81 tomatoes after a day of scoop-seeds-and-replant):
 crops had no demand. Crops now take about a day (v0.2.1); this gives the surplus somewhere to go, and gives Pip a reason to
@@ -87,3 +87,24 @@ At a market (a place kind with `stalls`; shops are for selling to the keeper), `
 what a booth here would charge today), fewer as the ask climbs (none beyond 1.6 times it, more for a cheap ask), at most eight of one thing a day. Each customer pays the ask, goes straight to Pip's
 purse, slips the local price by 4%, and logs a `stall_sale` (a little joy for Pip; the first is a first). Deviations from the plan above: proceeds go to the purse at once (there is no till to collect, since
 customers only come while Pip is there); a stall is for markets only; the prompt and `browse` show the stall where Pip stands.
+
+## Phase 2b (0.11.0): other characters' booths, offers in letters, selling what Pip made
+Decided with the owner (2026-11-08): a creation sells outright; works sell as copies; a neighbor sells at home **and** at the market one day a week.
+- **Wares.** A neighbor without wares has 2-5 invented once by the GM from who they are (`gm.invent_wares`, retried hourly), cleaned by the engine
+  (`neighbors.clean_wares`): kinds material, food, seed or tool (at most one tool), 1-3 a day. A ware the world already knows (a gather table's carrot
+  seeds) keeps that thing's kind, weight and qualities, so it plants and prices like the one Pip could find. Stored on the character (`wares`).
+  `CHARACTER_BOOTHS=off` invents none, which switches all of this off.
+- **At home** a neighbor's booth is their home: `browse` lists the wares with today's prices, `buy` takes from them, `sell` sells to them; prices,
+  stock (2 x their daily number) and the till (20 coins a day) are the same machinery as any booth, keyed by the home.
+- **Market day.** Each neighbor has a fixed weekday (from their name) on which, while the market is open, they keep a stall there (`<name>'s stall`,
+  till 30) and are **not at home**: `places.place_of` puts them at the market, so Pip meets and talks with them there (the greeting knows they are minding
+  a stall), and at their home `browse` says where they are. `buy` at the market tries the market's own booth, then any character's stall.
+- **Offers in letters.** The letter prompt is told the neighbor's trade (what, at home, which market on which day). If one of their wares matches an open
+  wish of Pip's, they are told Pip wished for it and may offer it at today's price; otherwise one letter in four offers a ware at random. The engine logs
+  `offered` (the GM may still leave it out).
+- **Selling creations.** `sell` takes a creation by name: to a keeper, at its worth (rough 8, sound 15, fine 25, masterwork 40, times the day's local
+  price) less the booth's cut, if the till can pay; or on a market stall with an ask, one unit, sold to the first customer. Once sold it is the buyer's
+  (`given_to`), logged as `sold_creation` or a `stall_sale` marked `creation`. Until it sells it stays Pip's (and keeps running); taken back, nothing moves.
+- **Selling works.** Copies of a drawing (4) or writing (3) are set out on a stall by title, up to five at a time; each sale is a `stall_sale` marked `work`,
+  and the original stays in the gallery. Keepers don't buy copies.
+- Not done: residents' booths at their places (they have none yet), restocking wares as a neighbor's life changes, buying back sold creations.
