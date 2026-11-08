@@ -76,7 +76,8 @@ A tool that lets Pip search its own past on purpose ("what did Morgan say about 
 
 ## Step 3 (designed, not built): "this reminds you of..."
 Each tick, build a query from the situation (visitor's words and name, active project, creation in view) and put the
-top 2-3 recall hits in the prompt, scored recency x importance x relevance, within a fixed token budget.
+top 2-3 recall hits in the prompt, scored recency x importance x relevance, within a fixed token budget. The full design,
+with context per memory, activation and fading, and a logged competition: [DESIGN-reminders.md](DESIGN-reminders.md).
 
 ## Step 4 (designed, not built): forgetting
 Raw events older than a few days stop being indexed individually once a day summary covers them; insights that are

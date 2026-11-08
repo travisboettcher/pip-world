@@ -67,8 +67,10 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [x] Visitor identity: inbox `sender`, shown in perception, moments and the feed
 - [x] Nightly reflection in Pip's voice: day summaries, insights with importance, people notes, self-portrait
 - [x] `recall(query)` over journal, events, reflections and people (SQLite FTS5)
-- [ ] Step 3: "this reminds you of..." - situation-based retrieval into the prompt (recency x importance x relevance)
-- [ ] Step 4: forgetting - stop indexing raw events covered by summaries; unused insights lose rank
+- [ ] Step 3: "this reminds you of..." - **designed: [DESIGN-reminders.md](DESIGN-reminders.md)**. Episodes keep their context (where, who, doing, mood);
+      activation that fades and is refreshed by use (ACT-R), with faded memories still found by `recall`; a cue from the situation and a two-slot
+      competition whose winners and losers are logged (Global Workspace); recall results framed with when, where and how Pip was (Tulving)
+- [ ] Step 4: forgetting - stop indexing raw events covered by summaries (insights losing rank is part of step 3's activation)
 - [ ] Embeddings (sqlite-vec) if FTS relevance proves too noisy; add Chroma only if retrieval quality demands it
 - [ ] Revisit LangGraph if the loop needs checkpointing or branching
 - [ ] Keep prompts well under 100k tokens (Haiku 5.5 pricing steps up 5x past that); prompts are ~3-5k today
@@ -117,7 +119,7 @@ is in my notes, not in the gears".
       (owner decision 5), and the `mentions_place` field / "Places in Pip's world" line in the neighbors' and residents' prompts)
 - [x] **Pip's map** (built 2026-11-01; [DESIGN-map.md](DESIGN-map.md)): `GET /map` and a Map card in the World tab. Home in the middle, every place at a spot it keeps forever
       (distance = walking minutes), unvisited and heard-of places faint, and a marker for Pip that moves along its walk. The seed of the visual world (M2b).
-- [ ] Places, remaining: a user-editable `places.json` (places, hours, loot) and a place or two more (e.g. a market, once there are coins)
+- [ ] Places, remaining: a user-editable `places.json` (places, hours, loot). (Markets are built: DESIGN-market.md.)
 - [x] **Small economy, phase 1** (DESIGN-market.md): coins, shop and market booths, `buy`/`sell`/`pay`, prices that move a little, a daily till as the throttle.
 - [x] Small economy, phase 2a (0.8.0): Pip's own stall with simulated customers.
 - [ ] Small economy, phase 2b: booths run by other characters, letters that offer goods, selling creations and works
@@ -173,7 +175,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       personal names scrubbed from files and commit messages (authorship kept). See `DESIGN-extract.md`.
 - [x] Deployment specifics removed; a plain `docker-compose.yml`, `.env.example`, README, license and a cost warning ship, with an hll file as an alternative to the compose file.
 - [x] Built and published by CI as a container image (`ghcr.io/travisboettcher/pip-world`); deployments run the image instead of building it.
-- [ ] First release tag (`v0.1.0`), and the original deployment moving to the published image.
+- [x] First release tag (`v0.1.0`), and the original deployment moving to the published image.
 
 ### A public, read-only view of the dashboard (owner idea, 2026-11-01)
 - [x] Built (`PUBLIC_HOSTS`, `app/public_view.py`, DESIGN-public-view.md). Still to do: the owner reads exactly what it exposes, then the public hostname, a README link and screenshot. The requirements it follows:
@@ -201,7 +203,21 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] Night pass: archive/merge/resolve notes, pause/resume projects, adopt a goal, set a focus; cited, reversible
       (`undo_decision`), `NIGHT_PASS=off|log|apply`
 - [ ] Life periods / chapters: group days by place, people and goals
-- [ ] Recall frame: show Pip's state at the time of a recalled memory (Tulving)
+- [ ] Recall frame: show Pip's state at the time of a recalled memory (Tulving) - part of memory step 3 (DESIGN-reminders.md)
+- [ ] Precedents (Soar): a project crossroads Pip resolves is stored as situation -> approach -> outcome, so later it can truthfully see
+      "I've faced this before" or "I have no precedent for this"
+- [ ] Self-prediction (Binder et al. 2024): now and then Pip predicts its own next action; the log scores the hit rate (expectations cover
+      the world's outcomes, not Pip's own behaviour)
+- [ ] Agency (Gallagher): mark each event as caused by Pip or happened to Pip; the reflection sees the ratio (happenings made it relevant)
+- [ ] Link-making in the reflection (Pennebaker; Habermas & Bluck): ask for event-to-event, event-to-self and event-to-future links and
+      count them, without rewarding insight words
+- [ ] Pip's own cost as a fact (metareasoning): the tokens and time its thinking took, visible to it
+- [ ] Behaviour counts behind "I used to be more careful": checks before acting, risks taken, added to the daily counts
+- [ ] Stepping through episodes (Soar): `recall` can return what came just before or after a memory
+- [ ] Salience beyond memory: let other prompt blocks (wishes, to-dos, people) compete for space the way reminders do, once step 3 shows
+      whether the competition helps
+- [ ] Evaluations: does the self-portrait predict Pip's behaviour better than a stranger's description (Introspect-Bench style); a
+      continuity audit over memory, goals, self-correction, style and persona (Natangelo); the support check's verdicts trended over time
 - [ ] Delayed-self recognition test: show Pip an old undated entry or portrait and see whether it recognizes its voice
 - [ ] Rare open-question prompts, not scripted performances
 - [ ] Watch the first nights (2026-10-30 onward): reflection prompt size and cost, the live shape of `changed`/`turning_points`,
