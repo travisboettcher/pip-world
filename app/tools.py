@@ -212,7 +212,8 @@ SAY_LOOKBACK = 2 * 3600     # Pip's own lines a new one must not repeat
 
 @tool("say", "Speak out loud. This is the only way a visitor can hear you. To talk to something you made that "
       "has a mind of its own, give its name in `to`.",
-      _obj({"text": {"type": "string"}, "to": {"type": "string", "description": "optional: one of your creations"}},
+      _obj({"text": {"type": "string"}, "to": {"type": "string", "description": "optional: one of your creations"},
+            "goodbye": {"type": "boolean", "description": "optional: true when this line ends a conversation with someone you're with"}},
            ["text"]))
 async def say(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"])[:1000]
@@ -228,7 +229,9 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
                 f"; go_to {where} to talk with them" if where else ""), followup=True)
         if ch:
             comp.hear(ctx.state, ch, text)
-            ctx.state.log("say", text=text, to=[], to_name=ch["name"])
+            ctx.state.log("say", text=text, to=[], to_name=ch["name"], **({"goodbye": True} if args.get("goodbye") is True else {}))
+            if args.get("goodbye") is True and ch["kind"] in places.IN_PERSON:
+                ctx.state.set_meta(talk_done=ctx.state.meta("arrived_at") or "")     # this visit's talk is over
             return ToolResult(f"said it to {ch['name']}; it will answer in a moment")
     ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
     if ctx.outreach:

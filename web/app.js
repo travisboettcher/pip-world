@@ -109,6 +109,7 @@ function describe(e) {
     case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
+    case 'talk': return { group: 'world', cls: 'world', text: `Pip and ${d.name} talked (${d.turns} of Pip's lines; ${d.ended === 'pip' ? 'Pip said goodbye' : d.ended === d.name ? `${d.name} said goodbye` : d.ended})` };
     case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
     case 'inbox': return d.letter ? { group: 'world', cls: 'world', text: d.text }

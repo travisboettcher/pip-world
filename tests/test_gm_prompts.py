@@ -40,7 +40,7 @@ LETTER_BARE = (
     "No letter is waiting; Briar decides to write to Pip anyway.\n"
     "\n"
     "Write Briar's letter: 2-5 sentences in their own voice, answering what Pip said if anything, and sharing "
-    "something from their own life. Pip can walk over to visit Briar at home (you can invite it), but Briar "
+    "something from their own life. Don't reuse a sentence, image or daily ritual from your earlier letters; tell something new. Pip can walk over to visit Briar at home (you can invite it), but Briar "
     "doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
     '- `gist`: one sentence, third person, of what this letter says (e.g. "Told Pip the tide times for the '
     'week and asked how its walk went")\n'
@@ -74,7 +74,7 @@ LETTER_FULL = (
     "Pip enclosed something with it: a cup. React to it honestly.\n"
     "\n"
     "Write Briar's letter: 2-5 sentences in their own voice, answering what Pip said if anything, and sharing "
-    "something from their own life. Pip can walk over to visit Briar at home (you can invite it), but Briar "
+    "something from their own life. Don't reuse a sentence, image or daily ritual from your earlier letters; tell something new. Pip can walk over to visit Briar at home (you can invite it), but Briar "
     "doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
     '- `gist`: one sentence, third person, of what this letter says (e.g. "Told Pip the tide times for the '
     'week and asked how its walk went")\n'

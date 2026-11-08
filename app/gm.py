@@ -384,7 +384,7 @@ class GameMaster:
     async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
                               received: str | None, enclosed: str, parcel_allowed: bool,
                               told: list[str] = (), agenda: list[str] = (), places: str = "",
-                              mention: str = "") -> dict | None:
+                              mention: str = "", again: bool = False) -> dict | None:
         task = (
             f"Write as {name}, Pip's neighbor. Who {name} is: {persona}\n"
             + (f"What's already happening in {name}'s life (not news any more): {' '.join(life)}\n" if life else "")
@@ -395,7 +395,8 @@ class GameMaster:
                f"\nNo letter is waiting; {name} decides to write to Pip anyway.\n")
             + (f"Pip enclosed something with it: {enclosed}. React to it honestly.\n" if enclosed else "")
             + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what Pip said if anything, and "
-            f"sharing something from their own life. Pip can walk over to visit {name} at home (you can invite it), "
+            f"sharing something from their own life. Don't reuse a sentence, image or daily ritual from your earlier letters; tell something new."
+            + (" Your first try repeated an earlier letter; write it afresh." if again else "") + f" Pip can walk over to visit {name} at home (you can invite it), "
             f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. Also report:\n"
             + self._remembering(name, "letter") + "Optional:\n" + self._news("letters")
             + f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
@@ -515,7 +516,8 @@ class GameMaster:
 
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
-                              places: str = "", mention: str = "", at: str = "", can_give: bool = False, again: bool = False) -> dict | None:
+                              places: str = "", mention: str = "", at: str = "", can_give: bool = False, again: bool = False,
+                              closing: bool = False) -> dict | None:
         """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
         it's the greeting. A neighbor is at home; a resident (`at` their place) has no letters, so their life moves
         on in talk: they may report a `life_update` too."""
@@ -545,11 +547,13 @@ class GameMaster:
                "nothing else, so never describe handing over, offering a pinch of, letting Pip take or help themselves to, or giving anything "
                "you do not report here\n" if can_give else "")
             + (f"- {mention}\n" if mention else "")
+            + (f"- `goodbye`: true only if this line closes the talk (a farewell, or {name} has things to do)\n" if closing else "")
             + (f"Your first try said again what had already been said; say something new this time.\n" if again else "")
         )
         out = await self.ask(task, {"text": {"type": "string"}, **self._REMEMBERING,
                                     **(self._NEWS if at else {}), **self._mentions(mention),
-                                    **({"give": self._PARCEL} if can_give else {})},
+                                    **({"give": self._PARCEL} if can_give else {}),
+                                    **({"goodbye": {"type": "boolean"}} if closing else {})},
                              ["text"], "speak_in_person")
         text = clip(out["text"], 400) if out else ""
         return {**out, "text": text} if text else None

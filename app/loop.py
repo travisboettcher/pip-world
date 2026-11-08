@@ -19,6 +19,7 @@ from .outreach import Outreach
 from . import places
 from . import conversation as conv
 from . import happenings
+from . import talk
 from . import market
 from . import weather
 from . import wishes
@@ -31,7 +32,7 @@ from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
 from .state import State, clean_sender
-from .text import span
+from .text import clip, span
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
 
@@ -45,6 +46,10 @@ HIDDEN_EVENT_KINDS = {"alert", "tick_start"}
 
 
 DEFAULT_PERSONA = "You are Pip."  # what the agent is told about itself when the deployment supplies no persona
+
+
+FREE_MINUTES = 120     # nothing due for this long is free time
+FREE_SHOWN = 2
 
 
 def clock_line(now: float) -> str:
@@ -264,6 +269,9 @@ class Agent:
         await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
         inbox = self.state.pending_inbox()
+        if self.s.talk_scenes == "on" and not inbox and self.gm and (ch := talk.waiting(self.state)):
+            await self._converse(ch)
+            return
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         specs = self._specs()
@@ -335,14 +343,84 @@ class Agent:
                            **({"images": result.images} if result.images and self.backend.vision else {}))
         return out
 
-    def _system_prompt(self) -> str:
-        """Who the agent is (the deployment's optional persona file, re-read every time; by default just a name) followed by how the world works
-        (the guide, built from what is enabled)."""
+    def _persona(self) -> str:
+        """Who the agent is: the deployment's optional persona file, re-read every time; by default just a name."""
         persona = ""
         if os.path.exists(self.s.persona_path):
             with open(self.s.persona_path) as f:
                 persona = f.read().strip()
-        return (persona or DEFAULT_PERSONA) + "\n\n" + guide.render(self.tools, self.s, self.library is not None)
+        return persona or DEFAULT_PERSONA
+
+    def _system_prompt(self) -> str:
+        """The persona followed by how the world works (the guide, built from what is enabled)."""
+        return self._persona() + "\n\n" + guide.render(self.tools, self.s, self.library is not None)
+
+    async def _converse(self, ch: dict) -> str:
+        """A talk with someone Pip is with in person, as its own scene (see talk.py). Returns how it ended."""
+        visit = self.state.meta("arrived_at")
+        self.state.set_meta(talk_scene=visit)                        # the monitor leaves this visit's answers to the scene
+        turns, ended = 0, "turns"
+        try:
+            while turns < talk.SCENE_TURNS:
+                if self.state.budget_exceeded():
+                    ended = "budget"
+                    break
+                resp = await self.backend.complete(system=talk.system(self._persona(), ch),
+                                                   messages=[{"role": "user", "content": talk.prompt(self.state, ch, clock_line(time.time()), time.time())}],
+                                                   tools=talk.specs(self.tools), max_tokens=self.s.llm_max_tokens)
+                self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
+                self.state.log("tick", reason="talk", step=turns, text=resp.text, tokens=resp.usage.input_tokens + resp.usage.output_tokens,
+                               tools=[c.name for c in resp.tool_calls])
+                turns += 1
+                said, bye = False, False
+                for i, call in enumerate(resp.tool_calls):
+                    if call.name == "say":
+                        call.arguments = {**call.arguments, "to": ch["name"]}
+                        bye = bye or call.arguments.get("goodbye") is True
+                    out = await self._run_tool(call, i)
+                    said = said or (call.name == "say" and str(out.get("content", "")).startswith("said it"))
+                if not said:
+                    ended = "silence"
+                    break
+                fresh = next((c for c in self.state.characters() if c["id"] == ch["id"]), ch)
+                answer = await nb.reply(self.state, self.s, self.gm, fresh, time.time(), self.library, closing=True)
+                if bye:
+                    ended = "pip"
+                    break
+                if not answer:
+                    ended = "no answer"
+                    break
+                if answer.get("goodbye") is True:
+                    ended = ch["name"]
+                    break
+        finally:
+            self.state.set_meta(talk_scene="", talk_done=visit)
+        self.state.log("talk", name=ch["name"], turns=turns, ended=ended)
+        self.request_wake()                                              # the world turn takes it from here
+        return ended
+
+    def _free_time(self, now: float) -> list[str]:
+        """At home with nothing due for a while: say so, with what Pip has said it wants to do. Facts, not orders."""
+        if self.state.agent()["location"] != places.HOME or self.state.session() or sleepmod.asleep(self.state):
+            return []
+        due = [g["ready_in_min"] for g in self.state.garden(now) if g["state"] == "growing"]
+        due += [(c["runtime"]["tended_until"] - now) / 60 for c in self.state.creations()
+                if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now) and "tended_until" in c["runtime"]]
+        if any(g["state"] == "ready" for g in self.state.garden(now)) or self.state.pending_inbox():
+            return []
+        free = min(due) if due else None
+        if free is not None and free < FREE_MINUTES:
+            return []
+        lines = [f"Nothing needs you for about {span(round(free))}." if free is not None else "Nothing needs you for now."]
+        aims = [m for m in self.state.memories("ambitions", status="open", limit=FREE_SHOWN)]
+        wants = [m for m in self.state.memories("wishlist", status="open", limit=20) if m.get("kind") in ("activity", "ability", "idea")][-FREE_SHOWN:]
+        if aims:
+            lines.append("Your ambitions: " + "; ".join(f"#{m['id']} {clip(m['text'], 100)}" for m in aims))
+        if wants:
+            lines.append("Things you wish you could do: " + "; ".join(f"#{m['id']} {clip(m['text'], 100)}" for m in wants))
+        if "start_project" in self.tools and (aims or wants):
+            lines.append("start_project begins something new.")
+        return lines
 
     def _talk(self, inbox: list[dict]) -> list[str]:
         """The conversations Pip is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
@@ -621,6 +699,7 @@ class Agent:
         lines += self.outreach.perception()
         lines += self._gallery()
         lines += happenings.perception(self.state, self.tools, time.time()) if self.s.happenings != "off" else []
+        lines += self._free_time(time.time())
         lines += self._belongings()
         lines += self._projects()
         lines += nb.perception(self.state)
@@ -657,6 +736,10 @@ class Agent:
                                  + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
                 elif e["kind"] == "outreach" and d.get("what") == "postcard" and d.get("delivered"):
                     lines.append(f"- you sent a postcard ({d.get('channel')}): {d['text']}")
+                elif e["kind"] == "talk":
+                    lines.append(f"- you talked with {d['name']} ({d['turns']} of your lines; "
+                                 + ("you said goodbye" if d["ended"] == "pip" else f"{d['name']} said goodbye" if d["ended"] == d["name"]
+                                    else "it trailed off") + ")")
                 elif e["kind"] == "stall_sale":
                     lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "heard_of_place":

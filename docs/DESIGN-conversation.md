@@ -1,6 +1,6 @@
 # Design: conversation
 
-Status (2026-11-07): **part 1 built (0.8.1)**; part 2 (the conversation scene) to be designed. Prompted by the owner: Pip's talk with Oriel "does not read very
+Status (2026-11-07): **part 1 built (0.8.1)**; **part 2 built (0.9.0)**. Prompted by the owner: Pip's talk with Oriel "does not read very
 naturally", and Pip misread a reply to a postcard it did not know it had sent.
 
 ## What was wrong (measured over all 149 lines Oriel and Pip had exchanged)
@@ -24,8 +24,27 @@ naturally", and Pip misread a reply to a postcard it did not know it had sent.
   walking away.
 - **The day and time** are in Pip's prompt, so "Thursday at half past four" can be kept.
 
-## Part 2 (to be designed): the conversation scene
-For in-person talk (neighbors, residents, creations with a mind): the visit runs as its own short scene, with a small focused prompt for Pip's turns (its persona, why it
-came, a few facts, the transcript, and only say / hand over / feel / take its leave), the other side's turn as now, alternating at conversational speed until either says
-goodbye or about six exchanges, then one summary into memory for Pip's world turn. Chats with the owner stay in the world turn (they often call for action), with the
-transcript from part 1. Neighbor letters get the repeat check and their own recent letters verbatim (the "palm on the step" motif), from DESIGN-neighbor-memory.md.
+## Part 2 (0.9.0): the conversation scene
+The plan was: for in-person talk the visit runs as its own short scene, with a small focused prompt for Pip's turns, the other side's turn as now, alternating at
+conversational speed until either says goodbye or about six exchanges, then Pip's world turn picks up. Chats with the owner stay in the world turn (they often call for
+action). Neighbor letters get the repeat check. What was built (`app/talk.py`, `Agent._converse`, `tests/test_talk.py`):
+
+- **When.** At the start of a world turn, if someone Pip is with in person (a neighbor at home, a resident at their place) has spoken since Pip arrived, this visit has
+  not had its talk yet, and no visitor is waiting in the inbox (a visitor's message comes first; the talk waits), the turn becomes a talk. `TALK_SCENES=off` turns it off.
+- **Pip's turn** gets its persona, "you are face to face with Marigold", and a prompt of about 1.5k characters: the date and time, where it is and with whom, its own
+  notes about them, up to three open to-dos that mention them, what it was doing and its mood, what it carries (eight items) and its coins, the visit's talk verbatim, and
+  "answer what was just said; don't open with thanks; say goodbye when it has run its course". Only `say` (with `goodbye`) and `feel` are offered. Each turn is a logged
+  `tick` with reason `talk` and counts toward the daily token budget.
+- **Her turn** is the same in-person reply as before (`neighbors.reply`, with its repeat retry), asked at once, and told she may close the talk (`goodbye`).
+- **It ends** when Pip says goodbye (her parting line still comes), she says goodbye, Pip's turn says nothing, she has nothing to say, the budget is spent, or after six of
+  Pip's lines. It is logged as a `talk` event (`name`, `turns`, `ended`), the visit is marked as talked (`talk_done`), and the world turn runs next with the whole
+  transcript in view, free to give, trade, note or leave. A `say` with `goodbye` in the world turn also ends the visit's talk, so a second scene does not start.
+- **While it runs** the monitor leaves her answers to the scene (`talk_scene` meta), so no line is answered twice.
+- Deviations: no separate summary into memory (the world turn sees the transcript and Pip notes what it wants); handing things over and leaving stay in the world turn
+  rather than in the scene's tools; creations with a mind are not in scenes yet (they answer in Pip's world turn as before).
+
+**Letters.** A neighbor's letter that repeats one of her last six (`LETTERS_CHECKED`) is written once more, told "your first try repeated an earlier letter; write it
+afresh", and every letter prompt asks her not to reuse a sentence, image or daily ritual from earlier letters.
+
+**Free time.** At home, awake, with nothing ripe, no visitor waiting and nothing due (a crop or a creation that needs tending) for two hours or more, Pip's prompt says
+"Nothing needs you for about N hours." with its open ambitions and its wishes to do (two of each) and that `start_project` begins something new. Facts, not orders.

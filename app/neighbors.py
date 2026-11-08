@@ -24,6 +24,7 @@ PIP = "Pip"
 JITTER = (0.7, 1.3)
 LIFE_KEPT = 5
 CORRESPONDENCE_SHOWN = 6
+LETTERS_CHECKED = 6        # a neighbor's own recent letters a new one must not repeat
 REPEAT_LOOKBACK = 8        # a neighbor's own last lines a new one must not repeat
 TOLD_KEPT = 30
 TOLD_PER_CALL = 3
@@ -164,10 +165,13 @@ def _deliver_to_pip(state, lt: dict, now: float) -> None:
 async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict | None, library=None) -> bool:
     """The neighbor writes a letter (an answer, or out of the blue). Returns False if the GM failed."""
     parcel_ok = state.letters_since_parcel(now - DAY) < settings.parcels_per_day
-    out = await gm.neighbor_letter(ch["name"], ch["persona"], ch["life"], correspondence(state, ch["name"]),
-                                   answering["text"] if answering else None,
-                                   answering["enclosed"] if answering else "", parcel_ok, told=ch["told"],
-                                   agenda=agenda(ch, now), **_places(state, settings, library, ch)) if gm else None
+    ask = dict(told=ch["told"], agenda=agenda(ch, now), **_places(state, settings, library, ch))
+    args = (ch["name"], ch["persona"], ch["life"], correspondence(state, ch["name"]), answering["text"] if answering else None,
+            answering["enclosed"] if answering else "", parcel_ok)
+    out = await gm.neighbor_letter(*args, **ask) if gm else None
+    earlier = [lt["text"] for lt in state.letters(between=ch["name"], limit=LETTERS_CHECKED) if lt["sender"] == ch["name"]]
+    if out and conv.repeats(out.get("text") or "", earlier):     # the same sentence as an earlier letter: one more try
+        out = await gm.neighbor_letter(*args, again=True, **ask) or out
     text = clip(out.get("text"), 1200) if out else ""
     if not text:
         return False
@@ -222,6 +226,43 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
     return wake
 
 
+async def reply(state, settings, gm, ch: dict, now: float, library=None, closing: bool = False) -> dict | None:
+    """One line from someone Pip is with in person: a greeting if this visit has had none, else an answer to what Pip has said (`ch["heard"]`), which it
+    consumes. Logged as a `companion` event; returns what the model said (with `goodbye` when `closing` asks for it), or None."""
+    where = places.place_of(state, ch)
+    visit = state.meta("arrived_at") or ""
+    answering = bool(ch["heard"])
+    recent = [t for t in ch["replies"] if now - t < 3600]
+    a = state.agent()
+    situation = f"Pip seems {a['mood']}."
+    at = "" if ch["kind"] == "neighbor" else places.label(where)  # a resident is met at their place
+    talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
+    talk = talk[-CORRESPONDENCE_SHOWN * 2:]
+    can_give = _can_give(state, settings, now)
+    ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, **_places(state, settings, library, ch),
+               **({"closing": True} if closing else {}))
+    heard = [h["text"] for h in ch["heard"]] if answering else []
+    out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, **ask) if gm else None
+    mine = [e["data"]["text"] for e in state.events(200) if e["kind"] == "companion" and e["data"].get("name") == ch["name"]][:REPEAT_LOOKBACK]
+    if out and conv.repeats(out["text"], mine):                 # one more try at saying something new
+        out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, again=True, **ask) or out
+    state.set_meta(**{f"greeted:{ch['id']}": visit})
+    fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
+              **({**_told(ch, out), **_happened(ch, now)} if out else {})}
+    if out and at:  # no letters: a resident's life moves on in talk
+        fields.update(_news(fields.get("life", ch["life"]), out))
+    if fields:
+        state.update_character(ch["id"], **fields)
+    if not out:
+        return None
+    invented.accept(state, ch["name"], out["text"], out.get("mentions_place"), now)
+    gist = clip(out.get("gist"), 200)
+    handed = _hand_over(state, ch["name"], out.get("give")) if can_give else ""
+    state.log("companion", name=ch["name"], text=out["text"] + handed, reply=True, visit=True, **({"gist": gist} if gist else {}),
+              **({"goodbye": True} if closing and out.get("goodbye") is True else {}))
+    return out
+
+
 async def _visits(state, settings, gm, now: float, library=None) -> bool:
     """In person: whoever Pip finds where it is (a neighbor at home, a resident at their place) greets it once per
     visit and answers what it says (capped per hour)."""
@@ -236,36 +277,16 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
                 state.update_character(ch["id"], heard=[])  # Pip left before they could answer
             continue
         visit = state.meta("arrived_at") or ""
+        if visit and state.meta("talk_scene") == visit:
+            continue                                            # a talk scene is answering for them (talk.py)
         greeting = state.meta(f"greeted:{ch['id']}") != visit
         recent = [t for t in ch["replies"] if now - t < 3600]
         answering = bool(ch["heard"]) and len(recent) < settings.companion_replies_per_hour
         if not greeting and not answering:
             continue
-        a = state.agent()
-        situation = f"Pip seems {a['mood']}."
-        at = "" if ch["kind"] == "neighbor" else places.label(where)  # a resident is met at their place
-        talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
-        talk = talk[-CORRESPONDENCE_SHOWN * 2:]
-        can_give = _can_give(state, settings, now)
-        ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, **_places(state, settings, library, ch))
-        heard = [h["text"] for h in ch["heard"]] if answering else []
-        out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, **ask) if gm else None
-        mine = [e["data"]["text"] for e in state.events(200) if e["kind"] == "companion" and e["data"].get("name") == ch["name"]][:REPEAT_LOOKBACK]
-        if out and conv.repeats(out["text"], mine):                 # one more try at saying something new
-            out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, again=True, **ask) or out
-        state.set_meta(**{f"greeted:{ch['id']}": visit})
-        fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
-                  **({**_told(ch, out), **_happened(ch, now)} if out else {})}
-        if out and at:  # no letters: a resident's life moves on in talk
-            fields.update(_news(fields.get("life", ch["life"]), out))
-        if fields:
-            state.update_character(ch["id"], **fields)
-        if out:
-            invented.accept(state, ch["name"], out["text"], out.get("mentions_place"), now)
-            gist = clip(out.get("gist"), 200)
-            handed = _hand_over(state, ch["name"], out.get("give")) if can_give else ""
-            state.log("companion", name=ch["name"], text=out["text"] + handed, reply=True, visit=True,
-                      **({"gist": gist} if gist else {}))
+        if not answering and ch["heard"]:
+            ch = {**ch, "heard": []}                            # over the hour's limit: a greeting only
+        if await reply(state, settings, gm, ch, now, library):
             wake = True
     return wake
 
