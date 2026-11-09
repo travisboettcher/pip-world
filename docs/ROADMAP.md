@@ -58,7 +58,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   Checked in an embedded V8 with a stub DOM against the live API's real data (boot, tabs, chat toggle/unread, usage popover); not yet seen in a real browser.
 
 ## M2b - Visual world
-- [ ] Decide 2D (pixel canvas: a room, a sprite, activity -> animation) vs 3D; default 2D
+- [x] Decide 2D vs 3D (2026-11-08): HD-2D scenes (pixel art on 3D shapes, fixed camera, dollhouse cutaways) and a procedural parchment map; **designed: [DESIGN-world-view.md](DESIGN-world-view.md)**
+- [ ] Build it, in the doc's order: the map first, then the scene kit and the home scene, then the other place kinds
 - [ ] Map `set_activity` labels and garden state to visuals; live push from the backend
 - [ ] Optional: evaluate a16z AI Town on the side (Convex-based, probably too heavy)
 
