@@ -152,3 +152,13 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .wm-inner canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .wm-busy { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; font: italic 1.2rem "IM Fell English", Georgia, serif; color: #3a2a1c; }
 .map-place-info { margin: .5rem 0 0; }
+
+/* a place's scene (web/world/scene.js): drawn at 512 x 288 and scaled up with crisp pixels */
+.scene { position: relative; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 6px; overflow: hidden; background: #12161a; }
+.scene-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+.scene-tip { position: absolute; pointer-events: none; background: rgba(18, 20, 24, .94); border: 2px solid #f2b45c; color: #ece6d8; padding: 6px 9px; font-size: 13px; max-width: 260px; border-radius: 3px; }
+.scene-tip b { display: block; color: #f2b45c; }
+.scene-note { position: absolute; inset: 0; display: grid; align-content: center; gap: .4rem; padding: 1.5rem; color: #ece6d8; background: #1b2126; overflow: auto; }
+.scene-note h3, .scene-note p { margin: 0; max-width: 60ch; }
+.scene-note h3 { font-size: 1.4rem; color: #f2b45c; text-transform: none; letter-spacing: 0; }
+.wm-tools button[aria-pressed="true"] { outline: 2px solid var(--accent); }

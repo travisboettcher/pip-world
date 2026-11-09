@@ -1,6 +1,6 @@
 # Design: the world view (a map and scenes)
 
-Status (2026-11-08): designed; **step 1, the map, built (0.12.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
+Status (2026-11-09): designed; **step 1, the map, built (0.12)**; **step 2, the scene kit and the home scene, built (0.13.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
 shows the world; it never changes it.
 
 ## What it is
@@ -176,3 +176,25 @@ to one place.
   redrawn only when what it shows changes.
 - The map's lettering (IM Fell English, OFL) is served from `web/fonts/`, not from Google.
 - Checked by rendering the dashboard on a copy of the live database in headless Chromium (desktop and phone), not yet by a test in CI.
+
+## Step 2 as built (0.13.0)
+- `GET /world/scene?place=` (`world_view.scene_view`, public, 404 for an unknown place): the place (kind, label, blurb, description, hours, open now,
+  heard-only, by the water), Pip (here or not, where, walking, activity, description, mood, energy, hunger, asleep, and the session: kind, times,
+  and for work or an experiment the project and stage), who is present (`places.company_at`: who is there doesn't depend on Pip), the booths
+  with stock left and today's prices, Pip's stall there, and `now` (shared with the map: `world_view.moment`). At home also the garden, the
+  creations (quality, capabilities, running, and for a timekeeper its face in minutes past midnight, for upkeep `tended_until`), the belongings
+  and the coins. Without `place`, the scene is where Pip is, or where it is walking to.
+- Front end: `web/world/kit.js` (the kit: 512 x 288 render, fixed orthographic camera, sun, sky and fog from the time of day, weather and season,
+  lamps that come up at dusk, motes that become fireflies, rain and snow, the post pass, hover tooltips, 30 fps, paused when hidden or off
+  screen), `web/world/art.js` (every texture and sprite drawn in code; grass and leaves take the season's colours; crops other than peas and
+  tomatoes get a leafy plant with a fruit colour of their own), `web/world/templates/home.js` (the workshop, from the prototype, on live data:
+  as many plots as the garden has, up to four; a timekeeper on the wall showing its real face, its pendulum still when it has stopped; a
+  creation that walks (by its description) on the floor; other creations on the shelf; Pip's pose from its state, `poseOf`), and
+  `web/world/scene.js` (fetches, builds the template for the place's kind, keeps it current; kinds without a template yet show the place's
+  description instead).
+- three.js r128 and its post-processing passes are vendored in `web/vendor/three/` (MIT, with its licence) and loaded only when a scene is
+  first shown.
+- The World tab: "Where Pip is" opens the scene where Pip is (the map while it walks), "Map" the map; clicking a place on the map opens its
+  scene, Pip there or not. The caption says what Pip is doing, or where it is if not here.
+- Checked by rendering the dashboard in headless Chromium on a copy of the live database, at night (as it was) and by day with Pip at work
+  (the response rewritten in the browser).

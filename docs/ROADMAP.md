@@ -60,7 +60,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 ## M2b - Visual world
 - [x] Decide 2D vs 3D (2026-11-08): HD-2D scenes (pixel art on 3D shapes, fixed camera, dollhouse cutaways) and a procedural parchment map; **designed: [DESIGN-world-view.md](DESIGN-world-view.md)**
 - [x] Step 1, the parchment map in the World tab (0.12.0)
-- [ ] Step 2: the scene kit and the home scene; then neighbor, market and shop; then library, wild, yard and sight (any place can be visited from the map, Pip there or not)
+- [x] Step 2: the scene kit and the home scene, on live data; any place opens from the map (0.13.0)
+- [ ] Step 3: neighbor, market and shop scenes; character looks. Then library, wild, yard and sight; place scene details from the GM
 - [ ] Map `set_activity` labels and garden state to visuals; live push from the backend
 - [ ] Optional: evaluate a16z AI Town on the side (Convex-based, probably too heavy)
 

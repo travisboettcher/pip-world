@@ -1,5 +1,6 @@
 // Pip's web UI: the browser counterpart of `pipchat`. No build step, no dependencies.
 import { WorldMap } from './world/map.js';
+import { SceneView } from './world/scene.js';
 // All text from Pip and visitors is inserted with textContent / text nodes, never as HTML.
 
 const $ = (id) => document.getElementById(id);
@@ -270,33 +271,52 @@ $('chat-form').addEventListener('submit', async (ev) => {
 
 // ---- map ----------------------------------------------------------------------
 // The parchment map (web/world/map.js, docs/DESIGN-world-view.md): land invented from the world seed around the engine's place spots,
-// painted only where Pip has walked. Clicking a place shows what is known of it.
-const KIND_WORDS = { home: 'home', neighbor: 'a neighbor\'s home', library: 'the library', wild: 'somewhere wild', yard: 'a yard to dig through',
-  shop: 'a shop', market: 'a market', sight: 'somewhere to see' };
+// painted only where Pip has walked. Clicking a place opens its scene.
 let mapData = null, worldMap = null;
 function mapWhere(m) {
   const w = m.pip.walking, name = (key) => m.places.find((p) => p.key === key)?.label ?? key;
   if (w) return `Pip is walking from ${name(w.from)} to ${name(w.to)} (${Math.round(w.progress * 100)}%).`;
   return m.pip.at === m.home ? 'Pip is home.' : `Pip is at ${name(m.pip.at)}.`;
 }
-function showPlace(p) {
-  const when = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
-  const known = p.key === mapData.home ? 'Pip\'s home.' : p.visits ? `Visited ${p.visits === 1 ? 'once' : `${p.visits} times`}, first on ${when(p.first_visited)}.`
-    : p.heard_only ? 'Only heard of: Pip hasn\'t been yet.' : 'Pip hasn\'t been yet.';
-  const walk = p.key === mapData.home ? '' : ` ${Math.round(p.distance_minutes ?? 0)} minutes' walk from home.`;
-  $('map-place').replaceChildren(h('strong', {}, p.label), ` (${KIND_WORDS[p.kind] ?? p.kind}). ${known}${walk}`, p.coastal ? ' By the water.' : '');
-  $('map-place').hidden = false;
-}
+function showPlace(p) { openScene(p.key); }
 function renderMap() {
   if (!mapData) return;
   worldMap ??= new WorldMap($('map'), { onPlace: showPlace });
   worldMap.set(mapData);
-  $('map-where').textContent = mapWhere(mapData);
+  if (worldMode === 'map') $('map-where').textContent = mapWhere(mapData);
 }
-const refreshMap = async () => { mapData = await api('/world/map'); renderMap(); };
+const refreshMap = async () => { mapData = await api('/world/map'); renderMap(); if (worldMode === 'scene') scene?.refresh().catch(() => {}); };
 $('wm-pip').addEventListener('click', () => worldMap?.centreOnPip());
 $('wm-in').addEventListener('click', () => worldMap?.zoom(1.5));
 $('wm-out').addEventListener('click', () => worldMap?.zoom(1 / 1.5));
+
+// ---- scenes: a place drawn as a small HD-2D diorama (web/world/scene.js); the World tab switches between a scene and the map ----------
+let scene = null, worldMode = 'map';
+function setWorldMode(mode) {
+  worldMode = mode;
+  $('scene').hidden = mode !== 'scene'; $('map').hidden = mode !== 'map'; $('map-tools').hidden = mode !== 'map'; $('map-place').hidden = true;
+  $('wv-map').setAttribute('aria-pressed', String(mode === 'map'));
+  if (mode === 'map') { $('world-title').textContent = 'Map'; $('wv-here').setAttribute('aria-pressed', 'false'); if (mapData) $('map-where').textContent = mapWhere(mapData); }
+}
+function sceneCaption(d) {
+  const pip = d.pip, label = (k) => mapData?.places.find((p) => p.key === k)?.label ?? k;
+  if (pip.here) return `Pip is here: ${(pip.description || pip.activity).replace(/[.!]+$/, '')}.`;
+  if (pip.walking) return `Pip isn't here; it's on its way to ${label(mapData?.pip.walking?.to)}.`;
+  return `Pip isn't here; it's at ${pip.where === mapData?.home ? 'home' : label(pip.where)}.` + (d.place.open === false ? ' This place is shut just now.' : '');
+}
+async function openScene(place) {
+  scene ??= new SceneView($('scene'), { api });
+  setWorldMode('scene');
+  try {
+    const d = await scene.show(place);
+    $('world-title').textContent = d.place.kind === 'home' ? "Pip's workshop" : d.place.label[0].toUpperCase() + d.place.label.slice(1);
+    $('wv-here').setAttribute('aria-pressed', String(d.pip.here));
+    $('map-where').textContent = sceneCaption(d);
+  } catch (err) { $('map-where').textContent = `Couldn't draw this place: ${err.message}`; }
+}
+$('wv-map').addEventListener('click', () => setWorldMode('map'));
+$('wv-here').addEventListener('click', () => { if (mapData?.pip.walking) setWorldMode('map'); else openScene(null); });
+setInterval(() => { if (worldMode === 'scene') scene?.moment(); }, 20_000);
 
 // ---- tabs -------------------------------------------------------------------
 const TABS = ['now', 'journal', 'world', 'work', 'mind'];
@@ -308,7 +328,7 @@ function showTab(name, remember = true) {
     $(`tab-btn-${t}`).tabIndex = t === name ? 0 : -1;
   }
   if (remember) { store.set('tab', name); history.replaceState(null, '', `#${name}`); }
-  if (name === 'world') refreshMap().catch(() => {});
+  if (name === 'world') refreshMap().then(() => { if (!scene && !mapData?.pip.walking) openScene(null); }).catch(() => {});
 }
 $('tabbar').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 $('tabbar').addEventListener('keydown', (ev) => {

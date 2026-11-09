@@ -320,6 +320,15 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         agent: Agent = app.state.agent
         return world_view.map_view(agent.state, settings, agent.library)
 
+    @app.get("/world/scene")
+    def get_world_scene(place: str | None = None):
+        """Everything a place's scene draws from (where Pip is, unless `place` says otherwise)."""
+        agent: Agent = app.state.agent
+        got = world_view.scene_view(agent.state, settings, agent.library, place)
+        if got is None:
+            raise HTTPException(status_code=404, detail=f"no place called {place!r}")
+        return got
+
     @app.get("/places")
     def get_places():
         """Places characters told Pip about (heard-of, real, removed), with who mentioned them and who lives there;
