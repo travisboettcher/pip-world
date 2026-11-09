@@ -31,7 +31,10 @@ export function land(data) {
         const dx = x - c.p.x, dy = y - c.p.y, along = dx * c.ux + dy * c.uy, side = Math.abs(dx * c.uy - dy * c.ux), width = 9 + Math.max(0, along) * 0.9;
         if (along > 2) h -= Math.min(0.6, (along - 2) * 0.035) * Math.exp(-(side * side) / (2 * width * width));
       }
-      for (const p of ps) { const k = Math.exp(-(((x - p.x) ** 2 + (y - p.y) ** 2) / 30)); h = h * (1 - k) + Math.max(h, p.coastal ? 0.05 : 0.09) * k; }   // every place on land
+      for (const p of ps) {                                     // every place on land, in low, gentle country (peaks stand away from where people live)
+        const sigma = p.key === data.home ? 9 : 5, k = Math.exp(-(((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * sigma * sigma)));
+        h = h * (1 - k) + Math.min(0.22, Math.max(h, p.coastal ? 0.05 : 0.09)) * k;
+      }
       return h;
     },
     moisture(x, y) { let m = fbm(x / 18 + 40, y / 18 - 20, s + 11, 4); for (const c of coasts) m += 0.18 * Math.exp(-((x - c.p.x) ** 2 + (y - c.p.y) ** 2) / 120); return m; }

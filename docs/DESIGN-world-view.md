@@ -169,7 +169,7 @@ to one place.
   walk's `started_at`/`ends_at`, and `now` (minutes of the day, season, weather). Public.
 - `web/world/map.js`, an ES module the dashboard imports, replacing the old SVG map in the World tab (full width). Differences from the
   prototype: **the coast follows the places**: a place by the water has the sea just beyond it, away from home (so Oriel's cottage and
-  Saltholm's harbour each get their shore), instead of one fixed western sea; trees take the season's colour; labels find a free side so they
+  Saltholm's harbour each get their shore), instead of one fixed western sea; the land round each place is kept low and gentle (wider round home), so peaks stand away from where people live; trees take the season's colour; labels find a free side so they
   don't overlap; places Pip has only heard of are pencilled question marks; home reads "Pip's Workshop"; the ring-shaped stains are gone.
 - Pan, zoom (buttons, wheel, pinch), "Find Pip" (a phone opens zoomed in on Pip), clicking a place shows what is known of it (kind, visits,
   first visit, walk, by the water). Pip's flag moves along the road during a walk, once a second, without redrawing the sheet; the sheet is
