@@ -89,13 +89,25 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         if sess["kind"] in ("work", "experiment"):
             pr = state.project(sess["project_id"])
             session.update(project=pr["name"], stage=pr["stages"][sess["stage"]]["name"] if 0 <= sess["stage"] < len(pr["stages"]) else None)
-    present = [{"name": c["name"], "kind": c["kind"], "about": c["about"]} for c in places.company_at(state, key)]
-    booths = [{"booth": b, "whose": who, "items": [{"name": e[0], "kind": e[1], "price": market.sell_price(state, b, e, now), "left": market.stock_left(state, b, e, now)}
+    from . import looks
+    look = lambda c: c.get("look") or looks.fallback(c["name"], c["persona"])           # not chosen yet: drawn from the persona for now
+    present = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "look": look(c)} for c in places.company_at(state, key)]
+    owner = places.neighbor_at(state, key)
+    lives_here = None
+    if owner:
+        away = market.away_at(state, owner, now)
+        lives_here = {"name": owner["name"], "about": owner["about"], "look": look(owner), "wares": [w["name"] for w in owner.get("wares") or []],
+                      "market_day": market.WEEKDAYS[market.market_day(owner)] if owner.get("wares") and market.the_market(state) else None,
+                      "away_at": away}
+    by_name = {c["name"]: c for c in state.characters()}
+    booths = [{"booth": b, "whose": who, **({"look": look(by_name[who])} if who in by_name else {}), "items": [{"name": e[0], "kind": e[1], "price": market.sell_price(state, b, e, now), "left": market.stock_left(state, b, e, now)}
                                                    for e in table]} for b, who, table in market.booths(state, key, now)]
     out = {
         "place": {"key": key, "label": p.label, "kind": kind, "blurb": p.blurb, "description": (rows.get(key) or {}).get("description") or "",
                   "hours": list(p.hours) if p.hours else None, "open": places.open_now(p, settings, now) if not p.heard else False,
-                  "heard_only": p.heard, "coastal": bool(COASTAL.search(_words(state, key, rows)))},
+                  "heard_only": p.heard, "coastal": bool(COASTAL.search(_words(state, key, rows))),
+                  "props": looks.props(_words(state, key, rows), *([owner["about"], owner["persona"], " ".join(owner["told"]), " ".join(w["name"] for w in owner.get("wares") or [])] if owner else []))},
+        "lives_here": lives_here,
         "pip": {"here": pip_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
                 "mood": a["mood"], "energy": round(a["energy"], 2), "hunger": round(a["hunger"], 2), "asleep": a["activity"] == "sleeping",
                 "session": session},

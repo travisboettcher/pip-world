@@ -263,7 +263,8 @@ class State:
                 ("characters", "upcoming", "TEXT NOT NULL DEFAULT '[]'"),  # a neighbor's plans: [{what, due_at}]
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
                 ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
-                ("characters", "wares", "TEXT NOT NULL DEFAULT '[]'"),     # what they sell: [{name, kind, description, per_day, weight, attrs}]
+                ("characters", "wares", "TEXT NOT NULL DEFAULT '[]'"),
+                ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -975,7 +976,7 @@ class State:
         return None, "which one? " + ", ".join(c["name"] for c in part)
 
     # --- characters (companions, neighbors, residents of invented places) ----------------------------
-    _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming", "wares")
+    _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming", "wares", "look")
 
     @classmethod
     def _character(cls, row) -> dict:

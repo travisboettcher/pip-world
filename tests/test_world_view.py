@@ -137,7 +137,7 @@ async def test_a_scene_elsewhere_knows_who_is_there_and_where_pip_is(tmp_path):
     ch = neighbor(st, s)
     d = WV.scene_view(st, s, None, "Marigold's home")
     assert d["place"]["kind"] == "neighbor" and not d["pip"]["here"] and d["pip"]["where"] == "workshop" and "garden" not in d
-    assert d["present"] == [{"name": "Marigold", "kind": "neighbor", "about": ch["about"]}]
+    assert [{k: c[k] for k in ("name", "kind", "about")} for c in d["present"]] == [{"name": "Marigold", "kind": "neighbor", "about": ch["about"]}]
     await call(agent, "go_to", place="Marigold")
     d = WV.scene_view(st, s, None)                                                     # on the way: the scene is where Pip is going
     assert d["place"]["key"] == "Marigold's home" and d["pip"]["walking"] and not d["pip"]["here"] and d["pip"]["session"]["kind"] == "walk"
@@ -192,14 +192,14 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={}, blurb="the square")
     d = WV.scene_view(st, s, None, "Brygdon")
-    assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal"}
+    assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props"}
     assert d["place"]["label"] == "Brygdon" and d["place"]["blurb"] == "the square" and d["place"]["description"] == "" and d["place"]["heard_only"] is False
     assert set(d["pip"]) == {"here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
-    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "pip", "present", "booths", "stall", "now"}
+    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now"}
     home = WV.scene_view(st, s, None)
-    assert set(home) == {"place", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins"}
+    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins"}
     st.update_agent(activity="sleeping")
     assert WV.scene_view(st, s, None)["pip"]["asleep"] is True
     st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})

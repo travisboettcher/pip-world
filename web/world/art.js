@@ -88,5 +88,46 @@ export function makeArt(THREE) {
     return { texture: t, draw };
   }
   const dot = () => tex(8, 8, (px, g) => { const gr = g.createRadialGradient(4, 4, 0, 4, 4, 4); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 8, 8); });
-  return { T, tex, sprite, shade, pip, walker, contraption, bubble, zzz, spark, flower, crop, clock, dot, LEAF, GRASS };
+  // more materials for cottages, shores and markets
+  Object.assign(T, {
+    whitewash: (rep) => tex(16, 16, (px, g, w, h) => { speckle(px, w, h, "#e9e6dc", ["#dcd8cc", "#f3f0e8", "#cfcabc"], 70, 51); [[0, 4], [6, 9], [11, 2], [3, 13]].forEach(([x, y]) => px(x, y, 4, 1, "#d2cdbf")); }, rep),
+    slate: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#56606a"); for (let y = 0; y < 16; y += 4) { px(0, y + 3, 16, 1, "#3a434c"); for (let x = (y / 4) % 2 ? 3 : 0; x < 16; x += 6) px(x, y, 1, 4, "#3a434c"); px(0, y, 16, 1, "#6c7782"); } }, rep),
+    shingles: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#9a5a34"); for (let y = 0; y < 16; y += 4) { const off = (y / 4) % 2 ? 4 : 0; px(0, y + 3, 16, 1, "#5e3420"); for (let x = 0; x < 16; x += 8) px((x + off) % 16, y, 1, 4, "#6e3d24"); px(0, y, 16, 1, "#b8743f"); } }, rep),
+    marsh: (rep) => tex(16, 16, (px, g, w, h) => speckle(px, w, h, "#7d8a52", ["#6f7c48", "#8c9a5e", "#9aa36a", "#65703f"], 80, 53), rep),
+    mud: (rep) => tex(16, 16, (px, g, w, h) => { speckle(px, w, h, "#6e5f4a", ["#62543f", "#7a6a52", "#857560"], 60, 55); px(3, 6, 5, 1, "#8a9a9c"); px(10, 12, 4, 1, "#8a9a9c"); }, rep),
+    pebbles: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#8a8780"); const r = rnd(57); for (let i = 0; i < 40; i++) px(Math.floor(r() * 15), Math.floor(r() * 15), 2, 1, ["#a7a49c", "#6f6c66", "#bdb9ae", "#7d7a72"][i % 4]); }, rep),
+    sea: (rep) => tex(16, 16, (px, g, w, h) => { speckle(px, w, h, "#4a7d8c", ["#55899a", "#3f6f7e", "#5f94a4"], 40, 59); px(1, 5, 5, 1, "#a8d0d8"); px(9, 11, 4, 1, "#a8d0d8"); }, rep),
+    chart: () => tex(32, 20, (px) => { px(0, 0, 32, 20, "#e8dcc0"); px(0, 0, 32, 1, "#4a2f1f"); px(0, 19, 32, 1, "#4a2f1f"); px(0, 0, 1, 20, "#4a2f1f"); px(31, 0, 1, 20, "#4a2f1f"); for (let x = 2; x < 30; x++) px(x, Math.round(10 - Math.sin((x - 2) / 27 * Math.PI * 4) * 5), 1, 1, "#2f5f8f"); }),
+    book: () => tex(16, 10, (px) => { px(0, 0, 16, 10, "#6b4529"); px(1, 1, 7, 8, "#efe6cf"); px(8, 1, 7, 8, "#e6dcc2"); for (let y = 2; y < 9; y += 2) { px(2, y, 5, 1, "#8a8070"); px(9, y, 5, 1, "#8a8070"); } }),
+    note: () => tex(8, 8, (px) => { px(0, 0, 8, 8, "#f5f1e2"); px(1, 2, 6, 1, "#6b6458"); px(1, 4, 5, 1, "#6b6458"); px(1, 6, 4, 1, "#6b6458"); px(3, 0, 2, 1, "#b5402f"); }),
+    drawers: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#5a3d27"); for (let y = 0; y < 16; y += 4) for (let x = 0; x < 16; x += 4) { px(x + 1, y + 1, 3, 3, "#7a5236"); px(x + 2, y + 2, 1, 1, "#c9a24a"); } }, rep),
+    stripes: (a, b) => tex(16, 16, (px) => { for (let x = 0; x < 16; x += 4) { px(x, 0, 2, 16, a); px(x + 2, 0, 2, 16, b); } px(0, 15, 16, 1, shade(a, 0.7)); })
+  });
+  // a person from a look (looks.py): 0-1 idle, 2-5 walk, 6 crouched with a palm on the ground
+  const SKIN = { pale: "#f0d0b8", light: "#e2c4a8", olive: "#c8a07a", brown: "#a8724a", dark: "#6e4a32" };
+  const HAIR = { white: "#e8e8e8", grey: "#a8a8a8", black: "#2a2420", brown: "#6a4a2a", auburn: "#a8502a", fair: "#d8b860" };
+  const TOP = { grey: "#8a8d92", brown: "#7a5a3a", green: "#6a8a4a", blue: "#4a5a8a", red: "#8a4a3a", ochre: "#b8892f", plum: "#6a4a7a", cream: "#e2d6b8" };
+  const BOTTOM = { grey: "#5a5d62", brown: "#5a4a3a", green: "#4a5a3a", blue: "#3a4a6a", navy: "#2e3a4e", black: "#2a2a2e" };
+  const person = (look = {}) => sprite(12, 26, 7, (px, f) => {
+    const skin = SKIN[look.skin] || SKIN.light, hair = HAIR[look.hair] || null, top = TOP[look.top] || TOP.grey, bottom = BOTTOM[look.bottom] || BOTTOM.navy, acc = look.accessory;
+    const crouch = f === 6, y0 = (crouch ? 6 : 0) + (f === 1 ? 1 : 0);
+    if (hair) { px(3, y0, 6, 2, hair); px(2, y0 + 2, 1, 3, hair); px(9, y0 + 2, 1, 2, hair); }
+    if (acc === "hat") { px(2, y0, 8, 2, "#5a4a3a"); px(1, y0 + 2, 10, 1, "#4a3a2a"); }
+    px(3, y0 + 2, 6, 5, skin); px(4, y0 + 4, 1, 1, "#2a2420"); px(7, y0 + 4, 1, 1, "#2a2420");
+    if (acc === "glasses") { px(3, y0 + 4, 3, 1, "#3a3028"); px(6, y0 + 4, 3, 1, "#3a3028"); }
+    px(2, y0 + 7, 8, 8, top); px(1, y0 + 8, 1, 5, top); px(10, y0 + 8, 1, 5, top); px(1, y0 + 13, 1, 1, skin); px(10, y0 + 13, 1, 1, skin);
+    if (acc === "shawl") { px(1, y0 + 7, 10, 3, shade(top, 0.7)); px(2, y0 + 10, 2, 2, shade(top, 0.7)); px(8, y0 + 10, 2, 2, shade(top, 0.7)); }
+    if (acc === "scarf") px(3, y0 + 7, 6, 2, "#b5402f");
+    if (acc === "apron") { px(3, y0 + 9, 6, 8, "#e6dbc0"); }
+    if (acc === "satchel") { px(2, y0 + 7, 1, 7, "#5a3d27"); px(8, y0 + 11, 3, 3, "#7a5236"); }
+    if (crouch) { px(3, y0 + 15, 7, 4, bottom); px(10, y0 + 14, 2, 2, skin); px(2, 24, 3, 2, "#3a2a20"); px(7, 24, 3, 2, "#3a2a20"); return; }
+    px(3, y0 + 15, 6, 9 - y0, bottom);
+    const step = f >= 2 && f <= 5 ? [0, 1, 0, -1][f - 2] : 0;
+    px(3, 24 + Math.max(0, step), 3, 2 - Math.max(0, step), "#3a2a20"); px(6, 24 + Math.max(0, -step), 3, 2 - Math.max(0, -step), "#3a2a20");
+  });
+  const HEIGHT = { short: 1.45, medium: 1.7, tall: 2.0 };
+  const curlew = () => sprite(10, 8, 2, (px, f) => { px(2, 2, 5, 3, "#8a6e4e"); px(3, 2, 3, 1, "#a8896a"); px(6, 1, 2, 2, "#8a6e4e"); px(7, 2 + f, 3, 1, "#3a3028"); px(9, 3 + f, 1, 1, "#3a3028"); px(3, 5, 1, 3, "#5a4a3a"); px(5, 5, 1, 3, "#5a4a3a"); });
+  const reed = () => sprite(8, 16, 1, (px) => { [[1, 0], [3, 2], [5, 1], [6, 4]].forEach(([x, y], i) => { px(x, y, 1, 16 - y, i % 2 ? "#a99a5e" : "#8f8a4e"); if (i < 2) px(x, y, 1, 3, "#6b4a2e"); }); });
+  const coin = () => sprite(6, 6, 1, (px) => { px(1, 0, 4, 6, "#e8b04a"); px(0, 1, 6, 4, "#e8b04a"); px(2, 1, 2, 1, "#fff2c4"); });
+  return { T, tex, sprite, shade, pip, walker, contraption, bubble, zzz, spark, flower, crop, clock, dot, LEAF, GRASS, person, HEIGHT, curlew, reed, coin };
 }

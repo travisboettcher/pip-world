@@ -1,6 +1,6 @@
 # Design: the world view (a map and scenes)
 
-Status (2026-11-09): designed; **step 1, the map, built (0.12)**; **step 2, the scene kit and the home scene, built (0.13.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
+Status (2026-11-09): designed; **step 1, the map, built (0.12)**; **step 2, the scene kit and the home scene, built (0.13.0)**; **step 3, neighbor, market and shop scenes and character looks, built (0.14.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
 shows the world; it never changes it.
 
 ## What it is
@@ -198,3 +198,25 @@ to one place.
   scene, Pip there or not. The caption says what Pip is doing, or where it is if not here.
 - Checked by rendering the dashboard in headless Chromium on a copy of the live database, at night (as it was) and by day with Pip at work
   (the response rewritten in the browser).
+
+## Step 3 as built (0.14.0)
+- **Looks** (`app/looks.py`): each neighbor or resident gets a look once, from fixed lists (height, hair, skin, top, bottom, accessory). The GM
+  picks for who they are (`gm.invent_look`); anything off the lists, or two failed tries, falls back to words in the persona ("white-haired",
+  "shawl", "eyesight" for glasses) and a hash of the name. Stored on the character (`look`); `CHARACTER_LOOKS=off` turns it off. Until one is
+  chosen the scene uses the fallback.
+- **Props**: a fixed vocabulary (lighthouse, tide chart, sea glass, boats, rope, lanterns, drawers, beehives, barrow, bunting, well, reeds,
+  birds...) found as whole words in a place's record and, for a neighbor's home, in who lives there (about, persona, what they've told Pip,
+  wares). Only the prop names leave the engine, never the text. This stands in for the GM-picked scene details planned for later.
+- `/world/scene` adds `place.props`, `lives_here` for a neighbor's home (name, about, look, wares, market day, `away_at` while they are at
+  their stall: their home shows a note on the door, they appear at the market), a `look` for everyone present and for a character's booth.
+- Templates (`web/world/templates/`): `neighbor.js` (a cottage opened like a dollhouse; by the water a marsh above mudflats a decorative tide
+  covers and uncovers, with reeds, birds and a lighthouse where the record has them; inland a terrace with trees and beehives; their wares on
+  a cabinet's shelves; the keeper at the cabinet by day, at the table in the evening, out walking the flats at low tide in the morning,
+  asleep at night), `market.js` (houses round a square, the market's stock spread over up to three stalls, a stall for each character selling
+  there today, Pip's stall with what it set out, stallholders and shoppers; shut: awnings rolled, nobody about), `shop.js` (a shopfront
+  cutaway, the counter and keeper, stock on shelves or in a wall of drawers, rope and lanterns, boats at a harbour wall). Shared parts in
+  `parts.js` (goods shaped by what they are, the cutaway, trees, people). People are drawn from their look (`art.person`).
+- Fixes found by rendering: a tooltip box made of an invisible but depth-writing material hid whoever stood in front of it (tooltip boxes are
+  now `kit.hitbox`, never drawn); the cutaway's top front beam crossed the room at this camera angle (gone); interiors got a soft fill light;
+  the map, built while hidden, thought it was on a phone and opened zoomed in (it now waits until it is on screen). Pip's pose now reads
+  tinkering, filing, measuring and the like as work at the bench.

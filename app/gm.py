@@ -413,6 +413,12 @@ class GameMaster:
             **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
         }, ["text"], "neighbor_letter")
 
+    async def invent_look(self, name: str, persona: str, about: str) -> dict | None:
+        from .looks import LOOK
+        task = (f"{name} lives near Pip. Who {name} is: {persona}\n{about}\n\nPick how {name} looks, for a small pixel-art picture, "
+                "choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in LOOK.items()))
+        return await self.ask(task, {f: {"type": "string", "enum": list(v)} for f, v in LOOK.items()}, list(LOOK), "invent_look")
+
     async def invent_wares(self, name: str, persona: str, life: list[str], told: list[str]) -> dict | None:
         task = (
             f"{name} is Pip's neighbor. Who {name} is: {persona}\n"

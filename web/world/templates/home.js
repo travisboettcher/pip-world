@@ -12,6 +12,7 @@ export function poseOf(pip) {           // what Pip is doing, as a pose: the one
   if (pip.asleep) return "sleep";
   const s = pip.session, a = `${pip.activity} ${pip.description}`.toLowerCase();
   if (s && (s.kind === "work" || s.kind === "experiment")) return "work";
+  if (/\b(fil(e|es|ing)|tinker\w*|making|build\w*|hammer\w*|solder\w*|carv\w*|assembl\w*|shaping|sanding|measur\w*|cutting|fitting|winding)\b/.test(a) && !/\b(wait\w*|rest\w*)\b/.test(a)) return "work";
   if (/garden|plot|plant|harvest|water|weed|tend/.test(a) && !/wait|rest/.test(a)) return "garden";
   if (/wait|rest|sit|read|think|eat|bench/.test(a)) return "sit";
   return "idle";
@@ -47,7 +48,7 @@ export function build(kit, art, data) {
   // inside: the shelf, the bench and its tools, the stool, the lamp
   kit.box(3.2, 0.12, 0.5, timber, -8.4, 2.25, WZ0 + 0.4);
   [["#7fb3a8", 0.24, 0.42], ["#c9a24a", 0.3, 0.34], ["#9b6b9e", 0.24, 0.5], ["#7fb3a8", 0.32, 0.3], ["#b85c38", 0.24, 0.4], ["#cfcfcf", 0.3, 0.45]].forEach(([c, w, h], i) => kit.box(w, h, w, M(null, { color: c, roughness: 0.4 }), -9.6 + i * 0.5, 2.31 + h / 2, WZ0 + 0.4));
-  const shelfTip = kit.box(3.2, 1.0, 0.6, M(null, { transparent: true, opacity: 0 }), -8.4, 2.6, WZ0 + 0.4); shelfTip.castShadow = false;
+  const shelfTip = kit.hitbox(3.2, 1.0, 0.6, -8.4, 2.6, WZ0 + 0.4);
   let latest = data;
   kit.tipOn(shelfTip, () => ({ title: "Belongings", text: (latest.items || []).map((i) => `${i.name} ×${i.qty}`).join(", ") + `; ${latest.coins ?? 0} coins.` }));
   const bench = M(T.planks([3, 1], "#7a5236"));

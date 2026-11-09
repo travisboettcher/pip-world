@@ -40,6 +40,9 @@ export class Kit {
   mat(map, o = {}) { return new this.THREE.MeshStandardMaterial({ map, roughness: 0.95, metalness: 0, ...o }); }
   box(w, h, d, mat, x, y, z) { const m = new this.THREE.Mesh(new this.THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; this.scene.add(m); return m; }
   boxTS(w, h, d, top, side, x, y, z) { return this.box(w, h, d, [side, side, top, side, side, side], x, y, z); }
+  hitbox(w, h, d, x, y, z) {                           // an invisible box for a tooltip: never drawn, never in the depth buffer, casts no shadow
+    const m = new this.THREE.Mesh(new this.THREE.BoxGeometry(w, h, d), new this.THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })); m.position.set(x, y, z); this.scene.add(m); return m;
+  }
   plane(w, h, mat, x, y, z) { const m = new this.THREE.Mesh(new this.THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.receiveShadow = true; this.scene.add(m); return m; }
   sprite(t, w, h, shadow = true) {
     const T = this.THREE, m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.5, side: T.DoubleSide, roughness: 1 }));

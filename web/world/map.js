@@ -273,7 +273,7 @@ export class WorldMap {
     const go = () => {
       if (sig !== this.sig) { this.frame = drawSheet(this.sheet.getContext("2d"), data); this.sig = sig; }
       this.busy.hidden = true; this.sheet.setAttribute("aria-label", `Map of the country round Pip's workshop. ${data.places.filter((p) => p.visits).length} places visited.`);
-      if (!this.opened) { this.opened = true; if (this.host.clientWidth < 600) this.centreOnPip(); }   // a phone opens close in, on Pip
+      if (!this.opened && this.host.clientWidth > 0) { this.opened = true; if (this.host.clientWidth < 600) this.centreOnPip(); }   // a phone opens close in, on Pip (once it is on screen)
       this._pip(); clearInterval(this.tick); if (data.pip.walking) this.tick = setInterval(() => this._pip(), 1000);
     };
     if (sig === this.sig) go(); else { this.busy.hidden = false; (document.fonts?.ready ?? Promise.resolve()).then(() => setTimeout(go, 20)); }

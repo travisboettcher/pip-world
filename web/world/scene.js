@@ -3,8 +3,11 @@
 import { loadThree, Kit } from "./kit.js";
 import { makeArt } from "./art.js";
 import * as home from "./templates/home.js";
+import * as neighbor from "./templates/neighbor.js";
+import * as market from "./templates/market.js";
+import * as shop from "./templates/shop.js";
 
-const TEMPLATES = { home };
+const TEMPLATES = { home, neighbor, market, shop };
 
 export class SceneView {
   constructor(host, { api, onShown } = {}) {
