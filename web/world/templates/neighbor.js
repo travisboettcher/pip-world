@@ -41,8 +41,8 @@ export function build(kit, art, data) {
     kit.every((t) => { beam.rotation.y = t * 0.6; beamMat.opacity = (kit.dark || 0) * 0.16; });
   }
   // the cottage
-  const roofs = ["thatch", "slate", "shingle"], roof = coastal ? "slate" : roofs[Math.floor(r() * 3)];
-  const c = cutaway(kit, art, { x0: CX0, x1: CX1, z0: CZ0, z1: CZ1, h: 3.0, wall: coastal ? "whitewash" : "plaster", roof });
+  const sc = data.place.scene || {};
+  const c = cutaway(kit, art, { x0: CX0, x1: CX1, z0: CZ0, z1: CZ1, h: 3.0, wall: sc.walls || (coastal ? "whitewash" : "plaster"), roof: sc.roof || (coastal ? "slate" : "thatch") });
   kit.tipOn(c.floor, () => ({ title: `${who.name}'s home`, text: who.about || "" }));
   kit.box(0.7, 2.2, 0.7, M(T.stone([1, 2])), CX0 + 1.2, 4.4, CZ0 + 0.5);
   const win = M(T.window(false), { emissive: 0xffb050, emissiveMap: T.window(true), emissiveIntensity: 0 });

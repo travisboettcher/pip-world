@@ -65,14 +65,16 @@ def test_a_scene_shows_who_lives_at_a_home_even_when_they_are_out(tmp_path, monk
     from tests.test_stall import LOOT
     s, st, gm, agent = make(tmp_path)
     ch = neighbor(st, s)
-    st.update_character(ch["id"], wares=nb.clean_wares([{"name": "honey", "kind": "food"}, {"name": "beeswax", "kind": "material"}]))
+    st.update_character(ch["id"], persona="A tall, white-haired badger.", wares=nb.clean_wares([{"name": "honey", "kind": "food"}, {"name": "beeswax", "kind": "material"}]))
+    ch = st.characters("neighbor")[0]
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0, walk_minutes=10.0, loot=LOOT, verbs={})
     wday = time.localtime().tm_wday
     monkeypatch.setattr(M, "market_day", lambda c: (wday + 2) % 7)
     d = WV.scene_view(st, s, None, "Marigold's home")
     lh = d["lives_here"]
     assert lh["name"] == "Marigold" and lh["wares"] == ["honey", "beeswax"] and lh["market_day"] == M.WEEKDAYS[(wday + 2) % 7] and lh["away_at"] is None
-    assert lh["look"] == L.fallback("Marigold", ch["persona"]) and d["present"][0]["look"] == lh["look"]           # not chosen yet: from the persona
+    assert lh["look"] == L.fallback("Marigold", ch["persona"]) and lh["look"]["height"] == "tall" and lh["look"]["hair"] == "white"   # not chosen yet: from the persona
+    assert d["present"][0]["look"] == lh["look"]
     assert "beehives" in d["place"]["props"]
     monkeypatch.setattr(M, "market_day", lambda c: wday)
     d = WV.scene_view(st, s, None, "Marigold's home")
@@ -123,3 +125,122 @@ async def test_the_gm_hears_who_they_are_and_gets_two_tries(tmp_path):
     assert len(gm.calls) == 2 and "A tall beekeeper with a veil." in gm.calls[0]["messages"][0]["content"] and "Keeps hives by the ford." in gm.calls[0]["messages"][0]["content"]
     assert st.characters("neighbor")[0]["look"] == L.fallback("Bea", "A tall beekeeper with a veil.")
     assert L.fallback("Bea", None) == L.fallback("Bea", "") and L.fallback("Bea", None)["height"] == L._pick("Bea", "height")
+
+
+# --- a place's scene details (step 4) --------------------------------------------------------------------------------------------
+def test_scene_details_fall_back_to_the_places_words_its_kind_and_its_name():
+    got = L.fallback_scene("Saltholm", "shop", "An ironmonger of stone, by the harbour road, with coils of rope and a slate roof.")
+    assert got["walls"] == "stone" and got["roof"] == "slate" and got["setting"] == "shore" and got["props"] == ["boats", "rope"]
+    assert got["palette"] == L._pick("Saltholm", "palette", L.SCENE) and set(got) == {"walls", "roof", "palette", "setting", "props"}
+    plain = L.fallback_scene("Hollin", "wild", "")
+    assert plain["setting"] == "wood" and plain["walls"] == L._pick("Hollin", "walls", L.SCENE) and plain["roof"] == L._pick("Hollin", "roof", L.SCENE) and plain["props"] == []
+    assert L.fallback_scene("X", "market", "")["setting"] == "town" and L.fallback_scene("X", "yard", "")["setting"] == "hills" and L.fallback_scene("X", "odd", "")["setting"] == "field"
+    assert L.fallback_scene("X", "shop", "a timber shed with a thatched roof")["walls"] == "planks" and L.fallback_scene("X", "shop", "a thatched roof")["roof"] == "thatch"
+    assert L.fallback_scene("X", "shop", "a brick front and a tiled roof")["walls"] == "brick" and L.fallback_scene("X", "shop", "a tiled roof")["roof"] == "tile"
+    assert L.fallback_scene("X", "wild", "an old mill by the river")["setting"] == "riverside" and L.fallback_scene("X", "wild", "lighthouse well tin barrow crates")["props"] == ["lighthouse", "tin", "barrow", "crates"]
+
+
+def test_the_gms_scene_choices_are_kept_where_they_are_on_the_lists():
+    raw = {"walls": "Brick", "roof": "gold", "palette": "honey", "setting": "marsh", "props": ["Beehives", "unicorns", 3, "rope"]}
+    got = L.clean_scene(raw, "Bea's home", "neighbor", "rope and lanterns")
+    assert got["walls"] == "brick" and got["roof"] == L.fallback_scene("Bea's home", "neighbor", "rope and lanterns")["roof"] and got["palette"] == "honey" and got["setting"] == "marsh"
+    assert got["props"] == ["beehives", "rope", "lanterns"]
+    assert L.clean_scene({"props": "beehives"}, "K", "wild", "")["props"] == [] and L.clean_scene(None, "K", "wild", "") == L.fallback_scene("K", "wild", "")
+    assert len(L.clean_scene({"props": list(L.PROPS)}, "K", "wild", "")["props"]) == L.SCENE_PROPS_MAX
+
+
+@pytest.mark.asyncio
+async def test_each_real_place_gets_scene_details_once(tmp_path):
+    import json
+    s, st, gm, agent = make(tmp_path, [report(walls="stone", roof="slate", palette="cool", setting="hills", props=["anvil"]) for _ in range(5)], place_scenes="on")
+    st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})
+    await L.ensure_scenes(st, s, agent.gm, None, time.time())
+    kept = {k: json.loads(st.meta(f"scene:{k}")) for k in ("workshop", "woods", "junkyard")}
+    assert all(v["walls"] == "stone" and v["props"][0] == "anvil" for v in kept.values()) and st.meta("scene:Hollin") is None       # not one heard of
+    assert "A place in Pip's world: the woods (wild)." in "".join(c["messages"][0]["content"] for c in gm.calls) and "a wood of trees past the garden" in gm.calls[1]["messages"][0]["content"]
+    n = len(gm.calls)
+    await L.ensure_scenes(st, s, agent.gm, None, time.time())
+    assert len(gm.calls) == n
+    assert L.place_scene(st, "woods", "wild", "")["setting"] == "hills" and L.place_scene(st, "Nowhere", "wild", "beach")["setting"] == "shore"
+    s.place_scenes = "off"
+    st.set_meta(**{"scene:woods": ""})
+    await L.ensure_scenes(st, s, agent.gm, None, time.time())
+    assert len(gm.calls) == n
+
+
+@pytest.mark.asyncio
+async def test_two_failures_keep_the_fallback(tmp_path):
+    import json
+    s, st, gm, agent = make(tmp_path, [], place_scenes="on")
+    for _ in range(3):
+        await L.ensure_scenes(st, s, agent.gm, None, time.time())
+    assert json.loads(st.meta("scene:junkyard")) == L.fallback_scene("junkyard", "yard", L.place_text(st, "junkyard")) and st.meta("scene_tries:junkyard") == "2"
+
+
+def test_what_is_known_of_a_place(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    ch = neighbor(st, s)
+    st.update_character(ch["id"], told=["the hives are quiet"], wares=nb.clean_wares([{"name": "honey", "kind": "food"}, {"name": "wax", "kind": "material"}]))
+    text = L.place_text(st, "Marigold's home")
+    assert ch["about"] in text and ch["persona"] in text and "the hives are quiet" in text and "honey wax" in text
+    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[9, 17], daylight_only=0, walk_minutes=10.0,
+                 loot=[], verbs={}, description="A square.", blurb="stalls")
+    st.update_place("Brygdon", mentions=[{"by": "Jo", "there": "by the river", "items": [], "ts": 0}])
+    assert L.place_text(st, "Brygdon") == "A square. stalls by the river"
+    assert L.place_text(st, "library") == "a library of tall shelves" and L.place_text(st, "workshop") == "a workshop with a small garden" and L.place_text(st, "Nowhere") == ""
+
+
+def test_the_scene_carries_details_and_what_can_be_found(tmp_path):
+    import json
+    s, st, gm, agent = make(tmp_path)
+    d = WV.scene_view(st, s, None, "woods")
+    assert d["place"]["scene"] == {k: v for k, v in L.fallback_scene("woods", "wild", L.place_text(st, "woods")).items() if k != "props"}
+    assert d["place"]["finds"][:3] == ["sticks", "bark", "resin"] and len(d["place"]["finds"]) <= 12
+    st.set_meta(**{"scene:woods": json.dumps({"walls": "stone", "roof": "slate", "palette": "cool", "setting": "heath", "props": ["well"]})})
+    d = WV.scene_view(st, s, None, "woods")
+    assert d["place"]["scene"]["setting"] == "heath" and d["place"]["props"][0] == "well"
+    assert WV.scene_view(st, s, None)["place"]["finds"] == []
+
+
+def test_the_scene_setting(tmp_path):
+    assert Settings().place_scenes == "off"
+    old = os.environ.pop("PLACE_SCENES", None)
+    try:
+        assert Settings.from_env().place_scenes == "on"
+        os.environ["PLACE_SCENES"] = "OFF"
+        assert Settings.from_env().place_scenes == "off"
+        os.environ["PLACE_SCENES"] = "x"
+        assert Settings.from_env().place_scenes == "on"
+    finally:
+        os.environ.pop("PLACE_SCENES", None)
+        if old is not None:
+            os.environ["PLACE_SCENES"] = old
+
+
+def test_the_first_word_found_wins_in_a_fixed_order():
+    assert L.fallback_scene("X", "shop", "stone and brick")["walls"] == "stone" and L.fallback_scene("X", "shop", "a whitewash cottage")["walls"] == "whitewash"
+    assert L.fallback_scene("X", "shop", "thatch over slate")["roof"] == "thatch" and L.fallback_scene("X", "shop", None)["props"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_gm_is_asked_twice_at_most_and_the_kind_decides_where_words_do_not(tmp_path):
+    import json
+    s, st, gm, agent = make(tmp_path, [], place_scenes="on")
+    st.set_meta(**{"scene:workshop": json.dumps(L.fallback_scene("workshop", "home", ""))})
+    st.add_place("Hob's", "hobs", kind="shop", status="real", created_at=time.time(), heard_at=time.time(), hours=[9, 17], daylight_only=0, walk_minutes=12.0,
+                 loot=[], verbs={}, description="A place.")
+    for _ in range(4):
+        await L.ensure_scenes(st, s, agent.gm, None, time.time())
+    asked = [c for c in gm.calls if "Hob's" in c["messages"][0]["content"]]
+    assert len(asked) == 2 and json.loads(st.meta("scene:Hob's"))["setting"] == "town" and st.meta("scene:woods")      # a kept scene doesn't stop the rest
+
+
+def test_what_is_known_in_detail(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    ch = neighbor(st, s)
+    st.update_character(ch["id"], told=["the hives", "the honey"])
+    assert "the hives the honey" in L.place_text(st, "Marigold's home")
+    st.add_place("Odd", "odd", kind="wild", status="real", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=10.0, loot=[], verbs={})
+    st.update_place("Odd", description="", blurb="", mentions=[{"by": "Jo", "items": [], "ts": 0}])
+    assert L.place_text(st, "Odd") == "  "
+    assert L.place_text(st, "woods") == "a wood of trees past the garden" and L.place_text(st, "junkyard") == "a scrapyard over the hill"

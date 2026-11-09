@@ -192,7 +192,7 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={}, blurb="the square")
     d = WV.scene_view(st, s, None, "Brygdon")
-    assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props"}
+    assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props", "scene", "finds"}
     assert d["place"]["label"] == "Brygdon" and d["place"]["blurb"] == "the square" and d["place"]["description"] == "" and d["place"]["heard_only"] is False
     assert set(d["pip"]) == {"here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")

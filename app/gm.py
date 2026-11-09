@@ -413,6 +413,14 @@ class GameMaster:
             **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
         }, ["text"], "neighbor_letter")
 
+    async def invent_scene(self, label: str, kind: str, text: str) -> dict | None:
+        from .looks import SCENE, PROPS, SCENE_PROPS_MAX
+        task = (f"A place in Pip's world: {label} ({kind}). What is known of it: {text or 'nothing more'}\n\nPick how it looks, for a small "
+                "pixel-art picture, choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in SCENE.items())
+                + f"\n- `props`: up to {SCENE_PROPS_MAX} things that belong there, from: {', '.join(PROPS)}")
+        return await self.ask(task, {**{f: {"type": "string", "enum": list(v)} for f, v in SCENE.items()},
+                                     "props": {"type": "array", "items": {"type": "string", "enum": list(PROPS)}}}, list(SCENE), "invent_scene")
+
     async def invent_look(self, name: str, persona: str, about: str) -> dict | None:
         from .looks import LOOK
         task = (f"{name} lives near Pip. Who {name} is: {persona}\n{about}\n\nPick how {name} looks, for a small pixel-art picture, "

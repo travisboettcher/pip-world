@@ -22,7 +22,8 @@ export function build(kit, art, data) {
   while (hx < 13) {
     const w = 3.4 + r() * 1.6, h = 3.6 + r() * 1.4, x = hx + w / 2; hx += w + 0.2;
     kit.box(w, h, 3, M(T.plaster([Math.round(w / 2), 1])), x, h / 2, -13.5);
-    [0.7, -0.7].forEach((tilt, k) => { const rf = kit.box(w + 0.6, 0.3, 2.4, M(r() > 0.5 ? T.thatch([3, 2]) : shingle), x, h + 0.6, k ? -14.4 : -12.6); rf.rotation.x = tilt; });
+    const roofT = r() > 0.4 ? ({ thatch: T.thatch([3, 2]), slate: T.slate([3, 2]), tile: T.tiles([3, 2]) }[data.place.scene?.roof] || shingle) : (r() > 0.5 ? T.thatch([3, 2]) : shingle);
+    [0.7, -0.7].forEach((tilt, k) => { const rf = kit.box(w + 0.6, 0.3, 2.4, M(roofT), x, h + 0.6, k ? -14.4 : -12.6); rf.rotation.x = tilt; });
     const wm = M(T.window(false), { emissive: 0xffb050, emissiveMap: T.window(true), emissiveIntensity: 0 });
     [-w / 4, w / 4].forEach((dx) => kit.lamp(kit.plane(0.8, 0.8, wm, x + dx, h * 0.68, -11.99), null, r() > 0.3 ? 0.9 : 0.3));
     kit.plane(0.9, 1.4, M(T.door()), x, 0.7, -11.99);

@@ -290,6 +290,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
     await ensure_wares(state, settings, gm, now)
     from . import looks
     await looks.ensure(state, settings, gm, now)
+    await looks.ensure_scenes(state, settings, gm, library, now)
     for ch in state.characters("neighbor"):
         in_flight = state.letters(between=ch["name"], undelivered=True, limit=5)
         if not in_flight and now >= ch["next_chatter_at"]:

@@ -21,7 +21,7 @@ export function goods(kit, name, kind, x, y, z, i = 0) {
 // in the right wall. Returns the spans so the caller can fill it.
 export function cutaway(kit, art, { x0, x1, z0, z1, h = 3.2, wall = "plaster", roof = "thatch", door = true, doorTex }) {
   const { THREE } = kit, T = art.T, M = (t, o) => kit.mat(t, o), mid = (x0 + x1) / 2, zm = (z0 + z1) / 2;
-  const outer = M(wall === "whitewash" ? T.whitewash([4, 2]) : wall === "stone" ? T.stone([4, 2]) : wall === "planks" ? T.planks([4, 2]) : T.plaster([2, 1])), inner = M(T.inner([6, 2]));
+  const outer = M(wall === "whitewash" ? T.whitewash([4, 2]) : wall === "stone" ? T.stone([4, 2]) : wall === "planks" ? T.planks([4, 2]) : wall === "brick" ? T.brick([4, 2]) : T.plaster([2, 1])), inner = M(T.inner([6, 2]));
   const floor = kit.boxTS(x1 - x0, 0.12, z1 - z0, M(T.floor([5, 3])), M(T.planks([5, 1], "#5a3d27")), mid, 0.06, zm);
   kit.box(x1 - x0, h, 0.3, [outer, outer, outer, outer, inner, outer], mid, h / 2, z0);
   kit.box(0.3, h, z1 - z0, [outer, inner, outer, outer, outer, outer], x0, h / 2, zm);
@@ -34,7 +34,7 @@ export function cutaway(kit, art, { x0, x1, z0, z1, h = 3.2, wall = "plaster", r
   const fill = new THREE.PointLight(0xfff0dc, 0.9, (x1 - x0) * 1.3, 1.5); fill.position.set(mid, h * 0.8, z1 - 0.5); kit.scene.add(fill);   // daylight through the open side
   const timber = M(T.planks([1, 2], "#4a2f1f"));
   [x0, x1].forEach((x) => kit.box(0.4, h, 0.4, timber, x, h / 2, z1)); kit.box(x1 - x0 + 0.4, 0.3, 0.4, timber, mid, 0.15, z1);   // no top beam: it would cross the room at this angle
-  const roofT = roof === "slate" ? T.slate([5, 2]) : roof === "shingle" ? T.shingles([5, 2]) : T.thatch([5, 2]);
+  const roofT = roof === "slate" ? T.slate([5, 2]) : roof === "shingle" ? T.shingles([5, 2]) : roof === "tile" ? T.tiles([5, 2]) : T.thatch([5, 2]);
   const r = kit.box(x1 - x0 + 1.1, 0.32, (z1 - z0) * 0.72, M(roofT), mid, h + (z1 - z0) * 0.2, z0 + (z1 - z0) * 0.22); r.rotation.x = -0.62;
   const gable = new THREE.Shape(); gable.moveTo(z0, 0); gable.lineTo(z1, 0); gable.lineTo(zm, (z1 - z0) * 0.42); gable.closePath();
   [x0 - 0.15, x1 + 0.15].forEach((x) => { const g = new THREE.Mesh(new THREE.ShapeGeometry(gable), M(wall === "whitewash" ? T.whitewash([2, 1]) : T.planks([2, 1], "#6b4529"), { side: THREE.DoubleSide })); g.rotation.y = -Math.PI / 2; g.position.set(x, h, 0); g.castShadow = true; kit.scene.add(g); });

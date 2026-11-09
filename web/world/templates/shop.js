@@ -17,8 +17,8 @@ export function build(kit, art, data) {
     for (let i = 0; i < 2; i++) { const hull = kit.box(3.2, 0.7, 1.2, M(T.planks([3, 1], ["#6b4a30", "#3f5a6a"][i])), -6 + i * 9, -0.75, 6.5 + i * 1.2); hull.rotation.y = 0.1 - i * 0.2; kit.box(0.1, 2.4, 0.1, M(T.planks([1, 2], "#5a3d27")), -6 + i * 9, 0.6, 6.5 + i * 1.2); kit.tipOn(hull, "A boat", "Tied up at the harbour wall."); }
     kit.every((t) => { seaMat.map.offset.x = (t * 0.01) % 1; });
   } else kit.boxTS(40, 1, 10, M(T.grass([20, 5], season)), M(T.cliff([20, 1], season)), 0, -1.6, 9);
-  const roof = ["shingle", "slate", "thatch"][Math.floor(r() * 3)];
-  const c = cutaway(kit, art, { x0: SX0, x1: SX1, z0: SZ0, z1: SZ1, h: 3.4, wall: harbour ? "stone" : "planks", roof });
+  const sc = data.place.scene || {};
+  const c = cutaway(kit, art, { x0: SX0, x1: SX1, z0: SZ0, z1: SZ1, h: 3.4, wall: sc.walls || (harbour ? "stone" : "planks"), roof: sc.roof || "shingle" });
   // the counter, the stock behind it, the keeper
   const counter = kit.box(8.5, 1.0, 0.9, M(T.planks([4, 1], "#7a5236")), -2.2, 0.5, -5.3);
   const booth = data.booths[0] || { items: [] };

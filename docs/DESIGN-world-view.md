@@ -1,6 +1,6 @@
 # Design: the world view (a map and scenes)
 
-Status (2026-11-09): designed; **step 1, the map, built (0.12)**; **step 2, the scene kit and the home scene, built (0.13.0)**; **step 3, neighbor, market and shop scenes and character looks, built (0.14.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
+Status (2026-11-09): designed; **step 1, the map, built (0.12)**; **step 2, the scene kit and the home scene, built (0.13.0)**; **step 3, neighbor, market and shop scenes and character looks, built (0.14.0)**; **step 4, every other kind of place and scene details from the GM, built (0.15.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
 shows the world; it never changes it.
 
 ## What it is
@@ -220,3 +220,22 @@ to one place.
   now `kit.hitbox`, never drawn); the cutaway's top front beam crossed the room at this camera angle (gone); interiors got a soft fill light;
   the map, built while hidden, thought it was on a phone and opened zoomed in (it now waits until it is on screen). Pip's pose now reads
   tinkering, filing, measuring and the like as work at the bench.
+
+## Step 4 as built (0.15.0)
+- **Scene details for every place** (`looks.SCENE`, `looks.ensure_scenes`): walls (plaster, whitewash, stone, brick, planks), roof (thatch, slate,
+  shingle, tile), palette (warm, cool, earth, moss, rose, sand, slate, honey), setting (wood, heath, shore, marsh, hills, riverside, town, field)
+  and up to four props, chosen once for each real place by the GM (`gm.invent_scene`) from what is known of it (`looks.place_text`: its record,
+  or for a neighbor's home who lives there; the built-ins have a line of their own). Off the lists, or after two failed tries, the fallback
+  reads the place's own words ("stone", "thatched", "harbour", "river"), then its kind (a market is in town, a yard in the hills), then a hash.
+  Kept in meta (`scene:<key>`); `PLACE_SCENES=off` turns the GM off and the fallback stands. Places only heard of get none yet.
+- `/world/scene`'s `place` gains `scene` (walls, roof, palette, setting) and `finds` (what can be gathered there, names only); `props` now
+  joins the chosen props with every prop found in what is known of the place.
+- Templates: `library.js` (a tall reading room of book walls, a ladder, a reading table under a lamp, columns and steps; Pip in a chair with a
+  book while it reads, browsing the shelves otherwise) and `outdoors.js` for wild places, yards and sights (the land follows the setting: trees
+  for a wood, sand, sea and rocks for a shore, reeds for a marsh, low hills and rocks for hills or heath, a river and a footbridge; what can be
+  found lies about; a yard has heaps of scrap, a shed and a fence; a sight has something to see, a lighthouse or old stones, and a bench).
+  Neighbor, shop and market scenes take their walls and roof from the details; every scene takes a light tint from its palette.
+- Pip's pose adds reading (in a chair) and gathering (searching about, with a glint where it looks).
+- The built-in junkyard is now a `yard` (it was drawn as wild), on the map and in its scene.
+- Fix found by rendering: a scene was only rebuilt when the place changed, so details arriving later (the GM's choice replacing the fallback)
+  would not show until another place was opened; it now rebuilds when its kind or details change.

@@ -101,6 +101,11 @@ export function makeArt(THREE) {
     book: () => tex(16, 10, (px) => { px(0, 0, 16, 10, "#6b4529"); px(1, 1, 7, 8, "#efe6cf"); px(8, 1, 7, 8, "#e6dcc2"); for (let y = 2; y < 9; y += 2) { px(2, y, 5, 1, "#8a8070"); px(9, y, 5, 1, "#8a8070"); } }),
     note: () => tex(8, 8, (px) => { px(0, 0, 8, 8, "#f5f1e2"); px(1, 2, 6, 1, "#6b6458"); px(1, 4, 5, 1, "#6b6458"); px(1, 6, 4, 1, "#6b6458"); px(3, 0, 2, 1, "#b5402f"); }),
     drawers: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#5a3d27"); for (let y = 0; y < 16; y += 4) for (let x = 0; x < 16; x += 4) { px(x + 1, y + 1, 3, 3, "#7a5236"); px(x + 2, y + 2, 1, 1, "#c9a24a"); } }, rep),
+    brick: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#7a5a48"); for (let y = 0; y < 16; y += 4) for (let x = (y / 4) % 2 ? -4 : 0; x < 16; x += 8) { px(x + 1, y + 1, 7, 3, ["#a85a3e", "#9a4e36", "#b8664a"][((x + y) / 4) % 3 | 0]); px(x + 1, y + 1, 7, 1, "#c27a5c"); } }, rep),
+    tiles: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#a8543a"); for (let y = 0; y < 16; y += 4) { px(0, y + 3, 16, 1, "#6e3020"); for (let x = (y / 4) % 2 ? 2 : 0; x < 16; x += 4) px(x, y, 1, 4, "#8a4230"); px(0, y, 16, 1, "#c2704e"); } }, rep),
+    books: (rep) => tex(16, 16, (px) => { px(0, 0, 16, 16, "#4a2f1f"); const r = rnd(61); for (let row = 0; row < 2; row++) { for (let x = 0; x < 16;) { const w = 1 + Math.floor(r() * 2), h = 5 + Math.floor(r() * 2); px(x, row * 8 + 7 - h, w, h, ["#8a3a2a", "#2f5a6a", "#6a7a3a", "#a8842a", "#5a3a6a", "#c8b48a", "#3a3a4a"][Math.floor(r() * 7)]); x += w; } px(0, row * 8 + 7, 16, 1, "#2e1e14"); } }, rep),
+    sand: (rep) => tex(16, 16, (px, g, w, h) => speckle(px, w, h, "#d8c494", ["#c8b484", "#e6d4a8", "#bca878"], 60, 63), rep),
+    heather: (rep) => tex(16, 16, (px, g, w, h) => speckle(px, w, h, "#6a5a4a", ["#8a5a7a", "#7a4a6a", "#5a6a3a", "#9a6a8a"], 110, 65), rep),
     stripes: (a, b) => tex(16, 16, (px) => { for (let x = 0; x < 16; x += 4) { px(x, 0, 2, 16, a); px(x + 2, 0, 2, 16, b); } px(0, 15, 16, 1, shade(a, 0.7)); })
   });
   // a person from a look (looks.py): 0-1 idle, 2-5 walk, 6 crouched with a palm on the ground

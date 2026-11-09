@@ -6,8 +6,10 @@ import * as home from "./templates/home.js";
 import * as neighbor from "./templates/neighbor.js";
 import * as market from "./templates/market.js";
 import * as shop from "./templates/shop.js";
+import * as library from "./templates/library.js";
+import * as outdoors from "./templates/outdoors.js";
 
-const TEMPLATES = { home, neighbor, market, shop };
+const TEMPLATES = { home, neighbor, market, shop, library, wild: outdoors, yard: outdoors, sight: outdoors };
 
 export class SceneView {
   constructor(host, { api, onShown } = {}) {
@@ -19,11 +21,13 @@ export class SceneView {
   async show(place) {                                   // place: a key, or null for wherever Pip is
     const data = await this.api(`/world/scene${place ? `?place=${encodeURIComponent(place)}` : ""}`);
     const key = data.place.key, tpl = TEMPLATES[data.place.kind];
-    if (key !== this.key || !this.built) {
-      this.clear(); this.key = key;
+    const sig = JSON.stringify([key, data.place.kind, data.place.scene, data.place.props]);   // new details (say, chosen by the GM) rebuild it
+    if (sig !== this.sig || !this.built) {
+      this.clear(); this.key = key; this.sig = sig;
       if (tpl) {
         const THREE = await loadThree();
-        this.kit = new Kit(this.host, THREE, this.tip); this.built = tpl.build(this.kit, makeArt(THREE), data);
+        this.kit = new Kit(this.host, THREE, this.tip); if (data.place.scene?.palette) this.kit.palette(data.place.scene.palette);
+        this.built = tpl.build(this.kit, makeArt(THREE), data);
       } else this.built = { update: () => {} };
     }
     this.data = data; this.fetchedAt = Date.now();
@@ -39,7 +43,7 @@ export class SceneView {
     this.kit.setMoment({ minutes, weather: n.weather, season: n.season });
   }
   set effects(on) { if (this.kit) this.kit.fx = on; }
-  clear() { this.kit?.dispose(); this.kit = null; this.built = null; this.key = null; }
+  clear() { this.kit?.dispose(); this.kit = null; this.built = null; this.key = null; this.sig = null; }
 }
 
 function placeholder(d) {

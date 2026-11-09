@@ -34,8 +34,8 @@ PROPS = {                                           # prop -> words that bring i
 }
 
 
-def _pick(name: str, field: str) -> str:
-    opts = LOOK[field]
+def _pick(name: str, field: str, lists: dict | None = None) -> str:
+    opts = (lists or LOOK)[field]
     return opts[zlib.crc32(f"{name}|{field}".encode()) % len(opts)]
 
 
@@ -76,3 +76,77 @@ async def ensure(state, settings, gm, now: float) -> None:
             state.set_meta(**{f"look_tries:{ch['id']}": str(tries + 1)})
             continue
         state.update_character(ch["id"], look=clean(raw, ch["name"], ch["persona"]))
+
+
+# --- a place's scene details (step 4): walls, roof, palette, setting and props, chosen once from fixed lists ---------------------------
+SCENE = {
+    "walls": ("plaster", "whitewash", "stone", "brick", "planks"),
+    "roof": ("thatch", "slate", "shingle", "tile"),
+    "palette": ("warm", "cool", "earth", "moss", "rose", "sand", "slate", "honey"),
+    "setting": ("wood", "heath", "shore", "marsh", "hills", "riverside", "town", "field"),
+}
+SCENE_PROPS_MAX = 4
+SETTING_WORDS = {"wood": ("wood", "woods", "forest", "trees", "copse", "grove"), "shore": ("shore", "beach", "sea", "coast", "cove", "harbour", "harbor", "quay"),
+                 "marsh": ("marsh", "reeds", "fen", "mudflats", "bog"), "hills": ("hill", "hills", "quarry", "crag", "ridge", "tor"),
+                 "riverside": ("river", "stream", "brook", "ford", "mill"), "heath": ("heath", "moor", "heather", "gorse"),
+                 "town": ("square", "street", "town", "village", "shop"), "field": ("field", "meadow", "orchard", "farm", "pasture")}
+KIND_SETTING = {"market": "town", "shop": "town", "yard": "hills", "wild": "wood", "sight": "hills", "library": "town", "home": "field", "neighbor": "field"}
+
+
+def fallback_scene(key: str, kind: str, text: str) -> dict:
+    """Scene details from the place's own words where they say, its kind, and a hash of its name."""
+    t = (text or "").lower()
+    has = lambda w: re.search(rf"\b{re.escape(w)}\b", t)
+    setting = next((s for s, words in SETTING_WORDS.items() if any(has(w) for w in words)), KIND_SETTING.get(kind, "field"))
+    walls = next((w for w in ("stone", "brick", "whitewash", "planks") if has(w) or (w == "planks" and has("timber"))), _pick(key, "walls", SCENE))
+    roof = next((r for r in ("thatch", "slate", "tile") if has(r) or has(r + "d")), _pick(key, "roof", SCENE))
+    return {"walls": walls, "roof": roof, "palette": _pick(key, "palette", SCENE), "setting": setting, "props": props(text)[:SCENE_PROPS_MAX]}
+
+
+def clean_scene(raw, key: str, kind: str, text: str) -> dict:
+    base = fallback_scene(key, kind, text)
+    if not isinstance(raw, dict):
+        return base
+    out = {f: (str(raw.get(f)).strip().lower() if str(raw.get(f) or "").strip().lower() in opts else base[f]) for f, opts in SCENE.items()}
+    picked = [p for p in (raw.get("props") if isinstance(raw.get("props"), list) else []) if isinstance(p, str) and p.strip().lower() in PROPS]
+    out["props"] = list(dict.fromkeys([p.strip().lower() for p in picked] + base["props"]))[:SCENE_PROPS_MAX]
+    return out
+
+
+def place_scene(state, key: str, kind: str, text: str) -> dict:
+    """A place's scene details: the ones chosen and kept, or the fallback until they are."""
+    import json
+    kept = state.meta(f"scene:{key}")
+    return json.loads(kept) if kept else fallback_scene(key, kind, text)
+
+
+async def ensure_scenes(state, settings, gm, library, now: float) -> None:
+    """Choose scene details once for every real place that has none (the GM picks from the lists; two failures and the fallback is kept)."""
+    import json
+    from . import worldmap
+    if settings.place_scenes != "on":
+        return
+    snap = worldmap.snapshot(state, settings, library, now)
+    for p in snap["places"]:
+        if p["heard_only"] or state.meta(f"scene:{p['key']}"):
+            continue
+        text = place_text(state, p["key"])
+        tries = int(state.meta(f"scene_tries:{p['key']}") or 0)
+        raw = await gm.invent_scene(p["label"], p["kind"], text) if gm and tries < 2 else None
+        if raw is None and tries < 2:
+            state.set_meta(**{f"scene_tries:{p['key']}": str(tries + 1)})
+            continue
+        state.set_meta(**{f"scene:{p['key']}": json.dumps(clean_scene(raw, p["key"], p["kind"], text))})
+
+
+def place_text(state, key: str) -> str:
+    """Everything known about a place, for picking its look: its record, or whoever lives there."""
+    from . import places
+    rec = state.place_row(key)
+    if rec:
+        return " ".join([rec.get("description") or "", rec.get("blurb") or "", *[m.get("there", "") for m in rec.get("mentions") or []]])
+    ch = places.neighbor_at(state, key)
+    if ch:
+        return " ".join([ch["about"], ch["persona"], " ".join(ch["told"]), " ".join(w["name"] for w in ch.get("wares") or [])])
+    return {"library": "a library of tall shelves", "woods": "a wood of trees past the garden", "junkyard": "a scrapyard over the hill",
+            places.HOME: "a workshop with a small garden"}.get(key, "")

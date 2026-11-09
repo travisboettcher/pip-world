@@ -9,6 +9,7 @@ import re
 import time
 from datetime import datetime
 
+from . import gathering
 from . import happenings
 from . import places
 from . import weather
@@ -100,13 +101,17 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                       "market_day": market.WEEKDAYS[market.market_day(owner)] if owner.get("wares") and market.the_market(state) else None,
                       "away_at": away}
     by_name = {c["name"]: c for c in state.characters()}
+    known = looks.place_text(state, key)
+    scene = looks.place_scene(state, key, kind, known)
     booths = [{"booth": b, "whose": who, **({"look": look(by_name[who])} if who in by_name else {}), "items": [{"name": e[0], "kind": e[1], "price": market.sell_price(state, b, e, now), "left": market.stock_left(state, b, e, now)}
                                                    for e in table]} for b, who, table in market.booths(state, key, now)]
     out = {
         "place": {"key": key, "label": p.label, "kind": kind, "blurb": p.blurb, "description": (rows.get(key) or {}).get("description") or "",
                   "hours": list(p.hours) if p.hours else None, "open": places.open_now(p, settings, now) if not p.heard else False,
                   "heard_only": p.heard, "coastal": bool(COASTAL.search(_words(state, key, rows))),
-                  "props": looks.props(_words(state, key, rows), *([owner["about"], owner["persona"], " ".join(owner["told"]), " ".join(w["name"] for w in owner.get("wares") or [])] if owner else []))},
+                  "props": list(dict.fromkeys(scene["props"] + looks.props(known))),
+                  "scene": {k: v for k, v in scene.items() if k != "props"},
+                  "finds": [e[0] for e in gathering.loot_for(state, key) or []][:12]},
         "lives_here": lives_here,
         "pip": {"here": pip_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
                 "mood": a["mood"], "energy": round(a["energy"], 2), "hunger": round(a["hunger"], 2), "asleep": a["activity"] == "sleeping",

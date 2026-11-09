@@ -109,7 +109,7 @@ def test_the_snapshot_describes_each_place_by_kind_and_what_pip_knows_of_it(tmp_
     by = {p["key"]: p for p in snap["places"]}
     assert snap["home"] == "workshop" and set(by) == {"workshop", "woods", "junkyard", "Marigold's home", "Saltholm"}
     kinds = {k: p["kind"] for k, p in by.items()}
-    assert kinds == {"workshop": "home", "woods": "wild", "junkyard": "wild", "Marigold's home": "neighbor", "Saltholm": "shop"}
+    assert kinds == {"workshop": "home", "woods": "wild", "junkyard": "yard", "Marigold's home": "neighbor", "Saltholm": "shop"}
     assert by["woods"]["visited"] is True and by["junkyard"]["visited"] is False and by["Saltholm"]["visited"] is False
     assert by["Saltholm"]["heard_only"] is True and by["woods"]["heard_only"] is False
     assert by["Saltholm"]["distance_minutes"] == 33.0 and by["woods"]["distance_minutes"] == 8

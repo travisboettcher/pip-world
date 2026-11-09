@@ -12,6 +12,8 @@ export function poseOf(pip) {           // what Pip is doing, as a pose: the one
   if (pip.asleep) return "sleep";
   const s = pip.session, a = `${pip.activity} ${pip.description}`.toLowerCase();
   if (s && (s.kind === "work" || s.kind === "experiment")) return "work";
+  if (s && s.kind === "read") return "read";
+  if (s && s.kind === "gather") return "gather";
   if (/\b(fil(e|es|ing)|tinker\w*|making|build\w*|hammer\w*|solder\w*|carv\w*|assembl\w*|shaping|sanding|measur\w*|cutting|fitting|winding)\b/.test(a) && !/\b(wait\w*|rest\w*)\b/.test(a)) return "work";
   if (/garden|plot|plant|harvest|water|weed|tend/.test(a) && !/wait|rest/.test(a)) return "garden";
   if (/wait|rest|sit|read|think|eat|bench/.test(a)) return "sit";

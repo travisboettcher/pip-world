@@ -54,7 +54,7 @@ def _kind(place, rows: dict) -> str:
         return "home"
     if place.invented:
         return rows[place.key]["kind"]            # every invented place in the registry comes from this table
-    return "neighbor" if place.scope == "neighbor" else "library" if place.key == "library" else "wild"
+    return "neighbor" if place.scope == "neighbor" else "library" if place.key == "library" else "yard" if place.key == "junkyard" else "wild"
 
 
 def _walk(state, spots: dict, now: float) -> tuple[tuple[float, float], dict | None]:

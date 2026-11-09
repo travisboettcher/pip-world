@@ -53,6 +53,7 @@ export class Kit {
   tipOn(o, title, text) { o.userData.tip = typeof title === "function" ? title : () => ({ title, text }); this.hits.push(o); return o; }
   lamp(mesh, light, strength = 1) { this.lamps.push({ mesh, light, strength }); return mesh; }
   every(fn) { this.updaters.push(fn); }
+  palette(name) { this.tint = new this.THREE.Color({ warm: 0xffe8cc, cool: 0xdde8ff, earth: 0xf0dcc0, moss: 0xe0f0d0, rose: 0xffe0e4, sand: 0xfff0d0, slate: 0xe0e4ea, honey: 0xffe4b0 }[name] || 0xffffff); }
 
   /* time, weather and season */
   setMoment({ minutes, weather, season }) {
@@ -68,6 +69,7 @@ export class Kit {
     this.sun.position.set(-Math.sin(az) * 28 + 4, up ? 8 + elev * 26 : 22, 16);
     this.sun.intensity = (up ? 0.55 + elev * 1.15 : 0.18) * (grey ? 0.45 : 1); this.sun.color.set(up ? (duskness > 0.3 && !grey ? 0xffa060 : 0xfff2dc) : 0x7d94d8);
     this.hemi.intensity = up ? 0.28 + elev * 0.3 + (grey ? 0.12 : 0) : 0.16; this.hemi.color.set(up ? 0xbfd6ff : 0x4a5a90);
+    if (this.tint) { this.hemi.color.multiply(this.tint); this.sun.color.multiply(this.tint); }       // a place's palette, lightly
     for (const l of this.lamps) { l.mesh.material.emissiveIntensity = this.dark * 1.8 * l.strength; if (l.light) l.light.intensity = this.dark * 1.6 * l.strength; }
     this.moteMat.color.set(this.dark > 0.5 && season !== "winter" ? 0xd8ff8a : 0xffe6a0); this.moteMat.opacity = this.dark > 0.5 ? 0.9 : 0.4;
     this.motes.visible = !RAIN.includes(weather) && !SNOW.includes(weather);
