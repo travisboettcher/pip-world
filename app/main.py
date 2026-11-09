@@ -21,6 +21,7 @@ from . import places
 from . import public_view as pv
 from . import projects as proj
 from . import worldmap
+from . import world_view
 from .config import Settings
 from .llm import get_backend
 from .loop import Agent
@@ -312,6 +313,12 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         """Pip's map: every place with its spot, and where Pip is (see worldmap.py)."""
         agent: Agent = app.state.agent
         return worldmap.snapshot(agent.state, settings, agent.library)
+
+    @app.get("/world/map")
+    def get_world_map():
+        """Everything the parchment map draws from (see world_view.py and DESIGN-world-view.md)."""
+        agent: Agent = app.state.agent
+        return world_view.map_view(agent.state, settings, agent.library)
 
     @app.get("/places")
     def get_places():

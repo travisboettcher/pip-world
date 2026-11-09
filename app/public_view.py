@@ -11,7 +11,7 @@ CACHE_SECONDS = 5
 
 PUBLIC_PATHS = frozenset({
     "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/garden", "/projects",
-    "/creations", "/works", "/map", "/places", "/memory", "/happenings",
+    "/creations", "/works", "/map", "/world/map", "/places", "/memory", "/happenings",
 })
 PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"))
 

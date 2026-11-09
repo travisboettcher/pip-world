@@ -183,11 +183,13 @@ def test_the_map_endpoint_returns_the_snapshot_and_grows_the_map(tmp_path):
 def test_the_dashboard_has_a_map_section_wired_to_the_endpoint(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
-        page, js, css = (c.get(f"/ui/{f}").text for f in ("index.html", "app.js", "style.css"))
-    assert 'id="map"' in page and 'id="map-where"' in page and page.index('id="map"') < page.index('id="garden"')
-    assert "api('/map')" in js and "refreshMap" in js and "renderMap" in js
+        page, js, css, mapjs = (c.get(f"/ui/{f}").text for f in ("index.html", "app.js", "style.css", "world/map.js"))
+        fonts = [c.get(f"/ui/fonts/{f}") for f in ("IMFellEnglish-Regular.woff2", "IMFellEnglish-Italic.woff2", "IMFellEnglishSC-Regular.woff2", "OFL.txt")]
+    assert 'id="map"' in page and 'id="map-where"' in page and 'id="map-place"' in page and page.index('id="map"') < page.index('id="garden"')
+    assert "api('/world/map')" in js and "refreshMap" in js and "renderMap" in js and "import { WorldMap } from './world/map.js'" in js
     assert "e.kind === 'arrived'" in js and "name === 'world'" in js                      # refreshed on arrival and when the tab opens
-    assert ".map svg" in css and "map-pip" in css and "prefers-reduced-motion" in css
+    assert "export class WorldMap" in mapjs and ".wm-inner" in css and "fonts/IMFellEnglish-Regular.woff2" in css
+    assert all(f.status_code == 200 for f in fonts) and "Open Font License" in fonts[3].text
 
 
 # --- the details that decide the picture -----------------------------------------------------------------------------

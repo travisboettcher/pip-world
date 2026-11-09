@@ -71,10 +71,12 @@
     </section>
 
     <section id="tab-world" class="tab" role="tabpanel" aria-labelledby="tab-btn-world" hidden>
-      <div class="card">
-        <h2>Map</h2>
+      <div class="card wide">
+        <div class="map-head"><h2>Map</h2>
+          <div class="wm-tools"><button type="button" id="wm-pip">Find Pip</button><button type="button" id="wm-in" aria-label="Zoom in">+</button><button type="button" id="wm-out" aria-label="Zoom out">−</button></div></div>
         <div id="map" class="map"></div>
         <p id="map-where" class="hint" role="status"></p>
+        <p id="map-place" class="map-place-info" role="status" hidden></p>
       </div>
       <div class="card">
         <h2>Belongings</h2>

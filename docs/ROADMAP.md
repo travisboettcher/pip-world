@@ -59,7 +59,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 
 ## M2b - Visual world
 - [x] Decide 2D vs 3D (2026-11-08): HD-2D scenes (pixel art on 3D shapes, fixed camera, dollhouse cutaways) and a procedural parchment map; **designed: [DESIGN-world-view.md](DESIGN-world-view.md)**
-- [ ] Build it, in the doc's order: the map first, then the scene kit and the home scene, then the other place kinds
+- [x] Step 1, the parchment map in the World tab (0.12.0)
+- [ ] Step 2: the scene kit and the home scene; then neighbor, market and shop; then library, wild, yard and sight (any place can be visited from the map, Pip there or not)
 - [ ] Map `set_activity` labels and garden state to visuals; live push from the backend
 - [ ] Optional: evaluate a16z AI Town on the side (Convex-based, probably too heavy)
 
@@ -142,6 +143,7 @@ is in my notes, not in the gears".
       the ability while it owns a working object that provides it (a stopped clock gives no time).
 
 ### Social
+- [ ] More agents (owner, 2026-11-08): other individual agents living in the world alongside Pip, each with its own loop, memory and needs, rather than GM-voiced characters. The engine is single-agent today (one `agent` row, one loop); this needs agent ids through state, tools and the world view.
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
       in the thread, never at night), the Matrix channel, and a Matrix homeserver stack (outside this project) with a bootstrap script and a backup.
       Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.

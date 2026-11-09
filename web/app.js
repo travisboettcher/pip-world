@@ -1,4 +1,5 @@
 // Pip's web UI: the browser counterpart of `pipchat`. No build step, no dependencies.
+import { WorldMap } from './world/map.js';
 // All text from Pip and visitors is inserted with textContent / text nodes, never as HTML.
 
 const $ = (id) => document.getElementById(id);
@@ -268,85 +269,34 @@ $('chat-form').addEventListener('submit', async (ev) => {
 });
 
 // ---- map ----------------------------------------------------------------------
-// Pip's world drawn from /map: home in the middle, every place Pip knows of at its fixed spot, and Pip where it is (moving along its walk).
-const SVGNS = 'http://www.w3.org/2000/svg';
-function sv(tag, attrs = {}, ...kids) {
-  const n = document.createElementNS(SVGNS, tag);
-  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-  for (const kid of kids.flat()) if (kid != null) n.append(kid);
-  return n;
-}
-const MAP_MIN_HALF = 20, MAP_SOFT = 10, MAP_RINGS = [10, 20, 30, 50]; // viewBox units; places nearer than MAP_SOFT minutes keep their distance, farther ones are drawn closer in
-let mapData = null;
+// The parchment map (web/world/map.js, docs/DESIGN-world-view.md): land invented from the world seed around the engine's place spots,
+// painted only where Pip has walked. Clicking a place shows what is known of it.
+const KIND_WORDS = { home: 'home', neighbor: 'a neighbor\'s home', library: 'the library', wild: 'somewhere wild', yard: 'a yard to dig through',
+  shop: 'a shop', market: 'a market', sight: 'somewhere to see' };
+let mapData = null, worldMap = null;
 function mapWhere(m) {
   const w = m.pip.walking, name = (key) => m.places.find((p) => p.key === key)?.label ?? key;
   if (w) return `Pip is walking from ${name(w.from)} to ${name(w.to)} (${Math.round(w.progress * 100)}%).`;
   return m.pip.at === m.home ? 'Pip is home.' : `Pip is at ${name(m.pip.at)}.`;
 }
-// Far places are drawn closer in than they are (a square root beyond MAP_SOFT) so a distant market doesn't squeeze everything else into the middle.
-// The direction from home is kept, and rings mark the real minutes (10, 20, 30...) at the same squashed distance.
-const squash = (r) => (r <= MAP_SOFT ? r : MAP_SOFT * Math.sqrt(r / MAP_SOFT));
-const TRADE_KINDS = ['shop', 'market'];
-function mapLayout(m, width) {
-  const home = m.places.find((p) => p.key === m.home) ?? { x: 0, y: 0 };
-  const at = (x, y) => { const dx = x - home.x, dy = y - home.y, r = Math.hypot(dx, dy) || 1; const k = squash(r) / r; return [home.x + dx * k, home.y + dy * k]; };
-  const placed = m.places.map((p) => { const [sx, sy] = at(p.x, p.y); return { ...p, sx, sy, dir: p.key === m.home ? 0 : sx - home.x < 0 ? -1 : 1 }; });
-  const byKey = Object.fromEntries(placed.map((p) => [p.key, p]));
-  const w = m.pip.walking && byKey[m.pip.walking.from] && byKey[m.pip.walking.to] ? m.pip.walking : null;
-  const pip = w ? { x: byKey[w.from].sx + (byKey[w.to].sx - byKey[w.from].sx) * w.progress, y: byKey[w.from].sy + (byKey[w.to].sy - byKey[w.from].sy) * w.progress }
-    : (() => { const [x, y] = at(m.pip.x, m.pip.y); return { x, y }; })();
-  let half = 28, u = 0.1;
-  for (let i = 0; i < 3; i++) { // label size depends on the scale and the scale on the label size: settle it
-    u = (2 * half) / Math.max(280, width);   // viewBox units per CSS pixel
-    const char = 6.6 * u;                     // a 12px label's average character
-    const reach = placed.map((p) => Math.abs(p.sx) + (p.dir ? 8 * u + char * (p.label.length + 2) : 6 * u));
-    half = Math.max(MAP_MIN_HALF, ...reach, ...placed.map((p) => Math.abs(p.sy) + 16 * u), Math.abs(pip.y) + 8 * u) + 8 * u;
-  }
-  const font = 12 * u, rows = {};
-  for (const p of placed) { // labels on the same side that would overlap are pushed apart, top to bottom
-    p.ly = p.dir ? p.sy : p.sy + 20 * u; p.lx = p.dir ? p.sx + p.dir * 8 * u : p.sx;
-    (rows[p.dir] ??= []).push(p);
-  }
-  for (const side of [-1, 1]) {
-    const col = (rows[side] ?? []).sort((a, b) => a.ly - b.ly);
-    for (let i = 1; i < col.length; i++) if (col[i].ly - col[i - 1].ly < font * 1.25) col[i].ly = col[i - 1].ly + font * 1.25;
-  }
-  return { placed, byKey, home, pip, half, u, font, walking: w };
+function showPlace(p) {
+  const when = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  const known = p.key === mapData.home ? 'Pip\'s home.' : p.visits ? `Visited ${p.visits === 1 ? 'once' : `${p.visits} times`}, first on ${when(p.first_visited)}.`
+    : p.heard_only ? 'Only heard of: Pip hasn\'t been yet.' : 'Pip hasn\'t been yet.';
+  const walk = p.key === mapData.home ? '' : ` ${Math.round(p.distance_minutes ?? 0)} minutes' walk from home.`;
+  $('map-place').replaceChildren(h('strong', {}, p.label), ` (${KIND_WORDS[p.kind] ?? p.kind}). ${known}${walk}`, p.coastal ? ' By the water.' : '');
+  $('map-place').hidden = false;
 }
 function renderMap() {
   if (!mapData) return;
-  const m = mapData, L = mapLayout(m, $('map').clientWidth || 360), { u } = L;
-  const rings = MAP_RINGS.filter((min) => squash(min) < L.half).flatMap((min) => {
-    const r = squash(min);
-    return [sv('circle', { class: 'map-ring', cx: L.home.x, cy: L.home.y, r, 'stroke-width': u }),
-            sv('text', { class: 'map-ring-label', x: L.home.x, y: L.home.y - r - 3 * u, 'text-anchor': 'middle', 'font-size': 10 * u }, `${min} min`)];
-  });
-  const spokes = L.placed.filter((p) => p.key !== m.home).map((p) => sv('line', { class: 'map-path' + (p.visited ? '' : ' unseen'), x1: L.home.x, y1: L.home.y, x2: p.sx, y2: p.sy, 'stroke-width': 1.2 * u, 'stroke-dasharray': `${4 * u} ${4 * u}` }));
-  const trail = L.walking ? [sv('line', { class: 'map-walk', x1: L.byKey[L.walking.from].sx, y1: L.byKey[L.walking.from].sy, x2: L.byKey[L.walking.to].sx, y2: L.byKey[L.walking.to].sy, 'stroke-width': 2.4 * u })] : [];
-  const r = 5.5 * u;
-  const marks = L.placed.map((p) => {
-    const faint = p.key !== m.home && !p.visited;
-    const x = p.sx, y = p.sy;
-    const shape = p.kind === 'home' ? sv('path', { d: `M${x - r * 1.3} ${y + r} V${y - r * 0.2} L${x} ${y - r * 1.5} L${x + r * 1.3} ${y - r * 0.2} V${y + r} Z` })
-      : TRADE_KINDS.includes(p.kind) ? sv('rect', { x: x - r * 0.9, y: y - r * 0.9, width: r * 1.8, height: r * 1.8 })
-      : sv('circle', { cx: x, cy: y, r });
-    const text = sv('text', { x: p.lx, y: p.ly, dy: '.35em', 'text-anchor': p.dir < 0 ? 'end' : p.dir > 0 ? 'start' : 'middle', 'font-size': L.font, 'stroke-width': 3 * u });
-    text.textContent = p.label + (p.heard_only ? ' ?' : '');
-    const where = p.key === m.home ? 'home' : `${Math.round(p.distance_minutes ?? 0)} min walk${p.visited ? '' : p.heard_only ? ', only heard of' : ', not visited yet'}`;
-    return sv('g', { class: `map-place kind-${p.kind}${faint ? ' unseen' : ''}${p.heard_only ? ' heard' : ''}`, 'data-key': p.key, 'stroke-width': 1.2 * u, 'font-size': L.font }, sv('title', {}, `${p.label}: ${where}`), shape, text);
-  });
-  const pip = sv('g', { class: 'map-pip', 'stroke-width': 1.2 * u }, sv('title', {}, 'Pip'),
-    sv('circle', { class: 'map-pip-halo', cx: L.pip.x, cy: L.pip.y, r: 8 * u, 'stroke-width': 1.6 * u }),
-    sv('circle', { class: 'map-pip-ring', cx: L.pip.x, cy: L.pip.y, r: 10 * u, 'stroke-width': 1.6 * u }), sv('circle', { cx: L.pip.x, cy: L.pip.y, r: 4.6 * u }));
-  const svg = sv('svg', { viewBox: `${-L.half} ${-L.half} ${L.half * 2} ${L.half * 2}`, role: 'img', 'aria-label': `Map of Pip's world. ${mapWhere(m)}` }, rings, spokes, trail, marks, pip);
-  const key = (cls, text) => h('span', { class: `lg ${cls}` }, text);
-  const legend = h('p', { class: 'map-legend' }, key('lg-home', 'home'), key('lg-wild', 'woods & yards'), key('lg-neighbor', 'neighbors'), key('lg-library', 'library'),
-    key('lg-trade', 'shops & markets'), key('lg-pip', 'Pip'), h('span', { class: 'lg-note' }, 'faded: not visited yet · ?: only heard of · rings: minutes\' walk'));
-  $('map').replaceChildren(svg, legend);
-  $('map-where').textContent = mapWhere(m);
+  worldMap ??= new WorldMap($('map'), { onPlace: showPlace });
+  worldMap.set(mapData);
+  $('map-where').textContent = mapWhere(mapData);
 }
-window.addEventListener('resize', () => debounce('mapResize', renderMap, 150));
-const refreshMap = async () => { mapData = await api('/map'); renderMap(); };
+const refreshMap = async () => { mapData = await api('/world/map'); renderMap(); };
+$('wm-pip').addEventListener('click', () => worldMap?.centreOnPip());
+$('wm-in').addEventListener('click', () => worldMap?.zoom(1.5));
+$('wm-out').addEventListener('click', () => worldMap?.zoom(1 / 1.5));
 
 // ---- tabs -------------------------------------------------------------------
 const TABS = ['now', 'journal', 'world', 'work', 'mind'];

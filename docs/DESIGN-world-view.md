@@ -1,6 +1,6 @@
 # Design: the world view (a map and scenes)
 
-Status (2026-11-08): designed, not built. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
+Status (2026-11-08): designed; **step 1, the map, built (0.12.0)**. The owner chose the direction from five throwaway prototypes (links below). Read-only: the view
 shows the world; it never changes it.
 
 ## What it is
@@ -157,7 +157,22 @@ to one place.
 5. **Weather, seasons, happenings** in scenes.
 6. **The art pass** (when wanted): sprites as data, or a CC0 set, behind `art.js`.
 
-## Open questions
-1. Clicking a place on the map: open its scene as it is right now (a "peek" at somewhere Pip isn't), or keep scenes to where Pip is?
-2. Should the public view get the scenes, or only the map at first?
-3. Scale of the map sheet: one region around the workshop that grows outward, or a fixed larger sheet with most of it blank from the start?
+## Decided (2026-11-08)
+1. **You can go anywhere**: from the map to any place, and see its scene as it is now, even where Pip isn't.
+2. **All of it is public** (map and scenes), with the usual redaction.
+3. **The sheet starts small and grows outward**: it frames what Pip knows plus a margin (at least 64 minutes' walk across), so a new far place
+   widens it; the land itself doesn't change, only how much of it the sheet shows.
+
+## Step 1 as built (0.12.0)
+- `GET /world/map` (`app/world_view.py`): `/map`'s places and Pip, plus the world `seed` (made once, `meta.world_seed`), per place `visits` and
+  `first_visited` (from the place's facet) and `coastal` (water words in its record, or for a neighbor's home in who lives there), the
+  walk's `started_at`/`ends_at`, and `now` (minutes of the day, season, weather). Public.
+- `web/world/map.js`, an ES module the dashboard imports, replacing the old SVG map in the World tab (full width). Differences from the
+  prototype: **the coast follows the places**: a place by the water has the sea just beyond it, away from home (so Oriel's cottage and
+  Saltholm's harbour each get their shore), instead of one fixed western sea; trees take the season's colour; labels find a free side so they
+  don't overlap; places Pip has only heard of are pencilled question marks; home reads "Pip's Workshop"; the ring-shaped stains are gone.
+- Pan, zoom (buttons, wheel, pinch), "Find Pip" (a phone opens zoomed in on Pip), clicking a place shows what is known of it (kind, visits,
+  first visit, walk, by the water). Pip's flag moves along the road during a walk, once a second, without redrawing the sheet; the sheet is
+  redrawn only when what it shows changes.
+- The map's lettering (IM Fell English, OFL) is served from `web/fonts/`, not from Google.
+- Checked by rendering the dashboard on a copy of the live database in headless Chromium (desktop and phone), not yet by a test in CI.

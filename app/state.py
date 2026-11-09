@@ -412,6 +412,12 @@ class State:
                              event_importance(row["kind"], data, new), row["id"]))
         self.set_meta(firsts_v=FIRSTS_VERSION)
 
+    def place_visits(self, place: str) -> dict | None:
+        """How often Pip has arrived at a place, and when first and last (from its facet), or None if never."""
+        with self.lock:
+            row = self.db.execute("SELECT first_ts, last_ts, count FROM facets WHERE key = ?", (f"place:{place}",)).fetchone()
+        return dict(row) if row else None
+
     def last_arrived(self, place: str) -> float | None:
         """When Pip last arrived at a place (from the facet count), or None if it never has."""
         with self.lock:

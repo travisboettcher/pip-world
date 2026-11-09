@@ -1,3 +1,7 @@
+/* the map's lettering (IM Fell, SIL Open Font License: fonts/OFL.txt), served from here so the map needs no outside host */
+@font-face { font-family: "IM Fell English"; src: url("fonts/IMFellEnglish-Regular.woff2") format("woff2"); font-style: normal; font-display: swap; }
+@font-face { font-family: "IM Fell English"; src: url("fonts/IMFellEnglish-Italic.woff2") format("woff2"); font-style: italic; font-display: swap; }
+@font-face { font-family: "IM Fell English SC"; src: url("fonts/IMFellEnglishSC-Regular.woff2") format("woff2"); font-display: swap; }
 :root {
   --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d8;
   --accent: #2f6f5e; --accent-ink: #ffffff; --warn: #b3541e; --bad: #b3261e;
@@ -125,34 +129,6 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .emo .bar { position: relative; height: .45rem; }
 .emo .bar u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .55; text-decoration: none; }
 
-/* map: home in the middle, places at fixed spots, Pip's marker moving along its walk. Sizes are set in the SVG (in viewBox units, scaled so a label is
-   always about 12px), colours here; a place's shape says what it is too (house, square for a shop or market, circle otherwise). */
-:root { --trade: #8a6a12; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --trade: #e3bd4f; } }
-:root[data-theme="dark"] { --trade: #e3bd4f; }
-.map svg { width: 100%; max-height: 32rem; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-.map .map-ring { fill: none; stroke: var(--line); }
-.map .map-ring-label { fill: var(--muted); opacity: .8; }
-.map .map-path { stroke: var(--muted); opacity: .45; } .map .map-path.unseen { opacity: .25; }
-.map .map-walk { stroke: var(--accent); }
-.map .map-place { fill: var(--muted); stroke: var(--bg); }
-.map .map-place text { fill: var(--ink); stroke: var(--bg); paint-order: stroke; stroke-linejoin: round; }
-.map .kind-home { fill: var(--accent); } .map .kind-wild { fill: var(--good); } .map .kind-neighbor { fill: var(--warn); } .map .kind-library { fill: var(--ink); }
-.map .kind-shop, .map .kind-market { fill: var(--trade); }
-.map .unseen { opacity: .6; } .map .unseen text { opacity: .85; }
-.map .heard circle, .map .heard rect { stroke: var(--muted); stroke-dasharray: .3em .3em; fill: var(--card); }
-.map .map-pip { fill: var(--bad); stroke: var(--bg); }
-.map .map-pip-halo { fill: none; stroke: var(--bad); opacity: .6; }
-.map .map-pip-ring { fill: none; stroke: var(--bad); animation: map-pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-.map-legend { display: flex; flex-wrap: wrap; gap: .25rem .9rem; margin: .6rem 0 0; font-size: .8rem; color: var(--muted); }
-.map-legend .lg::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-right: .35em; border-radius: 50%; background: currentColor; }
-.map-legend .lg-home { color: var(--accent); } .map-legend .lg-wild { color: var(--good); } .map-legend .lg-neighbor { color: var(--warn); }
-.map-legend .lg-library { color: var(--ink); } .map-legend .lg-pip { color: var(--bad); }
-.map-legend .lg-trade { color: var(--trade); } .map-legend .lg-trade::before { border-radius: 1px; }
-.map-legend .lg-home::before { border-radius: 2px 2px 0 0; }
-.map-legend .lg-note { flex-basis: 100%; }
-@keyframes map-pulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.5); } }
-@media (prefers-reduced-motion: reduce) { .map .map-pip-ring { animation: none; opacity: .5; } }
 
 /* The public, read-only view (PUBLIC_HOSTS): no controls, no owner-only panels, no usage or model details */
 .public #wake, .public #usage-pill, .public #usage-pop, .public #chat-panel, .public #chat-toggle, .public .owner-only { display: none !important; }
@@ -165,3 +141,14 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .lately-item { border-left: 3px solid var(--line); padding-left: .7rem; } .lately-item.tone-good { border-left-color: var(--good); } .lately-item.tone-bad { border-left-color: var(--warn); }
 .lately-head { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; flex-wrap: wrap; } .lately-head small, .lately-read { color: var(--muted); }
 .lately-item p { margin: .25rem 0; } .lately-effects { color: var(--muted); font-size: .85rem; }
+
+/* the parchment map (web/world/map.js) */
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.wm-tools { display: flex; gap: 6px; }
+.wm-tools button { min-width: 2.2rem; }
+.wm { position: relative; overflow: hidden; aspect-ratio: 1.6; max-width: 100%; border-radius: 6px; background: #e9dbb8; touch-action: none; box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+.wm-inner { position: absolute; inset: 0; transform-origin: 0 0; cursor: grab; }
+.wm-inner:active { cursor: grabbing; }
+.wm-inner canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wm-busy { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; font: italic 1.2rem "IM Fell English", Georgia, serif; color: #3a2a1c; }
+.map-place-info { margin: .5rem 0 0; }
