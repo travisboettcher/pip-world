@@ -329,8 +329,9 @@ async def test_a_till_that_can_pay_exactly_buys_the_creation(tmp_path, monkeypat
     assert (await call(agent, "sell", item="Brass Walker")).text.startswith("you sold Brass Walker")
     assert M.till(st, "Brygdon", time.time()) == 0
     creation(st, "rough", "Tin Mouse")
+    mouse = max(1, int(M._price(st, "Brygdon", "Tin Mouse", "creation", {"quality": "rough"}, None, time.time()) * M.BUY_RATE))   # its own day's price
     r = await call(agent, "sell", item="Tin Mouse")
-    assert r.text == (f"error: Brygdon's till can't pay for Tin Mouse today (it would fetch {M.coins_text(pay)}; 0 coins left); "
+    assert r.text == (f"error: Brygdon's till can't pay for Tin Mouse today (it would fetch {M.coins_text(mouse)}; 0 coins left); "
                       "try a stall with an ask, or come back tomorrow")
 
 
