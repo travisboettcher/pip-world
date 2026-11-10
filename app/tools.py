@@ -17,6 +17,7 @@ from . import invented_places as invented
 from . import market
 from . import creations as cr
 from . import memory as mem
+from . import modules
 from . import reminders
 from . import library as lib
 from . import neighbors as nb
@@ -47,6 +48,7 @@ class ToolContext:
     library: Any = None  # a library.Library, or None when there is no library
     outreach: Any = None  # outreach.Outreach, or None
     vision: bool = False  # can the model look at pictures this turn?
+    runner: Any = None  # where module code runs (modules.py), or None
 
 
 async def stop_working(ctx: "ToolContext") -> str:
@@ -403,13 +405,22 @@ async def edit_note(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("use_item", "Use something you own or made for a purpose. Materials are used up; tools are kept. Things you "
-      "made respond in their own way - use, look at, play or read them, whatever fits.",
+      "made respond in their own way - use, look at, play or read them, whatever fits. Some things you made list actions; "
+      "name one with `action` to do exactly that.",
       _obj({"item": {"type": "string"}, "purpose": {"type": "string"},
+            "action": {"type": "string", "description": "optional: one of the actions the thing lists"},
             "quantity": {"type": "integer", "description": "materials only, default 1"}}, ["item", "purpose"]))
 async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
     item, err = ctx.state.find_item(args["item"])
     if not item:
         made, _ = ctx.state.find_creation(args["item"])
+        if made and str(args.get("action") or "").strip():
+            m = modules.bound(ctx.state).get(made["name"].lower())
+            if not m:
+                return ToolResult(f"error: your {made['name']} doesn't list any actions; use it without `action`", followup=True)
+            r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, str(args["action"]).strip().lower(),
+                                  {"purpose": str(args.get("purpose") or "")[:200]})
+            return ToolResult(r, followup=r.startswith("error"))
         if made:
             return ToolResult(await cr.use(ctx.state, ctx.gm, made, str(args.get("purpose") or "")[:200]),
                               followup=True)
@@ -689,6 +700,10 @@ async def tend(ctx: ToolContext, args: dict) -> ToolResult:
     c, err = ctx.state.find_creation(args["creation"])
     if not c:
         return ToolResult(f"error: {err}", followup=True)
+    m = modules.bound(ctx.state).get(c["name"].lower())
+    if m and m["manifest"].get("tends") and ctx.runner:      # its workings are code: tending is the action they name
+        r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, m["manifest"]["tends"], {"purpose": "tending it"})
+        return ToolResult(r, followup=r.startswith("error") or r.startswith("that didn't"))
     r = cr.tend(ctx.state, c)
     return ToolResult(r, followup=r.startswith("error"))
 

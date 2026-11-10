@@ -13,6 +13,7 @@ from . import gathering
 from . import guide
 from . import library as lib
 from . import memory as mem
+from . import modules
 from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
@@ -69,8 +70,9 @@ class Agent:
         emo.attach(state, settings)
         invented.backfill(state)
         invented.backfill_stock(state)
+        self.runner = modules.runner_for(settings)
         self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
-                               vision=bool(getattr(self.backend, "vision", False)))
+                               vision=bool(getattr(self.backend, "vision", False)), runner=self.runner)
         self.last_tick = 0.0
         self._wake = asyncio.Event()
         self._force = False
@@ -172,7 +174,7 @@ class Agent:
         for crop in self.state.garden_newly_ready():
             self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
             self.request_wake()
-        if cr.tick(self.state, self.rng):
+        if cr.tick(self.state, self.rng, skip={k for k, m in modules.bound(self.state).items() if "runtime" in m["manifest"]["proposes"]}):
             self.request_wake()
         emo.drift(self.state, self.s)
         market.stall_step(self.state, self.s, self.rng)          # customers stop at Pip's stall while it is at the market
@@ -181,6 +183,9 @@ class Agent:
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
         await weather.refresh(self.state, self.s, time.time())
+        await modules.offer_library(self.state, self.s, self.runner)
+        if await modules.step(self.state, self.s, self.runner):
+            self.request_wake()
         if await self.finish_work():
             self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
@@ -508,7 +513,9 @@ class Agent:
         made = self.state.creations()
         if made:
             lines.append("Things you've made:")
-            lines += [cr.describe(c) for c in made]
+            code = modules.bound(self.state)
+            lines += [cr.describe(c) + (f" - actions (use_item with action): {modules.offers_line(code[c['name'].lower()])}"
+                                        if c["name"].lower() in code and code[c["name"].lower()]["offers"] else "") for c in made]
         return lines
 
     @staticmethod
@@ -707,6 +714,7 @@ class Agent:
         lines += self.outreach.perception()
         lines += self._gallery()
         lines += happenings.perception(self.state, self.tools, time.time()) if self.s.happenings != "off" else []
+        lines += modules.perception(self.state)
         lines += self._free_time(time.time())
         lines += self._belongings()
         lines += self._projects()

@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY web ./web
-RUN useradd -u 10001 -m agent && mkdir /data && chown agent /data
+RUN useradd -u 10001 -m agent && mkdir /data && chown agent /data && mkdir -p /run/pip-runner && chmod 1777 /run/pip-runner
 USER agent
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz')"

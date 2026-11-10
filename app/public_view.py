@@ -11,9 +11,9 @@ CACHE_SECONDS = 5
 
 PUBLIC_PATHS = frozenset({
     "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/garden", "/projects",
-    "/creations", "/works", "/map", "/world/map", "/world/scene", "/places", "/memory", "/happenings",
+    "/creations", "/works", "/map", "/world/map", "/world/scene", "/places", "/memory", "/happenings", "/modules",
 })
-PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"))
+PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"), re.compile(r"/modules/\d+"))
 
 # Only these event kinds are public, and only these fields of each. Anything unlisted (say, inbox, gift, letters, outreach,
 # companion, errors, start...) is dropped. `firsts` and `returns` are facts the engine computes about an event.
@@ -45,6 +45,9 @@ EVENT_FIELDS = {
     "sold_creation": ("name", "place", "coins"),
     "happening": ("id", "category", "severity", "lens", "title", "text", "effects"),
     "happening_felt": ("id", "title", "lens", "read_as"),
+    "module": ("name", "text", "author"),
+    "module_live": ("name", "author", "version"),
+    "module_disabled": ("name", "author"),
 }
 ALWAYS = ("firsts", "returns")
 

@@ -2,6 +2,8 @@
 # Generate the Compose file with `hllc build pip-world.hll --out docker-compose.yml` (docker-compose.yml is what the
 # project ships and tests; this is an alternative for people who already manage their services with hll).
 # To build from this checkout instead of pulling the published image, replace the `image` line with `build "."`.
+# Modules need the pip-runner sandbox, which must have no network at all; hll gives every service in a multi-service file a network,
+# so pip-runner lives in docker-compose.yml only (or in a single-service .hll of its own, sharing the `pip-runner-socket` volume by name).
 volume pip-world-data {}
 
 service pip-world {

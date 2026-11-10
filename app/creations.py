@@ -166,8 +166,9 @@ def _help(state, rng: random.Random, c: dict, h: dict, now: float) -> None:
         state.log("creation", name=c["name"], what="helper", text=h["line"])
 
 
-def tick(state, rng: random.Random, now: float | None = None) -> bool:
-    """Run every creation's capabilities once. Returns True if Pip should be woken."""
+def tick(state, rng: random.Random, now: float | None = None, skip: set | frozenset = frozenset()) -> bool:
+    """Run every creation's capabilities once. Returns True if Pip should be woken. Creations named (lowercase) in `skip` have their
+    workings as a module (modules.py), which notices them stopping instead."""
     now = now or time.time()
     wake = False
     for c in state.creations():
@@ -175,7 +176,9 @@ def tick(state, rng: random.Random, now: float | None = None) -> bool:
         if not caps:
             continue
         before = dict(rt, last=dict(rt["last"]))
-        if not running(c, now):
+        if not running(c, now) and c["name"].lower() in skip:
+            pass
+        elif not running(c, now):
             if not rt.get("stop_logged"):
                 state.log("creation", name=c["name"], what="stopped",
                           text=f"Your {c['name']} has stopped" + (f" - {_needs(c)}." if "upkeep" in caps else "."))

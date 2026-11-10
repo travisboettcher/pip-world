@@ -49,7 +49,16 @@ def test_the_hll_names_the_same_image():
 
 def test_building_from_source_is_an_explicit_override_of_the_same_service():
     override = load("docker-compose.build.yml")
-    assert override == {"services": {"pip-world": {"build": "."}}}
+    assert override == {"services": {"pip-world": {"build": "."}, "pip-runner": {"build": "."}}}
+
+
+def test_the_module_runner_has_no_network_and_shares_only_its_socket():
+    services = load("docker-compose.yml")["services"]
+    runner, engine = services["pip-runner"], services["pip-world"]
+    assert runner["image"] == IMAGE and runner["command"] == ["python", "-m", "app.runner_service"]
+    assert runner["network_mode"] == "none" and "ports" not in runner and runner["read_only"] is True and runner["cap_drop"] == ["ALL"]
+    assert runner["user"] == "65534:65534" and runner["volumes"] == ["pip-runner-socket:/run/pip-runner"]
+    assert "pip-runner-socket:/run/pip-runner" in engine["volumes"]
 
 
 def test_the_readme_starts_from_the_image_and_says_how_to_build_instead():

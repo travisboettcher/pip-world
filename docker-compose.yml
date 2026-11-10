@@ -15,8 +15,31 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - pip-world-data:/data     # the world: database and everything Pip has made
+      - pip-runner-socket:/run/pip-runner   # where it reaches pip-runner (MODULE_RUNNER in .env)
       # Optional (uncomment, and create the file or folder first - Docker would otherwise create a directory):
       # - ./persona.md:/srv/persona.md:ro   # Pip's instructions, re-read every tick: edit it and Pip changes on its next wake
       # - ./books:/library:ro               # a folder of books (EPUB, PDF, text, Markdown) or a Calibre library, for Pip's library
+  # The sandbox for modules (docs/DESIGN-modules.md): the same image running only the runner, with no network at all, read-only,
+  # unprivileged; the engine reaches it on a Unix socket in a shared volume. Each hook also runs in its own limited process.
+  pip-runner:
+    image: ghcr.io/travisboettcher/pip-world:latest   # keep the same tag as pip-world
+    container_name: pip-runner
+    restart: unless-stopped
+    command: ["python", "-m", "app.runner_service"]
+    environment:
+      - RUNNER_SOCKET=/run/pip-runner/runner.sock
+    volumes:
+      - pip-runner-socket:/run/pip-runner
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    user: "65534:65534"
 volumes:
   pip-world-data:
+  pip-runner-socket:

@@ -110,6 +110,19 @@ CREATE TABLE IF NOT EXISTS works (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
   body TEXT NOT NULL, caption TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS modules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, author TEXT NOT NULL, api INTEGER NOT NULL,
+  subject TEXT NOT NULL DEFAULT '', manifest TEXT NOT NULL, source TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, replaces INTEGER, state TEXT NOT NULL DEFAULT '{}',
+  offers TEXT NOT NULL DEFAULT '[]', facts TEXT NOT NULL DEFAULT '{}', lines TEXT NOT NULL DEFAULT '[]', due REAL, cursor INTEGER NOT NULL DEFAULT 0,
+  report TEXT NOT NULL DEFAULT '{}', note TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT 0, budget TEXT NOT NULL DEFAULT '{}',
+  created_at REAL NOT NULL, decided_at REAL
+);
+CREATE TABLE IF NOT EXISTS module_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, module_id INTEGER NOT NULL, ts REAL NOT NULL, hook TEXT NOT NULL, ok INTEGER NOT NULL,
+  ms INTEGER NOT NULL, summary TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS module_calls_by_module ON module_calls (module_id, id);
 CREATE TABLE IF NOT EXISTS outreach (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, kind TEXT NOT NULL, channel TEXT NOT NULL,
   conversation TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT ''
@@ -998,6 +1011,51 @@ class State:
         with self.lock:
             rows = self.db.execute("SELECT * FROM characters ORDER BY id").fetchall()
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
+
+    # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget")
+
+    def _module(self, row) -> dict:
+        return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}
+
+    def add_module(self, **fields) -> int:
+        vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
+        with self.lock:
+            cur = self.db.execute(f"INSERT INTO modules ({', '.join(vals)}) VALUES ({', '.join('?' for _ in vals)})", tuple(vals.values()))
+            self.db.commit()
+            return cur.lastrowid
+
+    def module(self, module_id: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT * FROM modules WHERE id = ?", (module_id,)).fetchone()
+        return self._module(row) if row else None
+
+    def modules(self, status: str | tuple | None = None) -> list[dict]:
+        """Oldest first (the order hooks run in), optionally only those with a status (or one of several)."""
+        statuses = (status,) if isinstance(status, str) else status
+        q = "SELECT * FROM modules" + (f" WHERE status IN ({', '.join('?' for _ in statuses)})" if statuses else "") + " ORDER BY id"
+        with self.lock:
+            return [self._module(r) for r in self.db.execute(q, statuses or ())]
+
+    def update_module(self, module_id: int, **fields) -> None:
+        vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
+        with self.lock:
+            self.db.execute(f"UPDATE modules SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), module_id))
+            self.db.commit()
+
+    def add_module_call(self, module_id: int, ts: float, hook: str, ok: bool, ms: int, summary: str, keep: int = 200) -> None:
+        """One hook call, for the module's history (the newest `keep` are kept)."""
+        with self.lock:
+            self.db.execute("INSERT INTO module_calls (module_id, ts, hook, ok, ms, summary) VALUES (?, ?, ?, ?, ?, ?)",
+                            (module_id, ts, hook, int(ok), ms, summary))
+            self.db.execute("DELETE FROM module_calls WHERE module_id = ? AND id NOT IN "
+                            "(SELECT id FROM module_calls WHERE module_id = ? ORDER BY id DESC LIMIT ?)", (module_id, module_id, keep))
+            self.db.commit()
+
+    def module_calls(self, module_id: int, limit: int = 50) -> list[dict]:
+        with self.lock:
+            return [dict(r) | {"ok": bool(r["ok"])} for r in self.db.execute(
+                "SELECT ts, hook, ok, ms, summary FROM module_calls WHERE module_id = ? ORDER BY id DESC LIMIT ?", (module_id, limit))]
 
     def update_character(self, character_id: int, **fields) -> None:
         vals = {k: json.dumps(v) if k in self._CHARACTER_JSON else v for k, v in fields.items()}

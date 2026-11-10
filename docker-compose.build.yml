@@ -3,3 +3,5 @@
 services:
   pip-world:
     build: .
+  pip-runner:
+    build: .

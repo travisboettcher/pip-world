@@ -8,6 +8,7 @@
   pipchat items | garden | projects | creations
   pipchat memory | reflect | recall "what a visitor said about the clock"
   pipchat letters               the neighbor and the letters between them and Pip
+  pipchat modules [show|approve|reject|off ID] [--note "..."]   features written as code, and proposals waiting for you
   pipchat library [query]       books Pip is reading, or search the library
   pipchat notes [section] [--status open|done] [-n N]
   pipchat log [N] [--kind KIND ...]          pipchat watch [--kind KIND ...]
@@ -160,6 +161,12 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return dim(f"  ~ {d['text']}") if d["what"] in ("stopped", "helper", "used") else dim(f"  ~ {d['name']}: {d['text']}")
     if k == "companion":
         return cyan(f"{d['name'].lower()}> ") + d["text"]
+    if k == "module":
+        return dim(f"  ~ {d['text']}")
+    if k in ("module_live", "module_disabled", "module_rejected"):
+        what = {"module_live": f"is live (v{d.get('version')})", "module_disabled": "was switched off", "module_rejected": "was turned down"}[k]
+        why = d.get("why") or d.get("note")
+        return yellow(f"  * module {d['name']} by {d['author']} {what}" + (f": {why}" if why else ""))
     if k == "inbox" and d.get("letter"):
         return cyan(f"  @ {d['text']}")
     if k == "inbox" and d.get("source", "web") != "web":
@@ -511,6 +518,51 @@ def cmd_creations(pip: Pip, a) -> None:
         print(dim("  (nothing yet)"))
 
 
+def cmd_modules(pip: Pip, a) -> None:
+    if a.action in ("approve", "reject", "off"):
+        if a.id is None:
+            sys.exit(f"pipchat modules {a.action} needs a module number")
+        try:
+            r = pip.call(f"/modules/{a.id}/{'disable' if a.action == 'off' else a.action}", {"note": a.note or ""})
+        except urllib.error.HTTPError as e:
+            sys.exit(json.load(e).get("detail", str(e)))
+        return out_json(r) if JSON_MODE else print(f"module #{r['id']} is {r['status']}")
+    if a.action == "show":
+        if a.id is None:
+            sys.exit("pipchat modules show needs a module number")
+        m = pip.call(f"/modules/{a.id}")
+        if JSON_MODE:
+            return out_json(m)
+        print(bold(f"#{m['id']} {m['name']} v{m['version']}") + f" - {m['kind']}" + (f" of {m['subject']}" if m["subject"] else "")
+              + f", by {m['author']}, {m['status']}")
+        for label, val in (("why", m.get("reason")), ("note", m.get("note"))):
+            if val:
+                print(f"  {label}: {val}")
+        r = m.get("report") or {}
+        if r.get("calls") is not None:
+            print(f"  dry run: {r['calls']} calls, {'clean' if r.get('clean') else 'problems'}")
+            for key in ("errors", "refused", "perceived", "logged", "replies"):
+                for line in list(dict.fromkeys(r.get(key) or []))[:5]:
+                    print(dim(f"    {key}: {line}"))
+        for c in m.get("calls", [])[:10]:
+            print(dim(f"  {time.strftime('%d %b %H:%M', time.localtime(c['ts']))} {c['hook']}: {c['summary']}"))
+        if m.get("source"):
+            print(bold("  code:"))
+            print("\n".join("    " + line for line in m["source"].splitlines()))
+        return
+    rows = pip.call("/modules")
+    if JSON_MODE:
+        return out_json(rows)
+    print(bold("Modules"))
+    for m in sorted(rows, key=lambda m: (m["status"] != "waiting", m["status"] != "live", -m["id"])):
+        if m["status"] == "replaced":
+            continue
+        tag = yellow(m["status"]) if m["status"] == "waiting" else m["status"]
+        print(f"  #{m['id']} {m['name']} v{m['version']} ({m['author']}, {tag})" + (f" - {m['reason']}" if m.get("reason") else ""))
+    if not rows:
+        print(dim("  (none yet)"))
+
+
 def cmd_memory(pip: Pip, a) -> None:
     m = pip.call("/memory")
     if JSON_MODE:
@@ -749,6 +801,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", choices=["active", "done", "abandoned"])
     p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
     add("creations", cmd_creations, "things Pip has made, and what they're doing")
+    p = add("modules", cmd_modules, "features written as code; approve, reject or switch them off")
+    p.add_argument("action", nargs="?", choices=["show", "approve", "reject", "off"])
+    p.add_argument("id", nargs="?", type=int)
+    p.add_argument("--note", help="a note for the module's author")
     p = add("memory", cmd_memory, "Pip's long-term memory: self-portrait, people, beliefs, days")
     p.add_argument("-n", type=int, default=10, help="beliefs and days to show (default 10)")
     add("reflect", cmd_reflect, "make Pip reflect now instead of waiting for the night")
@@ -784,14 +840,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     global JSON_MODE
     argv = sys.argv[1:]
-    commands = {"chat", "status", "usage", "health", "notes", "log", "watch", "tick", "say", "give", "items", "garden", "emotions", "happenings", "projects", "creations", "memory", "reflect", "recall", "letters", "places", "library", "outreach", "gallery", "-h", "--help"}
+    parser = build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    commands = {*sub.choices, "-h", "--help"}                     # every subcommand the parser knows
     # `pipchat [--json] [--url U] "some message"` -> treat the bare words as a message
     i = 0
     while i < len(argv) and argv[i] in ("--json", "--url"):
         i += 2 if argv[i] == "--url" else 1
     if i < len(argv) and argv[i] not in commands:
         argv = argv[:i] + ["say"] + argv[i:]
-    args = build_parser().parse_args(argv)
+    args = parser.parse_args(argv)
     JSON_MODE = args.json
     pip = Pip(args.url)
     try:

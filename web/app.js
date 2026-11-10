@@ -111,6 +111,10 @@ function describe(e) {
     case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
+    case 'module': return { group: 'world', cls: 'world', text: d.text };
+    case 'module_live': return { group: 'system', text: `Module ${d.name} (v${d.version}, by ${d.author === 'world' ? 'the world' : 'Pip'}) is live` };
+    case 'module_disabled': return { group: 'system', cls: 'warn', text: `Module ${d.name} was switched off${d.why ? `: ${d.why}` : ''}` };
+    case 'module_rejected': return { group: 'system', text: `Module ${d.name} v${d.version} was turned down${d.note ? `: ${d.note}` : ''}` };
     case 'talk': return { group: 'world', cls: 'world', text: `Pip and ${d.name} talked (${d.turns} of Pip's lines; ${d.ended === 'pip' ? 'Pip said goodbye' : d.ended === d.name ? `${d.name} said goodbye` : d.ended})` };
     case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
@@ -556,6 +560,42 @@ function renderGallery() {
 }
 const refreshWorks = async () => { worksData = await api('/works?limit=60'); renderGallery(); };
 
+// ---- modules (docs/DESIGN-modules.md): proposals wait here for the owner; the public sees what is live ----------------------
+const MODULE_ORDER = { waiting: 0, live: 1, disabled: 2, proposed: 3, rejected: 4, replaced: 5 };
+function moduleCard(m) {
+  const r = m.report || {};
+  const list = (title, xs) => (xs && xs.length ? [h('b', {}, title), h('ul', { class: 'plain' }, ...[...new Set(xs)].slice(0, 6).map((x) => h('li', {}, x)))] : []);
+  const decide = (what, ask) => async () => {
+    const note = ask ? prompt(ask) : '';
+    if (note === null) return;
+    try { await api(`/modules/${m.id}/${what}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) }); }
+    catch (e) { alert(e.message); }
+    refreshModules();
+  };
+  const buttons = PUBLIC ? [] : [
+    ...(['waiting', 'disabled'].includes(m.status) ? [h('button', { type: 'button', onclick: decide('approve', 'Approve. A note for its author? (optional)') }, m.status === 'waiting' ? 'Approve' : 'Turn back on')] : []),
+    ...(m.status === 'waiting' ? [h('button', { type: 'button', onclick: decide('reject', 'Reject. What should its author know?') }, 'Reject')] : []),
+    ...(m.status === 'live' ? [h('button', { type: 'button', onclick: decide('disable', 'Switch it off. Why? (optional)') }, 'Switch off')] : []),
+  ];
+  const summary = r.calls !== undefined
+    ? `Dry run: ${r.calls} calls, ${r.clean ? 'clean' : 'problems'}${r.slowest_ms ? `, slowest ${r.slowest_ms} ms` : ''}.` : '';
+  return h('details', { class: `module ${m.status}`, ...(m.status === 'waiting' ? { open: '' } : {}) },
+    h('summary', {}, h('b', {}, m.name), ` v${m.version} · ${m.kind}${m.subject ? ` of ${m.subject}` : ''} · by ${m.author === 'world' ? 'the world' : 'Pip'} `,
+      h('span', { class: 'mstatus' }, m.status)),
+    m.reason ? h('p', {}, m.reason) : null,
+    m.offers && m.offers.length ? h('p', {}, h('b', {}, 'Actions: '), m.offers.map((o) => `${o.name} (${o.help})`).join('; ')) : null,
+    m.note ? h('p', { class: 'hint' }, `Note: ${m.note}`) : null,
+    summary ? h('p', {}, summary) : null,
+    ...list('Errors', r.errors), ...list('Refused', r.refused), ...list('Would tell Pip', r.perceived), ...list('Would log', r.logged), ...list('Replies', r.replies),
+    buttons.length ? h('p', { class: 'actions' }, ...buttons) : null,
+    m.source ? h('details', {}, h('summary', {}, 'Code'), h('pre', { class: 'code' }, m.source)) : null);
+}
+async function refreshModules() {
+  const rows = await api('/modules');
+  rows.sort((a, b) => (MODULE_ORDER[a.status] ?? 9) - (MODULE_ORDER[b.status] ?? 9) || b.id - a.id);
+  $('modules').replaceChildren(...(rows.length ? rows.filter((m) => m.status !== 'replaced').map(moduleCard) : [h('p', { class: 'hint' }, 'No modules yet.')]));
+}
+
 async function refreshCreations() {
   const made = await api('/creations');
   $('creations').replaceChildren(...(made.length ? made.map((c) => {
@@ -627,6 +667,7 @@ function handleEvent(e, live) {
   if (['reflection', 'night_pass', 'night_undo', 'woke'].includes(e.kind) || (e.kind === 'tool' && t === 'undo_decision')) debounce('memory', refreshMemory);
   if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
+  if (['module_live', 'module_disabled', 'module_rejected'].includes(e.kind)) debounce('modules', refreshModules);
   if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
   if (['tick', 'alert', 'tool'].includes(e.kind)) debounce('state', refreshState, 1200);
 }
@@ -654,7 +695,7 @@ renderFilters();
   setChatOpen(!PUBLIC && store.get('chatOpen', false), false);
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks(), refreshLately()]);
+    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks(), refreshLately(), refreshModules()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {

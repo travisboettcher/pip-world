@@ -17,6 +17,7 @@ from . import creations as cr
 from . import emotions as emo
 from . import invented_places as invented
 from . import happenings
+from . import modules
 from . import places
 from . import public_view as pv
 from . import projects as proj
@@ -369,6 +370,50 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.get("/library/bookmarks")
     def library_bookmarks():
         return app.state.agent.state.bookmarks()
+
+    # --- modules (docs/DESIGN-modules.md): anyone sees what's live; only the owner sees proposals and decides ---------------------
+    @app.get("/modules")
+    def get_modules(request: Request):
+        rows = app.state.agent.state.modules()
+        if request.state.public:
+            return [modules.public_row(m) for m in rows if m["status"] in ("live", "disabled")]
+        return [modules.public_row(m, full=True) for m in rows]
+
+    @app.get("/modules/{module_id}")
+    def get_module(module_id: int, request: Request, calls: int = 30):
+        st = app.state.agent.state
+        m = st.module(module_id)
+        if not m or (request.state.public and m["status"] not in ("live", "disabled")):
+            raise HTTPException(status_code=404, detail=f"no module #{module_id}")
+        return {**modules.public_row(m, full=not request.state.public), "calls": st.module_calls(module_id, min(calls, 200))}
+
+    class Decision(BaseModel):
+        note: str = Field("", max_length=500)
+
+    async def _decide(module_id: int, what: str, note: str):
+        agent = app.state.agent
+        if what == "approve":
+            r = await modules.approve(agent.state, settings, agent.runner, module_id, note)
+        elif what == "reject":
+            r = modules.reject(agent.state, module_id, note)
+        else:
+            r = modules.disable(agent.state, module_id, note or "switched off by the owner")
+        if "error" in r:
+            raise HTTPException(status_code=409, detail=r["error"])
+        agent.request_wake()
+        return r
+
+    @app.post("/modules/{module_id}/approve")
+    async def approve_module(module_id: int, body: Decision | None = None):
+        return await _decide(module_id, "approve", body.note if body else "")
+
+    @app.post("/modules/{module_id}/reject")
+    async def reject_module(module_id: int, body: Decision | None = None):
+        return await _decide(module_id, "reject", body.note if body else "")
+
+    @app.post("/modules/{module_id}/disable")
+    async def disable_module(module_id: int, body: Decision | None = None):
+        return await _decide(module_id, "disable", body.note if body else "")
 
     @app.post("/tick")
     def post_tick():

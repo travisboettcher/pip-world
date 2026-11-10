@@ -120,6 +120,9 @@ class Settings:
     happenings_seasons: bool = True         # what is likelier in which season
 
     talk_scenes: str = "off"                # on: talk with someone in person runs as its own scene (talk.py); off here so a bare Settings() keeps the old way
+    modules: str = "off"                    # on: modules (docs/DESIGN-modules.md) run, and the world proposes its own; off here for tests
+    module_runner: str = ""                 # where module code runs: the pip-runner socket (unix:///run/pip-runner/runner.sock) or URL, or "local" (development only)
+    modules_approval: str = "world,pip"     # whose modules wait for the owner's approval before going live
     place_scenes: str = "off"               # on: each place gets scene details (walls, roof, palette, setting, props), chosen once (looks.py); off here for tests
     character_looks: str = "off"            # on: each neighbor or resident gets a look for the world view, chosen once (looks.py); off here for tests
     character_booths: str = "off"           # on: neighbors sell their own wares at home and at a market one day a week (market.py); off here for tests
@@ -158,6 +161,9 @@ class Settings:
             hemisphere=(e("HEMISPHERE") or "north").lower() if (e("HEMISPHERE") or "north").lower() in ("north", "south") else "north",
             happenings_seasons=(e("HAPPENINGS_SEASONS") or "on").lower() not in ("off", "0", "false", "no"),
             talk_scenes=(e("TALK_SCENES") or "on").lower() if (e("TALK_SCENES") or "on").lower() in ("on", "off") else "on",
+            modules=(e("MODULES") or "on").lower() if (e("MODULES") or "on").lower() in ("on", "off") else "on",
+            module_runner=e("MODULE_RUNNER") or "",
+            modules_approval=e("MODULES_APPROVAL") if e("MODULES_APPROVAL") is not None else "world,pip",
             place_scenes=(e("PLACE_SCENES") or "on").lower() if (e("PLACE_SCENES") or "on").lower() in ("on", "off") else "on",
             character_looks=(e("CHARACTER_LOOKS") or "on").lower() if (e("CHARACTER_LOOKS") or "on").lower() in ("on", "off") else "on",
             character_booths=(e("CHARACTER_BOOTHS") or "on").lower() if (e("CHARACTER_BOOTHS") or "on").lower() in ("on", "off") else "on",

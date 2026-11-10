@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-09): **designed, not built.** It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-09): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -42,31 +42,32 @@ Kinds:
 
 A manifest:
 ```json
-{"name": "gear-clock", "kind": "thing", "api": 1, "subject": "Gear Clock",
- "hooks": ["install", "time", "action"], "reads": ["time", "self"],
- "proposes": ["state", "perceive", "schedule", "offer", "show", "consume"],
- "show": [{"type": "wall", "tags": ["inside"], "place": "subject"}],
- "consumes": {"oil": 1}}
+{"name": "gear-clock-workings", "kind": "thing", "api": 1, "subject": "Gear Clock",
+ "hooks": ["on_install", "on_time", "on_action"], "reads": ["subject"],
+ "proposes": ["schedule", "offer", "runtime", "log", "perceive", "wake", "consume"],
+ "consumes": {"*": 5}, "tends": "tend"}
 ```
 
 ## The hooks (API version 1)
-Code is Python, in one source file per module, defining any of these functions. Each gets one `ctx` dict and returns a dict.
+Code is Python, in one source file per module, defining any of these functions. Each gets one `ctx` dict and returns a dict (or nothing).
 
 | Hook | When | Input beyond the usual |
 |---|---|---|
-| `install(ctx)` | once, when it goes live | none |
-| `tick(ctx)` | every engine tick (only if declared; budgeted) | none |
-| `time(ctx)` | at a time it asked for with `schedule` | `ctx["due"]` |
-| `event(ctx)` | on an event kind it declared (`arrived`, `garden`, `stall_sale`, ...) | `ctx["event"]` (public fields only) |
-| `action(ctx)` | when Pip uses one of its offers | `ctx["action"]`, `ctx["args"]` |
-| `build(ctx)` | parts only: when a scene needs it (cached by parameters) | `ctx["params"]` |
+| `on_install(ctx)` | once, when it goes live | none |
+| `on_tick(ctx)` | every engine tick (only if declared; budgeted) | none |
+| `on_time(ctx)` | at a time it asked for with `schedule` | `ctx["due"]` |
+| `on_event(ctx)` | on an event kind it declared (`arrived`, `garden`, `stall_sale`, ...) | `ctx["event"]` (public fields only) |
+| `on_action(ctx)` | when Pip uses one of its offers | `ctx["action"]`, `ctx["args"]` |
+| `on_build(ctx)` | parts only: when a scene needs it (cached by parameters) | `ctx["params"]` |
 
-Each call's input `ctx` holds: `now` (world time, local), `seed` (for a seeded `random.Random`), `state` (its own), and the views it declared in `reads`:
+Each call's input `ctx` holds: `now` (world time, local), `seed` (for a seeded `random.Random`), `state` (its own), `offers` (its current
+ones), and the views it declared in `reads`:
 - `time`: hour, minute, weekday, season, daylight;
 - `weather`;
 - `pip`: where it is, what it's doing, whether it's asleep (never its private diary or emotions);
 - `here`: the place the module lives at, who is present, what is set out there;
-- `places`: public facts about real places (key, label, kind, hours, open);
+- `subject`: a thing's creation: its name, quality, description, capabilities and runtime;
+- `places` (later): public facts about real places (key, label, kind, hours, open);
 - `items`: Pip's belongings as names and quantities (Pip's own creations only see this if they declare it);
 - `facts`: what other modules have published (read-only).
 
@@ -78,7 +79,12 @@ What a hook may return (each key needs a matching entry in `proposes`):
 - `schedule`: when to call `time` next (one pending time per module).
 - `offer`: actions Pip can take on it: a name, a line of help, arguments, where. They appear through the existing `use` tool (`use(thing,
   action, ...)`), so Pip's tool list doesn't grow. A place module's offers appear while Pip is there.
-- `consume`: items Pip's creation uses up from Pip's belongings (only those listed in `consumes`, up to their amounts).
+- `consume`: items Pip's creation uses up from Pip's belongings (only those listed in `consumes`, up to their amounts; `"*"` means any
+  material). If Pip doesn't have them, the whole call is refused, and on an action Pip is told what it needs.
+- `runtime` (things only): its creation's fields that the engine's own readers use (`clock_set_at`, `clock_offset`, `tended_until`,
+  `halted_at`, `stop_logged`, `needs_part`; `null` clears one). So the clock face, Pip's sense of time and the scene keep reading one source.
+- `wake`: wake Pip now (a few times a day at most).
+- `reply` (on_action only): what Pip is told it did.
 - `transfer` (builder only): move items or coins between parties the engine knows (Pip, a character, a place's stock). The referee checks
   ownership and conservation. Making or destroying items needs a `source` or `sink` declared in the manifest, with a daily cap.
 - `affect` (builder only): small nudges to Pip's energy, hunger or mood, capped per day, each with a reason that gets logged.
@@ -176,14 +182,17 @@ mentioning, a market with nothing happening on market day, a place heard of with
 GM pass: "does this fit the world bible and what's already here?") keep the world from filling with noise.
 
 ## The sandbox
-A separate container, **`pip-runner`**, in the same compose file:
-- on an `internal: true` network shared only with `agent-world`, so it has no route out;
-- read-only root filesystem, a small tmpfs, `pids_limit`, no capabilities, running as `nobody`;
-- one small HTTP service. Each request (module source plus `ctx`) runs in a fresh subprocess with rlimits: CPU 0.5 s, memory 128 MB, wall
-  time 2 s, output 64 KB;
+A separate container, **`pip-runner`** (the same image, `python -m app.runner_service`):
+- **no network at all** (`network_mode: none`). The engine reaches it on a Unix socket in a volume they share (`pip-runner-socket`,
+  `MODULE_RUNNER=unix:///run/pip-runner/runner.sock`). That is stronger than an internal network, and hll can't declare one anyway; in
+  the homelab the runner is its own single-service hll file for that reason;
+- read-only root filesystem, a small tmpfs, `pids_limit`, no capabilities, no new privileges, running as `nobody`;
+- one small stdlib HTTP service. Each request (module source plus `ctx`) runs in a fresh `python -I -S` subprocess with rlimits: CPU 1 s,
+  address space 512 MB, no files written, few descriptors, wall time 3 s, output 64 KB;
 - Python with an import allowlist (`math`, `random`, `itertools`, `functools`, `collections`, `dataclasses`, `json`, `re`, `datetime`,
-  `statistics`, `string`, `heapq`, `bisect`) enforced by an import hook and checked in the AST before running. No `open`, `eval`, `exec`,
-  `__import__`, or dunder access in the AST.
+  `statistics`, `heapq`, `bisect`) enforced by an import hook and checked in the AST before running, and only safe builtins. No `open`,
+  `eval`, `exec`, `getattr`, `type`, `global`, no attribute starting with `_`, no `.format` (it can reach attributes). `string` was
+  left out: its `Formatter` can too.
 
 The engine sends a call and validates what comes back against the manifest. The container is the wall; the AST and import checks make
 mistakes fail early and readably, and are not the security boundary.
@@ -207,6 +216,24 @@ failed calls in a row disable it, and its author is told why.
 ## Settings
 `MODULES` (off by default in bare `Settings()`, on from env once built), `MODULES_APPROVAL` (`world,pip`), `MODULE_BUILDER_PER_NIGHT` (1),
 `MODULE_RUNNER_URL`, and per-call and per-day budgets.
+
+## Step 1 as built (0.17.0)
+- `app/sandbox.py` (the checks and the limited subprocess), `app/runner_service.py` (the runner, on a socket or a port), `app/modules.py`
+  (manifests, the runner clients, `context`, the referee's `plan` and `apply`, `call`, `step`, `perception`, `act`, the lifecycle and the
+  dry run), tables `modules` and `module_calls` (the newest 200 calls per module).
+- Kinds `thing` and `rule`; reads `time`, `weather`, `pip`, `subject`, `items`, `facts`; proposals `state`, `publish`, `perceive`, `log`,
+  `schedule`, `offer`, `consume`, `runtime`, `wake` and `reply`. `show`, `transfer`, `affect`, `ask_gm` and `places` come with later steps.
+- A call's proposals are checked together and applied together, or not at all. Code that fails three times in a row (not counting the
+  runner being down) is switched off and its author told why. Budgets per day: 600 calls, 12 lines for Pip, 24 events, 4 wakes.
+- Offers reach Pip through `use_item(item, purpose, action)` and, for the offer a thing's manifest names in `tends`, the `tend` tool. Pip
+  sees a thing's actions on its line under "Things you've made"; lines from modules come under "Things in the world".
+- **The clock's workings** (`app/module_library/timekeeper.py`): the world proposes it once for each creation that keeps time and needs
+  tending. It notices the clock stopping (instead of the engine's built-in check, which steps aside while a module runs it), offers
+  `tend` (mending it with a part first if a mishap broke it) and `set`, and changes only the creation's runtime, so the clock face, Pip's
+  sense of time and the scene are unchanged. Switch it off and the built-in workings carry on.
+- The owner decides in the dashboard's Work tab (Modules) or with `pipchat modules [show|approve|reject|off ID] [--note]`; the API is
+  `GET /modules`, `GET /modules/{id}` (public: live and switched-off ones, with their code), `POST /modules/{id}/approve|reject|disable`
+  (owner only).
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`

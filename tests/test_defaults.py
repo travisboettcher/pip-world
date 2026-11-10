@@ -46,3 +46,16 @@ def test_pipchat_defaults_to_a_local_pip_and_a_neutral_name(monkeypatch):
 def test_pipchat_takes_who_you_are_and_where_pip_is_from_the_environment(monkeypatch):
     mod = load_pipchat(monkeypatch, PIP_NAME="Sam", PIP_URL="http://pip.example:9000")
     assert mod.DEFAULT_SENDER == "Sam" and mod.DEFAULT_URL == "http://pip.example:9000"
+
+
+def test_every_pipchat_command_is_a_command_not_a_message(monkeypatch):
+    mod = load_pipchat(monkeypatch)
+    seen = []
+    monkeypatch.setattr(mod, "Pip", lambda url: "pip")
+    monkeypatch.setattr(mod, "cmd_modules", lambda pip, a: seen.append((a.action, a.id, a.note)))
+    monkeypatch.setattr(mod, "cmd_say", lambda pip, a: seen.append("said"))
+    for argv in (["modules"], ["modules", "approve", "3", "--note", "fine"], ["hello there"]):
+        monkeypatch.setattr(mod.sys, "argv", ["pipchat", *argv])
+        mod.main()
+    assert seen == [(None, None, None), ("approve", 3, "fine"), "said"]
+
