@@ -8,6 +8,7 @@ import * as market from "./templates/market.js";
 import * as shop from "./templates/shop.js";
 import * as library from "./templates/library.js";
 import * as outdoors from "./templates/outdoors.js";
+import { moduleObjects } from "./templates/parts.js";
 
 const TEMPLATES = { home, neighbor, market, shop, library, wild: outdoors, yard: outdoors, sight: outdoors };
 
@@ -27,11 +28,13 @@ export class SceneView {
       if (tpl) {
         const THREE = await loadThree();
         this.kit = new Kit(this.host, THREE, this.tip); if (data.place.scene?.palette) this.kit.palette(data.place.scene.palette);
-        this.built = tpl.build(this.kit, makeArt(THREE), data);
+        const art = makeArt(THREE);
+        this.built = tpl.build(this.kit, art, data);
+        this.objects = moduleObjects(this.kit, art);           // what modules show, on the anchors the server chose
       } else this.built = { update: () => {} };
     }
     this.data = data; this.fetchedAt = Date.now();
-    this.built.update(data); this.moment();
+    this.built.update(data); this.objects?.update(data.objects || []); this.moment();
     this.note.hidden = !!tpl; if (!tpl) this.note.replaceChildren(...placeholder(data));
     this.onShown?.(data);
     return data;
@@ -43,7 +46,7 @@ export class SceneView {
     this.kit.setMoment({ minutes, weather: n.weather, season: n.season });
   }
   set effects(on) { if (this.kit) this.kit.fx = on; }
-  clear() { this.kit?.dispose(); this.kit = null; this.built = null; this.key = null; this.sig = null; }
+  clear() { this.kit?.dispose(); this.kit = null; this.built = null; this.objects = null; this.key = null; this.sig = null; }
 }
 
 function placeholder(d) {

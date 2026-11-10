@@ -24,13 +24,17 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
-READS = ("time", "weather", "pip", "subject", "items", "facts")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake")
+READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
 AUTHORS = ("world", "pip")
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
 RUNTIME_KEYS = {"clock_set_at": "number", "clock_offset": "number", "tended_until": "number", "halted_at": "number", "stop_logged": "bool",
                 "needs_part": "part"}                       # a thing's creation fields the engine's readers use (creations.py)
 NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
+SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
+SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
+RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back wall.",
+         "stall-pictures": "What Pip made, shown on its market stall: copies of drawings framed, creations as Pip drew them."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
@@ -161,6 +165,11 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                                               "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"]}
     if "items" in reads:
         ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"]} for i in state.items()]
+    if "works" in reads:
+        ctx["works"] = state.pictures(WORKS_SHOWN)
+    if "stalls" in reads:
+        ctx["stalls"] = [{"place": r["place"], "item": r["name"], "kind": r["kind"], "qty": r["qty"], **({"work": r["attrs"]["work"]} if r["attrs"].get("work") else {})}
+                         for r in state.stall_rows()]
     if "facts" in reads:
         ctx["facts"] = {o["name"]: o["facts"] for o in state.modules("live") if o["id"] != m["id"] and o["facts"]}
     return ctx
@@ -228,9 +237,54 @@ def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
         changes.append(("consume", _consume(state, man["consumes"], result["consume"])))
     if "runtime" in result:
         changes.append(("runtime", _runtime(result["runtime"])))
+    if "show" in result:
+        changes.append(("show", _show(result["show"])))
     if "reply" in result:
         changes.append(("reply", _text(result["reply"], "reply")))
     return changes
+
+
+def _show(objs) -> list:
+    """Things to draw in scenes: pixel pictures, each asking for an anchor (anchors.py)."""
+    from . import anchors, art
+    if not isinstance(objs, list) or len(objs) > SHOW_MAX:
+        raise Refused(f"`show` is a list of at most {SHOW_MAX} objects")
+    out, ids = [], set()
+    for o in objs:
+        if not isinstance(o, dict) or not SHOW_ID.match(str(o.get("id") or "")) or o["id"] in ids:
+            raise Refused("each object in `show` needs its own `id`: up to 24 lowercase letters, digits and dashes")
+        oid, ids = o["id"], ids | {o["id"]}
+        sprite = o.get("sprite")
+        try:
+            rows, palette = art.clean_pixels((sprite or {}).get("rows"), (sprite or {}).get("palette")) if isinstance(sprite, dict) else (None, None)
+        except art.SvgRejected as e:
+            raise Refused(f"`show` {oid}: {e}") from None
+        if rows is None:
+            raise Refused(f"`show` {oid}: `sprite` is {{rows, palette}}, a pixel picture")
+        size = o.get("size", 0.6)
+        if not isinstance(size, (int, float)) or isinstance(size, bool) or not SIZE_RANGE[0] <= size <= SIZE_RANGE[1]:
+            raise Refused(f"`show` {oid}: `size` is {SIZE_RANGE[0]} to {SIZE_RANGE[1]}")
+        at = o.get("at")
+        if not isinstance(at, dict) or at.get("type") not in anchors.TYPES or not isinstance(at.get("place"), str) or not at["place"].strip():
+            raise Refused(f"`show` {oid}: `at` is {{type, place, tags?, near?}}; type is one of {', '.join(anchors.TYPES)}")
+        tags = at.get("tags") or []
+        if not isinstance(tags, list) or len(tags) > 4 or not all(isinstance(t, str) for t in tags):
+            raise Refused(f"`show` {oid}: `at.tags` is a list of up to 4 words")
+        motion = o.get("motion")
+        if motion is not None and motion not in MOTIONS:
+            raise Refused(f"`show` {oid}: `motion` is one of {', '.join(MOTIONS)}")
+        tip = o.get("tip")
+        if tip is not None and not (isinstance(tip, dict) and isinstance(tip.get("title", ""), str) and isinstance(tip.get("text", ""), str)):
+            raise Refused(f"`show` {oid}: `tip` is {{title, text}}")
+        clean = {"id": oid, "sprite": {"rows": rows, "palette": palette}, "size": float(size), "frame": bool(o.get("frame")),
+                 "at": {"type": at["type"], "place": at["place"].strip()[:60], "tags": [t.strip().lower()[:24] for t in tags],
+                        **({"near": str(at["near"])[:40]} if at.get("near") else {})}}
+        if motion:
+            clean["motion"] = motion
+        if tip:
+            clean["tip"] = {"title": str(tip.get("title", ""))[:60], "text": str(tip.get("text", ""))[:200]}
+        out.append(clean)
+    return out
 
 
 def _consume(state, may: dict, want) -> list:
@@ -269,7 +323,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
     """Make the checked changes. Returns what the caller needs: {"wake": bool, "reply": str}."""
     budget, fields, out = _budget(m, now), {}, {"wake": False, "reply": ""}
     for kind, val in changes:
-        if kind in ("state", "facts", "offers", "due"):
+        if kind in ("state", "facts", "offers", "due", "show"):
             fields[kind] = val
         elif kind == "perceive":
             fields["lines"] = (fields.get("lines", m["lines"]) + [{"ts": now, "text": val}])[-PER_DAY["perceive"]:]
@@ -368,6 +422,31 @@ def perception(state) -> list[str]:
             lines += [f"- {l['text']}" for l in m["lines"]]
             state.update_module(m["id"], lines=[])
     return ["Things in the world:"] + lines if lines else []
+
+
+def where(state, m: dict, place: str) -> str | None:
+    """The place key an object's `at.place` means: "home"; "subject" (where a thing's creation is: at home while Pip has it); or a key."""
+    from . import places
+    if place == "home":
+        return places.HOME
+    if place == "subject":
+        return places.HOME if m["kind"] == "thing" and _creation(state, m["manifest"]["subject"]) else None
+    return place
+
+
+def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
+    """What live modules show at one place, packed onto its anchors: (placed, unplaced). Oldest module first, objects in their order."""
+    from . import anchors
+    wanted = [{**o, "key": f"{m['name']}:{o['id']}", "id": f"{m['name']}:{o['id']}"} for m in state.modules("live") for o in m["show"]
+              if where(state, m, o["at"]["place"]) == key]
+    return anchors.place(anchors.for_kind(kind), wanted)
+
+
+def scene_objects(state, key: str, kind: str) -> list[dict]:
+    """The objects for the scene view: what to draw and where (anchors.py worked out the where)."""
+    placed, _ = objects_for(state, key, kind)
+    return [{"key": o["key"], "rows": o["sprite"]["rows"], "palette": o["sprite"]["palette"], "frame": o["frame"], "w": o["w"], "h": o["h"],
+             "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], **{k: o[k] for k in ("motion", "tip") if k in o}} for o in placed]
 
 
 def bound(state) -> dict:
@@ -514,10 +593,26 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         if "on_action" in hooks:
             for o in list(sim["offers"]):
                 await run("on_action", at, action=o["name"], args={"purpose": "trying it"})
-        report["clean"] = not report["errors"] and not report["refused"] and sim["status"] == "live"
+        report["placed"], report["unplaced"] = _placement(world, settings, sim, now)
+        report["clean"] = not report["errors"] and not report["refused"] and not report["unplaced"] and sim["status"] == "live"
         return report
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _placement(state, settings, m: dict, now: float) -> tuple[list[str], list[str]]:
+    """Where a module's objects would go at the end of its dry run, and which wouldn't fit."""
+    from . import worldmap
+    kinds = {p["key"]: p["kind"] for p in worldmap.snapshot(state, settings, None, now)["places"]}
+    placed, unplaced = [], []
+    for key in dict.fromkeys(where(state, m, o["at"]["place"]) for o in m["show"]):
+        if key not in kinds:
+            unplaced += [f"{o['id']}: {o['at']['place']!r} isn't a place in the world" for o in m["show"] if where(state, m, o["at"]["place"]) == key]
+            continue
+        ok, bad = objects_for(state, key, kinds[key])
+        placed += [f"{o['key'][len(m['name']) + 1:]}: {o['anchor']} at {key}" for o in ok if o["key"].startswith(m["name"] + ":")]
+        unplaced += [line[len(m["name"]) + 1:] for line in bad if line.startswith(m["name"] + ":")]
+    return placed, unplaced
 
 
 # --- the library: modules the world proposes for itself ---------------------------------------------------------------------------
@@ -534,11 +629,20 @@ def slug(text: str) -> str:
 
 
 async def offer_library(state, settings, runner, now: float | None = None) -> list[int]:
-    """The world proposes its own workings for things that have built-in ones: today, a timekeeper that needs tending gets its clock's
-    workings as a module. Once per creation, whatever the owner decides."""
+    """The world proposes its own workings for things that have built-in ones, once each whatever the owner decides: its rules (RULES),
+    and for a timekeeper that needs tending, its clock's workings."""
     if runner is None:
         return []
     made = []
+    for name, reason in RULES.items():                       # the world's own rules, once each
+        if any(o["name"] == name for o in state.modules()):
+            continue
+        man, source = library(name)
+        r = await propose(state, settings, runner, "world", man, source, reason, now=now)
+        if "id" in r:
+            made.append(r["id"])
+        else:
+            log.warning("library module %s refused: %s", name, r["error"])
     for c in state.creations():
         caps = c["spec"]["capabilities"]
         if not ("timekeeper" in caps and "upkeep" in caps) or any(o["subject"].lower() == c["name"].lower() for o in state.modules()):

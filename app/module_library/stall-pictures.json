@@ -1,0 +1,2 @@
+{"name": "stall-pictures", "kind": "rule", "api": 1, "hooks": ["on_install", "on_time"], "reads": ["stalls", "works"],
+ "proposes": ["show", "schedule"]}

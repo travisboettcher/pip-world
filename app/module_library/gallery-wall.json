@@ -1,0 +1,2 @@
+{"name": "gallery-wall", "kind": "rule", "api": 1, "hooks": ["on_install", "on_event"], "events": ["made_work", "revised_work"],
+ "reads": ["works"], "proposes": ["show"]}

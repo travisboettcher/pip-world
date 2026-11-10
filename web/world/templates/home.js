@@ -122,26 +122,11 @@ export function build(kit, art, data) {
     for (const [name, e] of made) e.mesh.visible = list.some((c) => c.name === name);     // sold or given away: gone
   }
 
-  // Pip's latest pixel drawings, framed on the back wall: by the window, past the end of the shelf, under the shelf
-  const HANG = [[-5.25, 2.3, 0.9], [-7.15, 1.6, 0.7], [-9.6, 1.5, 0.7]], hung = [];
-  function drawingsFor(list) {
-    list.slice(0, HANG.length).forEach((w, i) => {
-      const key = `${w.id}|${JSON.stringify(w.rows)}|${JSON.stringify(w.palette)}`;
-      if (hung[i]?.key === key) return;
-      if (hung[i]) { kit.scene.remove(hung[i].mesh); kit.hits.splice(kit.hits.indexOf(hung[i].mesh), 1); }
-      const W = w.rows[0].length + 4, H = w.rows.length + 4, k = HANG[i][2] / Math.max(W, H);           // the frame adds two pixels each side
-      const mesh = kit.plane(W * k, H * k, M(art.framed(w)), HANG[i][0], HANG[i][1], WZ0 + 0.17);
-      kit.tipOn(mesh, () => ({ title: w.title, text: "One of Pip's drawings." }));
-      hung[i] = { key, mesh };
-    });
-    hung.slice(list.length).forEach((h) => { h.mesh.visible = false; });
-  }
-
   const pip = kit.sprite(art.pip(), 1.0, 1.375), bubble = kit.sprite(art.bubble(), 0.7, 0.6, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false), spark = kit.sprite(art.spark(), 0.35, 0.35, false);
   kit.tipOn(pip, () => ({ title: "Pip", text: `${latest.pip.description || latest.pip.activity}. Feeling ${latest.pip.mood}; energy ${Math.round(latest.pip.energy * 100)}%.` }));
 
   function update(d) {
-    latest = d; plotsFor(d.garden || []); creationsFor(d.creations || []); drawingsFor(d.drawings || []);
+    latest = d; plotsFor(d.garden || []); creationsFor(d.creations || []);
     const ripe = (d.garden || []).find((g) => g.state !== "empty");
     bubble.material.map = art.bubble(ripe && /tomato/i.test(ripe.crop) ? "#d8432f" : "#6aa847");
   }

@@ -1,0 +1,4 @@
+{"template": "market", "anchors": [
+  {"id": "pips-stall", "type": "surface", "tags": ["stall", "pip", "counter"], "at": [-5.4, 0.97, -1.7], "normal": [0, 1, 0], "extent": [2.6, 0.9]},
+  {"id": "square", "type": "ground", "tags": ["outside", "square"], "at": [0.5, 0.0, -5.5], "normal": [0, 1, 0], "extent": [6.0, 2.0]}
+]}

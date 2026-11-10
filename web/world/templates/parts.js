@@ -62,3 +62,43 @@ export const rngFor = (key) => { let s = hashStr(key) % 2147483647 || 1; return 
 export const pipPose = (kit, pip, t, mode) => kit.frame(pip, mode === "walk" ? 2 + Math.floor(t * 8) % 4 : mode === "sit" ? 9 : mode === "sleep" ? 6 : Math.floor(t * 1.6) % 2);
 export const minutesNow = (d) => (d.now.minutes + (Date.now() / 1000 - d.now.ts) / 60 + 1440) % 1440;
 export const tide = (min) => 0.5 + 0.5 * Math.cos((min / 60 - 18) / 12.42 * Math.PI * 2);   // decoration only: high water near six
+
+// What modules show (docs/DESIGN-modules.md): the server has already placed each object on an anchor, so this only draws it: a picture
+// flat on a wall (facing the way the wall does), or standing up and facing the viewer on anything level. Kept by key, redrawn when it changes.
+export function moduleObjects(kit, art) {
+  const { THREE } = kit, shown = new Map(), motions = [];
+  kit.every((t) => motions.forEach(({ mesh, motion, base, phase }) => {
+    if (motion === "bob") mesh.position.y = base + Math.sin(t * 2 + phase) * 0.04;
+    else if (motion === "sway") mesh.rotation.z = Math.sin(t * 1.3 + phase) * 0.08;
+    else if (motion === "spin") mesh.scale.x = Math.cos(t * 1.5 + phase);
+  }));
+  function make(o) {
+    const tex = o.frame ? art.framed(o) : art.picture(o);
+    let mesh;
+    if (o.upright) {
+      mesh = kit.plane(o.w, o.h, kit.mat(tex, { transparent: true, alphaTest: 0.5 }), ...o.pos);
+      mesh.rotation.y = Math.atan2(o.normal[0], o.normal[2]);
+    } else { mesh = kit.sprite(tex, o.w, o.h, false); mesh.position.set(...o.pos); }
+    if (o.tip) kit.tipOn(mesh, o.tip.title, o.tip.text);
+    if (o.motion) motions.push({ mesh, motion: o.motion, base: o.pos[1], phase: hashStr(o.key) % 7 });
+    return mesh;
+  }
+  function drop(key) {
+    const old = shown.get(key); if (!old) return;
+    kit.scene.remove(old.mesh); const i = kit.hits.indexOf(old.mesh); if (i >= 0) kit.hits.splice(i, 1);
+    const j = motions.findIndex((m) => m.mesh === old.mesh); if (j >= 0) motions.splice(j, 1);
+    shown.delete(key);
+  }
+  return {
+    update(list) {
+      const keep = new Set();
+      for (const o of list) {
+        const sig = JSON.stringify(o); keep.add(o.key);
+        if (shown.get(o.key)?.sig === sig) continue;
+        drop(o.key); shown.set(o.key, { sig, mesh: make(o) });
+      }
+      [...shown.keys()].filter((k) => !keep.has(k)).forEach(drop);
+    },
+  };
+}
+

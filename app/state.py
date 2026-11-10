@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS modules (
   subject TEXT NOT NULL DEFAULT '', manifest TEXT NOT NULL, source TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, replaces INTEGER, state TEXT NOT NULL DEFAULT '{}',
   offers TEXT NOT NULL DEFAULT '[]', facts TEXT NOT NULL DEFAULT '{}', lines TEXT NOT NULL DEFAULT '[]', due REAL, cursor INTEGER NOT NULL DEFAULT 0,
+  show TEXT NOT NULL DEFAULT '[]',
   report TEXT NOT NULL DEFAULT '{}', note TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT 0, budget TEXT NOT NULL DEFAULT '{}',
   created_at REAL NOT NULL, decided_at REAL
 );
@@ -279,7 +280,8 @@ class State:
                 ("characters", "wares", "TEXT NOT NULL DEFAULT '[]'"),
                 ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),
                 ("works", "pixels", "TEXT NOT NULL DEFAULT ''"),          # a pixel picture: {"rows": [...], "palette": {...}} (art.py)
-                ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
+                ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks
+                ("modules", "show", "TEXT NOT NULL DEFAULT '[]'"),        # what a module draws in scenes (anchors.py)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -666,9 +668,11 @@ class State:
                             (place, item, local, local_at, day, sold_today))
             self.db.commit()
 
-    def stall_rows(self, place: str) -> list[dict]:
+    def stall_rows(self, place: str | None = None) -> list[dict]:
+        """Pip's stall lines at a place (or at every place, by place)."""
         with self.lock:
-            rows = self.db.execute("SELECT * FROM stalls WHERE place = ? ORDER BY item", (place,)).fetchall()
+            rows = self.db.execute("SELECT * FROM stalls WHERE place = ? ORDER BY item", (place,)).fetchall() if place is not None else \
+                self.db.execute("SELECT * FROM stalls ORDER BY place, item").fetchall()
         return [{**dict(r), "attrs": json.loads(r["attrs"])} for r in rows]
 
     def set_stall(self, place: str, item: str, **fields) -> None:
@@ -1013,7 +1017,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
-    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget")
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show")
 
     def _module(self, row) -> dict:
         return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}

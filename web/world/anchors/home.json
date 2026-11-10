@@ -1,0 +1,8 @@
+{"template": "home", "anchors": [
+  {"id": "back-wall-by-window", "type": "wall", "tags": ["inside", "back"], "at": [-5.25, 2.3, -6.83], "normal": [0, 0, 1], "extent": [0.9, 0.9]},
+  {"id": "back-wall-over-bench", "type": "wall", "tags": ["inside", "back"], "at": [-7.15, 1.6, -6.83], "normal": [0, 0, 1], "extent": [0.7, 0.7]},
+  {"id": "back-wall-under-shelf", "type": "wall", "tags": ["inside", "back"], "at": [-9.6, 1.5, -6.83], "normal": [0, 0, 1], "extent": [0.7, 0.7]},
+  {"id": "bench", "type": "surface", "tags": ["inside", "bench"], "at": [-5.6, 1.2, -5.8], "normal": [0, 1, 0], "extent": [1.8, 0.6]},
+  {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-6.0, 0.12, -3.4], "normal": [0, 1, 0], "extent": [4.0, 1.2]},
+  {"id": "yard", "type": "ground", "tags": ["outside", "yard"], "at": [3.6, 0.04, -1.2], "normal": [0, 1, 0], "extent": [5.0, 1.5]}
+]}

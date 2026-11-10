@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-09): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -97,10 +97,9 @@ Anything outside this list, or over a limit, is refused for that call. The modul
 ## Showing things: objects and anchors
 `show` returns scene objects:
 ```json
-{"id": "face", "sprite": {"rows": ["..kk..", "..."], "palette": {"k": "#3a2a1c"}}, "size": 0.8,
- "at": {"type": "wall", "tags": ["inside"], "near": "window"},
- "motion": {"kind": "swing", "period": 2}, "light": {"colour": "#ffc070", "strength": 0.4},
- "tip": {"title": "Gear Clock", "text": "Ten past four, and running."}}
+{"id": "face", "sprite": {"rows": ["..kk..", "..."], "palette": {"k": "#3a2a1c"}}, "size": 0.8, "frame": false,
+ "at": {"type": "wall", "place": "subject", "tags": ["inside"], "near": "back-wall-by-window"},
+ "motion": "sway", "tip": {"title": "Gear Clock", "text": "Ten past four, and running."}}
 ```
 A sprite is a pixel grid (the same format as Pip's pixel drawings), a texture from the generated set by name, or a part (below). Motion is a
 small fixed vocabulary (sway, bob, swing, spin, walk along an anchor, blink), and so is light. A tooltip is plain text.
@@ -234,6 +233,24 @@ failed calls in a row disable it, and its author is told why.
 - The owner decides in the dashboard's Work tab (Modules) or with `pipchat modules [show|approve|reject|off ID] [--note]`; the API is
   `GET /modules`, `GET /modules/{id}` (public: live and switched-off ones, with their code), `POST /modules/{id}/approve|reject|disable`
   (owner only).
+
+## Step 2 as built (0.18.0)
+- `app/anchors.py` reads the anchor manifests in `web/world/anchors/` (home, neighbor, market, shop, library, outdoors) and packs objects:
+  matching anchors in published order (`near` first), objects along each in turn from its left edge with a small gap, the next anchor when
+  one is full, a wall object only if it fits the wall's height. Types built so far: `wall`, `surface`, `floor`, `ground`, `hang`
+  (no template publishes a `hang` yet). A frame adds two pixels round a picture; `size` is the longest side (0.2 to 1.5, default 0.6).
+- `show` (at most 8 objects per module, each with its own id; pixel sprites only, checked like Pip's drawings; `motion` is `bob`, `sway`
+  or `spin`) is stored on the module and replaced by each new `show`. `at.place` is `home`, `subject` (a thing's creation, at home while
+  Pip has it) or a place key.
+- New reads: `works` (Pip's newest 12 pixel drawings, with their grids and subjects) and `stalls` (every line on Pip's stalls).
+- The scene data carries `objects`, already placed, for every live module, oldest first; the browser's `moduleObjects` (templates/parts.js)
+  draws them for every template (a picture flat on a wall, standing on anything level), with tooltips and motion.
+- The dry run reports where each object would go (`placed`) and what wouldn't (`unplaced`, which makes it not clean).
+- Ported: **`gallery-wall`** (Pip's three newest pixel drawings, framed on the workshop's back wall; it listens for `made_work` and
+  `revised_work`) and **`stall-pictures`** (on Pip's market stall, copies of a drawing framed and a creation as Pip drew it; it looks again every
+  ten minutes). The world proposes both once. The hard-coded wall slots in `home.js` and the stall pictures in `market.js` and the scene data
+  are gone, so until the owner approves them, no pictures hang. A creation drawn with `draw(of=...)` still wears its picture (that is its look,
+  not a slot).
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`

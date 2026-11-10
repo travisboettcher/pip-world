@@ -56,7 +56,8 @@ place seen for the first time, something that happened, a picture for a friend. 
 in recent events a first arrival says "(draw can keep a picture of it)" and a finished creation says a drawing of it `of="<name>"` becomes how
 it looks. None of these are orders and none repeat beyond the event that prompts them.
 
-**Drawings in the world.** `draw(of=<creation>)` records the picture's subject (`works.subject`; `replaces` keeps it). In the world view
+**Drawings in the world.** (Since 0.18.0 the wall and the stall are the `gallery-wall` and `stall-pictures` modules; see
+DESIGN-modules.md, step 2.) `draw(of=<creation>)` records the picture's subject (`works.subject`; `replaces` keeps it). In the world view
 (DESIGN-world-view.md) the workshop hangs the three newest pixel drawings framed on the back wall (`drawings` in the home scene); a creation
 with a pixel picture is drawn as that picture instead of the generic contraption or walker (clocks keep their working face); and on a
 stall, copies of a pixel drawing stand framed and propped up, and a creation Pip drew stands as its picture (`picture` on stall lines).

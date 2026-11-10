@@ -484,8 +484,9 @@ async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
     c = clock(st)
     st.add_creation("Paperweight", "a stone", None, "sound", {"capabilities": {}, "quirks": []}, {})
     made = await M.offer_library(st, s, agent.runner, now=NOW)
-    m = st.module(made[0])
-    assert len(made) == 1 and (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "world", "Gear Clock", "waiting")
+    assert [st.module(i)["name"] for i in made] == ["gallery-wall", "stall-pictures", "gear-clock-workings"]
+    m = st.module(made[2])
+    assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "world", "Gear Clock", "waiting")
     assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and "clockwork as code" in m["reason"]
     M.reject(st, m["id"])
     assert await M.offer_library(st, s, agent.runner, now=NOW) == []                                   # once, whatever was decided
@@ -495,7 +496,7 @@ async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
 async def clockwork(tmp_path, **kw):
     s, st, agent = modular(tmp_path, **kw)
     c = clock(st, NOW)
-    [mid] = await M.offer_library(st, s, agent.runner, now=NOW)
+    mid = [i for i in await M.offer_library(st, s, agent.runner, now=NOW) if st.module(i)["subject"]][0]
     await M.approve(st, s, agent.runner, mid, now=NOW)
     return s, st, agent, st.module(mid)
 

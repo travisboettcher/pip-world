@@ -84,7 +84,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [x] Image generation (canvas/drawing): pixel drawing, occasions as facts, drawings in the world (0.16.0; DESIGN-art.md)
 - [ ] Modules: the world and Pip write features as sandboxed code against hooks, with owner approval at first (**designed: [DESIGN-modules.md](DESIGN-modules.md)**; replaces "sandboxed code execution")
   - [x] Step 1: runner, protocol, dry run, approval (Work tab, `pipchat modules`); the gear clock as a module (0.17.0)
-  - [ ] Step 2: show and anchors; wall and stall pictures as modules
+  - [x] Step 2: show and anchors; wall and stall pictures as modules (0.18.0)
   - [ ] Step 3: Pip programs its creations
   - [ ] Step 4: the builder, for rules
   - [ ] Step 5: parts and layouts; the woods as a layout

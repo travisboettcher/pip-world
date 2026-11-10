@@ -275,7 +275,7 @@ async def test_the_dry_run_report_precisely(tmp_path):
     assert rep["logged"] == [f"tick {15 * (i + 1)}" for i in range(ticks)][:M.PER_DAY["log"]] and len(rep["logged"]) == min(ticks, M.PER_DAY["log"])
     assert rep["perceived"] == ["saw beans"] and rep["replies"] == ["poke: trying it"] and rep["offers"] == ["poke"]
     assert rep["calls"] == 1 + ticks + 1 + 1 and rep["errors"] == [] and rep["refused"] == [] and rep["clean"] is True
-    assert set(rep) == {"calls", "errors", "refused", "perceived", "logged", "replies", "offers", "slowest_ms", "clean"} and 1 <= rep["slowest_ms"] < 5000
+    assert set(rep) == {"calls", "errors", "refused", "perceived", "logged", "replies", "offers", "slowest_ms", "clean", "placed", "unplaced"} and 1 <= rep["slowest_ms"] < 5000
     assert [e["data"]["text"] for e in st.events(10) if e["kind"] == "module"] == ["from before"]               # the real world untouched
 
 
@@ -304,7 +304,7 @@ async def test_only_clocks_that_need_tending_are_offered_workings_and_every_one_
     st.add_creation("Second Clock", "another", None, "sound", TIMEKEEPER, __import__("app.creations", fromlist=["x"]).initial_runtime(TIMEKEEPER, NOW))
     t0 = time.time()
     made = await M.offer_library(st, s, agent.runner)
-    assert [st.module(i)["subject"] for i in made] == ["Gear Clock", "Second Clock"] and t0 <= st.module(made[0])["created_at"] <= time.time()
+    assert [st.module(i)["subject"] for i in made] == ["", "", "Gear Clock", "Second Clock"] and t0 <= st.module(made[0])["created_at"] <= time.time()
     st.add_creation("Third Clock", "a third", None, "sound", TIMEKEEPER, {})
     monkeypatch.setattr(M, "library", lambda name: (json.loads((M.LIBRARY / f"{name}.json").read_text()), "import os"))
     with caplog.at_level(logging.WARNING, logger="app.modules"):

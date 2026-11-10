@@ -117,25 +117,43 @@ async def test_starting_a_project_mentions_sketching_it_when_draw_is_on(tmp_path
     assert r.text.endswith("You could sketch it first with draw.")
 
 
-# --- in the world -----------------------------------------------------------------------------------------------------------
+# --- in the world: the gallery-wall and stall-pictures modules (docs/DESIGN-modules.md, step 2) --------------------------------
+async def rule_live(st, s, agent, name, now=None):
+    from app import modules as M
+    man, src = M.library(name)
+    r = await M.propose(st, s, agent.runner, "world", man, src, now=now)
+    await M.approve(st, s, agent.runner, r["id"], now=now)
+    return st.module(r["id"])
+
+
 @pytest.mark.asyncio
-async def test_the_workshop_scene_hangs_the_latest_pictures_and_creations_wear_theirs(tmp_path):
-    s, st, agent = await drawer(tmp_path, works_per_day=20, works_min_gap_minutes=0)
+async def test_the_gallery_wall_hangs_the_latest_pictures_and_creations_wear_theirs(tmp_path):
+    from app import modules as M
+    s, st, agent = await drawer(tmp_path, works_per_day=20, works_min_gap_minutes=0, modules="on", module_runner="local")
     clock(st)
     st.add_work("drawing", "Old svg", "<svg/>")
-    for i in range(WV.DRAWINGS_SHOWN + 1):
+    await call(agent, "draw", title="P0", pixels=ROWS, palette=PAL)
+    await rule_live(st, s, agent, "gallery-wall")
+    assert [o["key"] for o in WV.scene_view(st, s, None)["objects"]] == ["gallery-wall:drawing-2"]
+    for i in range(1, 4):
         await call(agent, "draw", title=f"P{i}", pixels=ROWS, palette=PAL)
     await call(agent, "draw", title="Clock", pixels=["kkkk"] * 4, palette=PAL, of="Gear Clock")
+    await M.step(st, s, agent.runner)                                                      # it hears of each new drawing
     d = WV.scene_view(st, s, None)
     assert len(st.pictures()) == 4 and len(st.pictures(10)) == 5
-    assert [w["title"] for w in d["drawings"]] == ["Clock", "P3", "P2"] and set(d["drawings"][0]) == {"id", "title", "rows", "palette"}
+    objs = d["objects"]
+    assert [o["key"] for o in objs] == ["gallery-wall:drawing-6", "gallery-wall:drawing-5", "gallery-wall:drawing-4"]
+    assert objs[0]["rows"] == ["kkkk"] * 4 and objs[0]["frame"] and objs[0]["upright"] and objs[0]["tip"] == {"title": "Clock", "text": "One of Pip's drawings."}
+    assert [o["pos"][:2] for o in objs] == [[-5.25, 2.3], [-7.15, 1.6], [-9.6, 1.5]]                 # the three spots on the back wall
     assert d["creations"][0]["picture"] == {"rows": ["kkkk"] * 4, "palette": {"k": "#2a1f1a", "y": "#fc3"}}
+    assert WV.scene_view(st, s, None, "woods")["objects"] == []
 
 
 @pytest.mark.asyncio
-async def test_copies_of_a_pixel_drawing_on_a_stall_show_the_picture(tmp_path):
+async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tmp_path):
     from tests.test_stall import LOOT
-    s, st, agent = await drawer(tmp_path, works_min_gap_minutes=0)
+    from app import modules as M
+    s, st, agent = await drawer(tmp_path, works_min_gap_minutes=0, modules="on", module_runner="local")
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={"browse": ["see", None]}, description="A market by the quay.")
     await call(agent, "draw", title="The Marsh", pixels=ROWS, palette=PAL)
@@ -150,7 +168,16 @@ async def test_copies_of_a_pixel_drawing_on_a_stall_show_the_picture(tmp_path):
     await call(agent, "draw", title="Clock face", pixels=["kkkk"] * 4, palette=PAL, of="Gear Clock")
     st.set_stall("Brygdon", "Gear Clock", name="Gear Clock", kind="creation", qty=1, ask=9, attrs={})
     st.set_stall("Brygdon", "Moon Lamp", name="Moon Lamp", kind="creation", qty=1, ask=9, attrs={})
-    stall = {r["item"]: r for r in WV.scene_view(st, s, None, "Brygdon")["stall"]}
-    assert stall["The Marsh"]["picture"]["rows"] == ROWS and stall["The Marsh"]["kind"] == "work"
-    assert stall["Gear Clock"]["picture"]["rows"] == ["kkkk"] * 4 and "picture" not in stall["Moon Lamp"]
-    assert "picture" not in stall["Svg one"] and "picture" not in stall["A poem"] and stall["carrots"] == {"item": "carrots", "qty": 2, "ask": 1, "kind": "food"}
+    now = time.time()
+    m = await rule_live(st, s, agent, "stall-pictures", now)
+    assert m["due"] == now + 600
+    d = WV.scene_view(st, s, None, "Brygdon")
+    objs = {o["tip"]["title"]: o for o in d["objects"]}
+    assert set(objs) == {"Gear Clock", "The Marsh"} and objs["The Marsh"]["frame"] and not objs["Gear Clock"]["frame"]
+    assert objs["The Marsh"]["rows"] == ROWS and objs["The Marsh"]["tip"]["text"] == "3 on Pip's stall." and objs["Gear Clock"]["rows"] == ["kkkk"] * 4
+    assert all(not o["upright"] and o["pos"][2] == -1.7 for o in d["objects"])                  # standing on Pip's stall
+    assert {r["item"]: r for r in d["stall"]}["carrots"] == {"item": "carrots", "qty": 2, "ask": 1, "kind": "food"}
+    st.db.execute("DELETE FROM stalls WHERE item = 'The Marsh'")
+    st.db.commit()
+    await M.step(st, s, agent.runner, now + 601)                                                   # it looks again
+    assert [o["tip"]["title"] for o in WV.scene_view(st, s, None, "Brygdon")["objects"]] == ["Gear Clock"]
