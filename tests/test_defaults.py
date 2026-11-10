@@ -59,3 +59,11 @@ def test_every_pipchat_command_is_a_command_not_a_message(monkeypatch):
         mod.main()
     assert seen == [(None, None, None), ("approve", 3, "fine"), "said"]
 
+
+
+def test_what_came_to_mind_is_its_own_feed_filter_off_by_default(tmp_path):
+    s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
+    with TestClient(create_app(s, FakeBackend())) as c:
+        js = c.get("/ui/app.js").text
+    assert "['recall', 'Recall']" in js and "recall: false" in js
+    assert "case 'reminded': return d.shown && d.shown.length ? { group: 'recall'" in js

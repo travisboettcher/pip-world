@@ -5,7 +5,7 @@ import { SceneView } from './world/scene.js';
 
 const $ = (id) => document.getElementById(id);
 const SECTIONS = ['diary', 'todo', 'wishlist', 'ambitions', 'learned'];
-const GROUPS = [['chat', 'Chat'], ['actions', 'Actions'], ['journal', 'Journal'], ['world', 'World'], ['system', 'System']];
+const GROUPS = [['chat', 'Chat'], ['actions', 'Actions'], ['journal', 'Journal'], ['world', 'World'], ['recall', 'Recall'], ['system', 'System']];
 // USD per million tokens (input, output) for the cost estimate; same table as pipchat.
 const PRICES = { 'claude-haiku-5-5': [0.10, 0.50] };
 const TYPING_TIMEOUT_MS = 150_000;
@@ -133,7 +133,7 @@ function describe(e) {
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
     case 'stall_sale': return { group: 'world', cls: 'world', text: `Pip sold ${d.qty} ${d.item} at its stall for ${d.coins} coin${d.coins === 1 ? '' : 's'}${d.left ? ` (${d.left} left)` : ' (sold out)'}` };
     case 'happening': return { group: 'world', cls: d.tone === 'bad' ? 'warn' : 'world', text: `Something happened — ${d.title}: ${d.text}${d.effects ? ` ${d.effects}` : ''}` };
-    case 'reminded': return d.shown && d.shown.length ? { group: 'journal', text: `On Pip's mind: ${d.shown.map((m) => m.text).join(' · ')}` } : null;
+    case 'reminded': return d.shown && d.shown.length ? { group: 'recall', text: `On Pip's mind: ${d.shown.map((m) => m.text).join(' · ')}` } : null;
     case 'faded': return { group: 'journal', text: `${d.count} old memor${d.count === 1 ? 'y' : 'ies'} faded (recall can still find ${d.count === 1 ? 'it' : 'them'})` };
     case 'wares': return { group: 'world', cls: 'world', text: `${d.name} has things for sale: ${d.wares.join(', ')}` };
     case 'offered': return { group: 'system', text: `${d.name}'s next letter may offer ${d.item} (${d.price} coins${d.wished ? ', something Pip wished for' : ''})` };
@@ -155,7 +155,7 @@ function describe(e) {
 }
 
 // ---- activity feed ----------------------------------------------------------
-let filters = { chat: true, actions: true, journal: true, world: true, system: false, ...store.get('filters', {}) };
+let filters = { chat: true, actions: true, journal: true, world: true, recall: false, system: false, ...store.get('filters', {}) };   // recall: what came to Pip's mind, most wakes
 function renderFilters() {
   $('filters').replaceChildren(...GROUPS.filter(([key]) => !(PUBLIC && key === 'chat')).map(([key, label]) => h('button', {
     type: 'button', class: 'chip', 'aria-pressed': String(!!filters[key]),
