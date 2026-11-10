@@ -8,7 +8,7 @@ from app import geometry as G
 from app import layouts as L
 from app import modules as M
 from app import world_view as WV
-from tests.test_modules import NOW, live, modular
+from tests.test_modules import NOW, live, modular, shipped_layouts
 
 BOX = {"shape": "box", "size": [1, 2, 3], "at": [0, 1, 0], "material": {"texture": "planks", "repeat": [1, 2], "color": "#5A3D27"}}
 
@@ -61,7 +61,7 @@ def test_every_shape_is_checked_and_normalised():
     ({"shape": "cylinder", "radius": 1, "material": {"color": "#000"}}, "height is a number"),
     ({"shape": "cone", "radius": 1, "height": 1, "segments": 2, "material": {"color": "#000"}}, "segments is a number from 3 to 32"),
     ({"shape": "gable", "width": 1, "material": {"color": "#000"}}, "height is a number"),
-    ({"shape": "sprite", "size": [1, 1]}, "a sprite has `pixels` ({rows, palette}) or `art` (one of reed, flower, curlew, spark, coin)"),
+    ({"shape": "sprite", "size": [1, 1]}, "a sprite has `pixels` ({rows, palette}) or `art` (one of reed, flower, curlew, spark, coin, note, carrots)"),
     ({"shape": "sprite", "size": [1, 1], "pixels": {"rows": ["k"], "palette": {"k": "#000"}}}, "shape 3 (sprite): a pixel picture is 4 to 32 rows tall"),
     ({"shape": "light", "strength": 5}, "strength is a number from 0 to 3"),
     ({"shape": "light", "color": "warm"}, "color is a colour like"),
@@ -284,7 +284,7 @@ def test_the_browser_draws_layouts_with_one_renderer(tmp_path):
     from pathlib import Path
     web = Path(M.__file__).resolve().parent.parent / "web" / "world"
     scene, layout = (web / "scene.js").read_text(), (web / "layout.js").read_text()
-    assert 'import * as layout from "./layout.js"' in scene and "data.layout ? layout : TEMPLATES[data.place.kind]" in scene
+    assert 'import * as layout from "./layout.js"' in scene and "data.layout ? layout : null" in scene and "templates/" not in scene
     assert 'obj.rotation.order = "YXZ"' in layout
     for shape in G.SHAPES:
         assert f'"{shape}"' in layout, shape
@@ -305,6 +305,7 @@ def test_shape_fields_exactly():
     c = {"color": "#000"}
     assert G.shape({"shape": "sphere", "radius": 2.5, "segments": 24, "material": c}, 0) == {"shape": "sphere", "at": [0.0, 0.0, 0.0], "radius": 2.5, "segments": 24, "material": c}
     assert G.shape({"shape": "ico", "radius": 2, "material": c}, 0) == {"shape": "ico", "at": [0.0, 0.0, 0.0], "radius": 2.0, "material": c}
+    assert G.shape({"shape": "torus", "radius": 0.3, "tube": 0.1, "material": c}, 0) == {"shape": "torus", "at": [0.0, 0.0, 0.0], "radius": 0.3, "tube": 0.1, "material": c}
     assert G.shape({"shape": "dodeca", "radius": 60, "material": c}, 0)["radius"] == 60.0
     assert G.shape({"shape": "cylinder", "radius": 1, "top": 0, "height": 60, "segments": 32, "material": c}, 0) == \
         {"shape": "cylinder", "at": [0.0, 0.0, 0.0], "radius": 1.0, "height": 60.0, "segments": 32, "top": 0.0, "material": c}
@@ -317,6 +318,8 @@ def test_shape_fields_exactly():
     for s, why in (({"shape": "sphere", "radius": 1, "segments": 2, "material": c}, "shape 0 (sphere): segments is a number from 3 to 24"),
                    ({"shape": "sphere", "radius": 1, "segments": 25, "material": c}, "segments is a number from 3 to 24"),
                    ({"shape": "ico", "radius": 61, "material": c}, "shape 0 (ico): radius is a number from 0.01 to 60"),
+                   ({"shape": "torus", "radius": 1, "material": c}, "shape 0 (torus): tube (radius) is a number from 0.01 to 60"),
+                   ({"shape": "torus", "tube": 1, "material": c}, "shape 0 (torus): radius is a number from 0.01 to 60"),
                    ({"shape": "dodeca", "material": c}, "shape 0 (dodeca): radius is a number"),
                    ({"shape": "cylinder", "radius": 1, "height": 1, "top": 61, "material": c}, "shape 0 (cylinder): top (radius) is a number from 0 to 60"),
                    ({"shape": "cylinder", "radius": 1, "height": 61, "material": c}, "shape 0 (cylinder): height is a number from 0.01 to 60"),
@@ -427,8 +430,8 @@ async def test_a_layout_approved_before_its_parts_builds_as_soon_as_they_are_liv
 def test_shapes_can_animate_and_hitboxes_carry_a_tip():
     sea = G.shape({**BOX, "animate": "tide"}, 0)
     assert (sea["animate"], sea["speed"]) == ("tide", 0.02) and G.shape({**BOX, "animate": "flow", "speed": 1}, 0)["speed"] == 1.0
-    assert bad(G.shape, {**BOX, "animate": "wobble"}, 0) == "shape 0 (box): `animate` is one of flow, tide"
-    assert bad(G.shape, {"shape": "light", "animate": "flow"}, 0).endswith("`animate` is one of flow, tide")
+    assert bad(G.shape, {**BOX, "animate": "wobble"}, 0) == "shape 0 (box): `animate` is one of flow, tide, spin, wander (a sprite: wander)"
+    assert bad(G.shape, {"shape": "light", "animate": "flow"}, 0).endswith("`animate` is one of flow, tide, spin, wander (a sprite: wander)")
     assert bad(G.shape, {**BOX, "animate": "flow", "speed": 2}, 0).endswith("speed is a number from 0 to 1")
     hb = G.shape({"shape": "box", "size": [1, 1, 1], "hitbox": True, "tip": {"title": "Heap"}}, 0)
     assert hb == {"shape": "box", "at": [0.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0], "material": {"color": "#000000"}, "hitbox": True,
@@ -446,7 +449,7 @@ def test_a_kind_layout_is_checked(tmp_path):
     for k in ([], ["castle"], "wild"):
         with pytest.raises(M.Refused) as e:
             M.check_manifest({**kinds, "kinds": k}, "world")
-        assert str(e.value) == "`kinds` is a list drawn from: wild, yard, shop, market, sight"
+        assert str(e.value) == "`kinds` is a list drawn from: home, neighbor, library, wild, yard, shop, market, sight"
     with pytest.raises(M.Refused):
         M.check_manifest(kinds, "pip")
 
@@ -518,13 +521,15 @@ async def test_the_builder_hears_the_anchors_a_kind_layout_has_built(tmp_path):
     from app import builder as B
     s, st, agent = modular(tmp_path, modules_approval="")
     assert B.anchor_list() == B.anchor_list(None)
+    await shipped_layouts(st, s, "home")
     text = B.anchor_list(st)
-    assert text.splitlines()[-1] == "  wild/yard/sight: ground tagged outside (once its layout is built)"
-    assert text.splitlines()[0].startswith("  home: wall tagged inside, back; surface tagged inside, bench")
+    assert text.splitlines()[-1] == "  neighbor/library/wild/yard/shop/market/sight: ground tagged outside (once its layout is built)"
+    assert text.splitlines()[0].startswith("  home: ") and "wall tagged inside, back" in text.splitlines()[0]
     await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard"]}, KIND, now=NOW)
     await L.step(st, s, agent.runner, NOW)
     lines = B.anchor_list(st).splitlines()
-    assert "  wild/yard: ground tagged pip" in lines and "  sight: ground tagged outside (once its layout is built)" in lines
+    assert "  wild/yard: ground tagged pip" in lines and "  neighbor/library/shop/market/sight: ground tagged outside (once its layout is built)" in lines
+    assert "reserved" not in lines[0] and "clock" not in lines[0]                                    # where the scene draws its own: not offered
     assert len([l for l in lines if l.startswith("  wild")]) == 1
 
 
@@ -556,3 +561,119 @@ def test_a_places_details_exactly(tmp_path):
     assert d["props"] == list(dict.fromkeys(scene["props"] + looks.props(looks.place_text(st, "Saltholm"))))
     assert d["coastal"] is True and set(d["props"]) >= {"lanterns", "rope"} and d["label"] == "Saltholm" and d["kind"] == "shop"
     assert WV2.place_details(st, s, "woods", "wild")["coastal"] is False
+
+
+# --- live elements; the last templates retired (0.24.0) ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_a_shipped_module_the_engine_changed_is_upgraded_unless_the_owner_stepped_in(tmp_path, monkeypatch):
+    s, st, agent = modular(tmp_path)
+    await M.offer_library(st, s, agent.runner, now=NOW)
+    assert await M.offer_library(st, s, agent.runner, now=NOW) == []                             # nothing changed: nothing offered
+    real = M.library
+    def changed(name):
+        man, src = real(name)
+        return (man, src + "\n# a new version\n") if name in ("well", "bench") else (man, src)
+    monkeypatch.setattr(M, "library", changed)
+    M.disable(st, L.part_named(st, "bench")["id"])                                                 # the owner switched this one off
+    made = await M.offer_library(st, s, agent.runner, now=NOW)
+    assert [st.module(i)["name"] for i in made] == ["well"]
+    well = L.part_named(st, "well")
+    assert (well["id"], well["version"], well["status"], well["author"]) == (made[0], 2, "live", "library") and well["source"].endswith("# a new version\n")
+    assert [m["status"] for m in st.modules() if m["name"] == "well"] == ["replaced", "live"]
+    assert await M.offer_library(st, s, agent.runner, now=NOW) == []                             # once per change
+    st.update_module(well["id"], author="world")                                                   # shipped before shipped modules had an author
+    monkeypatch.setattr(M, "library", lambda name: (real(name)[0], real(name)[1] + "\n# again\n"))
+    assert "well" in [st.module(i)["name"] for i in await M.offer_library(st, s, agent.runner, now=NOW)]
+    assert L.part_named(st, "well")["author"] == "library"
+
+
+def test_shapes_can_show_only_while_something_holds_and_turn_and_glow():
+    c = {"color": "#000"}
+    assert G.shape({**BOX, "when": "open"}, 0)["when"] == ["open"]
+    assert G.shape({**BOX, "when": ["night", "high-tide", "night", "booth-3"]}, 0)["when"] == ["night", "high-tide", "booth-3"]
+    assert "when" not in G.shape(BOX, 0)
+    for when in ([], ["dusk"], "booth-9", ["open", 3]):
+        assert bad(G.shape, {**BOX, "when": when}, 2).startswith("shape 2 (box): `when` is one or more of open, shut, day, night, high-tide, low-tide")
+    assert G.shape({**BOX, "animate": "spin", "speed": 0.6}, 0)["animate"] == "spin"
+    assert G.shape({"shape": "sprite", "art": "curlew", "size": [1, 1], "animate": "wander"}, 0)["animate"] == "wander"
+    assert bad(G.shape, {**BOX, "animate": "wander"}, 0).endswith("(a sprite: wander)")
+    assert bad(G.shape, {"shape": "sprite", "art": "reed", "size": [1, 1], "animate": "spin"}, 0).endswith("(a sprite: wander)")
+    sp = {"shape": "sprite", "art": "note", "size": [1, 1]}
+    assert G.shape({**sp, "frame": 7}, 0)["frame"] == 7 and "frame" not in G.shape(sp, 0) and "frame" not in G.shape({**BOX, "frame": 2}, 0)
+    assert bad(G.shape, {**sp, "frame": 10}, 1) == "shape 1 (sprite): frame is a number from 0 to 9"
+    assert G.shape({**sp, "art": "carrots"}, 0)["art"] == "carrots"
+    assert G.material({"color": "#000", "lamp": True}, "m")["lamp"] == 1.0 and G.material({"color": "#000", "lamp": 0.3}, "m")["lamp"] == 0.3
+    assert "lamp" not in G.material({"color": "#000", "lamp": False}, "m") and "lamp" not in G.material(c, "m")
+    assert G.material({"color": "#000", "lamp": 2}, "m")["lamp"] == 2.0 and bad(G.material, {"color": "#000", "lamp": 3}, "m") == "m: lamp is a number from 0 to 2"
+    assert G.material({"color": "#fff", "beam": 1}, "m") == {"color": "#fff", "beam": True} and "beam" not in G.material({**c, "beam": 0}, "m")
+    assert {"chart", "book"} <= set(G.TEXTURES) and {f"booth-{i}" for i in range(1, 9)} <= set(G.CONDITIONS)
+
+
+def test_a_part_placed_with_when_shows_only_while_it_holds():
+    part = {"shapes": [G.shape({**BOX, "when": ["open"]}, 0), G.shape(BOX, 1)], "anchors": []}
+    moved = G.place(part, [1, 0, 0], 0, "stall-1", ["booth-1", "open"])
+    assert [s["when"] for s in moved["shapes"]] == [["open", "booth-1"], ["booth-1", "open"]]
+    assert [("when" in s) for s in G.place(part, [1, 0, 0], 0, "x")["shapes"]] == [True, False]
+    plan = L._plan({"parts": [{"part": "stall", "at": [0, 0, 0], "when": "booth-2"}, {"part": "stall", "at": [0, 0, 0]}]})
+    assert plan["parts"][0]["when"] == ["booth-2"] and "when" not in plan["parts"][1]
+    with pytest.raises(L.Bad) as e:
+        L._plan({"parts": [{"part": "stall", "at": [0, 0, 0], "when": ["sometimes"]}]})
+    assert str(e.value).startswith("part entry 0: `when` is one or more of open, shut")
+
+
+def test_a_place_module_takes_over_from_the_one_it_covers():
+    assert M._covers({"place": "woods"}, {"place": "woods"}) and not M._covers({"place": "woods"}, {"place": "fen"})
+    assert not M._covers({"place": "woods"}, {"kinds": ["wild"]}) and not M._covers({"kinds": ["wild"]}, {"place": "woods"})
+    assert M._covers({"kinds": ["wild", "yard"]}, {"kinds": ["wild"]}) and M._covers({"kinds": ["wild"]}, {"kinds": ["wild"]})
+    assert not M._covers({"kinds": ["wild"]}, {"kinds": ["wild", "yard"]}) and not M._covers({"kinds": ["home"]}, {"kinds": ["market"]})
+
+
+@pytest.mark.asyncio
+async def test_the_shipped_layouts_build_every_kind_of_place_from_its_details(tmp_path):
+    s, st, agent = modular(tmp_path)
+    await shipped_layouts(st, s, "neighbor", "market", "shop", "library", "home")
+    async def build(name, **details):
+        m = next(m for m in st.modules("live") if m["name"] == name)
+        return await L.build_place(st, s, M.LocalRunner(), m, NOW, key="x", details={"key": "x", "props": [], **details})
+    coast = await build("neighbor", coastal=True, props=["shingle", "birds", "lighthouse", "tide chart", "tin", "books", "vegetables", "reeds"])
+    arts = [sh.get("art") for sh in coast["shapes"]]
+    assert arts.count("curlew") == 18 and arts.count("reed") == 60 and arts.count("carrots") == 6 and "note" in arts
+    assert {tuple(sh["when"]) for sh in coast["shapes"] if sh.get("art") == "curlew"} == {("low-tide",), ("high-tide",)}
+    assert any(sh.get("animate") == "spin" and sh["material"].get("beam") for sh in coast["shapes"]) and any(sh.get("animate") == "tide" for sh in coast["shapes"])
+    assert {"resident", "resident-evening", "visitor", "flats", "wares-0", "back-wall"} <= {a["id"] for a in coast["anchors"]}
+    inland = await build("neighbor", props=["beehives"])
+    assert not any(sh.get("art") == "curlew" for sh in inland["shapes"]) and "flats" not in {a["id"] for a in inland["anchors"]}
+    assert sum(sh.get("tip", {}).get("title") == "A beehive" for sh in inland["shapes"]) == 3 and "pine-tree" in inland["parts"]
+    market = await build("market", props=["barrow", "crates", "well"])
+    booths = [a for a in market["anchors"] if "booth" in a["tags"]]
+    assert len(booths) == 6 and all("reserved" in a["tags"] for a in booths) and "well" in market["parts"]
+    assert {tuple(sh["when"]) for sh in market["shapes"] if sh.get("material", {}).get("texture") == "stripes"} >= {("open", "booth-1"), ("shut", "booth-1"), ("open", "pip-stall"), ("no-pip-stall",)}
+    assert [a["id"] for a in market["anchors"] if "pip" in a["tags"] and "stall" in a["tags"]][0] == "pip-stall" and market["camera"]["look"] == [0, 0.4, -3]
+    harbour = await build("shop", coastal=True, props=["boats", "rope", "lanterns", "drawers"])
+    assert sum(sh.get("tip", {}).get("title") == "A boat" for sh in harbour["shapes"]) == 2 and sum(sh["shape"] == "torus" for sh in harbour["shapes"]) == 3
+    assert any(sh.get("when") == ["shut"] and sh.get("art") == "note" for sh in harbour["shapes"]) and [a["id"] for a in harbour["anchors"]][:4] == ["counter", "stock-0", "stock-1", "stock-2"]
+    inland_shop = await build("shop")
+    assert not any(sh.get("tip", {}).get("title") == "A boat" for sh in inland_shop["shapes"]) and not any(sh["shape"] == "torus" for sh in inland_shop["shapes"])
+    lib = await build("library")
+    assert {"reading", "browse", "table"} <= {a["id"] for a in lib["anchors"]} and lib["camera"]["at"] == [0, 13, 21]
+    home = await build("home")
+    ids = [a["id"] for a in home["anchors"]]
+    assert ids[:6] == ["back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf", "bench", "floor", "yard"]
+    assert {"plot-1", "plot-4", "clock-1", "shelf", "walkers", "seat", "workbench", "garden-path", "pip"} <= set(ids)
+    assert all(("reserved" in a["tags"]) == (a["id"] not in ids[:6] and not a["id"].startswith("tree")) for a in home["anchors"])
+
+
+def test_the_renderer_draws_live_elements_on_tagged_anchors():
+    from pathlib import Path
+    web = Path(M.__file__).resolve().parent.parent / "web" / "world"
+    js = (web / "layout.js").read_text()
+    for tag in ("finds", "counter", "stock", "booth", "pip-stall", "wares", "plot", "clock", "shelf", "walkers", "resident", "resident-evening",
+                "resident-walk", "people", "crowd", "seat", "bed", "workbench", "reading", "garden-path", "browse", "visitor"):
+        assert f'"{tag}"' in js, tag
+    import re
+    for cond in (c for c in G.CONDITIONS if not c.startswith("booth-")):                       # each one the renderer works out
+        assert re.search(r'[\s{"]' + re.escape(cond) + r'"?[:,]', js), cond
+    assert "`booth-${i + 1}`" in js and 'case "torus"' in js
+    for token in ("$label", "$description", "$blurb", "$belongings", "$project", "$hours", "$note", "$resident", "$wares", "$stock", "$stall"):
+        assert f'"{token}"' in js, token
+    assert not (web / "templates").exists() and not (web / "anchors").exists()

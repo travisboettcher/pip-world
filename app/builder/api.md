@@ -49,10 +49,11 @@ open ground in front. Give the ground as a box, like {"shape": "box", "size": [3
 standing on it has its base at y 0. Add ground anchors tagged "pip" (where Pip stands, near z 0), "finds" (where things lie) and "people",
 like {"id": "pip", "type": "ground", "tags": ["outside", "pip"], "at": [0, 0, 0], "extent": [8, 2]} (extent: width along x, depth along z).
 A shop or market also needs a counter: a box to stand at, and a surface anchor tagged "counter" on top of it (its goods are set out there
-and the keeper stands just behind), inside the building if there is one.
-Shapes: box (size), plane (size), cylinder (radius, top, height), cone, sphere, ico, dodeca (radius), gable (width, height), sprite
-(pixels or art), light (color, strength, range, lamp); each with at, rot (degrees), and a material {texture, repeat, color}; textures:
-TEXTURES.
+and the keeper stands just behind), inside the building if there is one. Add "reserved" to the tags of the anchors the scene itself
+draws on (pip, people, counter), so things modules show stay off them.
+Shapes: box (size), plane (size), cylinder (radius, top, height), cone, sphere, ico, dodeca, torus (radius, tube), gable (width, height),
+sprite (pixels or art), light (color, strength, range, lamp); each with at, rot (degrees), and a material {texture, repeat, color}; textures:
+TEXTURES. A shape (or a part entry) with "when": [...] shows only while all of those hold: CONDITIONS.
 The parts you can use:
 PARTS
 When Pip first gets there, it is as you described it; until someone tells Pip about it, nobody knows it is there.

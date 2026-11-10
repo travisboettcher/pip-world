@@ -1,5 +1,0 @@
-{"template": "library", "anchors": [
-  {"id": "reading-table", "type": "surface", "tags": ["inside", "table"], "at": [-2.6, 0.97, -6.7], "normal": [0, 1, 0], "extent": [1.4, 1.0]},
-  {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-1.0, 0.12, -4.4], "normal": [0, 1, 0], "extent": [10.0, 1.2]},
-  {"id": "steps", "type": "ground", "tags": ["outside", "steps"], "at": [-1.5, 0.3, -2.5], "normal": [0, 1, 0], "extent": [6.0, 0.8]}
-]}

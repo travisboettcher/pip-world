@@ -1,38 +1,22 @@
 """Anchors: where things modules show can go in a scene (docs/DESIGN-modules.md, "Places and anchors").
 
-Every scene template publishes its anchors in web/world/anchors/<template>.json: walls, surfaces, floors, ground and points to hang from,
-each with a centre, the way it faces, its size and tags (free words: inside, back, counter, pip...). A module never names a position; it
+Every place's layout (app/layouts.py) has anchors: walls, surfaces, floors, ground and points to hang from, each with a centre, the way
+it faces, its size and tags (free words: inside, back, counter, pip...). A module never names a position; it
 asks for an anchor by what it is ({"type": "wall", "tags": ["inside"], "place": "home"}), and this module answers on the server, the same
 way every time: matching anchors in their published order (the one named by `near` first), objects packed along each in turn, and what
 doesn't fit left out. The browser only draws what it is given.
 """
-import json
-from functools import lru_cache
-from pathlib import Path
-
 TYPES = ("wall", "surface", "floor", "ground", "hang")
+RESERVED = "reserved"                                      # a tag for where the scene draws what changes with the world: never a module's
 UPRIGHT = ("wall",)                                        # drawn flat against the anchor; everything else stands up, facing the viewer
-TEMPLATE_OF_KIND = {"home": "home", "neighbor": "neighbor", "market": "market", "shop": "shop", "library": "library"}   # the rest are layouts
 GAP = 0.12                                                 # between objects packed along an anchor
 LIFT = 0.02                                                # off a wall, so a picture never fights the plaster
-DIR = Path(__file__).resolve().parent.parent / "web" / "world" / "anchors"
-
-
-@lru_cache(maxsize=None)
-def manifest(template: str) -> tuple:
-    """A template's anchors, in their published order (empty if it publishes none)."""
-    path = DIR / f"{template}.json"
-    return tuple(json.loads(path.read_text())["anchors"]) if path.is_file() else ()
-
-
-def for_kind(kind: str) -> tuple:
-    return manifest(TEMPLATE_OF_KIND[kind]) if kind in TEMPLATE_OF_KIND else ()
 
 
 def matching(anchors, query: dict) -> list[dict]:
     """The anchors a query may use, in order: the one it names with `near` first, then the rest as published."""
     tags = set(query.get("tags") or [])
-    hits = [a for a in anchors if a["type"] == query["type"] and tags <= set(a["tags"])]
+    hits = [a for a in anchors if a["type"] == query["type"] and tags <= set(a["tags"]) and RESERVED not in a["tags"]]
     near = query.get("near")
     return sorted(hits, key=lambda a: a["id"] != near) if near else hits
 

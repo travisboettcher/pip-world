@@ -30,7 +30,8 @@ Brygdon market https://claude.ai/artifact/9ibofMSUHx9NSZwq6G3CtC.
 - **The engine stays the source of truth.** The view only reads. Anything shown that isn't in the engine (a tide, a shopper, a curlew) is
   decoration, deterministic from the clock and the place's key, and never presented as a fact (it has no tooltip claiming otherwise).
 - **No per-place hand-building.** Most places are invented by the GM while Pip lives (Saltholm, Brygdon, Oriel's cottage). Every scene
-  comes from a **template per place kind**, filled from the place's record. A new place gets a scene the moment it is real.
+  comes from a **layout per place kind**, filled from the place's record (since 0.24.0 every scene is a layout module built from parts and
+  drawn by one renderer, `layout.js`: DESIGN-modules.md, "Moving features into modules"). A new place gets a scene once it is laid out.
 - **Stable.** The same world draws the same way every time: the map from a world seed, a scene's layout from its place key. A new place is
   fitted in; nothing reshuffles.
 - **Facts in tooltips.** Hovering anything shows the engine's own data behind it (a plot's growth, a booth's stock, a creation's quality).
@@ -46,7 +47,8 @@ All rendering happens in the browser. The engine adds two read-only endpoints an
   blur, light bloom, warm grade, vignette), tooltips by raycast, sprite billboards, reduced-motion and low-power handling.
 - `art.js`: texture and sprite generators behind one interface (`texture(name)`, `sprite(name)`), so the later art pass swaps an atlas
   in without touching the templates.
-- `templates/<kind>.js`: one per place kind (below).
+- `layout.js` and `parts.js`: one renderer for every place's layout (the hand-written `templates/<kind>.js` described below were retired
+  in 0.24.0; their scenes now live as shipped layout modules in `app/module_library/`).
 - `world.js`: the World tab: fetches, chooses map or scene, switches between them.
 - **three.js r128, vendored** in `web/vendor/` (MIT, with its licence file) rather than loaded from a CDN: the dashboard is served from the
   homelab and should not depend on a third-party host. Same for the post-processing passes (EffectComposer, RenderPass, ShaderPass,

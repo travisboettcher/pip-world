@@ -39,6 +39,15 @@ def live(st, manifest, source, author="world", state=None):
     return st.module(mid)
 
 
+async def shipped_layouts(st, s, *places, now=NOW):
+    """The shipped layouts for these kinds of place (and the parts they use) put straight in as live, and built: a scene's anchors."""
+    from app import layouts as L
+    for name in ("round-tree", "pine-tree", "well", "stall", "cutaway", *places):
+        man, src = M.library(name)
+        live(st, man, src, author=M.SHIPPED)
+    await L.step(st, s, None, now)
+
+
 # --- the sandbox ------------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("source,why", [
     ("", "the code is empty"),

@@ -1,6 +1,0 @@
-{"template": "shop", "anchors": [
-  {"id": "counter", "type": "surface", "tags": ["inside", "counter"], "at": [0.9, 1.0, -5.3], "normal": [0, 1, 0], "extent": [2.2, 0.8]},
-  {"id": "back-wall", "type": "wall", "tags": ["inside", "back"], "at": [3.4, 1.8, -9.33], "normal": [0, 0, 1], "extent": [0.9, 1.0]},
-  {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-2.0, 0.12, -4.4], "normal": [0, 1, 0], "extent": [8.0, 1.0]},
-  {"id": "street", "type": "ground", "tags": ["outside", "street"], "at": [-2.0, 0.0, -1.6], "normal": [0, 1, 0], "extent": [10.0, 1.5]}
-]}

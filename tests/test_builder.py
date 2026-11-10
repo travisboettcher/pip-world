@@ -6,7 +6,7 @@ import pytest
 
 from app import builder as B
 from app import modules as M
-from tests.test_modules import NOW, live, rule
+from tests.test_modules import NOW, live, rule, shipped_layouts
 from tests.test_projects import make, report
 
 BELL = ('def on_install(ctx):\n    return {"schedule": ctx["now"] + 3600}\n'
@@ -182,9 +182,8 @@ async def test_the_nightly_reflection_gives_the_builder_its_turn(tmp_path, monke
 
 def test_the_builder_is_told_the_real_anchors_and_keys():
     text = B.api()
-    assert "ANCHORS" not in text and "EVENT_KINDS" not in text
-    assert "  home: wall tagged inside, back; surface tagged inside, bench; floor tagged inside; ground tagged outside, yard" in text
-    assert "  wild/yard/sight: ground tagged outside (once its layout is built)" in text and "  market: surface tagged stall, pip, counter; ground tagged outside, square" in text
+    assert "ANCHORS" not in text and "EVENT_KINDS" not in text and "CONDITIONS" not in text and "high-tide, low-tide" in text
+    assert "  home/neighbor/library/wild/yard/shop/market/sight: ground tagged outside (once its layout is built)" in text   # no world: nothing built
     assert 'Pip\'s own home is "workshop"' in text
 
 
@@ -198,6 +197,7 @@ async def test_a_trial_catches_a_picture_that_only_appears_later_in_the_day(tmp_
            '    return out\n')
     r = await M.propose(st, s, agent.runner, "world", B.manifest(src, "dusk-lamp", []), src, now=NOW)
     assert r["report"]["unplaced"] == ["lamp: no wall tagged window anchor here"] and r["report"]["clean"] is False
+    await shipped_layouts(st, s, "home")
     good = src.replace('"tags": ["window"]', '"tags": ["back"]')
     r = await M.propose(st, s, agent.runner, "world", B.manifest(good, "dusk-lamp-2", []), good, now=NOW)
     assert r["report"]["placed"] == ["lamp: back-wall-by-window at workshop"] and r["report"]["clean"]

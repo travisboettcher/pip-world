@@ -8,14 +8,17 @@ turns the same data into three.js, so a new place needs no new browser code.
 import math
 import re
 
-SHAPES = ("box", "plane", "cylinder", "cone", "sphere", "ico", "dodeca", "gable", "sprite", "light")
+SHAPES = ("box", "plane", "cylinder", "cone", "sphere", "ico", "dodeca", "torus", "gable", "sprite", "light")
 TEXTURES = ("grass", "soil", "cliff", "plaster", "inner", "thatch", "planks", "floor", "stone", "cobble", "leaves", "water", "door", "window",
-            "whitewash", "slate", "shingles", "marsh", "mud", "pebbles", "sea", "drawers", "brick", "tiles", "books", "sand", "heather", "stripes")
-ARTS = ("reed", "flower", "curlew", "spark", "coin")       # small sprites the browser already draws
+            "whitewash", "slate", "shingles", "marsh", "mud", "pebbles", "sea", "drawers", "brick", "tiles", "books", "sand", "heather", "stripes",
+            "chart", "book")
+ARTS = ("reed", "flower", "curlew", "spark", "coin", "note", "carrots")   # small sprites the browser already draws
+CONDITIONS = ("open", "shut", "day", "night", "high-tide", "low-tide", "winter", "not-winter", "resident-home", "resident-away",
+              "pip-stall", "no-pip-stall", *(f"booth-{i}" for i in range(1, 9)))          # `when`: a shape shows only while all of its conditions hold
 HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 SHAPES_MAX, ANCHORS_MAX, REACH, SIZE_MAX = 400, 24, 60.0, 60.0
 ANCHOR_TYPES = ("wall", "surface", "floor", "ground", "hang")
-ANIMATIONS = ("flow", "tide")
+ANIMATIONS = ("flow", "tide", "spin", "wander")         # flowing water; the sea with the tide; turning (a lighthouse beam); a sprite wandering
 
 
 class Bad(ValueError):
@@ -59,7 +62,9 @@ def material(m, what: str) -> dict:
     for key, lo, hi in (("metal", 0, 1), ("rough", 0, 1), ("opacity", 0.1, 1)):
         if key in m:
             out[key] = _num(m[key], f"{what}: {key}", lo, hi)
-    for key in ("lamp", "double"):
+    if m.get("lamp"):                                       # lit at dusk; a number is how brightly (1 when just true)
+        out["lamp"] = 1.0 if m["lamp"] is True else _num(m["lamp"], f"{what}: lamp", 0, 2)
+    for key in ("double", "beam"):                          # beam: a faint light that shows only in the dark (a lighthouse's sweep)
         if m.get(key):
             out[key] = True
     return out
@@ -91,11 +96,14 @@ def shape(s, i: int) -> dict:
         out["radius"] = _num(s.get("radius"), f"{what}: radius", 0.01, SIZE_MAX)
         if kind == "sphere":
             out["segments"] = int(_num(s.get("segments", 8), f"{what}: segments", 3, 24))
+    elif kind == "torus":                                   # a ring (a coil of rope, a wheel), facing along z
+        out["radius"] = _num(s.get("radius"), f"{what}: radius", 0.01, SIZE_MAX)
+        out["tube"] = _num(s.get("tube"), f"{what}: tube (radius)", 0.01, SIZE_MAX)
     elif kind == "gable":
         out["width"] = _num(s.get("width"), f"{what}: width", 0.01, SIZE_MAX)
         out["height"] = _num(s.get("height"), f"{what}: height", 0.01, SIZE_MAX)
     if kind == "sprite":
-        if s.get("art") in ARTS:
+        if s.get("art") in ARTS:                            # "note" is a paper note pinned up
             out["art"] = s["art"]
         elif isinstance(s.get("pixels"), dict):
             from . import art
@@ -124,11 +132,18 @@ def shape(s, i: int) -> dict:
             out["material"] = material(s.get("material"), what)
     if s.get("sway"):
         out["sway"] = True
-    if "animate" in s:                                       # water that flows (its texture drifts) or rises and falls with the tide
-        if s["animate"] not in ANIMATIONS or kind in ("light", "sprite"):
-            raise Bad(f"{what}: `animate` is one of {', '.join(ANIMATIONS)}")
+    if "animate" in s:                                       # see ANIMATIONS; a sprite can only wander, and only a sprite wanders
+        if s["animate"] not in ANIMATIONS or kind == "light" or (kind == "sprite") != (s["animate"] == "wander"):
+            raise Bad(f"{what}: `animate` is one of {', '.join(ANIMATIONS)} (a sprite: wander)")
         out["animate"] = s["animate"]
         out["speed"] = _num(s.get("speed", 0.02), f"{what}: speed", 0, 1)
+    if "when" in s:
+        when = s["when"] if isinstance(s["when"], list) else [s["when"]]
+        if not when or any(w not in CONDITIONS for w in when):
+            raise Bad(f"{what}: `when` is one or more of {', '.join(CONDITIONS)}")
+        out["when"] = list(dict.fromkeys(when))
+    if kind == "sprite" and "frame" in s:
+        out["frame"] = int(_num(s["frame"], f"{what}: frame", 0, 9))
     if s.get("hitbox"):                                      # drawn invisibly: only there to carry a tip
         if kind != "box" or "tip" not in s:
             raise Bad(f"{what}: a `hitbox` is an invisible box with a `tip`")
@@ -182,8 +197,9 @@ def _turn(x: float, z: float, deg: float) -> tuple[float, float]:
     return x * c + z * s, -x * s + z * c
 
 
-def place(part: dict, at, turn: float, role: str) -> dict:
-    """A built part moved to `at` and turned `turn` degrees about the vertical; its anchors' ids are prefixed and tagged with the role."""
+def place(part: dict, at, turn: float, role: str, when=None) -> dict:
+    """A built part moved to `at` and turned `turn` degrees about the vertical; its anchors' ids are prefixed and tagged with the role.
+    With `when`, every shape of it shows only while those conditions hold too."""
     ax, ay, az = at
     shapes = []
     for s in part["shapes"]:
@@ -191,7 +207,8 @@ def place(part: dict, at, turn: float, role: str) -> dict:
         x, z = _turn(x, z, turn)
         rot = list(s.get("rot", [0.0, 0.0, 0.0]))
         rot[1] = rot[1] + turn
-        shapes.append({**s, "at": [round(x + ax, 4), round(y + ay, 4), round(z + az, 4)], "rot": [round(v, 4) for v in rot]})
+        cond = list(dict.fromkeys(s.get("when", []) + list(when or [])))
+        shapes.append({**s, "at": [round(x + ax, 4), round(y + ay, 4), round(z + az, 4)], "rot": [round(v, 4) for v in rot], **({"when": cond} if cond else {})})
     anchors = []
     for a in part["anchors"]:
         x, y, z = a["at"]

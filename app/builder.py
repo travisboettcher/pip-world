@@ -35,6 +35,7 @@ def api(state=None) -> str:
     return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list(state))
             .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
             .replace("SETTINGS", ", ".join(SCENE["setting"])).replace("TEXTURES", ", ".join(geometry.TEXTURES))
+            .replace("CONDITIONS", ", ".join(geometry.CONDITIONS))
             .replace("PARTS", parts_list(state)).strip())
 
 
@@ -45,23 +46,16 @@ def parts_list(state) -> str:
 
 
 def anchor_list(state=None) -> str:
-    """Every kind of place and the anchors its scene has (type tagged ...), so a module can ask for one that exists: from a hand-written
-    scene's manifest, or from what a kind's layout module has built."""
-    from . import anchors, layouts, place_kinds
-    spots = lambda rows: "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in rows))
-    by_template = {}
-    for kind, template in anchors.TEMPLATE_OF_KIND.items():
-        by_template.setdefault(template, []).append(kind)
-    lines = [f"  {'/'.join(kinds)}: {spots(anchors.manifest(template))}" for template, kinds in by_template.items()]
+    """Every kind of place and the anchors its scene has (type tagged ...), so a module can ask for one that exists: from what a kind's
+    layout module has built."""
+    from . import anchors, layouts
+    spots = lambda rows: "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in rows if anchors.RESERVED not in a["tags"]))
     laid = {}
-    for kind in place_kinds.KINDS:
-        if kind in anchors.TEMPLATE_OF_KIND:
-            continue
+    for kind in layouts.KINDS:
         m = layouts.kind_module(state, kind) if state is not None else None
         built = next(iter((m or {}).get("built", {}).get("places", {}).values()), None) if m else None
         laid.setdefault(spots(built["anchors"]) if built and built.get("anchors") else "ground tagged outside (once its layout is built)", []).append(kind)
-    lines += [f"  {'/'.join(kinds)}: {where}" for where, kinds in laid.items()]
-    return "\n".join(lines)
+    return "\n".join(f"  {'/'.join(kinds)}: {where}" for where, kinds in laid.items())
 
 
 def manifest(source: str, name: str, events) -> dict:

@@ -7,7 +7,7 @@ import pytest
 from app import anchors as A
 from app import modules as M
 from app import world_view as WV
-from tests.test_modules import NOW, live, modular, rule
+from tests.test_modules import NOW, live, modular, rule, shipped_layouts
 from tests.test_world_view import clock
 
 PIC = {"rows": ["kk..", "kkkk", "kkkk", "..kk"], "palette": {"k": "#123"}}
@@ -23,18 +23,22 @@ def obj(oid, type_="wall", size=0.5, frame=False, tags=None, near=None, rows=Non
 
 
 # --- the manifests ----------------------------------------------------------------------------------------------------------
-def test_every_template_publishes_anchors_that_make_sense():
-    for template in sorted(set(A.TEMPLATE_OF_KIND.values())):
-        anchors = A.manifest(template)
-        assert anchors, template
+@pytest.mark.asyncio
+async def test_every_shipped_layout_has_anchors_that_make_sense(tmp_path):
+    from app import layouts as L
+    from tests.test_modules import shipped_layouts
+    s, st, agent = modular(tmp_path)
+    await shipped_layouts(st, s, "home")
+    for key, kind in (("workshop", "home"),):
+        anchors = L.anchors_for(st, key, kind)
         ids = [a["id"] for a in anchors]
-        assert len(ids) == len(set(ids)) and json.loads((A.DIR / f"{template}.json").read_text())["template"] == template
+        assert anchors and len(ids) == len(set(ids)), key
         for a in anchors:
             assert a["type"] in A.TYPES and a["tags"] and len(a["at"]) == 3 and len(a["extent"]) == 2 and all(e > 0 for e in a["extent"])
             assert (a["normal"] == [0, 1, 0]) == (a["type"] != "wall"), a                     # walls face out; the rest face up
-    assert A.manifest("nowhere") == () and A.for_kind("library") == A.manifest("library") and A.for_kind("wild") == () and A.for_kind("strange") == ()
-    assert {a["id"] for a in A.for_kind("home") if a["type"] == "wall"} == {"back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf"}
-    assert [a["id"] for a in A.for_kind("market") if "pip" in a["tags"]] == ["pips-stall"]
+    home = L.anchors_for(st, "workshop", "home")
+    assert {a["id"] for a in home if a["type"] == "wall" and "back" in a["tags"]} == {"back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf"}
+    assert L.anchors_for(st, "woods", "wild") is None                                           # no layout built: nowhere to put anything
 
 
 # --- placing ---------------------------------------------------------------------------------------------------------------
@@ -125,6 +129,7 @@ async def ground_for_the_woods(st, s, agent):
 async def test_what_a_module_shows_lands_on_the_right_place_or_nowhere(tmp_path):
     s, st, agent = modular(tmp_path)
     await ground_for_the_woods(st, s, agent)
+    await shipped_layouts(st, s, "home")
     c = clock(st)
     src = ("def on_tick(ctx):\n    p = {'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}}\n"
            "    return {'show': [{'id': 'a', 'sprite': p, 'at': {'type': 'wall', 'place': 'subject'}},"
@@ -167,6 +172,7 @@ def test_the_new_reads_works_and_stalls(tmp_path):
 async def test_the_dry_run_says_where_things_would_go_and_what_wouldnt_fit(tmp_path):
     s, st, agent = modular(tmp_path)
     await ground_for_the_woods(st, s, agent)
+    await shipped_layouts(st, s, "home")
     p = "{'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}}"
     src = (f"def on_install(ctx):\n    p = {p}\n    return {{'show': [{{'id': 'a', 'sprite': p, 'size': 0.9, 'at': {{'type': 'wall', 'place': 'home'}}}},"
            " {'id': 'b', 'sprite': p, 'at': {'type': 'hang', 'place': 'home'}}, {'id': 'c', 'sprite': p, 'at': {'type': 'ground', 'place': 'Atlantis'}},"

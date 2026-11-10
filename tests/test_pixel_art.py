@@ -129,10 +129,12 @@ async def rule_live(st, s, agent, name, now=None):
 @pytest.mark.asyncio
 async def test_the_gallery_wall_hangs_the_latest_pictures_and_creations_wear_theirs(tmp_path):
     from app import modules as M
+    from tests.test_modules import shipped_layouts
     s, st, agent = await drawer(tmp_path, works_per_day=20, works_min_gap_minutes=0, modules="on", module_runner="local")
     clock(st)
     st.add_work("drawing", "Old svg", "<svg/>")
     await call(agent, "draw", title="P0", pixels=ROWS, palette=PAL)
+    await shipped_layouts(st, s, "home")
     await rule_live(st, s, agent, "gallery-wall")
     assert [o["key"] for o in WV.scene_view(st, s, None)["objects"]] == ["gallery-wall:drawing-2"]
     for i in range(1, 4):
@@ -152,10 +154,12 @@ async def test_the_gallery_wall_hangs_the_latest_pictures_and_creations_wear_the
 @pytest.mark.asyncio
 async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tmp_path):
     from tests.test_stall import LOOT
+    from tests.test_modules import shipped_layouts
     from app import modules as M
     s, st, agent = await drawer(tmp_path, works_min_gap_minutes=0, modules="on", module_runner="local")
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={"browse": ["see", None]}, description="A market by the quay.")
+    await shipped_layouts(st, s, "market")
     await call(agent, "draw", title="The Marsh", pixels=ROWS, palette=PAL)
     st.add_work("drawing", "Svg one", "<svg/>")
     st.add_work("writing", "A poem", "words words")

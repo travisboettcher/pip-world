@@ -44,7 +44,7 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
          "round-tree": "A part: a round, leafy tree (scale), in the season's colours.",
          "pine-tree": "A part: a pine (scale), darker in winter.",
          "well": "A part: a stone well with a little thatched roof.",
-         "stall": "A part: a market stall with a striped awning (two colours), and a counter to set things on.",
+         "stall": "A part: a market stall with a striped awning (two colours, rolled up while the market is shut; Pip's own, while it has nothing out), and a counter to set things on.",
          "cutaway": "A part: a building opened like a dollhouse (width, depth, height, walls, roof, a door), with its walls and floor as anchors.",
          "scrap-heap": "A part: a heap of rusted scrap, worth digging through.",
          "shed": "A part: a plank shed with a shingled roof.",
@@ -52,7 +52,14 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
          "standing-stones": "A part: old standing stones with a lintel.",
          "lighthouse": "A part: a whitewashed lighthouse whose lamp comes on at dusk.",
          "outdoors": "Every wild place, yard and sight without a layout of its own, from parts: the land by its setting, heaps and a shed "
-                     "in a yard, a bench and something to look at at a sight. Replaces the hand-written outdoors scene."}
+                     "in a yard, a bench and something to look at at a sight. Replaces the hand-written outdoors scene.",
+         # the last hand-written scenes, as layouts with live elements (the renderer draws Pip, people, goods and the garden on tagged anchors)
+         "home": "Pip's home as a layout: the workshop opened like a dollhouse, the garden's plots, the bench, the trees. Replaces the hand-written home scene.",
+         "neighbor": "Every neighbor's home as a layout: their cottage and cabinet of wares, by the water or in a meadow, with what their record mentions. "
+                     "Replaces the hand-written neighbor scene.",
+         "market": "Every market as a layout: the square, houses lit at night, a stall for each of the day's booths and Pip's own. Replaces the hand-written market scene.",
+         "shop": "Every shop as a layout: the shopfront, its counter and stock, the keeper while it's open, a note while it's shut. Replaces the hand-written shop scene.",
+         "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
@@ -97,10 +104,10 @@ def check_manifest(m, author: str, state=None) -> dict:
                 raise Refused("`params` maps up to 16 names to plain default values")
             out["params"] = params
         elif m.get("kinds") is not None:                     # every place of these kinds that has no layout of its own
-            from . import place_kinds
+            from . import layouts
             ks = m["kinds"]
-            if not isinstance(ks, list) or not ks or any(k not in place_kinds.KINDS for k in ks):
-                raise Refused(f"`kinds` is a list drawn from: {', '.join(place_kinds.KINDS)}")
+            if not isinstance(ks, list) or not ks or any(k not in layouts.KINDS for k in ks):
+                raise Refused(f"`kinds` is a list drawn from: {', '.join(layouts.KINDS)}")
             out["kinds"] = list(dict.fromkeys(ks))
         elif m.get("new") is not None:                       # a place that doesn't exist yet (step 6): it enters the world when approved
             from . import invented_places, module_places
@@ -513,7 +520,7 @@ def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
     wanted = [{**o, "key": f"{m['name']}:{o['id']}", "id": f"{m['name']}:{o['id']}"} for m in state.modules("live") for o in m["show"]
               if where(state, m, o["at"]["place"]) == key]
     from . import layouts
-    return anchors.place(layouts.anchors_for(state, key, kind) or anchors.for_kind(kind), wanted)
+    return anchors.place(layouts.anchors_for(state, key, kind) or (), wanted)       # no layout built yet: nowhere to put anything
 
 
 def scene_objects(state, key: str, kind: str) -> list[dict]:
@@ -656,7 +663,7 @@ async def propose(state, settings, runner, author: str, manifest: dict, source: 
     except (Refused, sandbox.Rejected) as e:
         return {"error": str(e)}
     old = state.module(replaces) if replaces else None
-    if replaces and (not old or old["name"] != man["name"] or old["author"] != author):
+    if replaces and (not old or old["name"] != man["name"] or old["author"] not in (author, *(["world"] if author == SHIPPED else []))):
         return {"error": f"there is no module #{replaces} called {man['name']} by {author} to replace"}
     if not old and any(o["name"] == man["name"] and o["status"] in ("proposed", "waiting", "live", "disabled") for o in state.modules()):
         return {"error": f"a module called {man['name']} already exists; send a new version of it instead"}
@@ -672,6 +679,13 @@ async def propose(state, settings, runner, author: str, manifest: dict, source: 
     return {"id": mid, "status": state.module(mid)["status"], "report": report}
 
 
+def _covers(new: dict, old: dict) -> bool:
+    """Whether a place module takes over from another: the same place, or every kind of place the other laid out."""
+    if "place" in new or "place" in old:
+        return new.get("place") == old.get("place")
+    return set(old.get("kinds", [])) <= set(new.get("kinds", []))
+
+
 async def approve(state, settings, runner, module_id: int, note: str = "", now: float | None = None, by: str = "owner") -> dict:
     """Make a waiting (or disabled) module live: the version it replaces steps aside, and it installs."""
     now = now or time.time()
@@ -680,7 +694,7 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
         return {"error": "only a waiting or disabled module can go live"}
     for o in state.modules("live"):
         if o["name"] == m["name"] or (m["kind"] == "thing" and o["kind"] == "thing" and o["subject"].lower() == m["subject"].lower()) \
-                or (m["kind"] == "place" and o["kind"] == "place" and o["manifest"].get("place") == m["manifest"].get("place")):
+                or (m["kind"] == "place" and o["kind"] == "place" and _covers(m["manifest"], o["manifest"])):
             state.update_module(o["id"], status="replaced")                # one module runs a thing at a time
     last = state.events(limit=1)
     state.update_module(module_id, status="live", decided_at=now, note=str(note or "")[:500], fails=0, cursor=last[0]["id"] if last else 0)
@@ -838,16 +852,18 @@ def slug(text: str) -> str:
 async def offer_library(state, settings, runner, now: float | None = None) -> list[int]:
     """The modules shipped with the engine (module_library/), proposed once each whatever the owner later decides: its rules, parts and
     layouts (RULES), and for a timekeeper that needs tending, its clock's workings. They're the engine's own code, so they go live without
-    waiting for approval when their trial is clean, and run in a local sandbox when there is no runner."""
+    waiting for approval when their trial is clean, and run in a local sandbox when there is no runner. When a new release changes one
+    that is live, its new version is proposed the same way; one the owner disabled or rejected is left alone."""
     if settings.module_library != "on":
         return []
     runner = runner or LocalRunner()
     made = []
-    for name, reason in RULES.items():                       # the world's own rules, once each
-        if any(o["name"] == name for o in state.modules()):
-            continue
+    for name, reason in RULES.items():                       # the world's own rules, once each, and again when the engine changes one
         man, source = library(name)
-        r = await propose(state, settings, runner, SHIPPED, man, source, reason, now=now)
+        last = ([o for o in state.modules() if o["name"] == name] or [None])[-1]
+        if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live" and last["source"] != source):   # once shipped as the world's
+            continue
+        r = await propose(state, settings, runner, SHIPPED, man, source, reason, replaces=last["id"] if last else None, now=now)
         if "id" in r:
             made.append(r["id"])
         else:

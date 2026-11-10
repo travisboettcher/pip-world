@@ -90,8 +90,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Step 5: parts and layouts; the woods as a layout (0.21.0)
   - [x] Step 6: the builder proposes places (0.22.0)
   - [x] Shipped modules live without approval and run without the runner; kind-level layouts; the outdoors template retired (0.23.0)
-  - [ ] Live elements in layouts (garden, creations, Pip's poses, residents), conditional shapes, moving sprites: then retire home,
-        neighbor, market, shop and library templates
+  - [x] Live elements in layouts (garden, creations, Pip's poses, residents, booths, crowds), conditional shapes, moving sprites; the
+        home, neighbor, market, shop and library templates retired: every scene is a layout (0.24.0)
   - [ ] Module reads for the garden, visitors and Pip's needs; `affect`, `transfer` with sources, garden effects, `ask_gm`: then creation
         capabilities, happenings and stall customers as modules
 - [ ] Model escalation (Haiku -> bigger) for hard decisions

@@ -1,6 +1,0 @@
-{"template": "neighbor", "anchors": [
-  {"id": "back-wall", "type": "wall", "tags": ["inside", "back"], "at": [-0.5, 2.0, -9.33], "normal": [0, 0, 1], "extent": [0.8, 0.8]},
-  {"id": "table", "type": "surface", "tags": ["inside", "table"], "at": [0.2, 0.91, -6.6], "normal": [0, 1, 0], "extent": [1.6, 0.9]},
-  {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-0.5, 0.12, -5.2], "normal": [0, 1, 0], "extent": [5.0, 1.0]},
-  {"id": "garden", "type": "ground", "tags": ["outside", "garden"], "at": [6.4, 0.0, -3.0], "normal": [0, 1, 0], "extent": [4.0, 1.5]}
-]}

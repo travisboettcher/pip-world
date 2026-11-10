@@ -1,1 +1,1 @@
-{"name": "stall", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"color": "#d8432f", "color2": "#f5f1d7"}}
+{"name": "stall", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"color": "#d8432f", "color2": "#f5f1d7", "own": false}}

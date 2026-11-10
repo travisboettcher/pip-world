@@ -2,15 +2,9 @@
 // up to date. Kinds without a template yet get a short written description instead, so every place on the map can still be opened.
 import { loadThree, Kit } from "./kit.js";
 import { makeArt } from "./art.js";
-import * as home from "./templates/home.js";
-import * as neighbor from "./templates/neighbor.js";
-import * as market from "./templates/market.js";
-import * as shop from "./templates/shop.js";
-import * as library from "./templates/library.js";
-import { moduleObjects } from "./templates/parts.js";
+import { moduleObjects } from "./parts.js";
 import * as layout from "./layout.js";
 
-const TEMPLATES = { home, neighbor, market, shop, library };          // wild places, yards and sights are layouts now (the "outdoors" module)
 
 export class SceneView {
   constructor(host, { api, onShown } = {}) {
@@ -21,7 +15,7 @@ export class SceneView {
   }
   async show(place) {                                   // place: a key, or null for wherever Pip is
     const data = await this.api(`/world/scene${place ? `?place=${encodeURIComponent(place)}` : ""}`);
-    const key = data.place.key, tpl = data.layout ? layout : TEMPLATES[data.place.kind];      // a place built from parts, or its hand-written scene
+    const key = data.place.key, tpl = data.layout ? layout : null;      // every place is built from parts: a layout, once one is ready
     const sig = JSON.stringify([key, data.place.kind, data.place.scene, data.place.props, data.layout && [data.layout.module, data.layout.version, data.now.season]]);
     if (sig !== this.sig || !this.built) {
       this.clear(); this.key = key; this.sig = sig;

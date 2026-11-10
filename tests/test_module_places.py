@@ -155,7 +155,7 @@ def test_the_builders_page_lists_kinds_settings_textures_and_live_parts(tmp_path
 def test_the_renderer_sets_out_a_counter_and_its_keeper():
     from pathlib import Path
     js = (Path(M.__file__).resolve().parent.parent / "web" / "world" / "layout.js").read_text()
-    assert 'const counter = tagged("counter");' in js and "keeper.stand(x, 0, z - 0.9);" in js
+    assert 'const counter = tagged("counter")' in js and "keeper.stand(counter.at[0], 0, counter.at[2] - 0.9)" in js
 
 
 @pytest.mark.asyncio

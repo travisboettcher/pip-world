@@ -189,7 +189,7 @@ class Agent:
         if await modules.step(self.state, self.s, self.runner):
             self.request_wake()
         await modules.notify_owner(self.state, self.s, self.outreach)
-        await layouts.step(self.state, self.s, self.runner)          # build (or rebuild) places laid out by modules
+        await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
         if await self.finish_work():
             self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):

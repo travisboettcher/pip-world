@@ -16,6 +16,7 @@ from . import geometry
 from .geometry import Bad
 
 PLACE_SHAPES_MAX = 3000
+KINDS = ("home", "neighbor", "library", "wild", "yard", "shop", "market", "sight")     # every kind of place a layout can cover
 PARTS_MAX = 80
 
 
@@ -50,7 +51,7 @@ async def build_part(runner, m: dict, params: dict, season_: str, seed: int) -> 
 
 
 def _plan(spec) -> dict:
-    """A place's on_build result, checked: {"parts": [{part, params?, at, turn?, role?}], "shapes": [...], "anchors": [...]}."""
+    """A place's on_build result, checked: {"parts": [{part, params?, at, turn?, role?, when?}], "shapes": [...], "anchors": [...]}."""
     if not isinstance(spec, dict) or not isinstance(spec.get("parts", []), list):
         raise Bad("a place's on_build returns {\"parts\": [...], \"shapes\": [...], \"anchors\": [...]}")
     parts = spec.get("parts", [])
@@ -64,13 +65,22 @@ def _plan(spec) -> dict:
         if not isinstance(params, dict) or not all(isinstance(v, (int, float, str, bool)) for v in params.values()):
             raise Bad(f"part entry {i}: `params` maps names to plain values")
         role = str(p.get("role") or f"{p['part']}-{i}").lower()
-        out.append({"part": p["part"], "params": params, "at": geometry._vec(p.get("at"), f"part entry {i}: at"),
+        when = p.get("when", [])
+        when = when if isinstance(when, list) else [when]
+        if any(w not in geometry.CONDITIONS for w in when):
+            raise Bad(f"part entry {i}: `when` is one or more of {', '.join(geometry.CONDITIONS)}")
+        out.append({**({"when": when} if when else {}), "part": p["part"], "params": params, "at": geometry._vec(p.get("at"), f"part entry {i}: at"),
                     "turn": geometry._num(p.get("turn", 0), f"part entry {i}: turn", -360, 360), "role": geometry.re.sub(r"[^a-z0-9-]", "-", role)[:40]})
+    camera = spec.get("camera")
+    if camera is not None:                                  # where the scene is seen from: {"at": [x, y, z], "look": [x, y, z]}
+        if not isinstance(camera, dict):
+            raise Bad("`camera` is {\"at\": [x, y, z], \"look\": [x, y, z]}")
+        camera = {"at": geometry._vec(camera.get("at"), "camera: at"), "look": geometry._vec(camera.get("look"), "camera: look")}
     shapes, anchors = spec.get("shapes") or [], spec.get("anchors") or []
     if not isinstance(shapes, list) or not isinstance(anchors, list) or len(anchors) > geometry.ANCHORS_MAX:
         raise Bad(f"`shapes` and `anchors` are lists (at most {geometry.ANCHORS_MAX} anchors)")
     own = {"shapes": [geometry.shape(x, i) for i, x in enumerate(shapes)], "anchors": [geometry.anchor(a, i) for i, a in enumerate(anchors)]}
-    return {"parts": out, "own": own}
+    return {"parts": out, "own": own, **({"camera": camera} if camera else {})}
 
 
 async def build_place(state, settings, runner, m: dict, now: float, waiting: bool = False, key: str | None = None,
@@ -93,7 +103,7 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
         pkey = (part["id"], json.dumps(entry["params"], sort_keys=True))
         if pkey not in cache:
             cache[pkey] = await build_part(runner, part, entry["params"], s, seed_of(key, part["name"], pkey[1]))
-        moved = geometry.place(cache[pkey], entry["at"], entry["turn"], entry["role"])
+        moved = geometry.place(cache[pkey], entry["at"], entry["turn"], entry["role"], entry.get("when"))
         shapes += moved["shapes"]
         anchors += moved["anchors"]
         if len(shapes) > PLACE_SHAPES_MAX:
@@ -101,7 +111,8 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
     ids = [a["id"] for a in anchors]
     if len(ids) != len(set(ids)):
         raise Bad("two anchors share an id: give parts their own roles")
-    return {"shapes": shapes, "anchors": anchors, "parts": used, "season": s, "version": m["version"], "details": details}
+    return {"shapes": shapes, "anchors": anchors, "parts": used, "season": s, "version": m["version"], "details": details,
+            **({"camera": plan["camera"]} if "camera" in plan else {})}
 
 
 def place_module(state, key: str) -> dict | None:
@@ -137,17 +148,17 @@ def _runner(m: dict, runner):
     return runner or (modules.LocalRunner() if m["author"] == modules.SHIPPED else None)
 
 
-def _targets(state, settings, m: dict, now: float) -> list[tuple[str, dict | None]]:
+def _targets(state, settings, m: dict, now: float, library=None) -> list[tuple[str, dict | None]]:
     """The places a place module lays out: its own, or every real place of its kinds without a layout of its own (with their details)."""
     if "kinds" not in m["manifest"]:
         return [(m["manifest"]["place"], None)]
     from . import world_view, worldmap
     return [(p["key"], world_view.place_details(state, settings, p["key"], p["kind"]))
-            for p in worldmap.snapshot(state, settings, None, now)["places"]
+            for p in worldmap.snapshot(state, settings, library, now)["places"]
             if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"])]
 
 
-async def step(state, settings, runner, now: float | None = None) -> int:
+async def step(state, settings, runner, now: float | None = None, library=None) -> int:
     """Build or rebuild every live place layout that is missing or out of date. Returns how many were built."""
     now, n = now or time.time(), 0
     parts = live_parts(state)
@@ -155,7 +166,7 @@ async def step(state, settings, runner, now: float | None = None) -> int:
         run = _runner(m, runner)
         if m["kind"] != "place" or run is None:
             continue
-        for key, details in _targets(state, settings, m, now):
+        for key, details in _targets(state, settings, m, now, library):
             fresh = state.module(m["id"])["built"]
             b = fresh.get("places", {}).get(key, {}) if details is not None else fresh
             waiting = b.get("failed_at", 0) > now - 3600 and b.get("failed_parts") == parts
@@ -183,7 +194,7 @@ def for_scene(state, key: str, kind: str | None = None) -> dict | None:
         b = m["built"].get("places", {}).get(key) if m else None
     if not b or "shapes" not in b:
         return None
-    return {"shapes": b["shapes"], "anchors": b["anchors"], "module": m["name"], "version": b["version"]}
+    return {"shapes": b["shapes"], "anchors": b["anchors"], "module": m["name"], "version": b["version"], **({"camera": b["camera"]} if "camera" in b else {})}
 
 
 def anchors_for(state, key: str, kind: str | None = None):

@@ -1,0 +1,1 @@
+{"name": "shop", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["shop"]}

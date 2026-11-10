@@ -180,7 +180,7 @@ def test_the_scene_endpoint_is_public_and_says_when_a_place_is_unknown(tmp_path)
         assert c.get("/world/scene?place=Nowhere").status_code == 404
         page, js, sc = (c.get(f"/ui/{f}").text for f in ("index.html", "app.js", "world/scene.js"))
         assert 'id="scene"' in page and 'id="wv-here"' in page and 'id="wv-map"' in page and "import { SceneView } from './world/scene.js'" in js
-        assert "export class SceneView" in sc and c.get("/ui/world/kit.js").status_code == 200 and c.get("/ui/world/templates/home.js").status_code == 200
+        assert "export class SceneView" in sc and c.get("/ui/world/kit.js").status_code == 200 and c.get("/ui/world/layout.js").status_code == 200 and c.get("/ui/world/parts.js").status_code == 200
         assert c.get("/ui/vendor/three/three.min.js").status_code == 200 and "MIT License" in c.get("/ui/vendor/three/LICENSE").text
 
 

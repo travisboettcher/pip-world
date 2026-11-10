@@ -243,7 +243,7 @@ failed calls in a row disable it, and its author is told why.
   or `spin`) is stored on the module and replaced by each new `show`. `at.place` is `home`, `subject` (a thing's creation, at home while
   Pip has it) or a place key.
 - New reads: `works` (Pip's newest 12 pixel drawings, with their grids and subjects) and `stalls` (every line on Pip's stalls).
-- The scene data carries `objects`, already placed, for every live module, oldest first; the browser's `moduleObjects` (templates/parts.js)
+- The scene data carries `objects`, already placed, for every live module, oldest first; the browser's `moduleObjects` (templates/parts.js, now `web/world/parts.js`)
   draws them for every template (a picture flat on a wall, standing on anything level), with tooltips and motion.
 - The dry run reports where each object would go (`placed`) and what wouldn't (`unplaced`, which makes it not clean).
 - Ported: **`gallery-wall`** (Pip's three newest pixel drawings, framed on the workshop's back wall; it listens for `made_work` and
@@ -339,7 +339,7 @@ failed calls in a row disable it, and its author is told why.
 - Tried with the live model on a copy of the live world, asked for a place: it proposed a ruined chapel on the heath, then a mill on the
   river (both turned down on details that are now accepted or explained: an hour of 24, anchors without a size, a stream hidden under the
   ground), then a seed shop up from the harbour: clean on trial, laid out as a thatched shop on a cobbled lane, mentioned by Oriel on
-  approval. Hand-written templates stay for every place without a layout; retiring them one by one is now possible, not done.
+  approval. Hand-written templates stay for every place without a layout; retiring them one by one is now possible, not done (done in 0.24.0).
 
 ## Moving features into modules (from 0.23.0)
 The owner's direction (2026-11-10): remove what can now be a module; where something can't be expressed, that is a missing hook or
@@ -363,10 +363,37 @@ scene: `web/world/templates/outdoors.js` and its anchor manifest are gone, repla
 sights) and parts `scrap-heap`, `shed`, `bench`, `standing-stones`, `lighthouse`; `woods-layout` is no longer shipped (the kind layout
 covers the woods; where it's already live it still takes precedence). Checked against the hand-written junkyard in renders.
 
+**Live elements, and the last templates retired (0.24.0).** Every scene is now a layout. What changes with the world is drawn by the
+renderer on anchors a layout tags for it, so the layout stays plain geometry and the facts stay the engine's:
+- **Live elements** (`web/world/layout.js`): `pip`, `seat`, `bed`, `workbench`, `reading`, `garden-path`, `browse`, `visitor` and
+  `pip-stall` are where Pip stands, sits, sleeps, works (with sparks), reads (with a book), gardens, browses and keeps its stall, by its
+  pose; `plot` (in order) is a garden plot with its crop growing, drawn only for plots the garden has; `clock`, `shelf` and `walkers` hold
+  Pip's creations; `resident`, `resident-evening` and `resident-walk` are where whoever lives there is by the time of day (out on the flats
+  at a morning low tide, away on market day); `people`, `crowd` (shoppers walking round while it's open), `finds`, `wares` (a neighbor's
+  goods), `counter` and `stock` (a shop's goods and keeper), `booth` (a market's booths in turn, each with a keeper). Tips can say
+  `$resident`, `$wares`, `$stock`, `$stall`, `$hours`, `$note`, `$belongings`, `$project` as well as `$label` and `$description`.
+- **Conditional shapes**: `when` (a list, all must hold) of `open`, `shut`, `day`, `night`, `high-tide`, `low-tide`, `winter`,
+  `not-winter`, `resident-home`, `resident-away`, `pip-stall`, `no-pip-stall` and `booth-1`...`booth-8` (a booth stands at that stall
+  today). A part entry in a layout can carry `when` too, for all of its shapes (a market's stall shows only when it has a booth).
+- **Motion and light**: `animate` adds `spin` (a lighthouse's beam) and `wander` (a sprite pacing back and forth: curlews); a sprite can
+  show one `frame`; a material's `lamp` can be a strength (0-2), and `beam` is a faint additive light that shows only in the dark. A
+  `torus` shape (coils of rope); sprites `note` and `carrots`; textures `chart` and `book`. A layout can set its own `camera`.
+- **Reserved anchors**: an anchor tagged `reserved` is the renderer's own (Pip's seat, the plots, the clock spots, a shop's counter):
+  module objects never go there, and the builder isn't told about it. A home layout's own anchors come first, so pictures still hang where
+  they did.
+- **Shipped layouts** `home`, `neighbor`, `market`, `shop`, `library` (kind layouts; their details pick a coast or a meadow, a harbour,
+  beehives, a lighthouse...), ported from the templates and checked against them in renders of every view (the workshop at work and
+  asleep, Oriel's cottage, Brygdon market, Saltholm shop, the library while reading). The `stall` part rolls its awning up when shut.
+- **Shipped modules are upgraded**: when a release changes a shipped module that is live, its new version is proposed (and goes live on a
+  clean trial); one the owner disabled or rejected is left alone. The first parts, proposed before shipped modules had their own author,
+  count as shipped. A place module replaces another only if it covers the same place, or every kind the other laid out.
+- Gone: `web/world/templates/` (home, neighbor, market, shop, library), `web/world/anchors/*.json` and the template fallbacks in
+  `anchors.py` and the builder's anchor list. A place with no layout built yet shows a note instead of a scene, and nothing modules show
+  is placed there.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|
-| The home, neighbor, market, shop and library templates | **live elements**: layouts can't yet draw what changes with the world: garden plots and crops from `garden`, creations on their shelf or floor, Pip's poses by activity (at the bench, on the stool, asleep), the people who live there; **conditional shapes**: shown only when open or shut (awnings rolled), by day or night, by season; **moving sprites** along a path (curlews, shoppers walking the square) |
 | Creation capabilities (periodic lines, sensors, helpers, news, companions) | **reads**: the garden, waiting visitors, Pip's hunger and energy; **proposals**: `affect` (energy, mood), effects on the garden (hurry a crop), `transfer` with a daily-capped `source` (a find); `ask_gm` for prose; companions also need a way to talk |
 | Happenings | `ask_gm`, `affect`, effects on stock and the garden |
 | Customers at Pip's stall | `transfer` (coins for goods) |
