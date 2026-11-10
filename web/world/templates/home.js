@@ -40,7 +40,7 @@ export function build(kit, art, data) {
   kit.box(0.3, 1.0, 1.9, outer, WX1, WH - 0.5, RZ - 0.15);
   const door = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), M(T.door())); door.position.set(WX1 + 0.6, 1.15, RZ - 0.15); door.rotation.y = -Math.PI / 2 + 0.9; kit.scene.add(door);
   const timber = M(T.planks([1, 2], "#4a2f1f"));
-  [WX0, WX1].forEach((x) => kit.box(0.36, WH, 0.36, timber, x, WH / 2, WZ1)); kit.box(WX1 - WX0 + 0.36, 0.3, 0.36, timber, WMID, 0.15, WZ1); kit.box(WX1 - WX0 + 0.36, 0.36, 0.36, timber, WMID, WH, WZ1);
+  [WX0, WX1].forEach((x) => kit.box(0.36, WH, 0.36, timber, x, WH / 2, WZ1)); kit.box(WX1 - WX0 + 0.36, 0.3, 0.36, timber, WMID, 0.15, WZ1);   // no top beam: it would cross the room at this angle
   const roof = kit.box(WX1 - WX0 + 1.2, 0.35, 3.8, M(T.thatch([5, 2])), WMID, WH + 1.1, WZ0 + 1.2); roof.rotation.x = -0.62;
   const gable = new THREE.Shape(); gable.moveTo(WZ0, 0); gable.lineTo(WZ1, 0); gable.lineTo(RZ, 2.2); gable.closePath();
   [WX0 - 0.15, WX1 + 0.15].forEach((x) => { const g = new THREE.Mesh(new THREE.ShapeGeometry(gable), M(T.planks([2, 1], "#6b4529"), { side: THREE.DoubleSide })); g.rotation.y = -Math.PI / 2; g.position.set(x, WH, 0); g.castShadow = true; kit.scene.add(g); });

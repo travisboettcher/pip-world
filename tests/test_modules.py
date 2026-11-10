@@ -401,14 +401,14 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     assert set(bare) == {"now", "seed", "state", "offers", "due"} and bare["seed"] == int(NOW) * 7919 + 2
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] in ("spring", "summer", "autumn", "winter") and 0 <= full["time"]["hour"] < 24
-    assert full["pip"] == {"where": "library", "activity": "reading", "asleep": False} and full["weather"] is None
+    assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
     assert {"name": "oil", "qty": 2, "kind": "material"} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
 
 
 # --- the lifecycle ----------------------------------------------------------------------------------------------------------
 BELLS = ("def on_install(ctx):\n    return {'offer': [{'name': 'ring', 'help': 'ring the bell'}], 'schedule': ctx['now'] + 3600}\n"
-         "def on_time(ctx):\n    return {'perceive': 'A bell rings somewhere.', 'schedule': ctx['now'] + 3600}\n"
+         "def on_time(ctx):\n    return {'perceive': 'A bell rings somewhere.', 'schedule': ctx['now'] + 3 * 3600}\n"
          "def on_action(ctx):\n    return {'reply': 'you ring the bell'}\n")
 BELLS_MAN = rule(hooks=["on_install", "on_time", "on_action"], proposes=["offer", "schedule", "perceive"])
 
@@ -421,7 +421,8 @@ async def test_a_proposal_is_dry_run_and_waits_for_the_owner(tmp_path):
     assert r["status"] == "waiting" and m["status"] == "waiting" and m["version"] == 1 and m["reason"] == "a bell for the hours"
     rep = r["report"]
     assert rep["clean"] and rep["errors"] == [] and rep["refused"] == [] and rep["offers"] == ["ring"] and rep["replies"] == ["ring: you ring the bell"]
-    assert rep["perceived"] == ["A bell rings somewhere."] * M.DRY_HOURS and rep["calls"] == 1 + M.DRY_HOURS + 1
+    rings = len(range(1, M.DRY_HOURS, 3))                                                    # an hour in, then every three
+    assert rep["perceived"] == ["A bell rings somewhere."] * rings and rep["calls"] == 1 + rings + 1
     assert m["offers"] == [] and m["due"] is None and st.module_calls(m["id"]) == []         # the dry run touched only its copy
     assert "already exists" in (await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, now=NOW))["error"]
     assert (await M.propose(st, s, agent.runner, "world", {**BELLS_MAN, "kind": "place"}, BELLS))["error"].startswith("`kind`")

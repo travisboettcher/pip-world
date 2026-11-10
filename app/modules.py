@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
-READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls")
+READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
 AUTHORS = ("world", "pip")
 PIP_READS = ("time", "weather", "pip", "subject", "items")                      # what Pip's own programs may know, and do (step 3)
@@ -43,7 +43,7 @@ OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
 FAILS_TO_DISABLE = 3
-DRY_HOURS, DRY_STEP_MINUTES = 6, 15
+DRY_HOURS, DRY_STEP_MINUTES = 24, 30                  # a whole day, so what happens at dusk or on the hour is tried too
 TICK_ONLY_HOOKS = ("on_tick", "on_time", "on_event")      # hooks the engine runs on its own each step
 
 
@@ -168,7 +168,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["weather"] = {"condition": w.condition, "temp": w.temp, "unit": w.unit, "daylight": w.above_horizon} if w else None
     if "pip" in reads:
         a = state.agent()
-        ctx["pip"] = {"where": a["location"], "activity": a["activity"], "asleep": a["activity"] == "sleeping"}
+        from . import places
+        ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping"}
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -180,6 +181,10 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "stalls" in reads:
         ctx["stalls"] = [{"place": r["place"], "item": r["name"], "kind": r["kind"], "qty": r["qty"], **({"work": r["attrs"]["work"]} if r["attrs"].get("work") else {})}
                          for r in state.stall_rows()]
+    if "places" in reads:
+        from . import worldmap
+        ctx["places"] = [{"key": p["key"], "label": p["label"], "kind": p["kind"]}
+                         for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
     if "facts" in reads:
         ctx["facts"] = {o["name"]: o["facts"] for o in state.modules("live") if o["id"] != m["id"] and o["facts"]}
     return ctx
@@ -660,7 +665,8 @@ def disable(state, module_id: int, why: str = "", now: float | None = None) -> d
 
 # --- the dry run -----------------------------------------------------------------------------------------------------------------
 async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
-    """Run a module on a copy of the world for DRY_HOURS simulated hours, then each declared event once and each offer once.
+    """Run a module on a copy of the world for DRY_HOURS simulated hours, then each declared event once and each offer once, noting where
+    everything it showed along the way went.
     Returns a report; `clean` means no errors and nothing refused."""
     from .state import State
     tmp = Path(tempfile.mkdtemp(prefix="pip-dry-"))
@@ -674,9 +680,10 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         world.update_module(m["id"], status="live", cursor=(world.events(limit=1) or [{"id": 0}])[0]["id"])
         sim = world.module(m["id"])
         report = {"calls": 0, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "slowest_ms": 0}
+        placed, unplaced = {}, {}                                       # every placement seen along the way, not just the last
 
         async def run(hook, at, **extra):
-            last = (world.events(limit=1) or [{"id": 0}])[0]["id"]
+            last, shown = (world.events(limit=1) or [{"id": 0}])[0]["id"], sim["show"]
             t0 = time.monotonic()
             r = await call(world, settings, runner, sim, hook, at, trial=True, **extra)
             report["slowest_ms"] = max(report["slowest_ms"], round((time.monotonic() - t0) * 1000))
@@ -692,6 +699,10 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
             report["perceived"] += [l["text"] for l in sim["lines"]]
             world.update_module(sim["id"], lines=[])
             sim["lines"] = []
+            if sim["show"] != shown:
+                p, u = _placement(world, settings, sim, at)
+                placed.update(dict.fromkeys(p))
+                unplaced.update(dict.fromkeys(u))
 
         hooks = m["manifest"]["hooks"]
         if "on_install" in hooks:
@@ -711,7 +722,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         if "on_action" in hooks:
             for o in list(sim["offers"]):
                 await run("on_action", at, action=o["name"], args={"purpose": "trying it"})
-        report["placed"], report["unplaced"] = _placement(world, settings, sim, now)
+        report["placed"], report["unplaced"] = list(placed), list(unplaced)
         report["clean"] = not report["errors"] and not report["refused"] and not report["unplaced"] and sim["status"] == "live"
         return report
     finally:

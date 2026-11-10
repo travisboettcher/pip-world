@@ -112,6 +112,8 @@ function describe(e) {
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
     case 'module': return { group: 'world', cls: 'world', text: d.text };
+    case 'builder': return { group: 'system', text: { proposed: `The world proposed a module: ${d.name}${d.revised ? ' (a new version)' : ''}`, nothing: `The world added nothing tonight${d.why ? `: ${d.why}` : ''}`,
+      dropped: `The world dropped an idea (${d.name}): ${d.why}`, failed: `The world's builder couldn't propose anything: ${d.why}` }[d.outcome] || `Builder: ${d.outcome}` };
     case 'module_live': return { group: 'system', text: `Module ${d.name} (v${d.version}, by ${d.author === 'world' ? 'the world' : 'Pip'}) is live` };
     case 'module_disabled': return { group: 'system', cls: 'warn', text: `Module ${d.name} was switched off${d.why ? `: ${d.why}` : ''}` };
     case 'module_rejected': return { group: 'system', text: `Module ${d.name} v${d.version} was turned down${d.note ? `: ${d.note}` : ''}` };

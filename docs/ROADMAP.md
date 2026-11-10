@@ -86,7 +86,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Step 1: runner, protocol, dry run, approval (Work tab, `pipchat modules`); the gear clock as a module (0.17.0)
   - [x] Step 2: show and anchors; wall and stall pictures as modules (0.18.0)
   - [x] Step 3: Pip programs its creations; a Matrix notice when a module waits for approval (0.19.0)
-  - [ ] Step 4: the builder, for rules
+  - [x] Step 4: the builder, for rules (0.20.0)
   - [ ] Step 5: parts and layouts; the woods as a layout
   - [ ] Step 6: the builder proposes places
 - [ ] Model escalation (Haiku -> bigger) for hard decisions

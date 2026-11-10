@@ -288,7 +288,9 @@ async def test_a_trial_never_misfires_even_for_rough_work(tmp_path):
     thing(st, "Rough Bell", "rough")
     src = 'def on_tick(ctx):\n    return {"state": {"n": ctx["state"].get("n", 0) + 1}, "log": "tick"}\n'
     r = await M.propose(st, s, agent.runner, "pip", M.program_manifest(src, st.creations()[0]), src, now=NOW)
-    assert len(r["report"]["logged"]) == M.PER_DAY["log"] and r["report"]["calls"] == M.DRY_HOURS * 60 // M.DRY_STEP_MINUTES
+    calls = M.DRY_HOURS * 60 // M.DRY_STEP_MINUTES
+    assert r["report"]["calls"] == calls and M.PER_DAY["log"] <= len(r["report"]["logged"]) <= calls and not r["report"]["errors"]
+    assert len(r["report"]["logged"]) + len(r["report"]["refused"]) == calls                     # every call ran: none misfired
 
 
 @pytest.mark.asyncio

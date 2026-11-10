@@ -86,7 +86,7 @@ def test_the_context_word_for_word(tmp_path):
     from app.happenings import season_of
     assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(NOW, "south")}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
-    assert ctx["pip"] == {"where": "workshop", "activity": "sleeping", "asleep": True} and ctx["facts"] == {}
+    assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True} and ctx["facts"] == {}
     c = st.creations()[0]
     assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"]}
     st.give_creation(c["id"], "Oriel")
@@ -272,9 +272,11 @@ async def test_the_dry_run_report_precisely(tmp_path):
     st.update_module(m["id"], status="proposed")
     rep = await M.dry_run(st, s, agent.runner, st.module(m["id"]), NOW)
     ticks = M.DRY_HOURS * 60 // M.DRY_STEP_MINUTES
-    assert rep["logged"] == [f"tick {15 * (i + 1)}" for i in range(ticks)][:M.PER_DAY["log"]] and len(rep["logged"]) == min(ticks, M.PER_DAY["log"])
+    step = M.DRY_STEP_MINUTES
+    assert rep["logged"][:3] == [f"tick {15 + step * i}" for i in range(3)] and M.PER_DAY["log"] <= len(rep["logged"]) <= ticks   # the budget is per day
     assert rep["perceived"] == ["saw beans"] and rep["replies"] == ["poke: trying it"] and rep["offers"] == ["poke"]
-    assert rep["calls"] == 1 + ticks + 1 + 1 and rep["errors"] == [] and rep["refused"] == [] and rep["clean"] is True
+    assert rep["calls"] == 1 + ticks + 1 + 1 and rep["errors"] == [] and rep["clean"] is False         # it logs too much for one day
+    assert rep["refused"] and set(rep["refused"]) == {"on_tick: it has used today's 24 `log` lines"}
     assert set(rep) == {"calls", "errors", "refused", "perceived", "logged", "replies", "offers", "slowest_ms", "clean", "placed", "unplaced"} and 1 <= rep["slowest_ms"] < 5000
     assert [e["data"]["text"] for e in st.events(10) if e["kind"] == "module"] == ["from before"]               # the real world untouched
 
@@ -283,11 +285,11 @@ async def test_the_dry_run_report_precisely(tmp_path):
 async def test_the_dry_run_passes_due_and_is_dirty_when_anything_is_refused(tmp_path):
     s, st, agent = modular(tmp_path)
     src = ("def on_install(ctx):\n    return {'schedule': ctx['now'] + 600}\n"
-           "def on_time(ctx):\n    return {'perceive': 'due ' + str(int(ctx['due'] - ctx['now'] + 300))}\n"
+           "def on_time(ctx):\n    return {'perceive': 'due ' + str(int(ctx['due']) % 3600)}\n"
            "def on_tick(ctx):\n    return {'state': 5}\n")
     m = live(st, rule(hooks=["on_install", "on_time", "on_tick"], proposes=["schedule", "perceive", "state"]), src)
     rep = await M.dry_run(st, s, agent.runner, m, NOW)
-    assert rep["perceived"] == ["due 0"] and rep["errors"] == [] and rep["clean"] is False
+    assert rep["perceived"] == ["due 600"] and rep["errors"] == [] and rep["clean"] is False
     assert rep["refused"][0] == "on_tick: `state` is an object of at most 16000 bytes"
     bad = live(st, rule(name="bad"), "def on_tick(ctx):\n    return 1/0\n")
     rep = await M.dry_run(st, s, agent.runner, bad, NOW)

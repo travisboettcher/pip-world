@@ -13,6 +13,7 @@ from . import gathering
 from . import guide
 from . import library as lib
 from . import memory as mem
+from . import builder
 from . import modules
 from . import neighbors as nb
 from . import nightpass as np
@@ -236,6 +237,11 @@ class Agent:
                 except Exception as e:  # never let it break the reflection
                     log.exception("night pass failed")
                     self.state.log("error", error=f"night pass: {type(e).__name__}: {e}")
+            try:                                     # then the world's own turn: perhaps one new rule (builder.py)
+                await builder.night(self.state, self.s, self.gm, self.runner)
+            except Exception as e:
+                log.exception("builder failed")
+                self.state.log("error", error=f"builder: {type(e).__name__}: {e}")
             return result
 
     # --- one tick ----------------------------------------------------

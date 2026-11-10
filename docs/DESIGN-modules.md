@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -272,6 +272,27 @@ failed calls in a row disable it, and its author is told why.
   (with its reason, the trial in a few words, a link to the dashboard if `DASHBOARD_URL` is set, and the `pipchat` command) and when one is
   switched off because its code kept failing (not when the owner did it). Pip never sees these: its sync skips its own account. They go to
   Pip's room, or `MODULES_NOTIFY_ROOM`. A failed send is tried again next step; each is logged as an `owner_notice` event.
+
+## Step 4 as built (0.20.0)
+- **`app/builder.py`**, once a night right after Pip's nightly reflection (whatever it found), when `MODULE_BUILDER=on` and the runner is up.
+  It marks the night as done first, so a failure isn't retried until the next night.
+- **The draft** (one GM call, `max_tokens` 4000): the world bible (`app/builder/bible.md`, or the owner's own at `WORLD_BIBLE_PATH`), the
+  catalogue of modules (with the owner's notes on the world's own), the last two days of public events, Pip's open wishes, places only
+  heard of, and the API page (`app/builder/api.md`, with the event kinds and every anchor by kind of place filled in). It answers
+  `propose`, `revise` (one of its own, by name) or `nothing`; "most nights, nothing is a fine answer".
+- **The check**: a second, separate GM call against the bible and the catalogue: does it fit, add something new, and stay quiet? If not, it
+  is dropped.
+- **The trial**, as for any module; if the code is refused or the trial isn't clean, the builder gets **one fix** (the problem in the
+  words Pip would get), which replaces the first try. Then it waits for the owner (and the owner gets the Matrix notice).
+- A rule's manifest comes from its code, as Pip's does: every read but `subject` (now including **`places`**: the real places with their
+  keys, labels and kinds) and the rule proposals `state`, `publish`, `perceive`, `log`, `schedule`, `show` and `wake`.
+- Each night's outcome is a `builder` event (proposed, nothing, dropped, failed, with why), shown in the dashboard feed.
+- Trials now run a **whole simulated day** (30-minute steps) and note where everything shown along the way went, so a picture that only
+  appears at dusk is checked too, and a module that would go over a daily budget isn't clean. Rules and Pip's programs can read
+  `pip.at_home`.
+- Tried against a copy of the live world with the live model: unprompted, it chose nothing ("I don't see a gap that fits"); asked to
+  propose, it wrote a seasonal dusk lamp that is noticed only when Pip is home and awake, once a day, clean on trial. An early version
+  asked for an anchor that doesn't exist and named Pip's home wrongly, which is why the API page now lists the real anchors and keys.
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`
