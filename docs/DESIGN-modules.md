@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**; **step 6 (the builder proposes places) built (0.22.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -319,6 +319,27 @@ failed calls in a row disable it, and its author is told why.
   `woods-layout`: the woods' land, 11 round trees and 18 pines from the parts, and anchors for Pip, finds and the clearing. The world
   proposes them all once; the woods keep their hand-written scene until they're approved. Checked against the hand-written woods in
   renders (the same land and trees; only the scatter differs), and a probe yard with a cutaway, a well and a turned stall.
+
+## Step 6 as built (0.22.0)
+- **A new place as a module** (`app/module_places.py`): a place module with `new` in its manifest describes a place that doesn't exist
+  yet: `label` (its name as people say it), `kind` (one of the existing place kinds, so gathering, browsing and trading work as for any
+  place), `description`, `distance` (near or far), `items` (up to six things to find or buy there), `setting` (wood, heath, shore, ...)
+  and, for a shop or market, `opens` and `closes`. Its key is worked out from the label as for any mentioned place (the proper-noun core:
+  "Hollis's seed shop" is "Hollis"); a name that's already a place is refused, except a new version's own.
+- **How it enters the world**: nothing happens until the owner approves it. Then one of the characters Pip knows (a neighbor or a
+  resident, the same one for the same place) mentions it: it is recorded as heard-of, with that mention, a walk time from its distance, and
+  its setting as its scene details, and Pip hears "Oriel Vantosh told you about Hollis: ...". The map shows it like any heard-of place and
+  `go_to` works. On Pip's first arrival it becomes real exactly as the module describes (its kind kept as approved, its items as what can be
+  had there), with no GM design. Its layout is its `on_build`, built and drawn as in step 5.
+- **The builder may propose a place** (`module: "place"` in its draft, with the fields above and layout code), rarely: the bible says a
+  place is a big addition, and the API page lists the place kinds, settings, textures, the live parts with their params, how the ground and
+  anchors work (Pip, finds, people, and a `counter` for a shop or market), and that until someone tells Pip, nobody knows it's there. The
+  check sees the place's description. The one fix may change the place's fields as well as its code.
+- **The layout renderer** sets a shop's or market's goods out on the surface tagged `counter`, with its keeper standing behind.
+- Tried with the live model on a copy of the live world, asked for a place: it proposed a ruined chapel on the heath, then a mill on the
+  river (both turned down on details that are now accepted or explained: an hour of 24, anchors without a size, a stream hidden under the
+  ground), then a seed shop up from the harbour: clean on trial, laid out as a thatched shop on a cobbled lane, mentioned by Oriel on
+  approval. Hand-written templates stay for every place without a layout; retiring them one by one is now possible, not done.
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`

@@ -1,7 +1,7 @@
 // A place built from parts (docs/DESIGN-modules.md, step 5): the engine sends the built shapes and anchors (app/layouts.py), and this draws them
 // with the kit, the same way for every place. Rotations are in degrees, heading first (Euler order YXZ), so a part turned in a layout stays
-// upright. Pip stands on the anchor tagged "pip" (and searches along it while gathering), people stand beside it ("people"), and what can be
-// found here lies on the anchor tagged "finds".
+// upright. Pip stands on the anchor tagged "pip" (and searches along it while gathering), people stand beside it ("people"), what can be
+// found here lies on the anchor tagged "finds", and a shop's or market's goods are set out on the surface tagged "counter", its keeper behind.
 import { goods, personAt, rngFor } from "./templates/parts.js";
 import { poseOf } from "./templates/home.js";
 
@@ -82,6 +82,14 @@ export function build(kit, art, data) {
       y, z - d / 2 + (Math.floor(i / 5) + 0.5) * (d / 2) + (r() - 0.5), i);
     kit.tipOn(g, name, "Found here sometimes.");
   });
+  // a shop's or market's goods, set out on the counter, with whoever keeps it standing behind
+  const counter = tagged("counter");
+  if (counter && data.booths?.length) {
+    const b = data.booths[0], [x, y, z] = counter.at, [w] = counter.extent, items = b.items.slice(0, 6);
+    items.forEach((it, i) => { const g = goods(kit, it.name, it.kind || "", x - w / 2 + ((i + 0.5) * w) / items.length, y, z, i); kit.tipOn(g, it.name, `${it.price} coin${it.price === 1 ? "" : "s"}${it.left ? "" : ", sold out"}.`); });
+    const keeper = personAt(kit, art, b.look || { accessory: "apron" }, () => ({ title: b.whose || "The keeper", text: `Selling ${b.items.map((i) => i.name).join(", ")}.` }));
+    keeper.stand(x, 0, z - 0.9);
+  }
   const peopleAt = tagged("people") || spot;
   (data.present || []).slice(0, 4).forEach((c, i) => { const p = personAt(kit, art, c.look, () => ({ title: c.name, text: c.about || "" })); p.stand(peopleAt.at[0] + 2 + i * 1.2, peopleAt.at[1], peopleAt.at[2] - 0.6); });
   const pip = kit.sprite(art.pip(), 1.0, 1.375), spark = kit.sprite(art.spark(), 0.35, 0.35, false);

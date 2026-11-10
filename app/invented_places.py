@@ -557,14 +557,15 @@ def backfill_stock(state, rng: random.Random | None = None) -> list[str]:
     return fixed
 
 
-def design(state, rec: dict, raw, rng: random.Random | None = None, now: float | None = None) -> dict | None:
+def design(state, rec: dict, raw, rng: random.Random | None = None, now: float | None = None, trusted: bool = False) -> dict | None:
     """Keep a GM design for a heard-of place, checked and clamped: the record becomes real. An unusable design keeps
     it heard-of (bare), and the next arrival tries again."""
     description = clip(raw.get("description"), 500) if isinstance(raw, dict) else ""
     if not description:
         return None
     now, rng = now or time.time(), rng or random.Random()
-    kind = kinds.check(raw.get("kind"), " ".join([rec["key"]] + [m["there"] for m in rec["mentions"]]))
+    kind = raw["kind"] if trusted and raw.get("kind") in kinds.KINDS else \
+        kinds.check(raw.get("kind"), " ".join([rec["key"]] + [m["there"] for m in rec["mentions"]]))   # an approved module's kind stands
     k = kinds.KINDS[kind]
     known = known_items(state)
     loot = build_loot(raw.get("loot"), kind, known, promised(rec, known), rng) if k.loot_kinds else []
@@ -600,6 +601,10 @@ async def realise(state, gm, key: str, label: str, rng: random.Random | None = N
     """Pip has arrived somewhere it has only heard of: one GM call designs it (at most one a day)."""
     now = now or time.time()
     rec = state.place_row(key)
+    from . import module_places
+    written = module_places.design(state, key) if rec and rec["status"] == "heard" else None
+    if written:                                          # a place a module describes (DESIGN-modules.md, step 6): no GM needed
+        return design(state, rec, written, rng, now, trusted=True)
     if not gm or not rec or rec["status"] != "heard":
         return None
     if sum((r["real_at"] or 0) > now - DAY for r in state.place_rows()) >= DESIGNS_PER_DAY:

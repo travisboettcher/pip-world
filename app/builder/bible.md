@@ -11,3 +11,6 @@ What doesn't: anything loud, cruel or dramatic; magic; money or things appearing
 it or praises it; anything that copies what the world already does (weather, happenings, neighbours' letters, the market's trade, the
 garden, sleep); and anything that talks to Pip often. A rule says something to Pip a few times a day at most, and many days not at all.
 One small idea per module, done well, is better than a big one.
+
+Now and then the world can grow a new place: somewhere the people here would know and talk about, within a walk, that fits the land
+(a mill on the river, a ruined chapel on the heath, a ferry landing, a little bakery). Not often: a place is a big addition.

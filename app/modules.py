@@ -89,9 +89,16 @@ def check_manifest(m, author: str, state=None) -> dict:
             if not isinstance(params, dict) or len(params) > 16 or not all(isinstance(v, (int, float, str, bool)) for v in params.values()):
                 raise Refused("`params` maps up to 16 names to plain default values")
             out["params"] = params
+        elif m.get("new") is not None:                       # a place that doesn't exist yet (step 6): it enters the world when approved
+            from . import invented_places, module_places
+            try:
+                out["new"] = module_places.check_new(m["new"], state, name)
+            except ValueError as e:
+                raise Refused(str(e)) from None
+            out["place"] = invented_places.key_for(out["new"]["label"])
         else:
             if not isinstance(m.get("place"), str) or not m["place"].strip():
-                raise Refused("a place module names the place it lays out: `place`")
+                raise Refused("a place module names the place it lays out: `place` (or describes a new one: `new`)")
             out["place"] = m["place"].strip()[:60]
         out.update(events=[], consumes={})
         return out
@@ -664,6 +671,9 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
     state.update_module(module_id, status="live", decided_at=now, note=str(note or "")[:500], fails=0, cursor=last[0]["id"] if last else 0)
     state.log("module_live", name=m["name"], author=m["author"], version=m["version"], by=by, subject=m["subject"])
     m = state.module(module_id)
+    if m["kind"] == "place" and m["manifest"].get("new"):
+        from . import module_places
+        module_places.introduce(state, m, now)                       # someone tells Pip about it
     if runner and "on_install" in m["manifest"]["hooks"]:
         await call(state, settings, runner, m, "on_install", now)
     return {"id": module_id, "status": "live"}

@@ -260,17 +260,18 @@ async def test_the_builders_three_questions_word_for_word(tmp_path, monkeypatch)
     monkeypatch.setattr(B, "lately", lambda *a: "LATELY")
     r = await B.night(st, s, agent.gm, agent.runner, NOW)
     draft, fits, fix = asked
-    assert draft == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nLATELY\n\nHow a module works:\n{B.api()}\n\n"
-                     "You may add one small rule module tonight, revise one of yours (by its name), or add nothing. Fill a real gap: something the "
+    assert draft == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nLATELY\n\nHow a module works:\n{B.api(st)}\n\n"
+                     "You may add one small rule module tonight (or, rarely, a new place), revise one of yours (by its name), or add nothing. Fill a real gap: something the "
                      "world is missing that fits it, answering to what has been happening; not a copy of what exists. Most nights, nothing is a fine "
                      "answer. Report action, reason, and for propose or revise the name and the code.", B.DRAFT, ["action", "reason"], "builder", B.SYSTEM, 4000)
     assert fits == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nProposed: dusk: Dusk.\n\nCode:\n{BROKEN}\n\n"
                     "Does this fit the world as described, add something the existing modules don't, and stay quiet enough (rarely speaking to Pip)? "
                     "Report fits (true or false) and why, in one sentence.", {"fits": {"type": "boolean"}, "why": {"type": "string"}}, ["fits", "why"],
                     "builder check", B.SYSTEM, None)
-    assert fix == (f"How a module works:\n{B.api()}\n\nYour module dusk (Dusk.):\n{BROKEN}\n\nIt didn't work: {M.trial_text(st.module(1)['report'])}\n"
+    assert fix == (f"How a module works:\n{B.api(st)}\n\nYour module dusk (Dusk.):\n{BROKEN}\n\nIt didn't work: {M.trial_text(st.module(1)['report'])}\n"
                    "Fix it. Report the whole corrected code.", {"code": {"type": "string"}}, ["code"], "builder fix", B.SYSTEM, 4000)
-    assert set(B.DRAFT) == {"action", "name", "revises", "reason", "events", "code"} and B.DRAFT["action"]["enum"] == ["propose", "revise", "nothing"]
+    assert set(B.DRAFT) == {"action", "module", "label", "place_kind", "description", "distance", "items", "setting", "opens", "closes",
+                            "name", "revises", "reason", "events", "code"} and B.DRAFT["action"]["enum"] == ["propose", "revise", "nothing"]
     assert st.module(r["module"])["created_at"] == NOW and st.module(r["module"])["replaces"] == 1
 
 

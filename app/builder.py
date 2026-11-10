@@ -7,6 +7,7 @@ proposal that doesn't fit is dropped. One that fits goes through the usual dry r
 one go at fixing it. Then it waits for the owner like any other module. Every night's outcome is logged as a `builder` event.
 """
 import ast
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -28,8 +29,19 @@ def bible(settings) -> str:
     return (own.read_text() if own and own.is_file() else (DIR / "bible.md").read_text()).strip()
 
 
-def api() -> str:
-    return (DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list()).strip()
+def api(state=None) -> str:
+    from . import geometry, place_kinds
+    from .looks import SCENE
+    return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list())
+            .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
+            .replace("SETTINGS", ", ".join(SCENE["setting"])).replace("TEXTURES", ", ".join(geometry.TEXTURES))
+            .replace("PARTS", parts_list(state)).strip())
+
+
+def parts_list(state) -> str:
+    """The live parts a layout can use, with their params' defaults and what each is."""
+    rows = [m for m in state.modules("live") if m["kind"] == "part"] if state is not None else []
+    return "\n".join(f"  {m['name']} (params {m['manifest'].get('params') or {}}): {m['reason']}" for m in rows) or "  (none yet: no place for now)"
 
 
 def anchor_list() -> str:
@@ -52,6 +64,15 @@ def manifest(source: str, name: str, events) -> dict:
     events = [e for e in (events or []) if isinstance(e, str)]
     return {"name": name, "kind": "rule", "api": M.API, "hooks": hooks, "reads": list(RULE_READS), "proposes": list(RULE_PROPOSES),
             "events": events if "on_event" in hooks else []}
+
+
+def place_manifest(source: str, draft: dict) -> dict:
+    """A new place's manifest from the builder's draft: its description (checked by modules.check_manifest) and its layout code."""
+    sandbox.check(source)
+    new = {"label": draft.get("label"), "kind": draft.get("place_kind"), "description": draft.get("description"),
+           "distance": draft.get("distance") or "far", "items": draft.get("items") or [], "setting": draft.get("setting")}
+    new.update({k: draft[k] for k in ("opens", "closes") if draft.get(k) is not None})
+    return {"name": draft["name"], "kind": "place", "api": M.API, "hooks": ["on_build"], "new": new}
 
 
 def name_of(raw) -> str:
@@ -95,6 +116,11 @@ def lately(state, settings, now: float) -> str:
 
 
 DRAFT = {"action": {"type": "string", "enum": ["propose", "revise", "nothing"]},
+         "module": {"type": "string", "enum": ["rule", "place"], "description": "a rule (default), or rarely a new place"},
+         "label": {"type": "string", "description": "a place: its name as people say it"},
+         "place_kind": {"type": "string"}, "description": {"type": "string"}, "distance": {"type": "string", "enum": ["near", "far"]},
+         "items": {"type": "array", "items": {"type": "string"}}, "setting": {"type": "string"},
+         "opens": {"type": "integer"}, "closes": {"type": "integer"},
          "name": {"type": "string", "description": "a short name, lowercase words joined by dashes"},
          "revises": {"type": "string", "description": "with revise: the name of your module this is a new version of"},
          "reason": {"type": "string", "description": "one or two sentences: what it adds and why now (shown to the owner)"},
@@ -104,7 +130,7 @@ DRAFT = {"action": {"type": "string", "enum": ["propose", "revise", "nothing"]},
 
 async def _draft(state, settings, gm, now: float) -> dict | None:
     task = (f"What this world is:\n{bible(settings)}\n\nModules that already exist:\n{catalogue(state)}\n\n{lately(state, settings, now)}\n\n"
-            f"How a module works:\n{api()}\n\nYou may add one small rule module tonight, revise one of yours (by its name), or add nothing. "
+            f"How a module works:\n{api(state)}\n\nYou may add one small rule module tonight (or, rarely, a new place), revise one of yours (by its name), or add nothing. "
             "Fill a real gap: something the world is missing that fits it, answering to what has been happening; not a copy of what "
             "exists. Most nights, nothing is a fine answer. Report action, reason, and for propose or revise the name and the code.")
     return await gm.ask(task, DRAFT, ["action", "reason"], "builder", system=SYSTEM, max_tokens=MAX_TOKENS)
@@ -112,21 +138,29 @@ async def _draft(state, settings, gm, now: float) -> dict | None:
 
 async def _fits(state, settings, gm, draft: dict) -> dict | None:
     task = (f"What this world is:\n{bible(settings)}\n\nModules that already exist:\n{catalogue(state)}\n\n"
-            f"Proposed: {draft.get('name')}: {draft.get('reason')}\n\nCode:\n{draft.get('code')}\n\n"
+            f"Proposed: {draft.get('name')}: {draft.get('reason')}\n\n"
+            + (f"A new place, {draft.get('label')} ({draft.get('place_kind')}, {draft.get('setting')}): {draft.get('description')}\n\n" if draft.get("module") == "place" else "")
+            + f"Code:\n{draft.get('code')}\n\n"
             "Does this fit the world as described, add something the existing modules don't, and stay quiet enough (rarely speaking to Pip)? "
             "Report fits (true or false) and why, in one sentence.")
     return await gm.ask(task, {"fits": {"type": "boolean"}, "why": {"type": "string"}}, ["fits", "why"], "builder check", system=SYSTEM)
 
 
-async def _fix(gm, draft: dict, problem: str) -> dict | None:
-    task = (f"How a module works:\n{api()}\n\nYour module {draft.get('name')} ({draft.get('reason')}):\n{draft.get('code')}\n\n"
-            f"It didn't work: {problem}\nFix it. Report the whole corrected code.")
-    return await gm.ask(task, {"code": {"type": "string"}}, ["code"], "builder fix", system=SYSTEM, max_tokens=MAX_TOKENS)
+PLACE_FIELDS = ("label", "place_kind", "description", "distance", "items", "setting", "opens", "closes")
+
+
+async def _fix(gm, draft: dict, problem: str, state=None) -> dict | None:
+    place = draft.get("module") == "place"
+    fields = "".join(f"{k}: {json.dumps(draft.get(k))}\n" for k in PLACE_FIELDS) if place else ""
+    task = (f"How a module works:\n{api(state)}\n\nYour module {draft.get('name')} ({draft.get('reason')}):\n{fields}{draft.get('code')}\n\n"
+            f"It didn't work: {problem}\nFix it. Report the whole corrected code" + (", and any of the place's fields you change." if place else "."))
+    props = {"code": {"type": "string"}, **({k: DRAFT[k] for k in PLACE_FIELDS} if place else {})}
+    return await gm.ask(task, props, ["code"], "builder fix", system=SYSTEM, max_tokens=MAX_TOKENS)
 
 
 async def _submit(state, settings, runner, draft: dict, code: str, replaces: int | None, now: float) -> dict:
     try:
-        man = manifest(code, draft["name"], draft.get("events"))
+        man = place_manifest(code, draft) if draft.get("module") == "place" else manifest(code, draft["name"], draft.get("events"))
     except sandbox.Rejected as e:
         return {"error": str(e)}
     return await M.propose(state, settings, runner, "world", man, code, str(draft.get("reason") or "")[:500], replaces=replaces, now=now)
@@ -165,8 +199,9 @@ async def night(state, settings, gm, runner, now: float | None = None) -> dict |
     r = await _submit(state, settings, runner, draft, code, old["id"] if old else None, now)
     problem = r.get("error") or ("" if r["report"].get("clean") else M.trial_text(r["report"]))
     if problem:
-        fixed = await _fix(gm, draft, problem)
+        fixed = await _fix(gm, draft, problem, state)
         if fixed and fixed.get("code"):
+            draft.update({k: fixed[k] for k in PLACE_FIELDS if k in fixed and draft.get("module") == "place"})
             replaces = r.get("id") or (old["id"] if old else None)
             r2 = await _submit(state, settings, runner, draft, fixed["code"], replaces, now)
             if "id" in r2 or "id" not in r:

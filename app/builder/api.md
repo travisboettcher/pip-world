@@ -36,3 +36,23 @@ An example, only to show how the pieces fit (it is not an idea to propose; think
             if ctx["pip"]["where"] == "Brygdon":                 # a place's key, from ctx["places"]
                 out["perceive"] = "The bell in the square rings: the market is open."
         return out
+
+A new place (instead of a rule, and rarely): somewhere people here would talk about and walk to, a mill, a ford, a ruin, a small
+shop. Report module "place", with label (its name as people say it), place_kind (one of PLACE_KINDS), description (what it is like, a
+few sentences), distance (near or far), items (up to 6 things that can be found or had there), setting (one of SETTINGS), opens and
+closes (hours, for a shop or market), and code whose on_build(ctx) lays it out. ctx holds season and seed (for random.Random(ctx["seed"])).
+It returns {"parts": [{"part": a part's name, "params": {...}, "at": [x, 0, z], "turn": degrees, "role": "a-word"}], "shapes": [...],
+"anchors": [...]}. The camera looks from the front: z grows towards the viewer; keep things within x -14 to 14 and z -16 to 4, with
+open ground in front. Give the ground as a box, like {"shape": "box", "size": [30, 2, 16], "at": [0, -1, -4], "faces": {"top":
+{"texture": "grass", "repeat": [15, 8]}, "side": {"texture": "cliff", "repeat": [15, 1]}}, "tip": {"title": "$label", "text":
+"$description"}}: its top is at y 0, so anything lying on it (a stream, a path, a pond) sits a little above, at y 0.02, and anything
+standing on it has its base at y 0. Add ground anchors tagged "pip" (where Pip stands, near z 0), "finds" (where things lie) and "people",
+like {"id": "pip", "type": "ground", "tags": ["outside", "pip"], "at": [0, 0, 0], "extent": [8, 2]} (extent: width along x, depth along z).
+A shop or market also needs a counter: a box to stand at, and a surface anchor tagged "counter" on top of it (its goods are set out there
+and the keeper stands just behind), inside the building if there is one.
+Shapes: box (size), plane (size), cylinder (radius, top, height), cone, sphere, ico, dodeca (radius), gable (width, height), sprite
+(pixels or art), light (color, strength, range, lamp); each with at, rot (degrees), and a material {texture, repeat, color}; textures:
+TEXTURES.
+The parts you can use:
+PARTS
+When Pip first gets there, it is as you described it; until someone tells Pip about it, nobody knows it is there.

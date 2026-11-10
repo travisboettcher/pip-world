@@ -142,7 +142,8 @@ def anchor(a, i: int) -> dict:
         raise Bad(f"{what}: `tags` is a list of 1 to 6 words")
     normal = [0.0, 1.0, 0.0] if a["type"] != "wall" else _vec(a.get("normal", [0, 0, 1]), f"{what}: normal", 3, -1, 1)
     return {"id": a["id"], "type": a["type"], "tags": [t.strip().lower()[:24] for t in tags], "at": _vec(a.get("at"), f"{what}: at"),
-            "normal": normal, "extent": _vec(a.get("extent"), f"{what}: extent [width, height or depth]", 2, 0.05, SIZE_MAX)}
+            "normal": normal, "extent": _vec(a.get("extent", [1.0, 1.0] if a["type"] == "wall" else [2.0, 1.0]),
+                                             f"{what}: extent [width, height or depth]", 2, 0.05, SIZE_MAX)}
 
 
 def built(result) -> dict:
