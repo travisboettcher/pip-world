@@ -52,6 +52,9 @@ export function makeArt(THREE) {
   });
   const walker = () => sprite(14, 10, 2, (px, f) => { px(2, 1, 10, 6, "#8a6a2a"); px(3, 1, 8, 5, "#c9a24a"); px(3, 1, 8, 1, "#f3dc8e"); px(9, 2, 2, 2, "#ffe9a8"); px(3 + f, 7, 2, 3 - f, "#6b4f1f"); px(9 - f, 7, 2, 2 + f, "#6b4f1f"); });
   const QUALITY = { rough: "#9a7a3a", sound: "#b8923e", fine: "#c9a24a", masterwork: "#e0b84e" };
+  // Pip's own pixel drawings ({rows, palette}, "." for nothing): as a sprite (a creation's look), or framed for a wall or a stall
+  const picture = (p) => sprite(p.rows[0].length, p.rows.length, 1, (px) => p.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") px(x, y, 1, 1, p.palette[ch]); })));
+  const framed = (p) => { const w = p.rows[0].length, h = p.rows.length; return tex(w + 4, h + 4, (px) => { px(0, 0, w + 4, h + 4, "#5a3d27"); px(1, 1, w + 2, h + 2, "#8a6440"); px(2, 2, w, h, "#efe4c8"); p.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") px(x + 2, y + 2, 1, 1, p.palette[ch]); })); }); };
   const contraption = (quality, seed) => sprite(12, 12, 1, (px) => { const b = QUALITY[quality] || QUALITY.sound, r = rnd(seed); px(1, 4, 10, 7, shade(b, 0.7)); px(2, 4, 8, 6, b); px(2, 4, 8, 1, shade(b, 1.3)); px(3 + Math.floor(r() * 4), 1, 3, 3, shade(b, 1.1)); px(4 + Math.floor(r() * 3), 6, 2, 2, "#3a2a1c"); px(1, 11, 10, 1, "#3a2a1c"); });
   const bubble = (fruit = "#6aa847") => sprite(14, 12, 1, (px) => { px(1, 0, 12, 8, "#f5f1d7"); px(0, 1, 14, 6, "#f5f1d7"); px(5, 8, 3, 2, "#f5f1d7"); px(4, 10, 2, 2, "#f5f1d7"); px(3, 3, 8, 3, fruit); px(4, 4, 2, 1, "#f5f1d7"); px(7, 4, 2, 1, "#f5f1d7"); });
   const zzz = () => sprite(12, 12, 1, (px) => { [[0, 8], [4, 4], [8, 0]].forEach(([x, y]) => { px(x, y, 4, 1, "#cfe6ff"); px(x + 2, y + 1, 1, 1, "#cfe6ff"); px(x + 1, y + 2, 1, 1, "#cfe6ff"); px(x, y + 3, 4, 1, "#cfe6ff"); }); });
@@ -134,5 +137,5 @@ export function makeArt(THREE) {
   const curlew = () => sprite(10, 8, 2, (px, f) => { px(2, 2, 5, 3, "#8a6e4e"); px(3, 2, 3, 1, "#a8896a"); px(6, 1, 2, 2, "#8a6e4e"); px(7, 2 + f, 3, 1, "#3a3028"); px(9, 3 + f, 1, 1, "#3a3028"); px(3, 5, 1, 3, "#5a4a3a"); px(5, 5, 1, 3, "#5a4a3a"); });
   const reed = () => sprite(8, 16, 1, (px) => { [[1, 0], [3, 2], [5, 1], [6, 4]].forEach(([x, y], i) => { px(x, y, 1, 16 - y, i % 2 ? "#a99a5e" : "#8f8a4e"); if (i < 2) px(x, y, 1, 3, "#6b4a2e"); }); });
   const coin = () => sprite(6, 6, 1, (px) => { px(1, 0, 4, 6, "#e8b04a"); px(0, 1, 6, 4, "#e8b04a"); px(2, 1, 2, 1, "#fff2c4"); });
-  return { T, tex, sprite, shade, pip, walker, contraption, bubble, zzz, spark, flower, crop, clock, dot, LEAF, GRASS, person, HEIGHT, curlew, reed, coin };
+  return { T, tex, sprite, shade, pip, walker, contraption, picture, framed, bubble, zzz, spark, flower, crop, clock, dot, LEAF, GRASS, person, HEIGHT, curlew, reed, coin };
 }

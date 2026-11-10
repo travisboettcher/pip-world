@@ -104,26 +104,44 @@ export function build(kit, art, data) {
   }
   const progress = (g) => (g.ready_at > g.planted_at ? Math.max(0, Math.min(1, 1 - (g.ready_at - Date.now() / 1000) / (g.ready_at - g.planted_at))) : 1);
 
-  const made = new Map();                                          // name -> {mesh, kind, clock?}
+  const made = new Map();                                          // name -> {mesh, kind, clock?, pk}
+  const fit = (p, most) => { const w = p.rows[0].length, h = p.rows.length, k = most / Math.max(w, h); return [w * k, h * k]; };
   function creationsFor(list) {
     let wall = 0, floor = 0, shelf = 0;
     for (const c of list) {
-      if (made.has(c.name)) continue;
+      const pk = c.picture ? JSON.stringify(c.picture) : "";
+      if (made.has(c.name) && made.get(c.name).pk === pk) continue;
+      if (made.has(c.name)) { const old = made.get(c.name); kit.scene.remove(old.mesh); kit.hits.splice(kit.hits.indexOf(old.mesh), 1); made.delete(c.name); }   // Pip drew it anew
       let e;
       if (c.clock) { const ck = art.clock(); const m = kit.sprite(ck.texture, 0.85, 1.5, false); m.quaternion.identity(); m.position.set(-2.4 - wall * 1.2, 1.9, WZ0 + 0.22); wall++; e = { mesh: m, kind: "clock", ck }; }
-      else if (WALKS.test(c.description) || c.capabilities.includes("companion")) { const t = art.walker(); const m = kit.sprite(t, 0.8, 0.57); e = { mesh: m, kind: "walker", t, lane: floor++ }; }
-      else { const m = kit.sprite(art.contraption(c.quality, hashStr(c.name)), 0.5, 0.5, false); m.position.set(-9.4 + shelf * 0.55, 2.55, WZ0 + 0.45); shelf++; e = { mesh: m, kind: "thing" }; }
+      else if (WALKS.test(c.description) || c.capabilities.includes("companion")) { const t = c.picture ? art.picture(c.picture) : art.walker(), [w, h] = c.picture ? fit(c.picture, 0.8) : [0.8, 0.57]; const m = kit.sprite(t, w, h); e = { mesh: m, kind: "walker", t, lane: floor++ }; }
+      else { const [w, h] = c.picture ? fit(c.picture, 0.5) : [0.5, 0.5], m = kit.sprite(c.picture ? art.picture(c.picture) : art.contraption(c.quality, hashStr(c.name)), w, h, false); m.position.set(-9.4 + shelf * 0.55, 2.55, WZ0 + 0.45); shelf++; e = { mesh: m, kind: "thing" }; }
       kit.tipOn(e.mesh, () => { const now = latest.creations.find((x) => x.name === c.name) || c; return { title: now.name, text: `${now.quality}. ${now.description}` + (now.clock ? (now.clock.running ? " It's going." : " It has stopped and needs tending.") : "") }; });
-      e.name = c.name; made.set(c.name, e);
+      e.name = c.name; e.pk = pk; made.set(c.name, e);
     }
     for (const [name, e] of made) e.mesh.visible = list.some((c) => c.name === name);     // sold or given away: gone
+  }
+
+  // Pip's latest pixel drawings, framed on the back wall: by the window, past the end of the shelf, under the shelf
+  const HANG = [[-5.25, 2.3, 0.9], [-7.15, 1.6, 0.7], [-9.6, 1.5, 0.7]], hung = [];
+  function drawingsFor(list) {
+    list.slice(0, HANG.length).forEach((w, i) => {
+      const key = `${w.id}|${JSON.stringify(w.rows)}|${JSON.stringify(w.palette)}`;
+      if (hung[i]?.key === key) return;
+      if (hung[i]) { kit.scene.remove(hung[i].mesh); kit.hits.splice(kit.hits.indexOf(hung[i].mesh), 1); }
+      const W = w.rows[0].length + 4, H = w.rows.length + 4, k = HANG[i][2] / Math.max(W, H);           // the frame adds two pixels each side
+      const mesh = kit.plane(W * k, H * k, M(art.framed(w)), HANG[i][0], HANG[i][1], WZ0 + 0.17);
+      kit.tipOn(mesh, () => ({ title: w.title, text: "One of Pip's drawings." }));
+      hung[i] = { key, mesh };
+    });
+    hung.slice(list.length).forEach((h) => { h.mesh.visible = false; });
   }
 
   const pip = kit.sprite(art.pip(), 1.0, 1.375), bubble = kit.sprite(art.bubble(), 0.7, 0.6, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false), spark = kit.sprite(art.spark(), 0.35, 0.35, false);
   kit.tipOn(pip, () => ({ title: "Pip", text: `${latest.pip.description || latest.pip.activity}. Feeling ${latest.pip.mood}; energy ${Math.round(latest.pip.energy * 100)}%.` }));
 
   function update(d) {
-    latest = d; plotsFor(d.garden || []); creationsFor(d.creations || []);
+    latest = d; plotsFor(d.garden || []); creationsFor(d.creations || []); drawingsFor(d.drawings || []);
     const ripe = (d.garden || []).find((g) => g.state !== "empty");
     bubble.material.map = art.bubble(ripe && /tomato/i.test(ripe.crop) ? "#d8432f" : "#6aa847");
   }
@@ -141,7 +159,7 @@ export function build(kit, art, data) {
     else if (pose === "idle") { pip.position.set(-4.6, 0.75, WZ0 + 2.9); kit.frame(pip, Math.floor(t * 1.6) % 2); }
     for (const e of made.values()) {
       if (e.kind === "clock") { const c = latest.creations.find((x) => x.name === e.name) || {}; const min = c.clock ? c.clock.minutes + (c.clock.running ? (Date.now() / 1000 - latest.now.ts) / 60 : 0) : 0; e.ck.draw(Math.floor(min), c.clock?.running ? Math.round(Math.sin(t * Math.PI) * 2) : 0); }
-      if (e.kind === "walker") { const wk = (Math.sin(t * 0.35 + e.lane) + 1) / 2; e.mesh.position.set(-9.4 + wk * 3.2, 0.42, WZ1 - 1.0 - e.lane * 0.6); e.mesh.scale.x = Math.cos(t * 0.35 + e.lane) >= 0 ? 1 : -1; e.t.offset.x = (Math.floor(t * 6) % 2) / 2; }
+      if (e.kind === "walker") { const wk = (Math.sin(t * 0.35 + e.lane) + 1) / 2; e.mesh.position.set(-9.4 + wk * 3.2, 0.42, WZ1 - 1.0 - e.lane * 0.6); e.mesh.scale.x = Math.cos(t * 0.35 + e.lane) >= 0 ? 1 : -1; if (e.t.userData.frames > 1) e.t.offset.x = (Math.floor(t * 6) % 2) / 2; }
     }
     sway.forEach((m) => { m.rotation.z = Math.sin(t * 0.8 + m.userData.sway) * 0.025; });
     water.map.offset.x = (t * 0.03) % 1;

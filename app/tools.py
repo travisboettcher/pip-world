@@ -548,8 +548,9 @@ async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
     unknown = (" What you don't know yet: " + "; ".join(plan["questions"])
                + ". Work out what you can, then experiment or look things up, and revise_plan as you learn."
                if plan["questions"] else "")
+    sketch = " You could sketch it first with draw." if "draw" in ctx.settings.tools else ""
     return ToolResult(f"started project #{p['id']} {p['name']} ({plan['craft']}, difficulty {plan['difficulty']}/5). "
-                      f"Your plan: {listing}.{tools}{concern}{unknown}", followup=True)
+                      f"Your plan: {listing}.{tools}{concern}{unknown}{sketch}", followup=True)
 
 
 @tool("work_on",
@@ -1056,15 +1057,21 @@ def _picture(w: dict) -> list:
     return [("image/png", art.render_png(w["body"], LOOK_WIDTH))]
 
 
-@tool("draw", "Draw a picture, by writing it as SVG on a 400 x 300 canvas (viewBox 0 0 400 300; the canvas is blank, paint a background "
-      "if you want one). You may use rect, circle, ellipse, line, polyline, polygon, path, text, g, and linear/radial gradients. "
-      "No scripts, images, links or styles; keep it under about 8 KB. It's kept in your gallery where visitors can see it, and you can "
-      "send one with a postcard. When it's done you SEE how it came out; if it isn't what you meant, draw it again with `replaces` set to its "
-      "number (up to 3 times). If something isn't allowed you'll be told what to change.",
+@tool("draw", "Draw a picture. The easy way is pixel art: `pixels` is a list of rows (4 to 32 rows, all the same length, 4 to 32 letters), "
+      "each letter a colour from your `palette` (up to 16 letters, like {\"k\": \"#2a1f1a\", \"r\": \"#c8432f\"}), \".\" for nothing. Or write SVG "
+      "instead, on a 400 x 300 canvas (viewBox 0 0 400 300; rect, circle, ellipse, line, polyline, polygon, path, text, g, gradients; no scripts, "
+      "images, links or styles; under about 8 KB). Things worth a picture: a sketch of something you're designing, before you build it; a place "
+      "you've just seen for the first time; something that happened; a picture for a friend. A drawing of one of your creations, with `of` "
+      "set to its name, becomes how it looks in your workshop. Drawings hang in your gallery where visitors see them, and you can send one "
+      "with a postcard. When it's done you SEE how it came out; if it isn't what you meant, draw it again with `replaces` set to its number "
+      "(up to 3 times). If something isn't allowed you'll be told what to change.",
       _obj({"title": {"type": "string", "description": "a short title"},
-            "svg": {"type": "string", "description": "the whole <svg>...</svg> element"},
+            "pixels": {"type": "array", "items": {"type": "string"}, "description": "pixel art: the rows, top to bottom, each a string of palette letters"},
+            "palette": {"type": "object", "additionalProperties": {"type": "string"}, "description": "with pixels: letter -> colour (#rgb or #rrggbb)"},
+            "svg": {"type": "string", "description": "instead of pixels: the whole <svg>...</svg> element"},
             "caption": {"type": "string", "description": "optional: a line about it"},
-            "replaces": {"type": "integer", "description": "optional: the number of your drawing this one redoes"}}, ["title", "svg"]))
+            "of": {"type": "string", "description": "optional: the name of one of your creations this is a picture of"},
+            "replaces": {"type": "integer", "description": "optional: the number of your drawing this one redoes"}}, ["title"]))
 async def draw(ctx: ToolContext, args: dict) -> ToolResult:
     old = None
     if args.get("replaces") not in (None, ""):
@@ -1081,8 +1088,22 @@ async def draw(ctx: ToolContext, args: dict) -> ToolResult:
     title = art.clean_title(args.get("title")) or (old["title"] if old else "")
     if not title:
         return ToolResult("give your picture a title", followup=True)
+    subject = None
+    if str(args.get("of") or "").strip():
+        want = str(args["of"]).strip().lower()
+        mine = next((c for c in ctx.state.creations() if c["name"].lower() == want), None)
+        if not mine:
+            return ToolResult(f"you have no creation called {clip(args['of'], 60)!r}; `of` is the name of something you made and still have", followup=True)
+        subject = mine["name"]
+    pixels = None
     try:
-        svg = art.sanitize_svg(args.get("svg"))
+        if args.get("pixels") not in (None, "", []):
+            rows, palette = art.clean_pixels(args.get("pixels"), args.get("palette"))
+            pixels, svg = {"rows": rows, "palette": palette}, art.sanitize_svg(art.pixel_svg(rows, palette))
+        elif args.get("svg"):
+            svg = art.sanitize_svg(args.get("svg"))
+        else:
+            return ToolResult("draw it as `pixels` (rows of palette letters) with a `palette`, or as `svg`", followup=True)
         art.render_png(svg, 200)  # if it can't be drawn, say so now rather than when someone looks
     except art.SvgRejected as e:
         return ToolResult(f"your drawing wasn't accepted: {e}. Fix it and try again.", followup=True)
@@ -1090,14 +1111,16 @@ async def draw(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult("your drawing couldn't be rendered: check that every shape and path is complete, then try again.", followup=True)
     caption = clip(args.get("caption"), 200)
     if old:
-        n = ctx.state.revise_work(old["id"], svg, title, caption or None)
+        n = ctx.state.revise_work(old["id"], svg, title, caption or None, pixels=pixels, subject=subject)
         ctx.state.log("revised_work", id=old["id"], title=title, revision=n)
         wid = old["id"]
         text = f"you redo #{wid}: {title} (version {n + 1})."
     else:
-        wid = ctx.state.add_work("drawing", title, svg, caption, ctx.state.agent()["location"])
+        wid = ctx.state.add_work("drawing", title, svg, caption, ctx.state.agent()["location"], pixels=pixels, subject=subject or "")
         ctx.state.log("made_work", id=wid, what="drawing", title=title, caption=caption)
         text = f"you finish a drawing, #{wid}: {title}. It's in your gallery; you can send it with a postcard."
+    if pixels and (of := ctx.state.work(wid)["subject"]):
+        text += f" It's how {of} looks in your workshop now."
     if not ctx.vision:
         return ToolResult(text)
     # Pip sees what it made, and can answer with a redo in the same breath

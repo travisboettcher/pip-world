@@ -68,6 +68,24 @@ def _clock(c: dict, now: float) -> dict:
     return {"minutes": shown.hour * 60 + shown.minute, "running": cr.running(c, now)}
 
 
+DRAWINGS_SHOWN = 3                                       # pictures hung on the workshop's back wall
+
+
+def _picture(w: dict | None) -> dict:
+    """A pixel picture's grid, for drawing it in the scene (nothing for a picture without one)."""
+    return {"picture": {"rows": w["rows"], "palette": w["palette"]}} if w else {}
+
+
+def _copy_of(state, row: dict) -> dict:
+    """What a stall line is, and the pixel picture it shows: the drawing, for copies of one; Pip's drawing of it, for a creation."""
+    out = {"kind": row["kind"]}
+    if row["kind"] == "work" and row["attrs"].get("work") == "drawing":
+        out.update(_picture(state.picture_of(title=row["name"])))
+    elif row["kind"] == "creation":
+        out.update(_picture(state.picture_of(subject=row["name"])))
+    return out
+
+
 def scene_view(state, settings, library, place: str | None = None, now: float | None = None) -> dict | None:
     """Everything a scene draws from, for one place (where Pip is, by default): the place, who is there, what is for sale, Pip if it is
     there, and the place's own things (at home: the garden, the creations, the belongings). None if there is no such place."""
@@ -117,15 +135,17 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                 "mood": a["mood"], "energy": round(a["energy"], 2), "hunger": round(a["hunger"], 2), "asleep": a["activity"] == "sleeping",
                 "session": session},
         "present": present, "booths": booths,
-        "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"]} for r in state.stall_rows(key)],
+        "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], **_copy_of(state, r)} for r in state.stall_rows(key)],
         "now": moment(state, settings, now),
     }
     if key == places.HOME:
         out["garden"] = state.garden(now)
         out["creations"] = [{"name": c["name"], "quality": c["quality"], "capabilities": sorted(c["spec"]["capabilities"]), "running": cr.running(c, now),
                              "description": c["description"], **({"clock": _clock(c, now)} if "timekeeper" in c["spec"]["capabilities"] else {}),
-                             **({"tended_until": c["runtime"].get("tended_until")} if "upkeep" in c["spec"]["capabilities"] else {})}
+                             **({"tended_until": c["runtime"].get("tended_until")} if "upkeep" in c["spec"]["capabilities"] else {}),
+                             **_picture(state.picture_of(subject=c["name"]))}
                             for c in state.creations()]
+        out["drawings"] = [{"id": w["id"], "title": w["title"], "rows": w["rows"], "palette": w["palette"]} for w in state.pictures(DRAWINGS_SHOWN)]
         out["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"]} for i in state.items()]
         out["coins"] = state.coins()
     return out

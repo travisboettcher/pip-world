@@ -26,7 +26,7 @@ ATTRIBUTES = {
     "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset", "stroke-miterlimit",
     "opacity", "fill-opacity", "stroke-opacity", "fill-rule", "font-size", "font-family", "font-weight", "font-style",
     "text-anchor", "dominant-baseline", "letter-spacing", "id", "offset", "stop-color", "stop-opacity", "gradientUnits",
-    "gradientTransform", "fx", "fy", "spreadMethod", "dx", "dy", "viewBox", "preserveAspectRatio",
+    "gradientTransform", "fx", "fy", "spreadMethod", "dx", "dy", "viewBox", "preserveAspectRatio", "shape-rendering",
 }
 FORBIDDEN_ELEMENTS = {"script", "style", "image", "use", "foreignObject", "a", "iframe", "animate", "animateTransform", "set",
                       "filter", "feImage", "mask", "pattern", "symbol", "switch", "link", "audio", "video"}
@@ -37,6 +37,54 @@ NUMBERISH = re.compile(r"^[\s\d.,+\-eE%a-zA-Z()#/:'\"_ ]*$")
 
 class SvgRejected(ValueError):
     """The picture can't be accepted; the message tells Pip what to change."""
+
+
+PIXELS_MIN, PIXELS_MAX, PALETTE_MAX = 4, 32, 16
+HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def clean_pixels(rows, palette) -> tuple[list[str], dict]:
+    """A pixel picture as Pip wrote it: rows of letters, each letter a colour from its palette, "." for nothing. Checked, never trusted."""
+    if not isinstance(rows, list) or not all(isinstance(r, str) for r in rows):
+        raise SvgRejected("`pixels` is a list of rows, each a string of palette letters (\".\" for nothing)")
+    rows = [r.rstrip("\n") for r in rows]
+    if not PIXELS_MIN <= len(rows) <= PIXELS_MAX:
+        raise SvgRejected(f"a pixel picture is {PIXELS_MIN} to {PIXELS_MAX} rows tall; this one has {len(rows)}")
+    width = len(rows[0])
+    if not PIXELS_MIN <= width <= PIXELS_MAX or any(len(r) != width for r in rows):
+        raise SvgRejected(f"every row needs the same length, {PIXELS_MIN} to {PIXELS_MAX} letters; check rows of a different length")
+    if not isinstance(palette, dict) or not palette or len(palette) > PALETTE_MAX:
+        raise SvgRejected(f"`palette` maps up to {PALETTE_MAX} single letters to colours like \"#3a2a1c\"")
+    clean = {}
+    for k, v in palette.items():
+        if not (isinstance(k, str) and len(k) == 1 and k != "." and not k.isspace()) or not (isinstance(v, str) and HEX.match(v.strip())):
+            raise SvgRejected(f"palette entry {k!r}: {v!r} isn't a single letter and a colour like \"#3a2a1c\"")
+        clean[k] = v.strip().lower()
+    unknown = sorted({ch for r in rows for ch in r if ch != "." and ch not in clean})
+    if unknown:
+        raise SvgRejected(f"these letters aren't in your palette: {' '.join(unknown)}")
+    if all(ch == "." for r in rows for ch in r):
+        raise SvgRejected("the picture is empty; put some colour in it")
+    return rows, clean
+
+
+def pixel_svg(rows: list[str], palette: dict) -> str:
+    """The picture as crisp SVG on the usual canvas (one rect per run of a colour, scaled up whole and centred), so the gallery,
+    postcards and looking all work as for any drawing."""
+    h, w = len(rows), len(rows[0])
+    k = min(CANVAS[0] // w, CANVAS[1] // h)
+    out = [f'<svg xmlns="{SVG_NS}" viewBox="0 0 {CANVAS[0]} {CANVAS[1]}" width="{CANVAS[0]}" height="{CANVAS[1]}" shape-rendering="crispEdges">'
+           f'<g transform="translate({(CANVAS[0] - w * k) // 2} {(CANVAS[1] - h * k) // 2}) scale({k})">']
+    for y, row in enumerate(rows):
+        x = 0
+        while x < w:
+            ch, start = row[x], x
+            while x < w and row[x] == ch:
+                x += 1
+            if ch != ".":
+                out.append(f'<rect x="{start}" y="{y}" width="{x - start}" height="1" fill="{palette[ch]}"/>')
+    out.append("</g></svg>")
+    return "".join(out)
 
 
 def _local(tag: str) -> str:

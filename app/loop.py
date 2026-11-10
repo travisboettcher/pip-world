@@ -421,6 +421,8 @@ class Agent:
             lines.append("Things you wish you could do: " + "; ".join(f"#{m['id']} {clip(m['text'], 100)}" for m in wants))
         if "start_project" in self.tools and (aims or wants):
             lines.append("start_project begins something new.")
+        if "draw" in self.tools:
+            lines.append("draw makes a picture; a small pixel one is quick.")
         return lines
 
     def _talk(self, inbox: list[dict]) -> list[str]:
@@ -737,6 +739,8 @@ class Agent:
                 elif e["kind"] == "arrived":
                     lines.append(f"- you arrived at {places.label(d['place'])}" if d["place"] != places.HOME
                                  else "- you got home")
+                    if d.get("first_time") and d["place"] != places.HOME and "draw" in self.tools:
+                        lines[-1] += " for the first time (draw can keep a picture of it)"
                 elif e["kind"] == "letter_sent":
                     lines.append(f"- you wrote to {d['to']}: {d['text'][:200]}"
                                  + (f" (enclosed: {d['enclosed']})" if d.get("enclosed") else ""))
@@ -756,7 +760,8 @@ class Agent:
                 elif e["kind"] == "companion":  # model-written, so quoted like a visitor's words
                     lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
                 elif e["kind"] == "creation_made":
-                    lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}")
+                    lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}"
+                                 + (f" (a drawing of it, with of=\"{d['name']}\", becomes how it looks in your workshop)" if "draw" in self.tools else ""))
                 elif e["kind"] == "experiment":
                     lines.append(f"- experiment on {d['project']} ({d['hypothesis']}): {d['outcome']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")

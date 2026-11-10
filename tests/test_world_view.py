@@ -169,7 +169,7 @@ def test_a_market_scene_lists_its_booths_and_pips_stall(tmp_path):
     assert d["place"]["kind"] == "market" and d["place"]["hours"] == [0, 24] and d["place"]["open"] and d["place"]["coastal"]
     assert d["place"]["description"] == "A market by the quay."
     assert d["booths"][0]["booth"] == "Brygdon" and d["booths"][0]["whose"] == "" and {i["name"] for i in d["booths"][0]["items"]} == {"brass wire", "tomatoes", "awl"}
-    assert all(i["price"] >= 1 and i["left"] >= 1 for i in d["booths"][0]["items"]) and d["stall"] == [{"item": "carrots", "qty": 6, "ask": 4}]
+    assert all(i["price"] >= 1 and i["left"] >= 1 for i in d["booths"][0]["items"]) and d["stall"] == [{"item": "carrots", "qty": 6, "ask": 4, "kind": "food"}]
 
 
 def test_the_scene_endpoint_is_public_and_says_when_a_place_is_unknown(tmp_path):
@@ -199,7 +199,7 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
     assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now"}
     home = WV.scene_view(st, s, None)
-    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins"}
+    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins", "drawings"}
     st.update_agent(activity="sleeping")
     assert WV.scene_view(st, s, None)["pip"]["asleep"] is True
     st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})

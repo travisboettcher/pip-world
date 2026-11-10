@@ -34,6 +34,13 @@ export function build(kit, art, data) {
   if (P.has("bunting") || true) { const cols = ["#b5402f", "#e8b04a", "#4f7d4a", "#4a6a8a", "#efe2c0"], bunt = []; for (let i = 0; i < 28; i++) { const k = (i % 14) / 13, x0 = i < 14 ? -13 : 0, x = x0 + 13 * k, y = 4.4 - Math.sin(k * Math.PI) * 0.9; const tri = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.4, 3), M(null, { color: cols[i % 5] })); tri.rotation.x = Math.PI; tri.position.set(x, y, -11.3); kit.scene.add(tri); bunt.push(tri); } kit.every((t) => bunt.forEach((b, i) => { b.rotation.z = Math.sin(t * 2 + i) * 0.15; })); }
   [[-2.8, -3.0], [3.0, -3.0]].forEach(([x, z]) => { kit.box(0.14, 2.6, 0.14, M(T.planks([1, 2], "#3f3326")), x, 1.3, z); const lm = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffc070, emissiveIntensity: 0 }); const l = new THREE.PointLight(0xffb066, 0, 8, 2); l.position.set(x, 2.6, z + 0.3); kit.scene.add(l); kit.lamp(kit.box(0.32, 0.4, 0.32, lm, x, 2.75, z), l); });
 
+  // a pixel picture on a stall: copies of a drawing stand framed and propped up; a creation Pip drew stands as its picture
+  function shown(p, copy, x, z) {
+    const W = p.rows[0].length + (copy ? 4 : 0), H = p.rows.length + (copy ? 4 : 0), k = (copy ? 0.6 : 0.5) / Math.max(W, H);
+    const m = copy ? kit.plane(W * k, H * k, M(art.framed(p)), x, 0.97 + H * k / 2, z) : kit.sprite(art.picture(p), W * k, H * k, false);
+    if (copy) m.rotation.x = -0.25; else m.position.set(x, 0.97 + H * k / 2, z);
+    return m;
+  }
   // a stall: trestle, posts, an awning (rolled when shut), goods, and someone behind it
   function stall(x, z, colours) {
     const wood = M(T.planks([2, 1], "#8a6440")), post = M(T.planks([1, 2], "#5a3d27")), s = { goods: [], x, z };
@@ -42,7 +49,14 @@ export function build(kit, art, data) {
     kit.box(0.14, 2.6, 0.14, post, x - 1.45, 1.3, z - 0.75); kit.box(0.14, 2.6, 0.14, post, x + 1.45, 1.3, z - 0.75); kit.box(0.14, 2.0, 0.14, post, x - 1.45, 1.0, z + 0.75); kit.box(0.14, 2.0, 0.14, post, x + 1.45, 1.0, z + 0.75);
     const stripes = M(T.stripes(...colours)); s.awning = kit.box(3.3, 0.08, 1.9, stripes, x, 2.35, z); s.awning.rotation.x = 0.32;
     s.rolled = kit.box(1, 1, 1, stripes, x, 2.55, z - 0.75); s.rolled.geometry = new THREE.CylinderGeometry(0.16, 0.16, 3.2, 8); s.rolled.rotation.z = Math.PI / 2;
-    s.show = (items) => { s.goods.forEach((g) => kit.scene.remove(g)); s.goods = []; items.slice(0, 4).forEach((it, i) => { for (let k = 0; k < 3; k++) s.goods.push(goods(kit, it.name || it.item, it.kind || "", x - 1.15 + i * (2.3 / Math.max(1, Math.min(4, items.length) - 1 || 1)) + (k - 1) * 0.16, 0.97, z - 0.2 + (k % 2) * 0.3, k)); }); };
+    s.show = (items) => {
+      s.goods.forEach((g) => kit.scene.remove(g)); s.goods = [];
+      items.slice(0, 4).forEach((it, i) => {
+        const gx = x - 1.15 + i * (2.3 / Math.max(1, Math.min(4, items.length) - 1 || 1));
+        if (it.picture) { s.goods.push(shown(it.picture, it.kind === "work", gx, z)); return; }        // Pip's own drawing of it, or copies of one
+        for (let k = 0; k < 3; k++) s.goods.push(goods(kit, it.name || it.item, it.kind || "", gx + (k - 1) * 0.16, 0.97, z - 0.2 + (k % 2) * 0.3, k));
+      });
+    };
     return s;
   }
   const stalls = [], keepers = [];

@@ -81,7 +81,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [ ] Keep prompts well under 100k tokens (Haiku 5.5 pricing steps up 5x past that); prompts are ~3-5k today
 
 ## M4 - Richer tools and exposure
-- [ ] Image generation (canvas/drawing)
+- [x] Image generation (canvas/drawing): pixel drawing, occasions as facts, drawings in the world (0.16.0; DESIGN-art.md)
 - [ ] Sandboxed code execution (network-less container, resource limits)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
@@ -240,6 +240,8 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] `draw` (sanitised SVG on a fixed canvas) and `write_piece`; a gallery (API, Work tab, `pipchat gallery`); drawings travel with postcards as PNGs
 - [x] Pip sees its own pictures (built 2026-10-30): tool results can carry images (Anthropic image blocks; a user message for OpenAI-compatible models, `LLM_VISION=1`);
       `draw` shows the result and `replaces=<id>` redoes it (3 times at most); `look(drawing)` shows any of them (`LOOKS_PER_DAY`)
+- [x] Pixel drawing (`pixels` + `palette`), occasions named as facts, `of=<creation>`; drawings on the workshop wall, creations and stalls in the world view (0.16.0)
+- [ ] Measure drawing after 0.16.0 (it was zero in ten days before)
 - [ ] Drawing as a timed session; inbound pictures from the owner
 
 ### Emotions (DESIGN-emotions.md; steps 1-2 built 2026-10-31)

@@ -1,6 +1,6 @@
 # Design: Pip's pictures and writing
 
-Status: **built 2026-10-30** (v1). Roadmap idea "Writing and drawing".
+Status: **built 2026-10-30** (v1); **pixel drawing, occasions and drawings in the world built 2026-11-09 (0.16.0)**. Roadmap idea "Writing and drawing".
 
 ## What
 Two tools that make something real Pip can show, as opposed to its private diary:
@@ -38,3 +38,29 @@ A tool result can carry pictures: the neutral message format gains `images` on a
 rendered by the engine from sanitised SVG (480 px wide, a few hundred tokens), live for the turn, and are never stored in events. `draw` returns the render and
 asks whether to redo it; `draw(replaces=<id>)` redraws in place (3 times at most, not held back by the gap between new pictures); `look(drawing)` shows any
 drawing again (`LOOKS_PER_DAY`, 20). A backend without vision is never sent a picture, and `look` isn't offered.
+
+## Pixel drawing, occasions, and drawings in the world (built 2026-11-09, 0.16.0)
+Pip had `draw` for ten days and made nothing: a whole SVG document is a lot to write, and nothing ever said when a picture was worth making.
+Three changes, together:
+
+**Pixel art.** `draw` also takes `pixels` (4 to 32 rows, all the same length, 4 to 32 letters) and `palette` (up to 16 single letters, each
+`#rgb` or `#rrggbb`; `.` is nothing). `art.clean_pixels` checks it and every refusal says what to fix (rows of different lengths, letters
+missing from the palette, an empty picture). `art.pixel_svg` turns it into SVG on the usual 400 x 300 canvas: one `rect` per run of a colour
+in a group scaled up by a whole number and centred, `shape-rendering="crispEdges"` (now on the allowlist), and the result still goes through
+`sanitize_svg`, so the gallery, postcards and `look` work unchanged. The grid itself is kept (`works.pixels`, JSON) for the world view. SVG
+still works for anything pixels can't say.
+
+**Occasions, as facts.** The tool description and the guide name when a picture is worth making: a sketch of something being designed, a
+place seen for the first time, something that happened, a picture for a friend. Short facts appear only where `draw` is a tool:
+`start_project`'s result ends "You could sketch it first with draw."; free time adds "draw makes a picture; a small pixel one is quick.";
+in recent events a first arrival says "(draw can keep a picture of it)" and a finished creation says a drawing of it `of="<name>"` becomes how
+it looks. None of these are orders and none repeat beyond the event that prompts them.
+
+**Drawings in the world.** `draw(of=<creation>)` records the picture's subject (`works.subject`; `replaces` keeps it). In the world view
+(DESIGN-world-view.md) the workshop hangs the three newest pixel drawings framed on the back wall (`drawings` in the home scene); a creation
+with a pixel picture is drawn as that picture instead of the generic contraption or walker (clocks keep their working face); and on a
+stall, copies of a pixel drawing stand framed and propped up, and a creation Pip drew stands as its picture (`picture` on stall lines).
+SVG drawings have no grid, so they stay in the gallery only.
+
+Measure: drawings per week before (zero in ten days) and after; which occasions they follow.
+

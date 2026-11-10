@@ -264,7 +264,9 @@ class State:
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
                 ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
                 ("characters", "wares", "TEXT NOT NULL DEFAULT '[]'"),
-                ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
+                ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),
+                ("works", "pixels", "TEXT NOT NULL DEFAULT ''"),          # a pixel picture: {"rows": [...], "palette": {...}} (art.py)
+                ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -1263,25 +1265,27 @@ class State:
                             (status, time.time(), note[:200], focus_id))
             self.db.commit()
 
-    def add_work(self, kind: str, title: str, body: str, caption: str = "", location: str = "") -> int:
+    def add_work(self, kind: str, title: str, body: str, caption: str = "", location: str = "", pixels: dict | None = None, subject: str = "") -> int:
         """A picture (SVG, already sanitised) or a piece of writing Pip made."""
         now = time.time()
         with self.lock:
-            cur = self.db.execute("INSERT INTO works (ts, kind, title, body, caption, location) VALUES (?, ?, ?, ?, ?, ?)",
-                                  (now, kind, title, body, caption, location))
+            cur = self.db.execute("INSERT INTO works (ts, kind, title, body, caption, location, pixels, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (now, kind, title, body, caption, location, json.dumps(pixels) if pixels else "", subject))
             text = f"{title}. {caption}" + (f" {body}" if kind == "writing" else "")
             self._index(f"work:{kind}", cur.lastrowid, now, text.strip(), commit=False, importance=5)
             self.db.commit()
             return cur.lastrowid
 
-    def revise_work(self, work_id: int, body: str, title: str | None = None, caption: str | None = None) -> int:
+    def revise_work(self, work_id: int, body: str, title: str | None = None, caption: str | None = None, pixels: dict | None = None,
+                    subject: str | None = None) -> int:
         """Replace a drawing with Pip's redrawing of it; returns how many times it has been redrawn."""
         with self.lock:
             row = self.db.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
             title = title or row["title"]
             caption = row["caption"] if caption is None else caption
-            self.db.execute("UPDATE works SET body = ?, title = ?, caption = ?, revisions = revisions + 1 WHERE id = ?",
-                            (body, title, caption, work_id))
+            subject = row["subject"] if subject is None else subject
+            self.db.execute("UPDATE works SET body = ?, title = ?, caption = ?, pixels = ?, subject = ?, revisions = revisions + 1 WHERE id = ?",
+                            (body, title, caption, json.dumps(pixels) if pixels else "", subject, work_id))
             self._index(f"work:{row['kind']}", work_id, row["ts"], f"{title}. {caption}".strip(), commit=False)
             self.db.commit()
             return row["revisions"] + 1
@@ -1290,6 +1294,20 @@ class State:
         with self.lock:
             row = self.db.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
         return dict(row) if row else None
+
+    def pictures(self, limit: int = 4) -> list[dict]:
+        """The newest pixel pictures, with their grids, for the world view (pictures drawn in SVG have no grid and aren't here)."""
+        with self.lock:
+            rows = self.db.execute("SELECT id, title, subject, pixels FROM works WHERE kind = 'drawing' AND pixels != '' ORDER BY id DESC LIMIT ?", (limit,))
+            return [{"id": r["id"], "title": r["title"], "subject": r["subject"], **json.loads(r["pixels"])} for r in rows]
+
+    def picture_of(self, subject: str = "", title: str = "") -> dict | None:
+        """The grid of the newest pixel picture of a creation (by name), or with a title (ignoring case): how that creation looks, or what a copy shows."""
+        col, val = ("subject", subject) if subject else ("title", title)
+        with self.lock:
+            r = self.db.execute(f"SELECT pixels FROM works WHERE kind = 'drawing' AND pixels != '' AND lower({col}) = lower(?) ORDER BY id DESC LIMIT 1",
+                                (val,)).fetchone()
+        return json.loads(r["pixels"]) if r else None
 
     def works(self, kind: str | None = None, limit: int = 50, since: float | None = None) -> list[dict]:
         """Newest first, without the bodies' weight for pictures (the SVG is fetched by id)."""
