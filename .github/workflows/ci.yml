@@ -27,7 +27,9 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q
+      - run: pytest -q --junitxml=junit.xml
+      - if: failure()
+        run: python scripts/annotate_failures.py junit.xml     # each failing test becomes an annotation: readable without the log
 
   image:
     # Proves the image builds; publishing is in image.yml.

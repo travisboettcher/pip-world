@@ -17,3 +17,4 @@ mutants/
 *.db
 *.sqlite
 *.sqlite3
+junit.xml
