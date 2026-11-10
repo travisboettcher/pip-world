@@ -123,6 +123,9 @@ class Settings:
     modules: str = "off"                    # on: modules (docs/DESIGN-modules.md) run, and the world proposes its own; off here for tests
     module_runner: str = ""                 # where module code runs: the pip-runner socket (unix:///run/pip-runner/runner.sock) or URL, or "local" (development only)
     modules_approval: str = "world,pip"     # whose modules wait for the owner's approval before going live
+    modules_notify: str = "off"             # on: the owner is sent a notice (Matrix) when a module waits for approval or is switched off; off here for tests
+    modules_notify_room: str = ""           # the Matrix room for those notices (default: Pip's own room)
+    dashboard_url: str = ""                 # the owner's dashboard address, for links in notices (e.g. https://pip.example.internal)
     place_scenes: str = "off"               # on: each place gets scene details (walls, roof, palette, setting, props), chosen once (looks.py); off here for tests
     character_looks: str = "off"            # on: each neighbor or resident gets a look for the world view, chosen once (looks.py); off here for tests
     character_booths: str = "off"           # on: neighbors sell their own wares at home and at a market one day a week (market.py); off here for tests
@@ -164,6 +167,9 @@ class Settings:
             modules=(e("MODULES") or "on").lower() if (e("MODULES") or "on").lower() in ("on", "off") else "on",
             module_runner=e("MODULE_RUNNER") or "",
             modules_approval=e("MODULES_APPROVAL") if e("MODULES_APPROVAL") is not None else "world,pip",
+            modules_notify=(e("MODULES_NOTIFY") or "on").lower() if (e("MODULES_NOTIFY") or "on").lower() in ("on", "off") else "on",
+            modules_notify_room=e("MODULES_NOTIFY_ROOM") or "",
+            dashboard_url=e("DASHBOARD_URL") or "",
             place_scenes=(e("PLACE_SCENES") or "on").lower() if (e("PLACE_SCENES") or "on").lower() in ("on", "off") else "on",
             character_looks=(e("CHARACTER_LOOKS") or "on").lower() if (e("CHARACTER_LOOKS") or "on").lower() in ("on", "off") else "on",
             character_booths=(e("CHARACTER_BOOTHS") or "on").lower() if (e("CHARACTER_BOOTHS") or "on").lower() in ("on", "off") else "on",

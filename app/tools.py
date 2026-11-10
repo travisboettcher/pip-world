@@ -701,7 +701,7 @@ async def tend(ctx: ToolContext, args: dict) -> ToolResult:
     if not c:
         return ToolResult(f"error: {err}", followup=True)
     m = modules.bound(ctx.state).get(c["name"].lower())
-    if m and m["manifest"].get("tends") and ctx.runner:      # its workings are code: tending is the action they name
+    if m and m["manifest"].get("tends") in [o["name"] for o in m["offers"]] and ctx.runner:   # its workings are code: tending is the action they name
         r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, m["manifest"]["tends"], {"purpose": "tending it"})
         return ToolResult(r, followup=r.startswith("error") or r.startswith("that didn't"))
     r = cr.tend(ctx.state, c)
@@ -927,6 +927,8 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:
             continue
+        if name == "program" and settings.modules != "on":
+            continue                    # programs need modules (and their runner)
         if name in ("settle", "feel") and settings.emotions == "off":
             continue
         if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
@@ -1070,6 +1072,45 @@ LOOK_WIDTH = 480  # 400x300 canvas rendered a little larger: enough to read, che
 
 def _picture(w: dict) -> list:
     return [("image/png", art.render_png(w["body"], LOOK_WIDTH))]
+
+
+@tool("program", "Write how something you made works, as a short Python program (the guide shows how): it runs on its own from then on. "
+      "Define any of on_install, on_time (when you schedule it), on_action (when you use it: offer actions, and use_item with `action`), "
+      "on_event (when something happens: list the kinds in `events`) and on_tick. You see how a trial run went; then it waits to be tried, "
+      "and once it is, it is how the thing works. Worth it when something you made should do something by itself, keep track of something, "
+      "or be used in a particular way. Send it again to change it.",
+      _obj({"creation": {"type": "string", "description": "the name of something you made and still have"},
+            "code": {"type": "string", "description": "the whole program"},
+            "events": {"type": "array", "items": {"type": "string"}, "description": "with on_event: the kinds of thing it listens for, "
+                                                                                    "like garden, arrived, made_work"}},
+           ["creation", "code"]), where="home")
+async def program(ctx: ToolContext, args: dict) -> ToolResult:
+    if not ctx.runner:
+        return ToolResult("you can't try programs right now", followup=True)
+    c = next((x for x in ctx.state.creations() if x["name"].lower() == str(args.get("creation") or "").strip().lower()), None)
+    if not c:
+        return ToolResult(f"you have no creation called {clip(args.get('creation'), 60)!r}", followup=True)
+    day, n = ctx.state.meta("programs_day"), int(ctx.state.meta("programs_n") or 0)
+    today = time.strftime("%Y-%m-%d")
+    n = n if day == today else 0
+    if n >= modules.PROGRAMS_PER_DAY:
+        return ToolResult(f"you've written {n} programs today; that's enough for one day", followup=True)
+    try:
+        man = modules.program_manifest(str(args.get("code") or ""), c, args.get("events"))
+    except (modules.Refused, modules.sandbox.Rejected) as e:
+        return ToolResult(f"your program wasn't accepted: {e}. Fix it and send it again.", followup=True)
+    ctx.state.set_meta(programs_day=today, programs_n=str(n + 1))
+    old = modules.programs(ctx.state).get(c["name"].lower())
+    r = await modules.propose(ctx.state, ctx.settings, ctx.runner, "pip", man, args["code"], f"Pip's program for its {c['name']}.",
+                              replaces=old["id"] if old and old["status"] != "rejected" and old["name"] == man["name"] else None)
+    if "error" in r:
+        return ToolResult(f"your program wasn't accepted: {r['error']}. Fix it and send it again.", followup=True)
+    m = ctx.state.module(r["id"])
+    ctx.state.log("programmed", name=c["name"], version=m["version"], status=m["status"])
+    trial = modules.trial_text(r["report"])
+    after = ("It's working now." if m["status"] == "live" else
+             "It waits to be tried; you'll hear when it's working." + ("" if r["report"].get("clean") else " You could fix what went wrong and send it again."))
+    return ToolResult(f"you write a program for your {c['name']} (version {m['version']}). {trial} {after}", followup=True)
 
 
 @tool("draw", "Draw a picture. The easy way is pixel art: `pixels` is a list of rows (4 to 32 rows, all the same length, 4 to 32 letters), "

@@ -15,7 +15,7 @@ from datetime import datetime
 from . import commands
 from . import matrix  # noqa: F401  (registers the 'matrix' channel)
 from . import sleep as sleepmod
-from .channels import Inbound, Outbound, build_channels
+from .channels import Inbound, Outbound, SendResult, build_channels
 from .text import clip
 
 log = logging.getLogger("outreach")
@@ -164,6 +164,22 @@ class Outreach:
             data["error"] = error
         self.state.log("outreach", **data)
         return data
+
+    async def notify_owner(self, text: str, room: str | None = None) -> bool:
+        """A notice from the engine to the owner, on the first channel that can carry one (Matrix). Not a postcard: it doesn't count
+        against Pip's allowance and Pip doesn't see it. Returns whether it went (or was logged, in log mode)."""
+        ch = next((c for c in self.channels if hasattr(c, "notice")), None) if self.s.outreach != "off" else None
+        if ch is None:
+            return False
+        if self.s.outreach == "log":
+            self.state.log("owner_notice", channel=ch.name, text=text, status="logged")
+            return True
+        try:
+            res = await asyncio.wait_for(ch.notice(text, room), timeout=SEND_TIMEOUT)
+        except Exception as e:
+            res = SendResult(False, error=f"{type(e).__name__}: {e}"[:200])
+        self.state.log("owner_notice", channel=ch.name, text=text, status="sent" if res.delivered else "failed", **({"error": res.error} if res.error else {}))
+        return res.delivered
 
     async def send_postcard(self, text: str, now: float | None = None, images=()) -> tuple[bool, str]:
         """Start a conversation. Returns (ok, what Pip is told)."""

@@ -441,7 +441,7 @@ async def test_a_new_version_replaces_the_old_when_it_goes_live(tmp_path):
     one = await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, now=NOW)
     await M.approve(st, s, agent.runner, one["id"], now=NOW)
     assert "no module #99" in (await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, replaces=99))["error"]
-    assert "no module" in (await M.propose(st, s, agent.runner, "pip", BELLS_MAN, BELLS, replaces=one["id"]))["error"]
+    assert (await M.propose(st, s, agent.runner, "pip", BELLS_MAN, BELLS, replaces=one["id"]))["error"] == "your programs make one of your creations work"
     two = await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS.replace("ring the bell", "ring it"), replaces=one["id"], now=NOW)
     assert st.module(two["id"])["version"] == 2 and st.module(one["id"])["status"] == "live"
     await M.approve(st, s, agent.runner, two["id"], now=NOW)

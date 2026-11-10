@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -251,6 +251,27 @@ failed calls in a row disable it, and its author is told why.
   ten minutes). The world proposes both once. The hard-coded wall slots in `home.js` and the stall pictures in `market.js` and the scene data
   are gone, so until the owner approves them, no pictures hang. A creation drawn with `draw(of=...)` still wears its picture (that is its look,
   not a slot).
+
+## Step 3 as built (0.19.0)
+- **`program(creation, code, events?)`** (at home; only with `MODULES=on`). Pip writes only the code: the engine works out the manifest
+  (`program_manifest`): the hooks the code defines, everything Pip's programs may read (`time`, `weather`, `pip`, `subject`, `items`) and do
+  (`state`, `perceive`, `log`, `schedule`, `offer`, `show`, `consume` (up to 2 of any of Pip's materials), `runtime`, `wake`), the `events`
+  Pip lists for `on_event`, and `tends: "tend"` for a thing that needs tending. The world's other powers (`publish`, `works`, `stalls`,
+  rules) aren't Pip's, and Pip's things show themselves only where they are (`at.place` is `subject`).
+- Pip is told the trial run in words (`trial_text`: how many calls, what went wrong, what was refused, what it would say and note, what using
+  it does, what it offers, where it shows itself) and that it waits to be tried. A new version supersedes one still waiting. Six programs a
+  day.
+- **Craft over code** (`misfires`): a hook in a thing Pip made sometimes doesn't fire, by its quality (rough 25%, sound 8%, fine 2%,
+  masterwork never), decided by a seed from the module, hook and moment, so it is the same on replay. Never on install, never in a trial
+  (a trial shows the program, not its luck), never for the world's modules. Using it says "it doesn't respond this time".
+- **One module runs a thing**: when Pip's program goes live, any other live module for the same creation (the world's clock workings, say)
+  steps aside. The `tend` tool uses the program's `tend` offer if it has one, and the built-in tending otherwise.
+- Pip sees each creation's program ("working (version 2)", "waiting to be tried", "not taken up: <note>", "switched off: <why>") and hears
+  when one starts working, isn't taken up or is switched off. The guide gains a page on programs with a small example (`guide/programs.md`).
+- **Telling the owner** (`notify_owner`, every engine step): a Matrix `m.notice` from Pip's account, once, when a module waits for approval
+  (with its reason, the trial in a few words, a link to the dashboard if `DASHBOARD_URL` is set, and the `pipchat` command) and when one is
+  switched off because its code kept failing (not when the owner did it). Pip never sees these: its sync skips its own account. They go to
+  Pip's room, or `MODULES_NOTIFY_ROOM`. A failed send is tried again next step; each is logged as an `owner_notice` event.
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`

@@ -45,6 +45,7 @@ SECTIONS = (
     Section("outreach", tool("send_postcard")),
     Section("building", tool("start_project")),
     Section("art", tool("draw", "write_piece")),
+    Section("programs", tool("program")),
     Section("emotions", lambda tools, s, lib: s.emotions == "on"),
     Section("settle", lambda tools, s, lib: s.emotions == "on" and "settle" in tools),
     Section("sleep", lambda tools, s, lib: "sleep" in tools and s.sleep),

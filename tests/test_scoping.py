@@ -5,7 +5,7 @@ from app import tools as T
 from app.llm.base import LLMResponse, ToolCall, Usage
 from tests.test_projects import call, make
 
-HOME_ONLY = {"work_on", "experiment", "plant", "harvest", "tend", "sleep"}
+HOME_ONLY = {"program", "work_on", "experiment", "plant", "harvest", "tend", "sleep"}
 LIBRARY_ONLY = {"browse", "read"}
 
 

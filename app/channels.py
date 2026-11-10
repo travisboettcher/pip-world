@@ -108,6 +108,7 @@ class FakeChannel:
         self.sent: list[tuple[Outbound, str, str]] = []     # (message, conversation it went to, result conversation)
         self.typing_calls: list[str] = []
         self.read_calls: list[tuple[str, str]] = []
+        self.notices: list[tuple[str, str | None]] = []       # engine notices to the owner (text, room)
         self.fail = False
         self._on_message: OnMessage | None = None
         self._n = 0
@@ -142,6 +143,12 @@ class FakeChannel:
         self._remember(mid)
         await self._on_message(Inbound(sender_id, self.allowed[sender_id], text, conversation or f"t-{mid}", 0.0, mid))
         return True
+
+    async def notice(self, text: str, room: str | None = None) -> SendResult:
+        if self.fail:
+            return SendResult(False, error="fake channel is set to fail")
+        self.notices.append((text, room))
+        return SendResult(True)
 
     async def send(self, out: Outbound, conversation: str | None = None) -> SendResult:
         if self.fail:

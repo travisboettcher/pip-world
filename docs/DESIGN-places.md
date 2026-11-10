@@ -65,7 +65,7 @@ Each tool is declared with where it can be used: `where="anywhere"` (default), `
 | Where | Tools |
 |---|---|
 | anywhere | `say`, `set_activity`, `eat`, `rest`, notes (`note_to_self`, `edit_note`, `resolve_note`), `recall`, `web_search`, `write_letter`, `go_to`, `start_project`, `revise_plan`, `abandon_project`, `resume_project`, `undo_decision`, `use_item` |
-| home | `work_on`, `experiment`, `plant`, `harvest`, `tend`, `sleep` |
+| home | `work_on`, `experiment`, `plant`, `harvest`, `tend`, `sleep`, `program` |
 | library | `browse`, `read` |
 | woods, junkyard | `gather`; junkyard also `browse` |
 

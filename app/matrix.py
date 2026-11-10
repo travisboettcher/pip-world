@@ -168,8 +168,8 @@ class MatrixChannel:
         return {"m.relates_to": {"rel_type": "m.thread", "event_id": conversation, "is_falling_back": True,
                                  "m.in_reply_to": {"event_id": last}}}
 
-    async def _put_event(self, content: dict) -> str:
-        r = await self._call("PUT", f"{API}/rooms/{quote(self.room_id, safe='')}/send/m.room.message/{uuid.uuid4().hex}",
+    async def _put_event(self, content: dict, room: str | None = None) -> str:
+        r = await self._call("PUT", f"{API}/rooms/{quote(room or self.room_id, safe='')}/send/m.room.message/{uuid.uuid4().hex}",
                              json=content)
         r.raise_for_status()
         return r.json()["event_id"]
@@ -195,6 +195,19 @@ class MatrixChannel:
             except Exception as e:  # the words went; say the picture didn't
                 problems.append(f"picture not sent: {type(e).__name__}")
         return SendResult(True, error="; ".join(problems), conversation=root)
+
+    async def notice(self, text: str, room: str | None = None) -> SendResult:
+        """A notice from the engine to the owner (not Pip speaking): an m.notice, in Pip's room or another it has joined. Pip never sees it:
+        the sync skips messages from its own account."""
+        if not self.configured:
+            return SendResult(False, error="the Matrix channel is not configured")
+        try:
+            await self._put_event({"msgtype": "m.notice", "body": text}, room)
+        except httpx.HTTPStatusError as e:
+            return SendResult(False, error=_describe(e))
+        except Exception as e:
+            return SendResult(False, error=f"{type(e).__name__}: {e}"[:200])
+        return SendResult(True)
 
     async def _send_image(self, img, conversation: str) -> None:
         up = await self._call("POST", "/_matrix/media/v3/upload", params={"filename": img.name}, content=img.data,

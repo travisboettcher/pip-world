@@ -186,6 +186,7 @@ class Agent:
         await modules.offer_library(self.state, self.s, self.runner)
         if await modules.step(self.state, self.s, self.runner):
             self.request_wake()
+        await modules.notify_owner(self.state, self.s, self.outreach)
         if await self.finish_work():
             self.request_wake()
         if await comp.step(self.state, self.s, self.gm, self.rng):
@@ -513,9 +514,11 @@ class Agent:
         made = self.state.creations()
         if made:
             lines.append("Things you've made:")
-            code = modules.bound(self.state)
+            code, mine = modules.bound(self.state), modules.programs(self.state)
             lines += [cr.describe(c) + (f" - actions (use_item with action): {modules.offers_line(code[c['name'].lower()])}"
-                                        if c["name"].lower() in code and code[c["name"].lower()]["offers"] else "") for c in made]
+                                        if c["name"].lower() in code and code[c["name"].lower()]["offers"] else "")
+                      + (f" - your program for it: {modules.program_status(mine[c['name'].lower()])}" if c["name"].lower() in mine else "")
+                      for c in made]
         return lines
 
     @staticmethod
@@ -758,6 +761,11 @@ class Agent:
                     lines.append(f"- you talked with {d['name']} ({d['turns']} of your lines; "
                                  + ("you said goodbye" if d["ended"] == "pip" else f"{d['name']} said goodbye" if d["ended"] == d["name"]
                                     else "it trailed off") + ")")
+                elif e["kind"] in ("module_live", "module_rejected", "module_disabled") and d.get("author") == "pip":
+                    lines.append(f"- your program for {d.get('subject') or d['name']} "
+                                 + {"module_live": "is working now",
+                                    "module_rejected": "wasn't taken up" + (f": {d['note']}" if d.get("note") else ""),
+                                    "module_disabled": "was switched off" + (f": {d['why']}" if d.get("why") else "")}[e["kind"]])
                 elif e["kind"] == "sold_creation":
                     lines.append(f"- you sold {d['name']} at {places.label(d['place'])} for {market.coins_text(d['coins'])}")
                 elif e["kind"] == "stall_sale":

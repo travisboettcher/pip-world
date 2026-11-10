@@ -7,6 +7,7 @@ and rules, with state, facts, lines for Pip, events, a schedule, offers, consumi
 """
 import json
 import logging
+import random
 import re
 import shutil
 import sqlite3
@@ -27,6 +28,9 @@ HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
 READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
 AUTHORS = ("world", "pip")
+PIP_READS = ("time", "weather", "pip", "subject", "items")                      # what Pip's own programs may know, and do (step 3)
+PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
+MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
 RUNTIME_KEYS = {"clock_set_at": "number", "clock_offset": "number", "tended_until": "number", "halted_at": "number", "stop_logged": "bool",
                 "needs_part": "part"}                       # a thing's creation fields the engine's readers use (creations.py)
@@ -69,6 +73,12 @@ def check_manifest(m, author: str, state=None) -> dict:
         out[key] = list(dict.fromkeys(vals))
     if not out["hooks"]:
         raise Refused("`hooks` needs at least one hook")
+    if author == "pip":
+        if kind != "thing":
+            raise Refused("your programs make one of your creations work")
+        extra = [v for v in out["reads"] if v not in PIP_READS] + [v for v in out["proposes"] if v not in PIP_PROPOSES]
+        if extra:
+            raise Refused(f"your programs can't use: {', '.join(extra)}")
     subject = str(m.get("subject") or "").strip()
     if kind == "thing":
         if not subject:
@@ -238,7 +248,10 @@ def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
     if "runtime" in result:
         changes.append(("runtime", _runtime(result["runtime"])))
     if "show" in result:
-        changes.append(("show", _show(result["show"])))
+        shown = _show(result["show"])
+        if m["author"] == "pip" and any(o["at"]["place"] != "subject" for o in shown):
+            raise Refused("your things show themselves where they are: `at.place` is \"subject\"")
+        changes.append(("show", shown))
     if "reply" in result:
         changes.append(("reply", _text(result["reply"], "reply")))
     return changes
@@ -364,11 +377,14 @@ def _summary(res: dict, changes: list | None, refused: str = "") -> str:
     return ", ".join(k for k, _ in changes) or "nothing"
 
 
-async def call(state, settings, runner, m: dict, hook: str, now: float, **extra) -> dict:
+async def call(state, settings, runner, m: dict, hook: str, now: float, trial: bool = False, **extra) -> dict:
     """Run one hook and apply what it proposes. Returns {"ok", "error", "refused", "wake", "reply"}; never raises."""
     budget = _budget(m, now)
     if budget["calls"] >= PER_DAY["calls"]:
         return {"ok": False, "error": "", "refused": f"it has used today's {PER_DAY['calls']} calls", "wake": False, "reply": ""}
+    if not trial and misfires(state, m, hook, now):                # a trial shows the program itself, not its luck
+        state.add_module_call(m["id"], now, hook, True, 0, "misfired (the work is rough)")
+        return {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "misfired": True}
     t0 = time.monotonic()
     res = await runner.run(m["source"], hook, context(state, settings, m, now, **extra))
     ms = round((time.monotonic() - t0) * 1000)
@@ -390,6 +406,15 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, **extra)
             disable(state, m["id"], f"its code failed {fails} times in a row: {res.get('error', '')}")
             m["status"] = "disabled"
     return {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out}
+
+
+def misfires(state, m: dict, hook: str, now: float) -> bool:
+    """Pip's programs run in things Pip made, and a thing is only as good as its making: now and then a rough one doesn't fire."""
+    if m["author"] != "pip" or hook == "on_install":
+        return False
+    c = _creation(state, m["manifest"].get("subject", ""))
+    chance = MISFIRE.get(c["quality"], 0.0) if c else 0.0
+    return chance > 0 and random.Random(f"{m['id']}:{hook}:{int(now)}").random() < chance
 
 
 # --- the engine's step -----------------------------------------------------------------------------------------------------------
@@ -454,6 +479,95 @@ def bound(state) -> dict:
     return {m["manifest"]["subject"].lower(): m for m in state.modules("live") if m["kind"] == "thing"}
 
 
+# --- Pip's own programs (step 3) -------------------------------------------------------------------------------------------------
+PROGRAMS_PER_DAY = 6
+
+
+def program_manifest(source: str, creation: dict, events=None) -> dict:
+    """The manifest for one of Pip's programs, worked out from the code: the hooks it defines; everything Pip's programs may read and do.
+    Raises sandbox.Rejected (bad code) or Refused (a hook without what it needs)."""
+    import ast
+    tree = sandbox.check(source)
+    hooks = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in HOOKS]
+    if not hooks:
+        raise Refused(f"define at least one of {', '.join(HOOKS)}")
+    events = [e for e in (events or []) if isinstance(e, str)]
+    if ("on_event" in hooks) != bool(events):
+        raise Refused("on_event needs `events`: the kinds of thing that happen it listens for" if "on_event" in hooks
+                      else "`events` is only for a program with on_event")
+    man = {"name": f"{slug(creation['name'])}-by-pip", "kind": "thing", "api": API, "subject": creation["name"], "hooks": hooks,
+           "reads": list(PIP_READS), "proposes": list(PIP_PROPOSES), "events": events, "consumes": {"*": 2}}
+    if "upkeep" in creation["spec"]["capabilities"]:
+        man["tends"] = "tend"                                       # if the program offers "tend", the tend tool uses it
+    return man
+
+
+def programs(state) -> dict:
+    """Pip's newest program for each of its creations (by creation name, lowercase), whatever became of it."""
+    out = {}
+    for m in state.modules():
+        if m["author"] == "pip" and m["status"] != "replaced":
+            out[m["subject"].lower()] = m
+    return out
+
+
+def program_status(m: dict) -> str:
+    return {"live": f"working (version {m['version']})", "waiting": f"version {m['version']} waiting to be tried",
+            "proposed": f"version {m['version']} waiting to be tried", "disabled": "switched off" + (f": {m['note']}" if m["note"] else ""),
+            "rejected": f"version {m['version']} not taken up" + (f": {m['note']}" if m["note"] else "")}.get(m["status"], m["status"])
+
+
+def trial_text(report: dict) -> str:
+    """A dry run, told to Pip in a few lines."""
+    if report.get("skipped"):
+        return "It couldn't be tried just now."
+    parts = [f"On a trial run it was called {report['calls']} times."]
+    for key, label in (("errors", "It went wrong"), ("refused", "Not allowed"), ("perceived", "It would tell you"), ("logged", "It would note"),
+                       ("replies", "Using it"), ("unplaced", "Couldn't show")):
+        items = list(dict.fromkeys(report.get(key) or []))[:3]
+        if items:
+            parts.append(f"{label}: " + "; ".join(items) + ".")
+    if report.get("offers"):
+        parts.append("It offers: " + ", ".join(report["offers"]) + ".")
+    if report.get("placed"):
+        parts.append("It shows itself: " + "; ".join(report["placed"][:3]) + ".")
+    return " ".join(parts)
+
+
+# --- telling the owner -----------------------------------------------------------------------------------------------------------
+def owner_notices(state, settings) -> list[tuple[int, str, str]]:
+    """What the owner hasn't been told yet: a module waiting for approval, or one switched off because its code kept failing.
+    (module id, the status being told, the message)."""
+    link = f" {settings.dashboard_url.rstrip('/')}/ui/#work" if settings.dashboard_url else ""
+    out = []
+    for m in state.modules(("waiting", "disabled")):
+        if m["notified"] == m["status"] or (m["status"] == "disabled" and not m["note"].startswith("its code failed")):
+            continue
+        who = "the world" if m["author"] == "world" else "Pip"
+        what = f"{m['name']} v{m['version']} by {who}" + (f", for {m['subject']}" if m["subject"] else "")
+        if m["status"] == "waiting":
+            r = m["report"]
+            trial = (f" Trial run: {r['calls']} calls, " + ("clean." if r.get("clean") else "with problems.")) if r.get("calls") is not None else ""
+            text = f"pip-world: a module is waiting for your approval - {what}." + (f" {m['reason']}" if m["reason"] else "") + trial
+        else:
+            text = f"pip-world: module {what} was switched off: {m['note']}"
+        out.append((m["id"], m["status"], text + f"{link} (pipchat modules show {m['id']})"))
+    return out
+
+
+async def notify_owner(state, settings, outreach) -> int:
+    """Send the owner what they haven't been told (see owner_notices); each once. Returns how many went."""
+    if settings.modules_notify != "on" or outreach is None:
+        return 0
+    sent = 0
+    for mid, status, text in owner_notices(state, settings):
+        ok = await outreach.notify_owner(text, settings.modules_notify_room or None)
+        if ok:
+            state.update_module(mid, notified=status)
+            sent += 1
+    return sent
+
+
 def offers_line(m: dict) -> str:
     return "; ".join(f"{o['name']} ({o['help']})" for o in m["offers"])
 
@@ -467,6 +581,8 @@ async def act(state, settings, runner, m: dict, action: str, args: dict, now: fl
     if runner is None:
         return "error: that can't be done right now"
     r = await call(state, settings, runner, m, "on_action", now, action=action, args=args)
+    if r.get("misfired"):
+        return "it doesn't respond this time (it's rough work; try again)"
     if r["refused"]:
         return f"that didn't work: {r['refused']}"
     if not r["ok"]:
@@ -497,6 +613,8 @@ async def propose(state, settings, runner, author: str, manifest: dict, source: 
     mid = state.add_module(name=man["name"], kind=man["kind"], author=author, api=API, subject=man.get("subject", ""), manifest=man,
                            source=source, reason=str(reason or "")[:500], status="proposed", version=(old["version"] + 1) if old else 1,
                            replaces=replaces, created_at=now)
+    if old and old["status"] in ("proposed", "waiting"):
+        state.update_module(old["id"], status="replaced")              # a newer version supersedes one still waiting
     report = await dry_run(state, settings, runner, state.module(mid), now) if runner else {"skipped": "no runner"}
     state.update_module(mid, report=report, status="waiting")
     if report.get("clean") and not needs_approval(settings, author):
@@ -511,11 +629,11 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
     if not m or m["status"] not in ("waiting", "disabled"):
         return {"error": "only a waiting or disabled module can go live"}
     for o in state.modules("live"):
-        if o["name"] == m["name"]:
-            state.update_module(o["id"], status="replaced")
+        if o["name"] == m["name"] or (m["kind"] == "thing" and o["kind"] == "thing" and o["subject"].lower() == m["subject"].lower()):
+            state.update_module(o["id"], status="replaced")                # one module runs a thing at a time
     last = state.events(limit=1)
     state.update_module(module_id, status="live", decided_at=now, note=str(note or "")[:500], fails=0, cursor=last[0]["id"] if last else 0)
-    state.log("module_live", name=m["name"], author=m["author"], version=m["version"], by=by)
+    state.log("module_live", name=m["name"], author=m["author"], version=m["version"], by=by, subject=m["subject"])
     m = state.module(module_id)
     if runner and "on_install" in m["manifest"]["hooks"]:
         await call(state, settings, runner, m, "on_install", now)
@@ -527,7 +645,7 @@ def reject(state, module_id: int, note: str = "", now: float | None = None) -> d
     if not m or m["status"] not in ("waiting", "proposed"):
         return {"error": "only a waiting module can be rejected"}
     state.update_module(module_id, status="rejected", note=str(note or "")[:500], decided_at=now or time.time())
-    state.log("module_rejected", name=m["name"], author=m["author"], version=m["version"], note=str(note or "")[:500])
+    state.log("module_rejected", name=m["name"], author=m["author"], version=m["version"], note=str(note or "")[:500], subject=m["subject"])
     return {"id": module_id, "status": "rejected"}
 
 
@@ -536,7 +654,7 @@ def disable(state, module_id: int, why: str = "", now: float | None = None) -> d
     if not m or m["status"] != "live":
         return {"error": "only a live module can be switched off"}
     state.update_module(module_id, status="disabled", note=str(why or "")[:500], decided_at=now or time.time())
-    state.log("module_disabled", name=m["name"], author=m["author"], why=str(why or "")[:300])
+    state.log("module_disabled", name=m["name"], author=m["author"], why=str(why or "")[:300], subject=m["subject"])
     return {"id": module_id, "status": "disabled"}
 
 
@@ -560,7 +678,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         async def run(hook, at, **extra):
             last = (world.events(limit=1) or [{"id": 0}])[0]["id"]
             t0 = time.monotonic()
-            r = await call(world, settings, runner, sim, hook, at, **extra)
+            r = await call(world, settings, runner, sim, hook, at, trial=True, **extra)
             report["slowest_ms"] = max(report["slowest_ms"], round((time.monotonic() - t0) * 1000))
             report["calls"] += 1
             if r["error"]:

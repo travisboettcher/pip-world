@@ -214,7 +214,7 @@ async def test_going_live_word_for_word(tmp_path):
     m = st.module(r["id"])
     assert m["status"] == "live" and m["decided_at"] == NOW and m["note"] == ""
     ev = next(e for e in st.events(10) if e["kind"] == "module_live")["data"]
-    assert ev == {"name": "bells", "author": "world", "version": 1, "by": "auto"}
+    assert ev == {"name": "bells", "author": "world", "version": 1, "by": "auto", "subject": ""}
     st.update_module(m["id"], status="disabled", fails=2)
     await M.approve(st, s, None, m["id"], "x" * 600, now=NOW + 5)                                 # no runner: live, but nothing installs
     m = st.module(m["id"])
@@ -240,7 +240,7 @@ def test_rejecting_and_switching_off_word_for_word(tmp_path):
     assert M.reject(st, m["id"]) == {"id": m["id"], "status": "rejected"}
     got = st.module(m["id"])
     assert got["note"] == "" and t0 <= got["decided_at"] <= time.time()
-    assert st.events(1)[0]["kind"] == "module_rejected" and st.events(1)[0]["data"] == {"name": "bells", "author": "world", "version": 1, "note": ""}
+    assert st.events(1)[0]["kind"] == "module_rejected" and st.events(1)[0]["data"] == {"name": "bells", "author": "world", "version": 1, "note": "", "subject": ""}
     st.update_module(m["id"], status="waiting")
     M.reject(st, m["id"], "n" * 600, now=NOW)
     assert len(st.module(m["id"])["note"]) == 500 and len(st.events(1)[0]["data"]["note"]) == 500 and st.module(m["id"])["decided_at"] == NOW
@@ -248,7 +248,7 @@ def test_rejecting_and_switching_off_word_for_word(tmp_path):
     assert M.disable(st, m["id"]) == {"id": m["id"], "status": "disabled"}
     got = st.module(m["id"])
     assert got["note"] == "" and t0 <= got["decided_at"] <= time.time()
-    assert st.events(1)[0]["kind"] == "module_disabled" and st.events(1)[0]["data"] == {"name": "bells", "author": "world", "why": ""}
+    assert st.events(1)[0]["kind"] == "module_disabled" and st.events(1)[0]["data"] == {"name": "bells", "author": "world", "why": "", "subject": ""}
     st.update_module(m["id"], status="live")
     M.disable(st, m["id"], "w" * 600, now=NOW)
     assert len(st.module(m["id"])["note"]) == 500 and len(st.events(1)[0]["data"]["why"]) == 300 and st.module(m["id"])["decided_at"] == NOW
