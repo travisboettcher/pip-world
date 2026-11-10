@@ -82,7 +82,13 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 
 ## M4 - Richer tools and exposure
 - [x] Image generation (canvas/drawing): pixel drawing, occasions as facts, drawings in the world (0.16.0; DESIGN-art.md)
-- [ ] Sandboxed code execution (network-less container, resource limits)
+- [ ] Modules: the world and Pip write features as sandboxed code against hooks, with owner approval at first (**designed: [DESIGN-modules.md](DESIGN-modules.md)**; replaces "sandboxed code execution")
+  - [ ] Step 1: runner, protocol, dry run, Proposals page; the gear clock as a module
+  - [ ] Step 2: show and anchors; wall and stall pictures as modules
+  - [ ] Step 3: Pip programs its creations
+  - [ ] Step 4: the builder, for rules
+  - [ ] Step 5: parts and layouts; the woods as a layout
+  - [ ] Step 6: the builder proposes places
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
