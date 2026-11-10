@@ -281,7 +281,7 @@ async def test_settle_eases_a_strong_feeling(tmp_path):
     emo.nudge(st, {"anger": 60}, "x")
     ok, text = emo.settle(st, s, "anger", "a slow walk round the bench")
     assert ok and text == "You take a quiet moment. Anger eases from 68 to 33." 
-    assert emo.levels(st)["anger"] == pytest.approx(33)
+    assert emo.levels(st)["anger"] == pytest.approx(33, abs=0.01)                # it keeps easing by itself while the test runs
     (ev,) = [e["data"] for e in st.events(5) if e["kind"] == "settled"]
     assert ev["emotion"] == "anger" and ev["from"] == 68 and ev["to"] == 33 and ev["how"] == "a slow walk round the bench"
 

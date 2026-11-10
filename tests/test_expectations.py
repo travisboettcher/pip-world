@@ -88,6 +88,7 @@ async def test_no_prediction_no_record_and_interruption_resolves_nothing(tmp_pat
     assert [x["kind"] for x in st.expectations(5)] == ["step"]       # only the step-duration comparison (finished stage)
     w = [e for e in st.events(20) if e["kind"] == "work"][0]["data"]
     assert "expected" not in w and "expectation" not in w
+    s.work_speed = 1                                                # a real hour, so it is surely still going when Pip rests
     await call(agent, "work_on", project="gear clock", minutes=60, expect="well")
     await call(agent, "rest")                                       # cut short: no verdict, no comparison
     assert [x["kind"] for x in st.expectations(5)] == ["step"] and st.session() is None
