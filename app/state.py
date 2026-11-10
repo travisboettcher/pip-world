@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS modules (
   subject TEXT NOT NULL DEFAULT '', manifest TEXT NOT NULL, source TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, replaces INTEGER, state TEXT NOT NULL DEFAULT '{}',
   offers TEXT NOT NULL DEFAULT '[]', facts TEXT NOT NULL DEFAULT '{}', lines TEXT NOT NULL DEFAULT '[]', due REAL, cursor INTEGER NOT NULL DEFAULT 0,
-  show TEXT NOT NULL DEFAULT '[]', notified TEXT NOT NULL DEFAULT '',
+  show TEXT NOT NULL DEFAULT '[]', notified TEXT NOT NULL DEFAULT '', built TEXT NOT NULL DEFAULT '{}',
   report TEXT NOT NULL DEFAULT '{}', note TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT 0, budget TEXT NOT NULL DEFAULT '{}',
   created_at REAL NOT NULL, decided_at REAL
 );
@@ -282,7 +282,8 @@ class State:
                 ("works", "pixels", "TEXT NOT NULL DEFAULT ''"),          # a pixel picture: {"rows": [...], "palette": {...}} (art.py)
                 ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks
                 ("modules", "show", "TEXT NOT NULL DEFAULT '[]'"),        # what a module draws in scenes (anchors.py)
-                ("modules", "notified", "TEXT NOT NULL DEFAULT ''"),      # the status the owner was last told about (modules.notify_owner)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
+                ("modules", "notified", "TEXT NOT NULL DEFAULT ''"),      # the status the owner was last told about (modules.notify_owner)
+                ("modules", "built", "TEXT NOT NULL DEFAULT '{}'"),       # a place module's built layout (layouts.py)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -1018,7 +1019,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
-    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show")
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built")
 
     def _module(self, row) -> dict:
         return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}

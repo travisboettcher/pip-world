@@ -197,9 +197,9 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     assert set(d["pip"]) == {"here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
-    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "objects"}
+    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "objects", "layout"}
     home = WV.scene_view(st, s, None)
-    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins", "objects"}
+    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins", "objects", "layout"}
     st.update_agent(activity="sleeping")
     assert WV.scene_view(st, s, None)["pip"]["asleep"] is True
     st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})

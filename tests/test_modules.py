@@ -221,7 +221,7 @@ def test_a_manifest_is_held_to_what_the_engine_offers(tmp_path):
             M.check_manifest(m, author, st)
         return str(e.value)
     assert bad([]) == "the manifest must be an object" and bad(rule(), "god") == "unknown author 'god'"
-    assert "`name` is 3 to 40" in bad(rule(name="X!")) and "`name`" in bad(rule(name="ab")) and "`kind` is one of thing, rule" in bad(rule(kind="place"))
+    assert "`name` is 3 to 40" in bad(rule(name="X!")) and "`name`" in bad(rule(name="ab")) and "`kind` is one of thing, rule, part, place" in bad(rule(kind="castle"))
     assert bad(rule(api=2)) == "`api` must be 1" and "`hooks` is a list drawn from" in bad(rule(hooks=["on_boot"]))
     assert "`reads` is a list" in bad(rule(reads="time")) and "`proposes` is a list" in bad(rule(proposes=["transfer"]))
     assert bad(rule(hooks=[])) == "`hooks` needs at least one hook"
@@ -428,7 +428,7 @@ async def test_a_proposal_is_dry_run_and_waits_for_the_owner(tmp_path):
     assert rep["perceived"] == ["A bell rings somewhere."] * rings and rep["calls"] == 1 + rings + 1
     assert m["offers"] == [] and m["due"] is None and st.module_calls(m["id"]) == []         # the dry run touched only its copy
     assert "already exists" in (await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, now=NOW))["error"]
-    assert (await M.propose(st, s, agent.runner, "world", {**BELLS_MAN, "kind": "place"}, BELLS))["error"].startswith("`kind`")
+    assert (await M.propose(st, s, agent.runner, "world", {**BELLS_MAN, "kind": "castle"}, BELLS))["error"].startswith("`kind`")
     assert (await M.propose(st, s, agent.runner, "world", BELLS_MAN, "import os"))["error"].startswith("line 1: `import os`")
     ok = await M.approve(st, s, agent.runner, m["id"], "lovely", now=NOW)
     m = st.module(m["id"])
@@ -488,8 +488,8 @@ async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
     c = clock(st)
     st.add_creation("Paperweight", "a stone", None, "sound", {"capabilities": {}, "quirks": []}, {})
     made = await M.offer_library(st, s, agent.runner, now=NOW)
-    assert [st.module(i)["name"] for i in made] == ["gallery-wall", "stall-pictures", "gear-clock-workings"]
-    m = st.module(made[2])
+    assert [st.module(i)["name"] for i in made] == [*M.RULES, "gear-clock-workings"]
+    m = st.module(made[-1])
     assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "world", "Gear Clock", "waiting")
     assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and "clockwork as code" in m["reason"]
     M.reject(st, m["id"])

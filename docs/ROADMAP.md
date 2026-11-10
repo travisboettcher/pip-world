@@ -87,7 +87,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Step 2: show and anchors; wall and stall pictures as modules (0.18.0)
   - [x] Step 3: Pip programs its creations; a Matrix notice when a module waits for approval (0.19.0)
   - [x] Step 4: the builder, for rules (0.20.0)
-  - [ ] Step 5: parts and layouts; the woods as a layout
+  - [x] Step 5: parts and layouts; the woods as a layout (0.21.0)
   - [ ] Step 6: the builder proposes places
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

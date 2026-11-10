@@ -9,6 +9,7 @@ import * as shop from "./templates/shop.js";
 import * as library from "./templates/library.js";
 import * as outdoors from "./templates/outdoors.js";
 import { moduleObjects } from "./templates/parts.js";
+import * as layout from "./layout.js";
 
 const TEMPLATES = { home, neighbor, market, shop, library, wild: outdoors, yard: outdoors, sight: outdoors };
 
@@ -21,8 +22,8 @@ export class SceneView {
   }
   async show(place) {                                   // place: a key, or null for wherever Pip is
     const data = await this.api(`/world/scene${place ? `?place=${encodeURIComponent(place)}` : ""}`);
-    const key = data.place.key, tpl = TEMPLATES[data.place.kind];
-    const sig = JSON.stringify([key, data.place.kind, data.place.scene, data.place.props]);   // new details (say, chosen by the GM) rebuild it
+    const key = data.place.key, tpl = data.layout ? layout : TEMPLATES[data.place.kind];      // a place built from parts, or its hand-written scene
+    const sig = JSON.stringify([key, data.place.kind, data.place.scene, data.place.props, data.layout && [data.layout.module, data.layout.version, data.now.season]]);
     if (sig !== this.sig || !this.built) {
       this.clear(); this.key = key; this.sig = sig;
       if (tpl) {

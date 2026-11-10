@@ -306,7 +306,7 @@ async def test_only_clocks_that_need_tending_are_offered_workings_and_every_one_
     st.add_creation("Second Clock", "another", None, "sound", TIMEKEEPER, __import__("app.creations", fromlist=["x"]).initial_runtime(TIMEKEEPER, NOW))
     t0 = time.time()
     made = await M.offer_library(st, s, agent.runner)
-    assert [st.module(i)["subject"] for i in made] == ["", "", "Gear Clock", "Second Clock"] and t0 <= st.module(made[0])["created_at"] <= time.time()
+    assert [st.module(i)["subject"] for i in made] == [""] * len(M.RULES) + ["Gear Clock", "Second Clock"] and t0 <= st.module(made[0])["created_at"] <= time.time()
     st.add_creation("Third Clock", "a third", None, "sound", TIMEKEEPER, {})
     monkeypatch.setattr(M, "library", lambda name: (json.loads((M.LIBRARY / f"{name}.json").read_text()), "import os"))
     with caplog.at_level(logging.WARNING, logger="app.modules"):

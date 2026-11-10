@@ -11,6 +11,7 @@ from datetime import datetime
 
 from . import gathering
 from . import happenings
+from . import layouts
 from . import modules
 from . import places
 from . import weather
@@ -125,6 +126,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         "present": present, "booths": booths,
         "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], "kind": r["kind"]} for r in state.stall_rows(key)],
         "objects": modules.scene_objects(state, key, kind),     # what live modules show here, already placed on anchors
+        "layout": layouts.for_scene(state, key),                 # a place built from parts by a module, or None (its hand-written scene)
         "now": moment(state, settings, now),
     }
     if key == places.HOME:

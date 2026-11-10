@@ -23,7 +23,7 @@ from . import sandbox
 log = logging.getLogger(__name__)
 
 API = 1
-KINDS = ("thing", "rule")
+KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
 READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
@@ -38,7 +38,14 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back wall.",
-         "stall-pictures": "What Pip made, shown on its market stall: copies of drawings framed, creations as Pip drew them."}
+         "stall-pictures": "What Pip made, shown on its market stall: copies of drawings framed, creations as Pip drew them.",
+         # parts and a first layout (step 5): the scene kit's own pieces as parts, and the woods built from them
+         "round-tree": "A part: a round, leafy tree (scale), in the season's colours.",
+         "pine-tree": "A part: a pine (scale), darker in winter.",
+         "well": "A part: a stone well with a little thatched roof.",
+         "stall": "A part: a market stall with a striped awning (two colours), and a counter to set things on.",
+         "cutaway": "A part: a building opened like a dollhouse (width, depth, height, walls, roof, a door), with its walls and floor as anchors.",
+         "woods-layout": "The woods, built from parts instead of hand-written: the same trees and clearing, now data the world can change."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
@@ -66,13 +73,28 @@ def check_manifest(m, author: str, state=None) -> dict:
     if m.get("api") != API:
         raise Refused(f"`api` must be {API}")
     out = {"name": name, "kind": kind, "api": API}
-    for key, allowed in (("hooks", HOOKS), ("reads", READS), ("proposes", PROPOSES)):
+    builds = kind in ("part", "place")
+    for key, allowed in (("hooks", ("on_build",) if builds else HOOKS), ("reads", READS), ("proposes", PROPOSES)):
         vals = m.get(key) or []
         if not isinstance(vals, list) or any(v not in allowed for v in vals):
             raise Refused(f"`{key}` is a list drawn from: {', '.join(allowed)}")
         out[key] = list(dict.fromkeys(vals))
     if not out["hooks"]:
         raise Refused("`hooks` needs at least one hook")
+    if kind in ("part", "place"):
+        if author != "world" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
+            raise Refused("parts and places are the world's; they have just on_build, and read and propose nothing")
+        if kind == "part":
+            params = m.get("params") or {}
+            if not isinstance(params, dict) or len(params) > 16 or not all(isinstance(v, (int, float, str, bool)) for v in params.values()):
+                raise Refused("`params` maps up to 16 names to plain default values")
+            out["params"] = params
+        else:
+            if not isinstance(m.get("place"), str) or not m["place"].strip():
+                raise Refused("a place module names the place it lays out: `place`")
+            out["place"] = m["place"].strip()[:60]
+        out.update(events=[], consumes={})
+        return out
     if author == "pip":
         if kind != "thing":
             raise Refused("your programs make one of your creations work")
@@ -469,7 +491,8 @@ def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
     from . import anchors
     wanted = [{**o, "key": f"{m['name']}:{o['id']}", "id": f"{m['name']}:{o['id']}"} for m in state.modules("live") for o in m["show"]
               if where(state, m, o["at"]["place"]) == key]
-    return anchors.place(anchors.for_kind(kind), wanted)
+    from . import layouts
+    return anchors.place(layouts.anchors_for(state, key) or anchors.for_kind(kind), wanted)
 
 
 def scene_objects(state, key: str, kind: str) -> list[dict]:
@@ -634,7 +657,8 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
     if not m or m["status"] not in ("waiting", "disabled"):
         return {"error": "only a waiting or disabled module can go live"}
     for o in state.modules("live"):
-        if o["name"] == m["name"] or (m["kind"] == "thing" and o["kind"] == "thing" and o["subject"].lower() == m["subject"].lower()):
+        if o["name"] == m["name"] or (m["kind"] == "thing" and o["kind"] == "thing" and o["subject"].lower() == m["subject"].lower()) \
+                or (m["kind"] == "place" and o["kind"] == "place" and o["manifest"].get("place") == m["manifest"].get("place")):
             state.update_module(o["id"], status="replaced")                # one module runs a thing at a time
     last = state.events(limit=1)
     state.update_module(module_id, status="live", decided_at=now, note=str(note or "")[:500], fails=0, cursor=last[0]["id"] if last else 0)
@@ -664,11 +688,30 @@ def disable(state, module_id: int, why: str = "", now: float | None = None) -> d
 
 
 # --- the dry run -----------------------------------------------------------------------------------------------------------------
+async def _try_build(state, settings, runner, m: dict, now: float) -> dict:
+    """A part or place's trial: build it (a part with its default params; a place with the parts it names, live or still waiting)."""
+    from . import layouts
+    report = {"calls": 1, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "placed": [], "unplaced": []}
+    try:
+        if m["kind"] == "part":
+            b = await layouts.build_part(runner, m, {}, layouts.season(settings, now), layouts.seed_of(m["name"]))
+        else:
+            b = await layouts.build_place(state, settings, runner, m, now, waiting=True)
+            report["calls"] += len(b["parts"])
+        report["built"] = f"{len(b['shapes'])} shapes, {len(b['anchors'])} anchors"
+    except layouts.Bad as e:
+        report["errors"].append(f"on_build: {e}")
+    report["clean"] = not report["errors"]
+    return report
+
+
 async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
     """Run a module on a copy of the world for DRY_HOURS simulated hours, then each declared event once and each offer once, noting where
     everything it showed along the way went.
     Returns a report; `clean` means no errors and nothing refused."""
     from .state import State
+    if m["kind"] in ("part", "place"):
+        return await _try_build(state, settings, runner, m, now)
     tmp = Path(tempfile.mkdtemp(prefix="pip-dry-"))
     copy_db = tmp / "world.db"
     try:

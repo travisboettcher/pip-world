@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -115,7 +115,7 @@ are, not by name.
 1. **Geometry primitives** (fixed, in the browser's kit): box, plane, cylinder, cone, sprite, light; textures from the generated set
    (`plaster`, `planks`, `thatch`, `cobble`, ...) or a pixel grid; colour and tint. This is the only drawing code that stays hand-written.
    It is the vocabulary, not the features.
-2. **Parts** (modules of kind `part`): `build(ctx)` takes parameters and a seed and returns geometry in local coordinates, plus the
+2. **Parts** (modules of kind `part`): `on_build(ctx)` takes parameters and a seed and returns geometry in local coordinates, plus the
    **anchors** that geometry has. A cottage part returns walls, roof and floor, plus anchors like "a wall, inside, 4 units wide, facing
    the camera", "a floor, inside", "a doorway". A stall returns its trestle, plus "a surface, 3 × 1, a counter". A tree returns "ground,
    under the canopy" and "a branch, hanging". The builder can write new parts. Ours get ported to parts (cutaway, stall, tree, well, fence).
@@ -293,6 +293,32 @@ failed calls in a row disable it, and its author is told why.
 - Tried against a copy of the live world with the live model: unprompted, it chose nothing ("I don't see a gap that fits"); asked to
   propose, it wrote a seasonal dusk lamp that is noticed only when Pip is home and awake, once a day, clean on trial. An early version
   asked for an anchor that doesn't exist and named Pip's home wrongly, which is why the API page now lists the real anchors and keys.
+
+## Step 5 as built (0.21.0)
+- **The shape vocabulary** (`app/geometry.py`): `box` (with one `material`, or `faces` {top, side} for a block of ground), `plane`,
+  `cylinder` (radius at the bottom, `top` at the top), `cone`, `sphere`, `ico`, `dodeca`, `gable` (a triangle: width and height),
+  `sprite` (a pixel grid, or one of the browser's small sprites: reed, flower, curlew, spark, coin), and `light` (a `lamp` light comes up at
+  dusk). Each has `at`, `rot` in degrees (heading first: Euler order YXZ, so turning a part only adds to its heading), `scale`, `sway`,
+  `shadow` and `tip` (`$label` and `$description` stand for the place's). Materials are named after the generated textures (grass,
+  planks, thatch, stone, leaves, stripes...: `TEXTURES`), with `repeat`, `color` (planks and leaves take it; stripes take `color` and
+  `color2`), `metal`, `rough`, `emissive`, `lamp`, `double` and `opacity`. Seasonal textures (grass, cliff, leaves) follow the season in the
+  browser. Every refusal names the shape and what to fix.
+- **Two module kinds**, the world's only: a **part** (`on_build` gets `params` over its manifest's defaults, `season` and `seed`, and
+  returns up to 400 shapes and 24 anchors) and a **place** (`manifest.place` names the place it lays out; `on_build` returns
+  `{"parts": [{part, params, at, turn, role}], "shapes", "anchors"}`, up to 80 parts). Their trial is a build: a part with its defaults, a
+  place with the parts it names (live, or still waiting, so a layout and its parts can be proposed together).
+- **Building** (`app/layouts.py`, every engine step): a live place is built when it has no layout, when the season turns, or when a part
+  it uses has a new live version; each distinct part and params is run once, moved and turned into place (`geometry.place`: anchors get
+  the role as an id prefix and a tag), checked (3000 shapes at most, anchor ids unique) and kept on the module. A failed build keeps the last
+  good one, is logged (`layout_failed`) and is tried again after an hour. One live place module per place: a new one replaces the old.
+- **Drawing**: the scene data carries `layout` (its shapes and anchors) for a laid-out place, and the browser draws it with one renderer,
+  `web/world/layout.js`, instead of the place's template: shapes, swaying leaves, lamps, tooltips; Pip on the anchor tagged `pip` (searching
+  across it while gathering); people beside it (`people`); finds on `finds`. Module objects go on the layout's anchors.
+- **The library**: parts `round-tree`, `pine-tree`, `well`, `stall` (two awning colours, a counter) and `cutaway` (width, depth, height,
+  walls, roof, door; its inner wall faces are planes inside the walls; back wall, floor and front are anchors), and the place
+  `woods-layout`: the woods' land, 11 round trees and 18 pines from the parts, and anchors for Pip, finds and the clearing. The world
+  proposes them all once; the woods keep their hand-written scene until they're approved. Checked against the hand-written woods in
+  renders (the same land and trees; only the scatter differs), and a probe yard with a cutaway, a well and a turned stall.
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`
