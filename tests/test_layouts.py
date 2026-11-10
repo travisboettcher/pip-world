@@ -365,7 +365,8 @@ async def test_the_step_builds_every_live_place_once_and_logs_failures_fully(tmp
     assert await L.step(st, s, agent.runner, NOW) == 0
     e = st.events(1)[0]
     assert e["kind"] == "layout_failed" and e["data"] == {"name": "tip", "place": "junkyard", "error": "tip: line 2: ZeroDivisionError: division by zero"}
-    assert st.module(tip["id"])["built"] == {"error": "tip: line 2: ZeroDivisionError: division by zero", "failed_at": NOW}
+    assert st.module(tip["id"])["built"] == {"error": "tip: line 2: ZeroDivisionError: division by zero", "failed_at": NOW,
+                                             "failed_parts": L.live_parts(st)}
     assert await L.step(st, s, agent.runner, NOW + 3599) == 0 and await L.step(st, s, agent.runner, NOW + 3600) == 0
     assert len([x for x in st.events(20) if x["kind"] == "layout_failed"]) == 2                      # an hour on, tried again
 
@@ -385,3 +386,16 @@ def test_which_part_a_name_means(tmp_path):
     assert L.part_named(st, "tree", waiting=True) is None
     r = live(st, {"name": "tree", "kind": "rule", "api": 1, "hooks": ["on_tick"]}, "x")
     assert L.part_named(st, "tree") is None                                                       # a rule with the name isn't a part
+
+
+@pytest.mark.asyncio
+async def test_a_layout_approved_before_its_parts_builds_as_soon_as_they_are_live(tmp_path):
+    s, st, agent = modular(tmp_path)
+    part = await M.propose(st, s, agent.runner, "world", part_man(), TREE, now=NOW)
+    place = await M.propose(st, s, agent.runner, "world", place_man(), PLACE, now=NOW)
+    await M.approve(st, s, agent.runner, place["id"], now=NOW)                                   # the layout first, its part still waiting
+    assert await L.step(st, s, agent.runner, NOW) == 0 and st.module(place["id"])["built"]["failed_parts"] == []
+    assert await L.step(st, s, agent.runner, NOW + 60) == 0                                       # nothing changed: it waits
+    await M.approve(st, s, agent.runner, part["id"], now=NOW)
+    assert L.live_parts(st) == [part["id"]] and await L.step(st, s, agent.runner, NOW + 120) == 1  # its part is live: no hour's wait
+

@@ -105,6 +105,11 @@ def place_module(state, key: str) -> dict | None:
     return next((m for m in reversed(state.modules("live")) if m["kind"] == "place" and m["manifest"].get("place") == key), None)
 
 
+def live_parts(state) -> list[int]:
+    """The ids of the live parts: when they change, a layout that couldn't be built is worth trying again."""
+    return sorted(m["id"] for m in state.modules("live") if m["kind"] == "part")
+
+
 def stale(state, settings, m: dict, now: float) -> bool:
     b = m["built"]
     if not b or "error" in b or b.get("version") != m["version"] or b.get("season") != season(settings, now):
@@ -118,12 +123,14 @@ async def step(state, settings, runner, now: float | None = None) -> int:
         return 0
     now, n = now or time.time(), 0
     for m in state.modules("live"):
-        if m["kind"] != "place" or not stale(state, settings, m, now) or m["built"].get("failed_at", 0) > now - 3600:
+        parts = live_parts(state)
+        waiting = m["built"].get("failed_at", 0) > now - 3600 and m["built"].get("failed_parts") == parts
+        if m["kind"] != "place" or not stale(state, settings, m, now) or waiting:   # a failure waits an hour, unless the parts changed
             continue
         try:
             built = await build_place(state, settings, runner, m, now)
         except Bad as e:
-            state.update_module(m["id"], built={**m["built"], "error": str(e)[:300], "failed_at": now})
+            state.update_module(m["id"], built={**m["built"], "error": str(e)[:300], "failed_at": now, "failed_parts": parts})
             state.log("layout_failed", name=m["name"], place=m["manifest"]["place"], error=str(e)[:300])
             continue
         state.update_module(m["id"], built=built)
