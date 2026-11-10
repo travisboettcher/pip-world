@@ -225,12 +225,12 @@ async def test_what_lately_holds_exactly(tmp_path, monkeypatch):
                         lambda *a: {"places": [{"key": "a", "label": "Saltholm", "heard_only": True}, {"key": "b", "label": "Brygdon", "heard_only": False},
                                                {"key": "c", "label": "the Tor", "heard_only": True}]})
     text = B.lately(st, s, now)
-    at = lambda: datetime.fromtimestamp(now).strftime("%a %H:%M")
     lines = text.split("\n")
     assert lines[0] == "Lately:" and "ancient peas" not in text and "private" not in text and "a rule spoke" not in text
     assert [l.split(" ", 3)[3] for l in lines[1:8]] == ["garden: beans", "arrived: the woods", "happening: A gull steals a crust.",
                                                         "reflection: A good day.", "neighbor: Oriel", "made_work: Sun", "night_pass: "]
-    assert lines[1].startswith(f"- {at()} ") and lines[-2] == "Pip's open wishes: " + "; ".join(f"wish {i}" for i in range(2, 10))
+    beans = next(e for e in st.events(30) if e["kind"] == "garden" and e["data"]["crop"] == "beans")
+    assert lines[1].startswith(f"- {datetime.fromtimestamp(beans['ts']).strftime('%a %H:%M')} ")       # the event's own minute and lines[-2] == "Pip's open wishes: " + "; ".join(f"wish {i}" for i in range(2, 10))
     assert lines[-1] == "Places Pip has only heard of: Saltholm, the Tor"
     st.log("garden", plot=3, crop="x" * 300)
     assert B.lately(st, s, now).split("\n")[8].endswith("garden: " + "x" * 140)

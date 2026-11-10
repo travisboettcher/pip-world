@@ -88,7 +88,9 @@ async def test_a_hook_runs_in_a_limited_subprocess_and_answers_in_json():
 
 @pytest.mark.asyncio
 async def test_runaway_code_is_stopped():
-    assert await S.run("def on_tick(ctx):\n    while True:\n        pass", "on_tick", {}) == {"ok": False, "error": "it used more than its share of time"}
+    spin = await S.run("def on_tick(ctx):\n    while True:\n        pass", "on_tick", {})
+    assert spin in ({"ok": False, "error": "it used more than its share of time"},                       # the CPU limit, usually;
+                    {"ok": False, "error": f"it took longer than {S.WALL_SECONDS:g} seconds"})           # the clock, on a very busy machine
     assert await S.run("def on_tick(ctx):\n    x = [0] * (10 ** 9)", "on_tick", {}) == {"ok": False, "error": "line 2: MemoryError: "}
     assert (await S.run("def on_tick(ctx):\n    x = [0] * (10 ** 7)\n    return {'n': len(x)}", "on_tick", {}))["result"] == {"n": 10 ** 7}
     size = S.OUTPUT_MAX - len('{"ok": true, "result": {"a": ""}}')
