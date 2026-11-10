@@ -75,6 +75,17 @@ def _picture(w: dict | None) -> dict:
     return {"picture": {"rows": w["rows"], "palette": w["palette"]}} if w else {}
 
 
+def place_details(state, settings, key: str, kind: str) -> dict:
+    """What a layout for a kind of place is told about one place: its name and kind, its scene details (walls, roof, palette, setting),
+    its props and whether it is by the sea."""
+    from . import looks
+    known = looks.place_text(state, key)
+    scene = looks.place_scene(state, key, kind, known)
+    rows = {r["key"]: r for r in state.place_rows()}
+    return {"key": key, "label": places.label(key), "kind": kind, "coastal": bool(COASTAL.search(_words(state, key, rows))),
+            "props": list(dict.fromkeys(scene["props"] + looks.props(known))), **{k: v for k, v in scene.items() if k != "props"}}
+
+
 def scene_view(state, settings, library, place: str | None = None, now: float | None = None) -> dict | None:
     """Everything a scene draws from, for one place (where Pip is, by default): the place, who is there, what is for sale, Pip if it is
     there, and the place's own things (at home: the garden, the creations, the belongings). None if there is no such place."""
@@ -126,7 +137,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         "present": present, "booths": booths,
         "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], "kind": r["kind"]} for r in state.stall_rows(key)],
         "objects": modules.scene_objects(state, key, kind),     # what live modules show here, already placed on anchors
-        "layout": layouts.for_scene(state, key),                 # a place built from parts by a module, or None (its hand-written scene)
+        "layout": layouts.for_scene(state, key, kind),           # a place built from parts by a module, or None (its hand-written scene)
         "now": moment(state, settings, now),
     }
     if key == places.HOME:

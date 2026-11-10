@@ -1,4 +1,5 @@
 """Modules, step 5 (docs/DESIGN-modules.md, "Parts and layouts"): shapes checked, parts built, places laid out from them."""
+import json
 import time
 
 import pytest
@@ -136,7 +137,7 @@ def test_parts_and_places_are_the_worlds_and_only_build(tmp_path):
     assert refused({**part_man(), "hooks": ["on_tick"]}) == "`hooks` is a list drawn from: on_build"
     assert refused(part_man(params={"a": [1]})) == "`params` maps up to 16 names to plain default values"
     assert refused(part_man(params={str(i): 1 for i in range(17)})) == "`params` maps up to 16 names to plain default values"
-    assert refused(place_man(place=" ")) == "a place module names the place it lays out: `place` (or describes a new one: `new`)"
+    assert refused(place_man(place=" ")) == "a place module names the place it lays out: `place` (or describes a new one: `new`, or covers `kinds`)"
     assert refused({**rule_like(), "hooks": ["on_build"]}) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action"
 
 
@@ -243,19 +244,40 @@ async def test_one_place_module_lays_out_a_place_and_a_bad_plan_is_named(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_the_librarys_parts_and_woods_build(tmp_path):
-    s, st, agent = modular(tmp_path, modules_approval="")
-    for name in ("round-tree", "pine-tree", "well", "stall", "cutaway", "woods-layout"):
-        man, src = M.library(name)
-        r = await M.propose(st, s, agent.runner, "world", man, src, M.RULES[name], now=NOW)
-        assert r["report"]["clean"], (name, r["report"])
-    assert await L.step(st, s, agent.runner, NOW) == 1
-    b = L.for_scene(st, "woods")
-    assert len(b["shapes"]) == 2 + 11 * 5 + 18 * 4 and {"pip", "finds", "clearing"} <= {a["id"] for a in b["anchors"]}
+async def test_the_librarys_parts_and_the_outdoors_layout_build(tmp_path):
+    s, st, agent = modular(tmp_path)
+    made = await M.offer_library(st, s, agent.runner, now=NOW)
+    assert all(st.module(i)["status"] == "live" for i in made), [(st.module(i)["name"], st.module(i)["report"]) for i in made]
+    assert await L.step(st, s, agent.runner, NOW) >= 2                                             # the woods and the junkyard
+    woods, yard = L.for_scene(st, "woods", "wild"), L.for_scene(st, "junkyard", "yard")
+    assert woods["module"] == yard["module"] == "outdoors"
+    assert len(woods["shapes"]) == 2 + 11 * 5 + 18 * 4 and {"pip", "finds", "open-ground"} <= {a["id"] for a in woods["anchors"]}
+    assert sum(sh.get("hitbox", False) for sh in yard["shapes"]) == 4 and any(a["id"].startswith("heap-") for a in yard["anchors"])
+    assert L.for_scene(st, "woods") is None and L.anchors_for(st, "woods", "wild") == tuple(woods["anchors"])
+    assert st.module(made[0])["built"] == {} and "woods" in L.kind_module(st, "wild")["built"]["places"]
     winter = await L.build_part(agent.runner, L.part_named(st, "pine-tree"), {}, "winter", 1)
     assert winter["shapes"][1]["material"]["color"] == "#3f5a46"
     house = await L.build_part(agent.runner, L.part_named(st, "cutaway"), {"door": False, "walls": "whitewash"}, "summer", 1)
     assert [a["id"] for a in house["anchors"]] == ["back-wall", "floor", "front"] and not any(sh["material"].get("texture") == "door" for sh in house["shapes"] if "material" in sh)
+
+
+@pytest.mark.asyncio
+async def test_the_outdoors_layout_follows_each_places_details(tmp_path):
+    s, st, agent = modular(tmp_path)
+    await M.offer_library(st, s, agent.runner, now=NOW)
+    m = L.kind_module(st, "sight")
+    base = {"key": "x", "label": "x", "kind": "wild", "coastal": False, "props": [], "walls": "stone", "roof": "slate", "palette": "warm"}
+    async def built(**d):
+        return await L.build_place(st, s, agent.runner, m, NOW, key="x", details={**base, **d})
+    shore = (await built(setting="shore"))["shapes"]
+    assert any(sh.get("animate") == "tide" for sh in shore) and not any(sh.get("art") == "reed" for sh in shore)
+    assert sum(sh.get("art") == "reed" for sh in (await built(setting="marsh"))["shapes"]) == 50
+    assert any(sh.get("animate") == "flow" for sh in (await built(setting="riverside"))["shapes"])
+    assert sum(sh["shape"] == "sphere" for sh in (await built(setting="hills"))["shapes"]) == 5
+    sight = await built(kind="sight", setting="heath")
+    assert "bench-seat" in {a["id"] for a in sight["anchors"]} and any(sh.get("tip", {}).get("title") == "The old stones" for sh in sight["shapes"])
+    lit = await built(kind="sight", setting="shore", props=["lighthouse"])
+    assert any(sh.get("material", {}).get("lamp") for sh in lit["shapes"]) and not any(sh.get("tip", {}).get("title") == "The old stones" for sh in lit["shapes"])
 
 
 def test_the_browser_draws_layouts_with_one_renderer(tmp_path):
@@ -399,3 +421,138 @@ async def test_a_layout_approved_before_its_parts_builds_as_soon_as_they_are_liv
     await M.approve(st, s, agent.runner, part["id"], now=NOW)
     assert L.live_parts(st) == [part["id"]] and await L.step(st, s, agent.runner, NOW + 120) == 1  # its part is live: no hour's wait
 
+
+
+# --- moving features into modules (0.23.0) -----------------------------------------------------------------------------------
+def test_shapes_can_animate_and_hitboxes_carry_a_tip():
+    sea = G.shape({**BOX, "animate": "tide"}, 0)
+    assert (sea["animate"], sea["speed"]) == ("tide", 0.02) and G.shape({**BOX, "animate": "flow", "speed": 1}, 0)["speed"] == 1.0
+    assert bad(G.shape, {**BOX, "animate": "wobble"}, 0) == "shape 0 (box): `animate` is one of flow, tide"
+    assert bad(G.shape, {"shape": "light", "animate": "flow"}, 0).endswith("`animate` is one of flow, tide")
+    assert bad(G.shape, {**BOX, "animate": "flow", "speed": 2}, 0).endswith("speed is a number from 0 to 1")
+    hb = G.shape({"shape": "box", "size": [1, 1, 1], "hitbox": True, "tip": {"title": "Heap"}}, 0)
+    assert hb == {"shape": "box", "at": [0.0, 0.0, 0.0], "size": [1.0, 1.0, 1.0], "material": {"color": "#000000"}, "hitbox": True,
+                  "tip": {"title": "Heap", "text": ""}}
+    assert bad(G.shape, {"shape": "box", "size": [1, 1, 1], "hitbox": True}, 0) == "shape 0 (box): a `hitbox` is an invisible box with a `tip`"
+    assert bad(G.shape, {"shape": "plane", "size": [1, 1], "hitbox": True, "tip": {}}, 0).endswith("a `hitbox` is an invisible box with a `tip`")
+    assert G.anchor({"id": "g", "type": "ground", "tags": ["x"], "at": [0, 0, 0]}, 0)["extent"] == [2.0, 1.0]
+    assert G.anchor({"id": "w", "type": "wall", "tags": ["x"], "at": [0, 0, 0]}, 0)["extent"] == [1.0, 1.0]
+
+
+def test_a_kind_layout_is_checked(tmp_path):
+    s, st, agent = modular(tmp_path)
+    kinds = {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "sight", "wild"]}
+    assert M.check_manifest(kinds, "library")["kinds"] == ["wild", "sight"] and M.check_manifest(kinds, "world")["kinds"] == ["wild", "sight"]
+    for k in ([], ["castle"], "wild"):
+        with pytest.raises(M.Refused) as e:
+            M.check_manifest({**kinds, "kinds": k}, "world")
+        assert str(e.value) == "`kinds` is a list drawn from: wild, yard, shop, market, sight"
+    with pytest.raises(M.Refused):
+        M.check_manifest(kinds, "pip")
+
+
+KIND = ('def on_build(ctx):\n    d = ctx["details"]\n'
+        '    return {"shapes": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "material": {"color": "#000"}, "tip": {"title": d["kind"], "text": d.get("setting", "")}}],'
+        ' "anchors": [{"id": "pip", "type": "ground", "tags": ["pip"], "at": [0, 0, 0]}]}\n')
+
+
+@pytest.mark.asyncio
+async def test_a_kind_layout_lays_out_every_place_of_its_kinds_unless_a_place_has_its_own(tmp_path):
+    s, st, agent = modular(tmp_path, modules_approval="")
+    r = await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard"]}, KIND, now=NOW)
+    assert r["report"]["built"] == "2 shapes, 2 anchors" and r["report"]["calls"] == 3 and r["report"]["clean"]
+    assert await L.step(st, s, agent.runner, NOW) == 2 and await L.step(st, s, agent.runner, NOW) == 0
+    woods = L.for_scene(st, "woods", "wild")
+    assert woods["module"] == "fields" and woods["shapes"][0]["tip"]["title"] == "wild" and L.for_scene(st, "woods") is None
+    assert L.for_scene(st, "junkyard", "yard")["shapes"][0]["tip"]["title"] == "yard" and L.for_scene(st, "library", "library") is None
+    from app import world_view as WV2
+    assert WV2.scene_view(st, s, None, "woods")["layout"]["module"] == "fields"
+    own = live(st, place_man("woods-own"), PLACE)
+    await M.propose(st, s, agent.runner, "world", part_man(), TREE, now=NOW)
+    await L.step(st, s, agent.runner, NOW)
+    assert L.for_scene(st, "woods", "wild")["module"] == "woods-own"                                 # a place's own layout first
+    details = st.module(r["id"])["built"]["places"]["junkyard"]["details"]
+    assert details == WV2.place_details(st, s, "junkyard", "yard") and set(details) == {"key", "label", "kind", "coastal", "props", "walls", "roof", "palette", "setting"}
+    st.set_meta(**{"scene:junkyard": json.dumps({**{k: details[k] for k in ("walls", "roof", "palette")}, "setting": "shore", "props": []})})
+    assert await L.step(st, s, agent.runner, NOW) == 1                                                # its details changed: rebuilt
+    assert L.for_scene(st, "junkyard", "yard")["shapes"][0]["tip"]["text"] == "shore"
+
+
+@pytest.mark.asyncio
+async def test_a_kind_layout_that_fails_for_one_place_keeps_the_others(tmp_path):
+    s, st, agent = modular(tmp_path, modules_approval="")
+    src = KIND.replace('d = ctx["details"]', 'd = ctx["details"]\n    if d["kind"] == "yard":\n        return 1/0')
+    await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "sight"]}, KIND, now=NOW)
+    m = L.kind_module(st, "wild")
+    st.update_module(m["id"], source=src, manifest={**m["manifest"], "kinds": ["wild", "yard"]})
+    assert await L.step(st, s, agent.runner, NOW) == 1
+    places = st.module(m["id"])["built"]["places"]
+    assert "shapes" in places["woods"] and places["junkyard"]["error"] == "fields: line 4: ZeroDivisionError: division by zero"
+    failed = [e["data"] for e in st.events(10) if e["kind"] == "layout_failed"]
+    assert failed == [{"name": "fields", "place": "junkyard", "error": "fields: line 4: ZeroDivisionError: division by zero"}]
+    assert L.for_scene(st, "junkyard", "yard") is None
+
+
+@pytest.mark.asyncio
+async def test_shipped_modules_run_without_a_runner(tmp_path):
+    s, st, agent = modular(tmp_path)
+    m = live(st, {"name": "ticker", "kind": "rule", "api": 1, "hooks": ["on_tick"], "proposes": ["state"]},
+             "def on_tick(ctx):\n    return {'state': {'n': ctx['state'].get('n', 0) + 1}}\n", author="library")
+    w = live(st, {"name": "worldly", "kind": "rule", "api": 1, "hooks": ["on_tick"], "proposes": ["state"]},
+             "def on_tick(ctx):\n    return {'state': {'n': 1}}\n")
+    await M.step(st, s, None, NOW)
+    assert st.module(m["id"])["state"] == {"n": 1} and st.module(w["id"])["state"] == {}
+    k = live(st, {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild"]}, KIND, author="library")
+    assert await L.step(st, s, None, NOW) == 1 and L.for_scene(st, "woods", "wild")["module"] == "fields"
+
+
+def test_the_renderer_knows_hitboxes_animation_and_seats():
+    from pathlib import Path
+    js = (Path(M.__file__).resolve().parent.parent / "web" / "world" / "layout.js").read_text()
+    assert "if (s.hitbox) { obj = kit.hitbox(" in js and 'if (kind === "tide")' in js and 'seat = tagged("seat")' in js
+    assert not (Path(M.__file__).resolve().parent.parent / "web" / "world" / "templates" / "outdoors.js").exists()
+
+
+@pytest.mark.asyncio
+async def test_the_builder_hears_the_anchors_a_kind_layout_has_built(tmp_path):
+    from app import builder as B
+    s, st, agent = modular(tmp_path, modules_approval="")
+    assert B.anchor_list() == B.anchor_list(None)
+    text = B.anchor_list(st)
+    assert text.splitlines()[-1] == "  wild/yard/sight: ground tagged outside (once its layout is built)"
+    assert text.splitlines()[0].startswith("  home: wall tagged inside, back; surface tagged inside, bench")
+    await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard"]}, KIND, now=NOW)
+    await L.step(st, s, agent.runner, NOW)
+    lines = B.anchor_list(st).splitlines()
+    assert "  wild/yard: ground tagged pip" in lines and "  sight: ground tagged outside (once its layout is built)" in lines
+    assert len([l for l in lines if l.startswith("  wild")]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_kind_trial_builds_each_kind_once(tmp_path):
+    s, st, agent = modular(tmp_path)
+    await M.propose(st, s, agent.runner, "world", part_man(), TREE, now=NOW)
+    src = KIND.replace('"anchors": [', '"parts": [{"part": "tree", "at": [0, 0, 0]}], "anchors": [')
+    r = await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard", "sight"]}, src, now=NOW)
+    rep = r["report"]
+    assert rep["built"] == "6 shapes, 6 anchors" and rep["calls"] == 1 + 3 * 2 and rep["errors"] == [] and rep["clean"]
+    bad = await M.propose(st, s, agent.runner, "world", {"name": "broken", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild"]},
+                          "def on_build(ctx):\n    return 1/0\n", now=NOW)
+    assert bad["report"]["errors"] == ["on_build: broken: line 2: ZeroDivisionError: division by zero"] and not bad["report"]["clean"]
+    seen = await L.build_place(st, s, agent.runner, st.module(r["id"]), NOW, waiting=True, key="trial-wild",
+                               details={"key": "trial-wild", "label": "a place", "kind": "wild", "coastal": False, "setting": "wood"})
+    assert seen["shapes"][0]["tip"] == {"title": "wild", "text": "wood"}
+
+
+def test_a_places_details_exactly(tmp_path):
+    from app import world_view as WV2
+    s, st, agent = modular(tmp_path)
+    st.add_place("Saltholm", "saltholm", kind="shop", status="real", created_at=NOW, heard_at=NOW, hours=[9, 17], daylight_only=0, walk_minutes=10.0,
+                 description="An ironmonger by the harbour, with lanterns and rope.", blurb="An ironmonger.")
+    d = WV2.place_details(st, s, "Saltholm", "shop")
+    from app import looks
+    scene = looks.place_scene(st, "Saltholm", "shop", looks.place_text(st, "Saltholm"))
+    assert {k: d[k] for k in ("walls", "roof", "palette", "setting")} == {k: scene[k] for k in ("walls", "roof", "palette", "setting")}
+    assert d["props"] == list(dict.fromkeys(scene["props"] + looks.props(looks.place_text(st, "Saltholm"))))
+    assert d["coastal"] is True and set(d["props"]) >= {"lanterns", "rope"} and d["label"] == "Saltholm" and d["kind"] == "shop"
+    assert WV2.place_details(st, s, "woods", "wild")["coastal"] is False

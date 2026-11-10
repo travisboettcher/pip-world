@@ -1,6 +1,6 @@
 # Design: modules (the world writes its own features)
 
-Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**; **step 6 (the builder proposes places) built (0.22.0)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
+Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**; **step 6 (the builder proposes places) built (0.22.0)**; **moving features into modules under way (0.23.0: the outdoors scene)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
 ## Why
@@ -340,6 +340,37 @@ failed calls in a row disable it, and its author is told why.
   river (both turned down on details that are now accepted or explained: an hour of 24, anchors without a size, a stream hidden under the
   ground), then a seed shop up from the harbour: clean on trial, laid out as a thatched shop on a cobbled lane, mentioned by Oriel on
   approval. Hand-written templates stay for every place without a layout; retiring them one by one is now possible, not done.
+
+## Moving features into modules (from 0.23.0)
+The owner's direction (2026-11-10): remove what can now be a module; where something can't be expressed, that is a missing hook or
+ability, to consider.
+
+**Two changes that make removal safe:**
+- **Shipped modules** (`author: "library"`, the files in `app/module_library/`) are the engine's own code, reviewed like it: they go live
+  without approval when their trial is clean, and run in a local sandbox when there's no runner, so a deployment without `pip-runner`
+  (or with `MODULES=off`, which now governs only the world's and Pip's modules) still has them. `MODULE_LIBRARY` (on from the environment,
+  off in bare test settings) switches them off.
+- **Kind-level layouts**: a place module may cover `kinds` instead of one `place`. It is built for every real place of those kinds without
+  a layout of its own, and its `on_build` is told the place's details (`ctx["details"]`: key, label, kind, setting, walls, roof, palette,
+  props, coastal), so one module can stand in for a hand-written template. It is rebuilt when those details change. A place's own layout
+  still comes first.
+
+**Abilities added for the first removal** (the outdoors template): shapes can `animate` (`flow`: the texture drifts; `tide`: rises and
+falls with the tide clock), a `hitbox` is an invisible box carrying a tip, and Pip sits on an anchor tagged `seat` when its pose is sitting.
+
+**Done**: the gallery wall and stall pictures (step 2); the clock's workings (step 1, shipped live for every timekeeper); the outdoors
+scene: `web/world/templates/outdoors.js` and its anchor manifest are gone, replaced by the `outdoors` kind layout (wild places, yards,
+sights) and parts `scrap-heap`, `shed`, `bench`, `standing-stones`, `lighthouse`; `woods-layout` is no longer shipped (the kind layout
+covers the woods; where it's already live it still takes precedence). Checked against the hand-written junkyard in renders.
+
+**What's left, and what it needs** (each gap is a candidate hook or ability):
+| Feature | Blocked by |
+|---|---|
+| The home, neighbor, market, shop and library templates | **live elements**: layouts can't yet draw what changes with the world: garden plots and crops from `garden`, creations on their shelf or floor, Pip's poses by activity (at the bench, on the stool, asleep), the people who live there; **conditional shapes**: shown only when open or shut (awnings rolled), by day or night, by season; **moving sprites** along a path (curlews, shoppers walking the square) |
+| Creation capabilities (periodic lines, sensors, helpers, news, companions) | **reads**: the garden, waiting visitors, Pip's hunger and energy; **proposals**: `affect` (energy, mood), effects on the garden (hurry a crop), `transfer` with a daily-capped `source` (a find); `ask_gm` for prose; companions also need a way to talk |
+| Happenings | `ask_gm`, `affect`, effects on stock and the garden |
+| Customers at Pip's stall | `transfer` (coins for goods) |
+| Neighbors' letters, weather, sleep, reflection, memory | engine systems by design (the agent's own life, or outside data): not candidates |
 
 ## Steps
 1. **The runner and the protocol.** `pip-runner`, the `modules` table, manifests, a dry run, the Proposals page and the `pipchat`

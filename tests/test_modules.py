@@ -20,6 +20,7 @@ NOW = 1_800_000_000.0
 
 
 def modular(tmp_path, **kw):
+    kw.setdefault("module_library", "on")
     kw.setdefault("modules", "on")
     kw.setdefault("module_runner", "local")
     s, st, gm, agent = make(tmp_path, **kw)
@@ -483,16 +484,18 @@ async def test_without_approval_a_clean_module_goes_live_and_a_dirty_one_still_w
 # --- the clock's workings as a module ---------------------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
-    s, st, agent = modular(tmp_path)
-    assert await M.offer_library(st, s, None) == []
+    s, st, agent = modular(tmp_path, module_library="off")
+    assert await M.offer_library(st, s, agent.runner) == []                                             # switched off: nothing shipped
+    s.module_library = "on"
     c = clock(st)
     st.add_creation("Paperweight", "a stone", None, "sound", {"capabilities": {}, "quirks": []}, {})
-    made = await M.offer_library(st, s, agent.runner, now=NOW)
+    made = await M.offer_library(st, s, None, now=NOW)                                                  # the engine's own need no runner
     assert [st.module(i)["name"] for i in made] == [*M.RULES, "gear-clock-workings"]
     m = st.module(made[-1])
-    assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "world", "Gear Clock", "waiting")
+    assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "library", "Gear Clock", "live")   # shipped: live
     assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and "clockwork as code" in m["reason"]
-    M.reject(st, m["id"])
+    assert all(st.module(i)["status"] == "live" and st.module(i)["author"] == "library" for i in made)
+    M.disable(st, m["id"])
     assert await M.offer_library(st, s, agent.runner, now=NOW) == []                                   # once, whatever was decided
     assert M.slug("Gear Clock!! (big)") == "gear-clock-big" and M.slug("!!") == "thing" and len(M.slug("x" * 50)) == 28
 
@@ -556,6 +559,8 @@ async def test_without_a_live_module_the_built_in_workings_carry_on(tmp_path):
     agent2.ctx.runner = None
     await M.approve(st2, s2, agent2.runner, m["id"])
     assert (await call(agent2, "tend", creation="gear clock")).text.startswith("you tend")                     # no runner: built in
+    assert (await M.act(st2, s2, None, st2.module(m["id"]), "set", {})).startswith("you set")               # shipped: runs locally
+    st2.update_module(m["id"], author="world")
     assert (await M.act(st2, s2, None, st2.module(m["id"]), "set", {})) == "error: that can't be done right now"
 
 

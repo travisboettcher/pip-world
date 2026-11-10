@@ -15,6 +15,7 @@ ARTS = ("reed", "flower", "curlew", "spark", "coin")       # small sprites the b
 HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 SHAPES_MAX, ANCHORS_MAX, REACH, SIZE_MAX = 400, 24, 60.0, 60.0
 ANCHOR_TYPES = ("wall", "surface", "floor", "ground", "hang")
+ANIMATIONS = ("flow", "tide")
 
 
 class Bad(ValueError):
@@ -111,6 +112,8 @@ def shape(s, i: int) -> dict:
         out["range"] = _num(s.get("range", 8), f"{what}: range", 0.5, 40)
         if s.get("lamp"):
             out["lamp"] = True
+    elif s.get("hitbox"):
+        out["material"] = {"color": "#000000"}
     else:
         if "faces" in s:                                     # a box's top and sides, like a block of ground: {"top": m, "side": m}
             faces = s["faces"]
@@ -121,6 +124,15 @@ def shape(s, i: int) -> dict:
             out["material"] = material(s.get("material"), what)
     if s.get("sway"):
         out["sway"] = True
+    if "animate" in s:                                       # water that flows (its texture drifts) or rises and falls with the tide
+        if s["animate"] not in ANIMATIONS or kind in ("light", "sprite"):
+            raise Bad(f"{what}: `animate` is one of {', '.join(ANIMATIONS)}")
+        out["animate"] = s["animate"]
+        out["speed"] = _num(s.get("speed", 0.02), f"{what}: speed", 0, 1)
+    if s.get("hitbox"):                                      # drawn invisibly: only there to carry a tip
+        if kind != "box" or "tip" not in s:
+            raise Bad(f"{what}: a `hitbox` is an invisible box with a `tip`")
+        out["hitbox"] = True
     if s.get("shadow") is False:
         out["shadow"] = False
     tip = s.get("tip")

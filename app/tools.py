@@ -701,7 +701,7 @@ async def tend(ctx: ToolContext, args: dict) -> ToolResult:
     if not c:
         return ToolResult(f"error: {err}", followup=True)
     m = modules.bound(ctx.state).get(c["name"].lower())
-    if m and m["manifest"].get("tends") in [o["name"] for o in m["offers"]] and ctx.runner:   # its workings are code: tending is the action they name
+    if m and m["manifest"].get("tends") in [o["name"] for o in m["offers"]] and (ctx.runner or m["author"] == modules.SHIPPED):   # its workings are code: tending is the action they name
         r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, m["manifest"]["tends"], {"purpose": "tending it"})
         return ToolResult(r, followup=r.startswith("error") or r.startswith("that didn't"))
     r = cr.tend(ctx.state, c)

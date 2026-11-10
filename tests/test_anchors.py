@@ -32,7 +32,7 @@ def test_every_template_publishes_anchors_that_make_sense():
         for a in anchors:
             assert a["type"] in A.TYPES and a["tags"] and len(a["at"]) == 3 and len(a["extent"]) == 2 and all(e > 0 for e in a["extent"])
             assert (a["normal"] == [0, 1, 0]) == (a["type"] != "wall"), a                     # walls face out; the rest face up
-    assert A.manifest("nowhere") == () and A.for_kind("library") == A.manifest("library") and A.for_kind("strange") == A.manifest("outdoors")
+    assert A.manifest("nowhere") == () and A.for_kind("library") == A.manifest("library") and A.for_kind("wild") == () and A.for_kind("strange") == ()
     assert {a["id"] for a in A.for_kind("home") if a["type"] == "wall"} == {"back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf"}
     assert [a["id"] for a in A.for_kind("market") if "pip" in a["tags"]] == ["pips-stall"]
 
@@ -112,9 +112,19 @@ def test_show_is_checked_object_by_object(tmp_path):
     assert M.plan(st, m, {"show": []}, NOW, "on_tick") == [("show", [])]
 
 
+async def ground_for_the_woods(st, s, agent):
+    """The woods laid out with one ground anchor (they have no hand-written scene any more)."""
+    from app import layouts as L
+    src = ('def on_build(ctx):\n    return {"anchors": [{"id": "ground", "type": "ground", "tags": ["outside"], "at": [0, 0, -3], "extent": [12, 3]}]}\n')
+    m = live(st, {"name": "woods-ground", "kind": "place", "api": 1, "hooks": ["on_build"], "place": "woods"}, src)
+    await L.step(st, s, agent.runner, NOW)
+    return m
+
+
 @pytest.mark.asyncio
 async def test_what_a_module_shows_lands_on_the_right_place_or_nowhere(tmp_path):
     s, st, agent = modular(tmp_path)
+    await ground_for_the_woods(st, s, agent)
     c = clock(st)
     src = ("def on_tick(ctx):\n    p = {'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}}\n"
            "    return {'show': [{'id': 'a', 'sprite': p, 'at': {'type': 'wall', 'place': 'subject'}},"
@@ -156,6 +166,7 @@ def test_the_new_reads_works_and_stalls(tmp_path):
 @pytest.mark.asyncio
 async def test_the_dry_run_says_where_things_would_go_and_what_wouldnt_fit(tmp_path):
     s, st, agent = modular(tmp_path)
+    await ground_for_the_woods(st, s, agent)
     p = "{'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}}"
     src = (f"def on_install(ctx):\n    p = {p}\n    return {{'show': [{{'id': 'a', 'sprite': p, 'size': 0.9, 'at': {{'type': 'wall', 'place': 'home'}}}},"
            " {'id': 'b', 'sprite': p, 'at': {'type': 'hang', 'place': 'home'}}, {'id': 'c', 'sprite': p, 'at': {'type': 'ground', 'place': 'Atlantis'}},"

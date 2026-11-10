@@ -184,7 +184,7 @@ def test_the_builder_is_told_the_real_anchors_and_keys():
     text = B.api()
     assert "ANCHORS" not in text and "EVENT_KINDS" not in text
     assert "  home: wall tagged inside, back; surface tagged inside, bench; floor tagged inside; ground tagged outside, yard" in text
-    assert "  wild/yard/sight: ground tagged outside" in text and "  market: surface tagged stall, pip, counter; ground tagged outside, square" in text
+    assert "  wild/yard/sight: ground tagged outside (once its layout is built)" in text and "  market: surface tagged stall, pip, counter; ground tagged outside, square" in text
     assert 'Pip\'s own home is "workshop"' in text
 
 

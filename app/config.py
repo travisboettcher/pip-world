@@ -123,6 +123,8 @@ class Settings:
     modules: str = "off"                    # on: modules (docs/DESIGN-modules.md) run, and the world proposes its own; off here for tests
     module_runner: str = ""                 # where module code runs: the pip-runner socket (unix:///run/pip-runner/runner.sock) or URL, or "local" (development only)
     modules_approval: str = "world,pip"     # whose modules wait for the owner's approval before going live
+    module_library: str = "off"             # on: the modules shipped with the engine (module_library/) are installed and run, with or without
+                                            # MODULES (scenes, the gallery wall and more are modules now); off here for tests
     module_builder: str = "off"             # on: once a night the world may propose one rule module of its own (builder.py); off here for tests
     world_bible_path: str = ""              # the owner's own description of what this world is and isn't, for the builder (default: the engine's)
     modules_notify: str = "off"             # on: the owner is sent a notice (Matrix) when a module waits for approval or is switched off; off here for tests
@@ -169,6 +171,7 @@ class Settings:
             modules=(e("MODULES") or "on").lower() if (e("MODULES") or "on").lower() in ("on", "off") else "on",
             module_runner=e("MODULE_RUNNER") or "",
             modules_approval=e("MODULES_APPROVAL") if e("MODULES_APPROVAL") is not None else "world,pip",
+            module_library=(e("MODULE_LIBRARY") or "on").lower() if (e("MODULE_LIBRARY") or "on").lower() in ("on", "off") else "on",
             module_builder=(e("MODULE_BUILDER") or "on").lower() if (e("MODULE_BUILDER") or "on").lower() in ("on", "off") else "on",
             world_bible_path=e("WORLD_BIBLE_PATH") or "",
             modules_notify=(e("MODULES_NOTIFY") or "on").lower() if (e("MODULES_NOTIFY") or "on").lower() in ("on", "off") else "on",

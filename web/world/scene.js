@@ -7,11 +7,10 @@ import * as neighbor from "./templates/neighbor.js";
 import * as market from "./templates/market.js";
 import * as shop from "./templates/shop.js";
 import * as library from "./templates/library.js";
-import * as outdoors from "./templates/outdoors.js";
 import { moduleObjects } from "./templates/parts.js";
 import * as layout from "./layout.js";
 
-const TEMPLATES = { home, neighbor, market, shop, library, wild: outdoors, yard: outdoors, sight: outdoors };
+const TEMPLATES = { home, neighbor, market, shop, library };          // wild places, yards and sights are layouts now (the "outdoors" module)
 
 export class SceneView {
   constructor(host, { api, onShown } = {}) {
@@ -54,5 +53,5 @@ function placeholder(d) {
   const p = d.place, el = (t, text) => Object.assign(document.createElement(t), { textContent: text });
   return [el("h3", p.label[0].toUpperCase() + p.label.slice(1)), el("p", p.description || p.blurb || ""),
     el("p", d.present.length ? `Here now: ${d.present.map((c) => c.name).join(", ")}.` : ""),
-    el("p", "This kind of place doesn't have its drawn scene yet; it's coming in the next step.")];
+    el("p", "Its scene is drawn from a layout, and none is ready for it yet.")];
 }

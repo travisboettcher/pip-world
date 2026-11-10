@@ -2,7 +2,7 @@
 // with the kit, the same way for every place. Rotations are in degrees, heading first (Euler order YXZ), so a part turned in a layout stays
 // upright. Pip stands on the anchor tagged "pip" (and searches along it while gathering), people stand beside it ("people"), what can be
 // found here lies on the anchor tagged "finds", and a shop's or market's goods are set out on the surface tagged "counter", its keeper behind.
-import { goods, personAt, rngFor } from "./templates/parts.js";
+import { goods, personAt, rngFor, tide, minutesNow } from "./templates/parts.js";
 import { poseOf } from "./templates/home.js";
 
 const SEASONAL = new Set(["grass", "cliff", "leaves"]);
@@ -44,9 +44,10 @@ export function build(kit, art, data) {
   }
   const words = (t) => String(t || "").replace("$label", latest.place.label[0].toUpperCase() + latest.place.label.slice(1))
     .replace("$description", latest.place.description || latest.place.blurb || "").replace("$blurb", latest.place.blurb || "");
-  const sway = [];
+  const sway = [], moving = [];
   for (const s of lay.shapes) {
     let obj;
+    if (s.hitbox) { obj = kit.hitbox(...s.size, ...s.at); if (s.rot) { obj.rotation.order = "YXZ"; obj.rotation.set(...s.rot.map((d) => (d * Math.PI) / 180)); } kit.tipOn(obj, () => ({ title: words(s.tip.title), text: words(s.tip.text) })); continue; }
     if (s.shape === "light") {
       obj = new THREE.PointLight(s.color, s.lamp ? 0 : s.strength, s.range, 2); obj.position.set(...s.at); kit.scene.add(obj);
       if (s.lamp) kit.lamp({ material: {} }, obj, s.strength);                // comes up at dusk
@@ -68,14 +69,19 @@ export function build(kit, art, data) {
       if (m.lamp) kit.lamp(obj, null, 1);
     }
     if (s.sway) { obj.userData.sway = sway.length * 0.7; sway.push(obj); }
+    if (s.animate) moving.push({ obj, kind: s.animate, speed: s.speed, base: s.at[1] });
     if (s.tip) kit.tipOn(obj, () => ({ title: words(s.tip.title), text: words(s.tip.text) }));
   }
   if (sway.length) kit.every((t) => sway.forEach((m) => { m.rotation.z = Math.sin(t * 0.8 + m.userData.sway) * 0.025; }));
+  if (moving.length) kit.every((t) => moving.forEach(({ obj, kind, speed, base }) => {     // water that flows; the sea, with the tide
+    const map = (Array.isArray(obj.material) ? obj.material[0] : obj.material).map; if (map) map.offset.x = (t * speed) % 1;
+    if (kind === "tide") obj.position.y = base - 0.1 + tide(minutesNow(latest)) * 0.5;
+  }));
 
   // the living part: Pip, people, finds, on the anchors the layout says
   const tagged = (tag) => lay.anchors.find((a) => a.tags.includes(tag));
   const spot = tagged("pip") || lay.anchors.find((a) => a.type === "ground" || a.type === "floor") || { at: [0, 0, 0], extent: [4, 2] };
-  const r = rngFor(data.place.key), findsAt = tagged("finds");
+  const r = rngFor(data.place.key), findsAt = tagged("finds"), seat = tagged("seat");
   if (findsAt) (latest.place.finds || []).slice(0, 10).forEach((name, i) => {
     const [x, y, z] = findsAt.at, [w, d] = findsAt.extent;
     const g = goods(kit, name, /seed/.test(name) ? "seed" : /berr|apple|mushroom|nut/.test(name) ? "food" : "", x - w / 2 + ((i % 5) + 0.5) * (w / 5) + (r() - 0.5),
@@ -102,7 +108,8 @@ export function build(kit, art, data) {
       const k = (t * 0.03) % 1, stop = Math.floor(t / 2.5) % 2 === 0, px = x + Math.sin(k * Math.PI * 2) * w * 0.4, pz = z + Math.cos(k * Math.PI * 4) * d * 0.3;
       pip.position.set(px, y + 0.69, pz); kit.frame(pip, stop ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); pip.scale.x = Math.cos(k * Math.PI * 2) >= 0 ? 1 : -1;
       spark.visible = stop && Math.floor(t * 2) % 2 === 0; spark.position.set(px + 0.4, y + 0.3, pz + 0.2);
-    } else { pip.position.set(x, y + 0.69, z); kit.frame(pip, Math.floor(t * 1.6) % 2); pip.scale.x = 1; }
+    } else if (pose === "sit" && seat) { pip.position.set(seat.at[0], seat.at[1] + 0.69, seat.at[2]); kit.frame(pip, 9); pip.scale.x = 1; }   // on the seat
+    else { pip.position.set(x, y + 0.69, z); kit.frame(pip, Math.floor(t * 1.6) % 2); pip.scale.x = 1; }
   });
   return { update: (d) => { latest = d; } };
 }

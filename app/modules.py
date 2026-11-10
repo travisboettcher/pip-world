@@ -27,7 +27,8 @@ KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
 READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
-AUTHORS = ("world", "pip")
+SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
+AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "pip", "subject", "items")                      # what Pip's own programs may know, and do (step 3)
 PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
 MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
@@ -45,7 +46,13 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
          "well": "A part: a stone well with a little thatched roof.",
          "stall": "A part: a market stall with a striped awning (two colours), and a counter to set things on.",
          "cutaway": "A part: a building opened like a dollhouse (width, depth, height, walls, roof, a door), with its walls and floor as anchors.",
-         "woods-layout": "The woods, built from parts instead of hand-written: the same trees and clearing, now data the world can change."}
+         "scrap-heap": "A part: a heap of rusted scrap, worth digging through.",
+         "shed": "A part: a plank shed with a shingled roof.",
+         "bench": "A part: a wooden bench to sit and look from; its seat is where Pip sits.",
+         "standing-stones": "A part: old standing stones with a lintel.",
+         "lighthouse": "A part: a whitewashed lighthouse whose lamp comes on at dusk.",
+         "outdoors": "Every wild place, yard and sight without a layout of its own, from parts: the land by its setting, heaps and a shed "
+                     "in a yard, a bench and something to look at at a sight. Replaces the hand-written outdoors scene."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
@@ -82,13 +89,19 @@ def check_manifest(m, author: str, state=None) -> dict:
     if not out["hooks"]:
         raise Refused("`hooks` needs at least one hook")
     if kind in ("part", "place"):
-        if author != "world" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
+        if author == "pip" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
             raise Refused("parts and places are the world's; they have just on_build, and read and propose nothing")
         if kind == "part":
             params = m.get("params") or {}
             if not isinstance(params, dict) or len(params) > 16 or not all(isinstance(v, (int, float, str, bool)) for v in params.values()):
                 raise Refused("`params` maps up to 16 names to plain default values")
             out["params"] = params
+        elif m.get("kinds") is not None:                     # every place of these kinds that has no layout of its own
+            from . import place_kinds
+            ks = m["kinds"]
+            if not isinstance(ks, list) or not ks or any(k not in place_kinds.KINDS for k in ks):
+                raise Refused(f"`kinds` is a list drawn from: {', '.join(place_kinds.KINDS)}")
+            out["kinds"] = list(dict.fromkeys(ks))
         elif m.get("new") is not None:                       # a place that doesn't exist yet (step 6): it enters the world when approved
             from . import invented_places, module_places
             try:
@@ -98,7 +111,7 @@ def check_manifest(m, author: str, state=None) -> dict:
             out["place"] = invented_places.key_for(out["new"]["label"])
         else:
             if not isinstance(m.get("place"), str) or not m["place"].strip():
-                raise Refused("a place module names the place it lays out: `place` (or describes a new one: `new`)")
+                raise Refused("a place module names the place it lays out: `place` (or describes a new one: `new`, or covers `kinds`)")
             out["place"] = m["place"].strip()[:60]
         out.update(events=[], consumes={})
         return out
@@ -454,22 +467,23 @@ def misfires(state, m: dict, hook: str, now: float) -> bool:
 # --- the engine's step -----------------------------------------------------------------------------------------------------------
 async def step(state, settings, runner, now: float | None = None) -> bool:
     """Run every live module's hooks that are due: its tick, its scheduled time, the events it listens for. True if Pip should wake."""
-    if runner is None:
-        return False
-    now, wake = now or time.time(), False
+    now, wake, local = now or time.time(), False, LocalRunner()
     for m in state.modules("live"):
         hooks = m["manifest"]["hooks"]
+        run = runner or (local if m["author"] == SHIPPED else None)       # shipped modules run even without the runner
+        if run is None:
+            continue
         if "on_time" in hooks and m["due"] and m["due"] <= now and m["status"] == "live":
-            wake |= (await call(state, settings, runner, m, "on_time", now, due=m["due"]))["wake"]
+            wake |= (await call(state, settings, run, m, "on_time", now, due=m["due"]))["wake"]
         if "on_event" in hooks and m["status"] == "live":
             kinds = set(m["manifest"]["events"])
             for e in state.events(limit=50, after_id=m["cursor"]):
                 if e["kind"] in kinds and (pub := pv.public_event(e)):
-                    wake |= (await call(state, settings, runner, m, "on_event", now, event=pub))["wake"]
+                    wake |= (await call(state, settings, run, m, "on_event", now, event=pub))["wake"]
                 m["cursor"] = e["id"]
             state.update_module(m["id"], cursor=m["cursor"])
         if "on_tick" in hooks and m["status"] == "live":
-            wake |= (await call(state, settings, runner, m, "on_tick", now))["wake"]
+            wake |= (await call(state, settings, run, m, "on_tick", now))["wake"]
     return wake
 
 
@@ -499,7 +513,7 @@ def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
     wanted = [{**o, "key": f"{m['name']}:{o['id']}", "id": f"{m['name']}:{o['id']}"} for m in state.modules("live") for o in m["show"]
               if where(state, m, o["at"]["place"]) == key]
     from . import layouts
-    return anchors.place(layouts.anchors_for(state, key) or anchors.for_kind(kind), wanted)
+    return anchors.place(layouts.anchors_for(state, key, kind) or anchors.for_kind(kind), wanted)
 
 
 def scene_objects(state, key: str, kind: str) -> list[dict]:
@@ -613,6 +627,7 @@ async def act(state, settings, runner, m: dict, action: str, args: dict, now: fl
     names = [o["name"] for o in m["offers"]]
     if action not in names:
         return f"error: that isn't something it offers; it offers: {', '.join(names) or 'nothing right now'}"
+    runner = runner or (LocalRunner() if m["author"] == SHIPPED else None)
     if runner is None:
         return "error: that can't be done right now"
     r = await call(state, settings, runner, m, "on_action", now, action=action, args=args)
@@ -705,6 +720,16 @@ async def _try_build(state, settings, runner, m: dict, now: float) -> dict:
     try:
         if m["kind"] == "part":
             b = await layouts.build_part(runner, m, {}, layouts.season(settings, now), layouts.seed_of(m["name"]))
+        elif "kinds" in m["manifest"]:                           # a kind's layout: tried on a made-up place of each kind
+            from .looks import fallback_scene
+            shapes = anchors_n = 0
+            for k in m["manifest"]["kinds"]:
+                scene = fallback_scene(f"trial-{k}", k, "")
+                details = {"key": f"trial-{k}", "label": "a place", "kind": k, "coastal": False, **{x: y for x, y in scene.items()}}
+                b = await layouts.build_place(state, settings, runner, m, now, waiting=True, key=details["key"], details=details)
+                shapes, anchors_n = shapes + len(b["shapes"]), anchors_n + len(b["anchors"])
+                report["calls"] += 1 + len(b["parts"])
+            b = {"shapes": [None] * shapes, "anchors": [None] * anchors_n}
         else:
             b = await layouts.build_place(state, settings, runner, m, now, waiting=True)
             report["calls"] += len(b["parts"])
@@ -811,16 +836,18 @@ def slug(text: str) -> str:
 
 
 async def offer_library(state, settings, runner, now: float | None = None) -> list[int]:
-    """The world proposes its own workings for things that have built-in ones, once each whatever the owner decides: its rules (RULES),
-    and for a timekeeper that needs tending, its clock's workings."""
-    if runner is None:
+    """The modules shipped with the engine (module_library/), proposed once each whatever the owner later decides: its rules, parts and
+    layouts (RULES), and for a timekeeper that needs tending, its clock's workings. They're the engine's own code, so they go live without
+    waiting for approval when their trial is clean, and run in a local sandbox when there is no runner."""
+    if settings.module_library != "on":
         return []
+    runner = runner or LocalRunner()
     made = []
     for name, reason in RULES.items():                       # the world's own rules, once each
         if any(o["name"] == name for o in state.modules()):
             continue
         man, source = library(name)
-        r = await propose(state, settings, runner, "world", man, source, reason, now=now)
+        r = await propose(state, settings, runner, SHIPPED, man, source, reason, now=now)
         if "id" in r:
             made.append(r["id"])
         else:
@@ -831,7 +858,7 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
             continue
         man, source = library("timekeeper")
         man = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"]}
-        r = await propose(state, settings, runner, "world", man, source,
+        r = await propose(state, settings, runner, SHIPPED, man, source,
                           f"Your {c['name']}'s clockwork as code: it keeps time, stops when it runs down, and can be wound and set.", now=now)
         if "id" in r:
             made.append(r["id"])

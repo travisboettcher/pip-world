@@ -1,0 +1,1 @@
+{"name": "scrap-heap", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}}

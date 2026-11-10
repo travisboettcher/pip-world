@@ -73,10 +73,14 @@ def _plan(spec) -> dict:
     return {"parts": out, "own": own}
 
 
-async def build_place(state, settings, runner, m: dict, now: float, waiting: bool = False) -> dict:
-    """A place module's layout, built: {"shapes", "anchors", "parts" (name -> module id), "season", "version"}. Raises Bad."""
+async def build_place(state, settings, runner, m: dict, now: float, waiting: bool = False, key: str | None = None,
+                      details: dict | None = None) -> dict:
+    """A place module's layout for one place (its own, or for a kind module, the place named), built: {"shapes", "anchors", "parts"
+    (name -> module id), "season", "version", "details"}. Raises Bad."""
     s = season(settings, now)
-    res = await runner.run(m["source"], "on_build", {"params": {}, "season": s, "seed": seed_of(m["manifest"]["place"]), "place": m["manifest"]["place"]})
+    key = key or m["manifest"]["place"]
+    details = details or {"key": key}
+    res = await runner.run(m["source"], "on_build", {"params": {}, "season": s, "seed": seed_of(key), "place": key, "details": details})
     if not res.get("ok"):
         raise Bad(f"{m['name']}: {res.get('error', 'it failed')}")
     plan = _plan(res.get("result"))
@@ -86,10 +90,10 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
         if not part:
             raise Bad(f"there is no part called {entry['part']!r}")
         used[part["name"]] = part["id"]
-        key = (part["id"], json.dumps(entry["params"], sort_keys=True))
-        if key not in cache:
-            cache[key] = await build_part(runner, part, entry["params"], s, seed_of(m["manifest"]["place"], part["name"], key[1]))
-        moved = geometry.place(cache[key], entry["at"], entry["turn"], entry["role"])
+        pkey = (part["id"], json.dumps(entry["params"], sort_keys=True))
+        if pkey not in cache:
+            cache[pkey] = await build_part(runner, part, entry["params"], s, seed_of(key, part["name"], pkey[1]))
+        moved = geometry.place(cache[pkey], entry["at"], entry["turn"], entry["role"])
         shapes += moved["shapes"]
         anchors += moved["anchors"]
         if len(shapes) > PLACE_SHAPES_MAX:
@@ -97,12 +101,17 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
     ids = [a["id"] for a in anchors]
     if len(ids) != len(set(ids)):
         raise Bad("two anchors share an id: give parts their own roles")
-    return {"shapes": shapes, "anchors": anchors, "parts": used, "season": s, "version": m["version"]}
+    return {"shapes": shapes, "anchors": anchors, "parts": used, "season": s, "version": m["version"], "details": details}
 
 
 def place_module(state, key: str) -> dict | None:
-    """The live place module that lays out this place, if there is one."""
+    """The live place module that lays out this place by name, if there is one."""
     return next((m for m in reversed(state.modules("live")) if m["kind"] == "place" and m["manifest"].get("place") == key), None)
+
+
+def kind_module(state, kind: str) -> dict | None:
+    """The live place module that lays out every place of a kind (one without a layout of its own), if there is one."""
+    return next((m for m in reversed(state.modules("live")) if m["kind"] == "place" and kind in m["manifest"].get("kinds", [])), None)
 
 
 def live_parts(state) -> list[int]:
@@ -110,45 +119,74 @@ def live_parts(state) -> list[int]:
     return sorted(m["id"] for m in state.modules("live") if m["kind"] == "part")
 
 
-def stale(state, settings, m: dict, now: float) -> bool:
-    b = m["built"]
-    if not b or "error" in b or b.get("version") != m["version"] or b.get("season") != season(settings, now):
+def _stale(state, settings, b: dict, version: int, now: float, details: dict | None = None) -> bool:
+    if not b or "error" in b or b.get("version") != version or b.get("season") != season(settings, now):
+        return True
+    if details is not None and b.get("details") != details:
         return True
     return any((part_named(state, name) or {}).get("id") != mid for name, mid in b.get("parts", {}).items())
 
 
+def stale(state, settings, m: dict, now: float) -> bool:
+    return _stale(state, settings, m["built"], m["version"], now)
+
+
+def _runner(m: dict, runner):
+    """Where a module's code runs: the runner; for a module shipped with the engine, in a local sandbox when there is no runner."""
+    from . import modules
+    return runner or (modules.LocalRunner() if m["author"] == modules.SHIPPED else None)
+
+
+def _targets(state, settings, m: dict, now: float) -> list[tuple[str, dict | None]]:
+    """The places a place module lays out: its own, or every real place of its kinds without a layout of its own (with their details)."""
+    if "kinds" not in m["manifest"]:
+        return [(m["manifest"]["place"], None)]
+    from . import world_view, worldmap
+    return [(p["key"], world_view.place_details(state, settings, p["key"], p["kind"]))
+            for p in worldmap.snapshot(state, settings, None, now)["places"]
+            if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"])]
+
+
 async def step(state, settings, runner, now: float | None = None) -> int:
-    """Build or rebuild every live place whose layout is missing or out of date. Returns how many were built."""
-    if runner is None:
-        return 0
+    """Build or rebuild every live place layout that is missing or out of date. Returns how many were built."""
     now, n = now or time.time(), 0
+    parts = live_parts(state)
     for m in state.modules("live"):
-        parts = live_parts(state)
-        waiting = m["built"].get("failed_at", 0) > now - 3600 and m["built"].get("failed_parts") == parts
-        if m["kind"] != "place" or not stale(state, settings, m, now) or waiting:   # a failure waits an hour, unless the parts changed
+        run = _runner(m, runner)
+        if m["kind"] != "place" or run is None:
             continue
-        try:
-            built = await build_place(state, settings, runner, m, now)
-        except Bad as e:
-            state.update_module(m["id"], built={**m["built"], "error": str(e)[:300], "failed_at": now, "failed_parts": parts})
-            state.log("layout_failed", name=m["name"], place=m["manifest"]["place"], error=str(e)[:300])
-            continue
-        state.update_module(m["id"], built=built)
-        state.log("layout_built", name=m["name"], place=m["manifest"]["place"], shapes=len(built["shapes"]), anchors=len(built["anchors"]))
-        n += 1
+        for key, details in _targets(state, settings, m, now):
+            fresh = state.module(m["id"])["built"]
+            b = fresh.get("places", {}).get(key, {}) if details is not None else fresh
+            waiting = b.get("failed_at", 0) > now - 3600 and b.get("failed_parts") == parts
+            if not _stale(state, settings, b, m["version"], now, details) or waiting:   # a failure waits an hour, unless the parts changed
+                continue
+            try:
+                built = await build_place(state, settings, run, m, now, key=key, details=details)
+            except Bad as e:
+                built = {**b, "error": str(e)[:300], "failed_at": now, "failed_parts": parts}
+                state.log("layout_failed", name=m["name"], place=key, error=str(e)[:300])
+            else:
+                state.log("layout_built", name=m["name"], place=key, shapes=len(built["shapes"]), anchors=len(built["anchors"]))
+                n += 1
+            state.update_module(m["id"], built={**fresh, "places": {**fresh.get("places", {}), key: built}} if details is not None else built)
     return n
 
 
-def for_scene(state, key: str) -> dict | None:
-    """What the browser draws for a place laid out by a module: its shapes and anchors (None: the place keeps its hand-written scene)."""
+def for_scene(state, key: str, kind: str | None = None) -> dict | None:
+    """What the browser draws for a place laid out by a module: its shapes and anchors (None: the place keeps its hand-written scene).
+    A place's own layout comes first; then the layout for its kind."""
     m = place_module(state, key)
     b = m["built"] if m else None
+    if not (b and "shapes" in b) and kind:
+        m = kind_module(state, kind)
+        b = m["built"].get("places", {}).get(key) if m else None
     if not b or "shapes" not in b:
         return None
     return {"shapes": b["shapes"], "anchors": b["anchors"], "module": m["name"], "version": b["version"]}
 
 
-def anchors_for(state, key: str):
+def anchors_for(state, key: str, kind: str | None = None):
     """A laid-out place's anchors, or None (the template's manifest applies)."""
-    lay = for_scene(state, key)
+    lay = for_scene(state, key, kind)
     return tuple(lay["anchors"]) if lay else None

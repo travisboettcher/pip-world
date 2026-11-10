@@ -1,0 +1,1 @@
+{"name": "outdoors", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard", "sight"]}

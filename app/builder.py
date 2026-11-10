@@ -32,7 +32,7 @@ def bible(settings) -> str:
 def api(state=None) -> str:
     from . import geometry, place_kinds
     from .looks import SCENE
-    return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list())
+    return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list(state))
             .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
             .replace("SETTINGS", ", ".join(SCENE["setting"])).replace("TEXTURES", ", ".join(geometry.TEXTURES))
             .replace("PARTS", parts_list(state)).strip())
@@ -44,16 +44,23 @@ def parts_list(state) -> str:
     return "\n".join(f"  {m['name']} (params {m['manifest'].get('params') or {}}): {m['reason']}" for m in rows) or "  (none yet: no place for now)"
 
 
-def anchor_list() -> str:
-    """Every kind of place and the anchors its scene has (type tagged ...), so a module can ask for one that exists."""
-    from . import anchors
+def anchor_list(state=None) -> str:
+    """Every kind of place and the anchors its scene has (type tagged ...), so a module can ask for one that exists: from a hand-written
+    scene's manifest, or from what a kind's layout module has built."""
+    from . import anchors, layouts, place_kinds
+    spots = lambda rows: "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in rows))
     by_template = {}
     for kind, template in anchors.TEMPLATE_OF_KIND.items():
         by_template.setdefault(template, []).append(kind)
-    lines = []
-    for template, kinds in by_template.items():
-        spots = "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in anchors.manifest(template)))
-        lines.append(f"  {'/'.join(kinds)}: {spots}")
+    lines = [f"  {'/'.join(kinds)}: {spots(anchors.manifest(template))}" for template, kinds in by_template.items()]
+    laid = {}
+    for kind in place_kinds.KINDS:
+        if kind in anchors.TEMPLATE_OF_KIND:
+            continue
+        m = layouts.kind_module(state, kind) if state is not None else None
+        built = next(iter((m or {}).get("built", {}).get("places", {}).values()), None) if m else None
+        laid.setdefault(spots(built["anchors"]) if built and built.get("anchors") else "ground tagged outside (once its layout is built)", []).append(kind)
+    lines += [f"  {'/'.join(kinds)}: {where}" for where, kinds in laid.items()]
     return "\n".join(lines)
 
 

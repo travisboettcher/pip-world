@@ -12,8 +12,7 @@ from pathlib import Path
 
 TYPES = ("wall", "surface", "floor", "ground", "hang")
 UPRIGHT = ("wall",)                                        # drawn flat against the anchor; everything else stands up, facing the viewer
-TEMPLATE_OF_KIND = {"home": "home", "neighbor": "neighbor", "market": "market", "shop": "shop", "library": "library",
-                    "wild": "outdoors", "yard": "outdoors", "sight": "outdoors"}
+TEMPLATE_OF_KIND = {"home": "home", "neighbor": "neighbor", "market": "market", "shop": "shop", "library": "library"}   # the rest are layouts
 GAP = 0.12                                                 # between objects packed along an anchor
 LIFT = 0.02                                                # off a wall, so a picture never fights the plaster
 DIR = Path(__file__).resolve().parent.parent / "web" / "world" / "anchors"
@@ -27,7 +26,7 @@ def manifest(template: str) -> tuple:
 
 
 def for_kind(kind: str) -> tuple:
-    return manifest(TEMPLATE_OF_KIND.get(kind, "outdoors"))
+    return manifest(TEMPLATE_OF_KIND[kind]) if kind in TEMPLATE_OF_KIND else ()
 
 
 def matching(anchors, query: dict) -> list[dict]:
