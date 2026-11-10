@@ -61,6 +61,7 @@ resource.setrlimit(resource.RLIMIT_CPU, (CPU, CPU))          # the limits, set h
 resource.setrlimit(resource.RLIMIT_AS, (MEMORY, MEMORY))
 resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))            # no files written
 resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))              # no core dump when the CPU limit stops it: it would be slow and big
 SAFE = ("abs all any bool dict divmod enumerate filter float frozenset hash int isinstance len list map max min next pow range repr "
         "reversed round set slice sorted str sum tuple zip iter callable chr ord bin hex oct abs property staticmethod classmethod "
         "Exception ValueError KeyError TypeError IndexError ZeroDivisionError ArithmeticError LookupError StopIteration RuntimeError "

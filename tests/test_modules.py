@@ -105,8 +105,9 @@ def test_the_child_starts_isolated_with_its_limits():
     import resource
     import subprocess
     probe = S.CHILD.split("def guarded_import")[0] + "\nprint([resource.getrlimit(r)[0] for r in (resource.RLIMIT_CPU, resource.RLIMIT_AS, resource.RLIMIT_FSIZE, resource.RLIMIT_NOFILE)])"
+    probe = probe.replace("RLIMIT_NOFILE)]", "RLIMIT_NOFILE, resource.RLIMIT_CORE)]")
     out = subprocess.run([sys.executable, "-I", "-S", "-c", probe, "math", "1", str(512 * 2 ** 20)], capture_output=True, text=True).stdout
-    assert out.strip() == f"[1, {512 * 2 ** 20}, 0, 64]"
+    assert out.strip() == f"[1, {512 * 2 ** 20}, 0, 64, 0]"                                     # and no core dumps
 
 
 @pytest.mark.asyncio
@@ -144,7 +145,7 @@ async def test_a_child_that_misbehaves_is_described(monkeypatch):
     assert await S.run("x = 1", "on_tick", {}) == {"ok": False, "error": "it stopped without answering"}
     child("import os, signal, sys; sys.stdin.read(); os.kill(os.getpid(), signal.SIGKILL)")
     assert await S.run("x = 1", "on_tick", {}) == {"ok": False, "error": "it used more than its share of time"}
-    child("import os, signal, sys; sys.stdin.read(); os.kill(os.getpid(), signal.SIGXCPU)")
+    child("import os, resource, signal, sys; resource.setrlimit(resource.RLIMIT_CORE, (0, 0)); sys.stdin.read(); os.kill(os.getpid(), signal.SIGXCPU)")
     assert await S.run("x = 1", "on_tick", {}) == {"ok": False, "error": "it used more than its share of time"}
     child("import os, signal, sys; sys.stdin.read(); os.kill(os.getpid(), signal.SIGTERM)")
     assert await S.run("x = 1", "on_tick", {}) == {"ok": False, "error": "it stopped without answering"}
