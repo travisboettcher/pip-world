@@ -485,7 +485,15 @@ timer and answers for every talking creation) are gone, as are bulletins asked f
 - `say(to=...)` no longer answers for a creation's old character: a thing talks only through a voice.
 - The module library must be on (`MODULE_LIBRARY`, on from the environment) for creations to do anything at all; bare test settings
   leave it off, and the tests that need workings set it.
-Still to remove: the engine's stall customers and happenings' dice (0.30.0).
+**The rest removed: stall customers and happenings' dice (0.30.0).** The engine no longer has customers (`stall_step`, `stall_tick`,
+the Poisson draw) or happenings' dice (slots, rolls, categories, their planners, season weights, tone weights, cooldowns, the night roll,
+`build`, `create`) or the categories' fallback words: all of that lives only in the shipped `stall-customers` and `happenings` rules, which
+are now tested directly too (their Python is imported and called with a context like the engine's: `test_customers.py`,
+`test_happenings_rule.py`). What the engine keeps is what any world needs: `sell` and its checks, `market.sell_units`, where Pip is
+selling (`selling_at`), and a little stall housekeeping (`market.prune`: a creation sold or given away elsewhere comes off the stall);
+for happenings, `happen` and its intents, the amounts and caps, the words and their checks, `record`, how Pip takes a happening in, and
+`step`, which now only lands the meaning of what Pip has been shown. Gone with the dice: the replay of a roll (`/happenings/{id}/replay`,
+`pipchat happenings --replay`); a module's calls are recorded, seeded and replayable like any other's.
 
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |

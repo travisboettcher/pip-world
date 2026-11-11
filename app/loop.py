@@ -176,8 +176,7 @@ class Agent:
             self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
             self.request_wake()
         emo.drift(self.state, self.s)
-        if not modules.live_named(self.state, "stall-customers"):
-            market.stall_step(self.state, self.s, self.rng)      # customers stop at Pip's stall while it is at the market (unless a module does)
+        market.prune(self.state)                              # a creation that has gone elsewhere comes off Pip's stall
         worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
 
     async def resolve_world(self) -> None:

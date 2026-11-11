@@ -5,7 +5,6 @@ A booth is a shop or market place with a keeper. Everything here is engine-owned
 drifts back by 10% a day, `mood` is a small deterministic daily wobble. A booth pays 60% of what it charges and only has a day's coins
 (its till) to pay out, which is what keeps a surplus from being worth unlimited coins.
 """
-import math
 import time
 import zlib
 
@@ -18,10 +17,8 @@ DRIFT_PER_DAY = 0.9      # the part of a price's distance from normal that is st
 MOOD_RANGE = 8           # percent, either way
 BUY_RATE = 0.6           # a booth pays this share of what it charges
 TILL_PER_DAY = {"shop": 40, "market": 80, "neighbor": 20, "stall": 30}   # a neighbor at home; a character's stall at a market
-STALL_DEMAND_PER_HOUR = 2.0   # customers an hour at a fair ask
 STALL_DAILY_UNITS = 8         # the most of one thing a market takes off a stall in a day
 STALL_MAX_KINDS = 3
-STALL_STEP_CAP = 3600         # seconds of selling credited in one look
 STOCK_FLOOR = 2          # the least a booth keeps of anything for a day
 UNKNOWN_KIND_PRICE = 3
 QUALITY_PRICE = {"rough": 8, "sound": 15, "fine": 25, "masterwork": 40}   # one of Pip's creations, by its quality
@@ -288,18 +285,6 @@ def stall_factor(ratio: float) -> float:
     return max(0.0, min(1.25, round((1.6 - ratio) / 0.6, 9)))
 
 
-def poisson(rng, mu: float) -> int:
-    """A count of customers with mean `mu` (Knuth's method; fine for the small means here)."""
-    if mu <= 0:
-        return 0
-    limit, k, p = math.exp(-mu), 0, 1.0
-    while True:
-        p *= rng.random()
-        if p <= limit:
-            return k
-        k += 1
-
-
 def fair_price(state, place: str, name: str, kind: str, attrs: dict, now: float) -> int:
     """What a booth here would charge for one of these today: the going price a stall is measured against."""
     table = stock_table(state, place)
@@ -359,22 +344,13 @@ def take_back(state, place: str, item: str) -> tuple[bool, str]:
     return True, f"you take {there['qty']} {there['name']} back off the stall"
 
 
-def stall_tick(state, place: str, now: float, seconds: float, rng) -> list[dict]:
-    """Let customers stop at Pip's stall for `seconds`: returns what sold (one entry per line) and pays Pip, logs and slips the prices."""
-    sales = []
-    if seconds <= 0:
-        return sales
-    today = day_of(now)
-    for row in state.stall_rows(place):
-        if row["kind"] == "creation" and not any(c["id"] == row["attrs"].get("creation_id") for c in state.creations()):
-            state.delete_stall(place, row["item"])                # given away or sold elsewhere meanwhile
-            continue
-        fair = fair_price(state, place, row["name"], row["kind"], row["attrs"], now)
-        customers = poisson(rng, STALL_DEMAND_PER_HOUR * stall_factor(row["ask"] / fair) * seconds / 3600)
-        units = min(customers, row["qty"], STALL_DAILY_UNITS - sold_today(row, now))
-        if units > 0:
-            sales.append(sell_units(state, place, row, units, now))
-    return sales
+def prune(state) -> int:
+    """Take off any stall a creation Pip no longer has (sold or given away elsewhere meanwhile). Returns how many were taken off."""
+    owned = {c["id"] for c in state.creations()}
+    gone = [r for r in state.stall_rows() if r["kind"] == "creation" and r["attrs"].get("creation_id") not in owned]
+    for r in gone:
+        state.delete_stall(r["place"], r["item"])
+    return len(gone)
 
 
 def sold_today(row: dict, now: float) -> int:
@@ -396,17 +372,6 @@ def sell_units(state, place: str, row: dict, units: int, now: float) -> dict:
             **({"what": row["kind"]} if row["kind"] in ("creation", "work") else {})}
     state.log("stall_sale", **sale)
     return sale
-
-
-def stall_step(state, settings, rng, now: float | None = None) -> list[dict]:
-    """The monitor's look at the stall: customers stop only while Pip is at a market, awake, not walking, and it is open. The first look only starts the clock."""
-    now = now or time.time()
-    last = state.meta("stall_at")
-    state.set_meta(stall_at=now)
-    here = selling_at(state, settings, now)
-    if last is None or not here:
-        return []
-    return stall_tick(state, here, now, min(now - float(last), STALL_STEP_CAP), rng)
 
 
 def selling_at(state, settings, now: float) -> str | None:

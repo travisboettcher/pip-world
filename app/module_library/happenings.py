@@ -25,6 +25,36 @@ SEASON_TONE = {
     "summer": {("pantry", "bad"): 1.4, ("garden", "good"): 1.1},
     "autumn": {("memory", "bad"): 1.4, ("found", "good"): 1.2}}
 SHIFT = {"minor": 0.05, "medium": 0.15, "major": 0.30}
+FALLBACK = {  # (category, tone): the words when the writer's don't pass the checks
+    ("garden", "good"): ("A kind spell", "The light is kind to the garden this morning."),
+    ("garden", "bad"): ("A bad turn", "Something is off in the garden: a chill, a pest, a wind."),
+    ("garden", "neutral"): ("The garden shifts", "The air in the garden changes, and then settles again."),
+    ("creature", "good"): ("A small visitor", "A small creature comes by and leaves something behind."),
+    ("creature", "bad"): ("Nibbling", "Something has been at the pantry in the night."),
+    ("creature", "neutral"): ("Watched", "A small creature watches you from the fence, then wanders off."),
+    ("pantry", "bad"): ("Turned", "Some of what you stored has turned."),
+    ("pantry", "neutral"): ("The shelves", "You look over the shelves and find everything as it was."),
+    ("found", "good"): ("A small find", "You come across something small and useful."),
+    ("found", "bad"): ("A hole in a pocket", "You find a hole in your pocket where something should be."),
+    ("found", "neutral"): ("An odd thing", "You notice an odd little thing and turn it over."),
+    ("body", "good"): ("Rested", "You wake with a lightness you hadn't expected."),
+    ("body", "bad"): ("A rough day", "Your body is slow and heavy today."),
+    ("body", "neutral"): ("A yawn", "A great yawn takes you by surprise."),
+    ("market", "good"): ("Good word", "You hear that things are selling well."),
+    ("market", "bad"): ("Bad word", "You hear the shelves are full and buyers are few."),
+    ("market", "neutral"): ("Market talk", "You hear some idle talk about the market."),
+    ("mishap", "bad"): ("Something slips", "Something in the workshop slips, jars or gives way."),
+    ("mishap", "neutral"): ("A squeak", "Something in the workshop squeaks, and nothing is wrong."),
+    ("neighbor", "good"): ("Good news", "Word comes from a neighbor that things are going well."),
+    ("neighbor", "bad"): ("A small worry", "Word comes from a neighbor of a small worry."),
+    ("neighbor", "neutral"): ("Neighbourly talk", "You hear a little idle talk about a neighbor."),
+    ("memory", "good"): ("A fond thought", "An old thought of your own comes back to you."),
+    ("memory", "bad"): ("A wistful thought", "An old thought of your own comes back, and lingers."),
+    ("memory", "neutral"): ("A thought returns", "An old thought of your own comes back and puzzles you."),
+    ("kindness", "good"): ("Left for you", "Someone has left something for you and gone."),
+    ("atmosphere", "neutral"): ("In the air", "You notice a sound, a light, a smell, and then it is gone."),
+}
+
 
 
 def on_install(ctx):
@@ -135,7 +165,9 @@ def _choose(ctx, rng, night):
         severity = "minor" if tone == "neutral" else rng.choices(SEVERITIES, weights=p["severity"])[0]
         plan = _plan(ctx, cat, tone, severity, rng)
         if plan is not None:
-            return {"category": cat, "tone": tone, "severity": severity, **plan, **({"night": True} if night else {})}
+            title, text = FALLBACK.get((cat, tone), ("", ""))
+            return {"category": cat, "tone": tone, "severity": severity, **plan, **({"night": True} if night else {}),
+                    **({"fallback": {"title": title, "text": text}} if title else {})}
         options.remove(cat)
     return None
 

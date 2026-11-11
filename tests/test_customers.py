@@ -6,7 +6,7 @@ import pytest
 
 from app import market as MK
 from app import modules as M
-from tests.test_stall import HOUR, LOOT, NOW, fixed, market, stocked
+from tests.test_stall import HOUR, LOOT, NOW, market, stocked
 from tests.test_modules import live, rule
 
 
@@ -137,18 +137,6 @@ async def test_nobody_stops_while_pip_is_away_or_at_a_silly_price(tmp_path):
     assert not [e for e in st.events(200) if e["kind"] == "stall_sale"] and st.module(m["id"])["fails"] == 0
 
 
-@pytest.mark.asyncio
-async def test_the_engine_leaves_the_stall_to_a_live_customers_rule(tmp_path, monkeypatch):
-    s, st, agent, ask, m = await customers(tmp_path)
-    called = []
-    monkeypatch.setattr(MK, "stall_step", lambda state, settings, rng, now=None: called.append(1) or [])
-    agent.check_world()
-    assert called == []
-    M.disable(st, m["id"])
-    agent.check_world()
-    assert called == [1]
-
-
 def test_the_engines_own_modules_get_their_own_call_allowance(tmp_path):
     from tests.test_modules import modular
     s, st, agent = modular(tmp_path)
@@ -169,3 +157,57 @@ def test_three_lines_can_sell_at_once(tmp_path):
     lines = [{"place": "Brygdon", "item": n, "qty": 1} for n in ("tomatoes", "awl", "brass wire")]
     M.apply(st, m, M.plan(st, m, {"sell": lines}, NOW, "on_tick", s), NOW)
     assert sorted(r["qty"] for r in st.stall_rows("Brygdon")) == [2, 2, 8]
+
+
+# --- the rule's own logic (module_library/stall-customers.py), called directly ---------------------------------------------------
+def customers_module():
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("stall_customers", Path(MK.__file__).parent / "module_library" / "stall-customers.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+C = customers_module()
+
+
+def line(**kw):
+    return {"place": "Brygdon", "item": "tomatoes", "kind": "food", "qty": 200, "ask": 10, "fair": 10, "sold_today": 0, "selling": True, **kw}
+
+
+def tick(rows, last, now, seed=1):
+    return C.on_tick({"now": now, "state": {} if last is None else {"at": last}, "stalls": rows, "seed": seed, "pip": {}})
+
+
+@pytest.mark.parametrize("ratio, factor", [(0.0, 1.25), (0.85, 1.25), (1.0, 1.0), (1.3, 0.5), (1.6, 0.0), (2.0, 0.0)])
+def test_the_dearer_the_ask_the_fewer_stop(ratio, factor):
+    assert C.factor(ratio) == pytest.approx(factor)
+    assert C.factor(ratio) == MK.stall_factor(ratio)                                             # the same curve the stall quotes
+
+
+def test_a_poisson_count_has_the_right_mean():
+    rng = random.Random(1)
+    for mu in (0.3, 1.0, 4.0):
+        draws = [C.poisson(rng, mu) for _ in range(20000)]
+        assert min(draws) >= 0 and sum(draws) / len(draws) == pytest.approx(mu, rel=0.05)
+    assert C.poisson(rng, 0) == 0 and C.poisson(rng, -1) == 0
+
+
+def test_the_first_look_only_starts_the_clock_and_an_hour_at_most_is_credited():
+    assert tick([line()], None, NOW) == {"state": {"at": NOW}}
+    one = [sum(s["qty"] for s in tick([line()], NOW - HOUR, NOW, seed).get("sell", [])) for seed in range(300)]
+    ten = [sum(s["qty"] for s in tick([line()], NOW - 10 * HOUR, NOW, seed).get("sell", [])) for seed in range(300)]
+    assert sum(one) == sum(ten) and sum(one) / 300 == pytest.approx(C.DEMAND_PER_HOUR, rel=0.15)
+
+
+def test_only_lines_selling_now_and_within_the_days_take_and_the_stock_sell():
+    rows = [line(item="away", selling=False), line(item="full", sold_today=8), line(item="few", qty=1), line(item="fine")]
+    got = {s["item"]: s["qty"] for seed in range(50) for s in tick(rows, NOW - HOUR, NOW, seed).get("sell", [])}
+    assert set(got) <= {"few", "fine"} and got.get("few", 1) == 1
+    capped = [s["qty"] for seed in range(200) for s in tick([line(sold_today=7)], NOW - HOUR, NOW, seed).get("sell", [])]
+    assert capped and max(capped) == 1                                                            # one more today at most
+    assert all("sell" not in tick([line(ask=30)], NOW - HOUR, NOW, seed) for seed in range(100))  # a silly price: nobody
+    cheap = sum(sum(s["qty"] for s in tick([line(ask=5)], NOW - HOUR, NOW, seed).get("sell", [])) for seed in range(300))
+    fair = sum(sum(s["qty"] for s in tick([line()], NOW - HOUR, NOW, seed).get("sell", [])) for seed in range(300))
+    assert cheap > fair

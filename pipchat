@@ -416,15 +416,6 @@ def cmd_emotions(pip: Pip, a) -> None:
 
 
 def cmd_happenings(pip: Pip, a) -> None:
-    if a.replay:
-        r = pip.call(f"/happenings/{a.replay}/replay")
-        if JSON_MODE:
-            return out_json(r)
-        print(bold(f"Happening #{r['id']}") + dim(f"  slot {r['slot']}"))
-        print(f"  seed {r['seed']}\n  roll {r['roll']:.4f}" + (f", recorded {r['recorded_roll']:.4f}, " + (green("matches") if r["matches"] else red("DOES NOT MATCH")) if r["recorded_roll"] is not None else ", no roll recorded"))
-        print(f"  chance now {r['chance']}: " + ("would hit" if r["would_hit"] else "would miss"))
-        print("  decided: " + ", ".join(f"{k} {v}" for k, v in r["decided"].items()))
-        return
     rows = pip.call(f"/happenings?limit={a.n}")
     if JSON_MODE:
         return out_json(rows)
@@ -790,7 +781,6 @@ def build_parser() -> argparse.ArgumentParser:
     add("garden", cmd_garden, "Pip's garden plots")
     p = add("happenings", cmd_happenings, "small events from the world and how Pip read them")
     p.add_argument("-n", type=int, default=10, help="how many to show (default 10)")
-    p.add_argument("--replay", type=int, metavar="ID", help="roll one happening's dice again from its stored seed")
     p = add("emotions", cmd_emotions, "Pip's emotion state and what moved it")
     p.add_argument("-n", type=int, default=15, help="how many recent moves to show (default 15)")
     p = add("outreach", cmd_outreach, "Pip's channels to the outside world, today's allowance, postcards and replies")

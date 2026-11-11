@@ -172,15 +172,6 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         rows = app.state.agent.state.happenings(min(limit, 100))
         return [happenings.public_row(h) for h in rows] if request.state.public else rows
 
-    @app.get("/happenings/{happening_id}/replay")
-    def replay_happening(happening_id: int):
-        """Owner only (not in the public allowlist): the dice for one happening, rolled again from its stored seed."""
-        st = app.state.agent.state
-        h = st.happening(happening_id)
-        if not h:
-            raise HTTPException(status_code=404, detail=f"no happening #{happening_id}")
-        return happenings.replay(st, settings, h)
-
     @app.get("/garden")
     def get_garden():
         return app.state.agent.state.garden()

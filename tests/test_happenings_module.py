@@ -6,6 +6,7 @@ import pytest
 
 from app import happenings as H
 from app import modules as M
+from tests.test_happenings_rule import rule_module
 from tests.test_modules import modular
 
 DAY0 = time.mktime((2026, 6, 1, 0, 0, 0, 0, 0, -1))          # a summer day, so the season is fixed
@@ -53,7 +54,7 @@ async def test_one_roll_for_each_slot_in_its_first_half_hour(tmp_path):
     assert proposed(st, m) == []
     await M.step(st, s, None, at(0, 9, 5))
     h = proposed(st, m)[0]
-    assert h["category"] in H.CATEGORIES and h["tone"] in ("good", "bad", "neutral") and "night" not in h
+    assert h["category"] in rule_module().CATEGORIES and h["tone"] in ("good", "bad", "neutral") and "night" not in h
     st.update_module(m["id"], happen=[])
     await M.step(st, s, None, at(0, 9, 10))
     assert proposed(st, m) == []                                                                 # rolled once
@@ -139,13 +140,3 @@ async def test_a_proposed_happening_becomes_real(tmp_path):
     assert st.happenings(1) or any(e["kind"] == "happening_dropped" for e in st.events(5))
 
 
-@pytest.mark.asyncio
-async def test_the_engine_stops_rolling_while_the_rule_is_live(tmp_path, monkeypatch):
-    s, st, agent, m = await rule_live(tmp_path)
-    rolled = []
-    monkeypatch.setattr(H, "roll_slot", lambda *a: rolled.append(1) or True)
-    await H.step(st, s, None, at(0, 9, 5))
-    assert rolled == []
-    M.disable(st, m["id"])
-    await H.step(st, s, None, at(0, 9, 6))
-    assert rolled

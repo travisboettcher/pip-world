@@ -1,7 +1,6 @@
 """Market phase 2b (docs/DESIGN-market.md): neighbors sell their own wares at home and at the market one day a week, their letters offer them,
 and Pip can sell its creations (once) and copies of its works."""
 import os
-import random
 import time
 
 import pytest
@@ -232,8 +231,8 @@ async def test_a_creation_on_a_stall_sells_once_and_stays_pips_until_then(tmp_pa
     r = await call(agent, "sell", item="Brass Walker", ask=30, quantity=4)
     assert r.text.startswith("you set out Brass Walker at 30 coins each") and st.creations()
     assert st.stall_rows("Brygdon")[0]["qty"] == 1
-    sales = M.stall_tick(st, "Brygdon", time.time(), 10 * 3600, random.Random(1))
-    assert sales == [{"place": "Brygdon", "item": "Brass Walker", "qty": 1, "coins": 30, "left": 0, "what": "creation"}]
+    sale = M.sell_units(st, "Brygdon", st.stall_rows("Brygdon")[0], 1, time.time())
+    assert sale == {"place": "Brygdon", "item": "Brass Walker", "qty": 1, "coins": 30, "left": 0, "what": "creation"}
     assert st.creation(c["id"])["given_to"] == "a buyer at Brygdon" and st.stall_rows("Brygdon") == []
 
 
@@ -247,7 +246,8 @@ async def test_taking_a_creation_back_or_giving_it_away_meanwhile(tmp_path):
     assert r.text == "you take 1 Brass Walker back off the stall" and st.creations() and st.find_item("Brass Walker")[0] is None
     await call(agent, "sell", item="Brass Walker", ask=30)
     st.give_creation(c["id"], "Travis")
-    assert M.stall_tick(st, "Brygdon", time.time(), 10 * 3600, random.Random(1)) == [] and st.stall_rows("Brygdon") == []
+    M.prune(st)
+    assert st.stall_rows("Brygdon") == []                                                     # given away meanwhile: off the stall
 
 
 @pytest.mark.asyncio
@@ -260,8 +260,8 @@ async def test_copies_of_a_work_sell_at_a_stall_and_the_original_stays(tmp_path)
     assert r.text.startswith("you set out 1 copy of The Marsh at Dusk at 5 coins each")
     r = await call(agent, "sell", item="The Marsh at Dusk", ask=5, quantity=9)
     assert r.text.startswith(f"you set out {M.WORK_COPIES_MAX} copies") and st.stall_rows("Brygdon")[0]["qty"] == M.WORK_COPIES_MAX
-    sales = M.stall_tick(st, "Brygdon", time.time(), 3 * 3600, random.Random(2))
-    assert sales and sales[0]["what"] == "work" and st.works()[0]["id"] == w
+    sale = M.sell_units(st, "Brygdon", st.stall_rows("Brygdon")[0], 2, time.time())
+    assert sale["what"] == "work" and sale["qty"] == 2 and st.works()[0]["id"] == w
     await call(agent, "sell", item="The Marsh at Dusk", ask=0)
     assert st.find_item("The Marsh at Dusk")[0] is None
 
@@ -381,3 +381,14 @@ def test_booths_name_their_owner_and_lists_say_when_sold_out(tmp_path, monkeypat
     (tmp_path / "b").mkdir()
     s2, st2, gm2, agent2, ch2 = world(tmp_path / "b", market=False)
     assert M.selling_where(st2, ch2) == "sells cork floats, carrot seeds, driftwood at home"
+
+
+def test_pruning_takes_off_only_creations_pip_no_longer_has(tmp_path):
+    s, st, gm, agent, ch = world(tmp_path)
+    kept, gone = creation(st), st.add_creation("Tin Bird", "a bird", None, "sound", {"capabilities": {}, "quirks": []}, {})
+    st.set_stall("Brygdon", "brass walker", name="Brass Walker", kind="creation", qty=1, ask=30, attrs={"creation_id": kept["id"]})
+    st.set_stall("Brygdon", "tin bird", name="Tin Bird", kind="creation", qty=1, ask=30, attrs={"creation_id": gone["id"]})
+    st.set_stall("Brygdon", "tomatoes", name="tomatoes", kind="food", qty=3, ask=2, attrs={})
+    st.give_creation(gone["id"], "Oriel")
+    assert M.prune(st) == 1 and sorted(r["item"] for r in st.stall_rows("Brygdon")) == ["brass walker", "tomatoes"]
+    assert M.prune(st) == 0

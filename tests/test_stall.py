@@ -1,5 +1,4 @@
 """Pip's own stall at a market (docs/DESIGN-market.md, phase 2): goods set out at an ask, customers who stop only while Pip is there, and what they pay."""
-import random
 import time
 
 import pytest
@@ -30,14 +29,6 @@ def market(tmp_path, here=True, **kw):
 @pytest.mark.parametrize("ratio, factor", [(0.0, 1.25), (0.5, 1.25), (0.85, 1.25), (1.0, 1.0), (1.3, 0.5), (1.6, 0.0), (2.0, 0.0), (1.1, pytest.approx(5 / 6))])
 def test_the_dearer_the_ask_the_fewer_customers_stop(ratio, factor):
     assert M.stall_factor(ratio) == factor
-
-
-def test_a_poisson_count_has_the_right_mean_and_never_goes_below_zero():
-    rng = random.Random(1)
-    for mu in (0.3, 1.0, 4.0):
-        draws = [M.poisson(rng, mu) for _ in range(20000)]
-        assert min(draws) >= 0 and sum(draws) / len(draws) == pytest.approx(mu, rel=0.05)
-    assert M.poisson(rng, 0) == 0 and M.poisson(rng, -2) == 0
 
 
 def test_stalls_belong_to_markets_only():
@@ -117,9 +108,15 @@ class Count:
         return 0.0
 
 
-def fixed(monkeypatch, *counts):
-    seq = list(counts)
-    monkeypatch.setattr(M, "poisson", lambda rng, mu: seq.pop(0) if seq else 0)
+def sold(st, place, now, count):
+    """Customers buy `count` of each line (as many as are there and the market still takes today): what the stall-customers rule
+    proposes and the referee allows, applied the way the engine applies it (market.sell_units)."""
+    sales = []
+    for row in st.stall_rows(place):
+        units = min(count, row["qty"], M.STALL_DAILY_UNITS - M.sold_today(row, now))
+        if units > 0:
+            sales.append(M.sell_units(st, place, row, units, now))
+    return sales
 
 
 def stocked(tmp_path, qty=10, ask=None, name="tomatoes", kind="food", attrs=None):
@@ -133,9 +130,8 @@ def stocked(tmp_path, qty=10, ask=None, name="tomatoes", kind="food", attrs=None
 
 def test_customers_pay_the_ask_and_the_price_slips(tmp_path, monkeypatch):
     s, st, agent, ask = stocked(tmp_path)
-    fixed(monkeypatch, 3)
     before = M.local(st, "Brygdon", "tomatoes", NOW)
-    sales = M.stall_tick(st, "Brygdon", NOW, 600, random.Random(1))
+    sales = sold(st, "Brygdon", NOW, 3)
     assert sales == [{"place": "Brygdon", "item": "tomatoes", "qty": 3, "coins": 3 * ask, "left": 7}]
     assert st.coins() == 10 + 3 * ask
     row = st.stall_rows("Brygdon")[0]
@@ -148,122 +144,30 @@ def test_customers_pay_the_ask_and_the_price_slips(tmp_path, monkeypatch):
 
 def test_the_stall_sells_what_it_has_and_a_sold_out_line_goes(tmp_path, monkeypatch):
     s, st, agent, ask = stocked(tmp_path, qty=4)
-    fixed(monkeypatch, 9)
-    (sale,) = M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))
+    (sale,) = sold(st, "Brygdon", NOW, 9)
     assert sale["qty"] == 4 and sale["left"] == 0 and sale["coins"] == 4 * ask
     assert st.stall_rows("Brygdon") == []
 
 
 def test_the_market_only_wants_so_much_of_one_thing_a_day(tmp_path, monkeypatch):
     s, st, agent, ask = stocked(tmp_path, qty=30)
-    fixed(monkeypatch, 5, 5, 5)
-    assert M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))[0]["qty"] == 5
-    assert M.stall_tick(st, "Brygdon", NOW + 100, 3600, random.Random(1))[0]["qty"] == M.STALL_DAILY_UNITS - 5          # only three more today
-    assert M.stall_tick(st, "Brygdon", NOW + 200, 3600, random.Random(1)) == []
+    assert sold(st, "Brygdon", NOW, 5)[0]["qty"] == 5
+    assert sold(st, "Brygdon", NOW + 100, 5)[0]["qty"] == M.STALL_DAILY_UNITS - 5          # only three more today
+    assert sold(st, "Brygdon", NOW + 200, 5) == []
     assert st.stall_rows("Brygdon")[0]["sold_today"] == M.STALL_DAILY_UNITS
-    fixed(monkeypatch, 2)
-    assert M.stall_tick(st, "Brygdon", NOW + 86400, 3600, random.Random(1))[0]["qty"] == 2                          # a new day
+    assert sold(st, "Brygdon", NOW + 86400, 2)[0]["qty"] == 2                          # a new day
     assert st.stall_rows("Brygdon")[0]["sold_today"] == 2 and st.stall_rows("Brygdon")[0]["day"] == "2026-03-06"
-
-
-def test_nobody_stops_at_a_silly_price_and_more_stop_at_a_cheap_one(tmp_path):
-    s, st, agent, fair = stocked(tmp_path, qty=200)
-    st.db.execute("UPDATE stalls SET ask = ?", (fair * 3,))
-    assert sum(sum(x["qty"] for x in M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(i))) for i in range(50)) == 0
-    (tmp_path / "b").mkdir()
-    s2, st2, agent2, fair2 = stocked(tmp_path / "b", qty=200)
-    st2.db.execute("UPDATE stalls SET ask = 1")
-    cheap = sum(sum(x["qty"] for x in M.stall_tick(st2, "Brygdon", NOW, 3600, random.Random(i))) for i in range(1))
-    assert cheap >= 0
-
-
-def test_the_rate_is_about_two_an_hour_at_the_going_price(tmp_path):
-    totals = []
-    for i in range(40):
-        (tmp_path / str(i)).mkdir()
-        s, st, agent, ask = stocked(tmp_path / str(i), qty=200)
-        st.db.execute("UPDATE stalls SET ask = ?", (M.fair_price(st, "Brygdon", "tomatoes", "food", {"food_value": 0.5}, NOW),))
-        sold = sum(x["qty"] for x in M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(i)))
-        totals.append(sold)
-    assert sum(totals) / len(totals) == pytest.approx(M.STALL_DEMAND_PER_HOUR, abs=0.6)
-
-
-def test_each_item_sells_on_its_own(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path, qty=6)
-    st.add_item("awl", 3, "tool", "")
-    M.list_on_stall(st, "Brygdon", "awl", 3, M.fair_price(st, "Brygdon", "awl", "tool", {}, NOW), NOW)
-    fixed(monkeypatch, 2, 1)
-    sales = M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))
-    assert sorted((x["item"], x["qty"]) for x in sales) == [("awl", 1), ("tomatoes", 2)] or sorted((x["item"], x["qty"]) for x in sales) == [("awl", 2), ("tomatoes", 1)]
-    assert len(sales) == 2
-
-
-def test_no_time_no_customers(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path)
-    fixed(monkeypatch, 5)
-    assert M.stall_tick(st, "Brygdon", NOW, 0, random.Random(1)) == [] and st.coins() == 10
-    seen = []
-    monkeypatch.setattr(M, "poisson", lambda rng, mu: seen.append(mu) or 0)
-    M.stall_tick(st, "Brygdon", NOW, 1800, random.Random(1))
-    fair = M.fair_price(st, "Brygdon", "tomatoes", "food", {"food_value": 0.5}, NOW)
-    assert seen == [pytest.approx(M.STALL_DEMAND_PER_HOUR * M.stall_factor(ask / fair) * 0.5)]
 
 
 def test_what_the_stall_says_about_itself(tmp_path, monkeypatch):
     s, st, agent, ask = stocked(tmp_path, qty=5)
     assert M.stall_lines(st, "Brygdon", NOW) == [f"Your stall here: 5 tomatoes at {M.coins_text(ask)} each (nothing sold yet)."]
-    fixed(monkeypatch, 2)
-    M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))
+    sold(st, "Brygdon", NOW, 2)
     assert M.stall_lines(st, "Brygdon", NOW) == [f"Your stall here: 3 tomatoes at {M.coins_text(ask)} each (sold 2 for {M.coins_text(2 * ask)} so far)."]
     assert M.stall_lines(st, "Saltholm", NOW) == []
 
 
 # --- when it all happens: Pip has to be there ----------------------------------------------------------------------
-def step(st, s, now, rng=None):
-    return M.stall_step(st, s, rng or random.Random(1), now)
-
-
-def test_the_stall_sells_only_while_pip_is_at_the_market_awake_and_it_is_open(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path, qty=50)
-    fixed(monkeypatch, *([2] * 20))
-    assert step(st, s, NOW) == []                                                     # the first look only starts the clock
-    sales = step(st, s, NOW + 1800)
-    assert sales and sales[0]["qty"] == 2
-    st.update_agent(location="workshop")
-    assert step(st, s, NOW + 3600) == []                                              # Pip is at home
-    st.update_agent(location="Brygdon", activity="sleeping")
-    assert step(st, s, NOW + 5400) == []
-    st.update_agent(activity="idle")
-    st.start_session(0, 0, 10, NOW + 99999, kind="walk", target="Saltholm")
-    assert step(st, s, NOW + 7200) == []
-    st.end_session()
-    st.update_place("Brygdon", hours=[0, 1])
-    assert step(st, s, NOW + 9000) == []                                              # closed
-    st.update_place("Brygdon", hours=[0, 24])
-    assert step(st, s, NOW + 10800)                                                    # open again
-
-
-def test_the_time_credited_at_once_is_capped_at_an_hour(tmp_path):
-    s, st, agent, ask = stocked(tmp_path, qty=50)
-    step(st, s, NOW)
-    seen = []
-    orig = M.poisson
-    M.poisson = lambda rng, mu: seen.append(mu) or 0
-    try:
-        step(st, s, NOW + 10 * HOUR)
-    finally:
-        M.poisson = orig
-    fair = M.fair_price(st, "Brygdon", "tomatoes", "food", {"food_value": 0.5}, NOW + 10 * HOUR)
-    assert seen == [pytest.approx(M.STALL_DEMAND_PER_HOUR * M.stall_factor(ask / fair) * 1.0)]       # one hour, not ten
-
-
-def test_a_shop_has_no_stall_customers(tmp_path):
-    s, st, agent, ask = stocked(tmp_path, qty=5)
-    st.update_agent(location="Saltholm")
-    st.db.execute("UPDATE stalls SET place = 'Saltholm'")
-    assert step(st, s, NOW) == [] and step(st, s, NOW + 1800) == []
-
-
 # --- the tools -------------------------------------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_sell_with_an_ask_sets_a_stall_and_a_zero_ask_takes_it_back(tmp_path):
@@ -312,14 +216,6 @@ def test_the_prompt_shows_the_stall_where_pip_stands_and_what_it_sold(tmp_path):
     st.log("stall_sale", place="Brygdon", item="tomatoes", qty=2, coins=12, left=3)
     p = agent._perception("timer", [])
     assert "- at your stall you sold 2 tomatoes for 12 coins" in p
-
-
-def test_the_monitor_works_the_stall(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path)
-    called = []
-    monkeypatch.setattr(M, "stall_step", lambda state, settings, rng, now=None: called.append(1) or [])
-    agent.check_world()
-    assert called == [1]
 
 
 # --- how the rest of the world takes it ----------------------------------------------------------------------------
@@ -390,67 +286,18 @@ def test_a_place_that_is_neither_shop_nor_market_has_no_stall(tmp_path):
     assert M.list_on_stall(st, "Lake", "tomatoes", 1, 3, NOW) == (False, "there is no stall to be had at Lake")
 
 
-def test_a_line_at_its_daily_limit_does_not_stop_the_others_selling(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path, qty=10)
-    st.add_item("awl", 3, "tool", "")
-    M.list_on_stall(st, "Brygdon", "awl", 3, M.fair_price(st, "Brygdon", "awl", "tool", {}, NOW), NOW)
-    st.set_stall("Brygdon", "awl", sold_today=M.STALL_DAILY_UNITS, day=TODAY)                          # the awl is sold out for today, and comes first
-    fixed(monkeypatch, 2, 2)
-    sales = M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))
-    assert [(x["item"], x["qty"]) for x in sales] == [("tomatoes", 2)]
-
-
-def test_a_second_of_selling_is_selling(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path)
-    fixed(monkeypatch, 1)
-    assert M.stall_tick(st, "Brygdon", NOW, 1, random.Random(1))[0]["qty"] == 1
-
-
-def test_customers_judge_the_ask_against_the_price_at_this_market_today(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path)
-    st.set_price_row("Brygdon", "tomato", 1.5, NOW, TODAY, 0)
-    seen = []
-    monkeypatch.setattr(M, "poisson", lambda rng, mu: seen.append(mu) or 0)
-    M.stall_tick(st, "Brygdon", NOW, 3600, random.Random(1))
-    fair = priced(5, "Brygdon", "tomatoes", local=1.5)
-    assert seen == [pytest.approx(M.STALL_DEMAND_PER_HOUR * M.stall_factor(ask / fair))]
-
-
-def test_the_stall_is_worked_in_the_markets_hours_at_the_markets_clock(tmp_path, monkeypatch):
+def test_the_stall_sells_in_the_markets_hours_at_the_markets_clock(tmp_path):
     s, st, agent, ask = stocked(tmp_path, qty=50)
     st.update_place("Brygdon", hours=[12, 13])
-    fixed(monkeypatch, *([2] * 10))
-    step(st, s, NOW)
-    assert step(st, s, NOW + 1800)                                                            # half past twelve: open
-    assert step(st, s, NOW + 3 * HOUR) == []                                                  # three o'clock: shut
+    assert M.selling_at(st, s, NOW + 1800) == "Brygdon"                                       # half past twelve: open
+    assert M.selling_at(st, s, NOW + 3 * HOUR) is None                                        # three o'clock: shut
     st.update_place("Brygdon", hours=None, daylight_only=1)
-    assert step(st, s, NOW + 3 * HOUR + 60)                                                   # a daylight place is open in the afternoon...
-    assert step(st, s, at_hour(23)) == []                                                     # ...and not at eleven at night
+    assert M.selling_at(st, s, NOW + 3 * HOUR + 60) == "Brygdon"                              # a daylight place is open in the afternoon...
+    assert M.selling_at(st, s, at_hour(23)) is None                                           # ...and not at eleven at night
 
 
 def at_hour(h):
     return time.mktime((2026, 3, 5, h, 0, 0, 0, 0, -1))
-
-
-def test_the_step_credits_the_time_since_the_last_look_and_uses_the_dice_it_is_given(tmp_path, monkeypatch):
-    s, st, agent, ask = stocked(tmp_path, qty=50)
-    step(st, s, NOW)
-    seen = []
-    monkeypatch.setattr(M, "poisson", lambda rng, mu: seen.append(mu) or 0)
-    step(st, s, NOW + 1800)
-    fair = M.fair_price(st, "Brygdon", "tomatoes", "food", {"food_value": 0.5}, NOW + 1800)
-    assert seen == [pytest.approx(M.STALL_DEMAND_PER_HOUR * M.stall_factor(ask / fair) * 0.5)]
-    monkeypatch.undo()
-    got = []
-    for sub in ("b", "c"):                                                                    # two identical worlds: the step and a direct tick, the same dice
-        (tmp_path / sub).mkdir()
-        s2, st2, agent2, ask2 = stocked(tmp_path / sub, qty=50)
-        if sub == "b":
-            step(st2, s2, NOW)
-            got.append(step(st2, s2, NOW + 3600, random.Random(7)))
-        else:
-            got.append(M.stall_tick(st2, "Brygdon", NOW + 3600, 3600, random.Random(7)))
-    assert got[0] == got[1] and got[0]
 
 
 def test_a_quick_sale_at_a_market_says_what_a_stall_would_fetch(tmp_path):

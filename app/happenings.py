@@ -10,7 +10,7 @@ import re
 import secrets
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 from . import emotions as emo
 from . import creations as cr
@@ -23,10 +23,7 @@ SEVERITIES = ("minor", "medium", "major")
 LENS_AMOUNT = {"minor": 4, "medium": 9, "major": 16}
 NEUTRAL_AMOUNT = 2
 JOLT_SHARE = 0.3                  # the part of a happening that is a startle (surprise); the rest is meaning, which Pip reads
-SLOT_WINDOW = 30 * 60             # a slot is rolled within this long of its start, or skipped
-COOLDOWN_HOURS = 12               # a category does not repeat within this
-TONE_WEIGHTS = {"good": 35, "bad": 25, "neutral": 40}
-PITY = 0.3                        # after two bad ones in a row bad is this much as likely
+TONES = ("good", "bad", "neutral")
 CROSSOVER = 0.2                   # how often the lens is the unusual one for the tone
 LENS_USUAL = {"bad": ("sadness", "fear", "anger", "disgust"), "good": ("joy", "trust", "anticipation"), "neutral": ("surprise", "anticipation")}
 LENS_CROSS = {"bad": ("joy", "anticipation", "trust"), "good": ("sadness", "fear"), "neutral": emo.NAMES}
@@ -47,19 +44,6 @@ YIELD_GOOD = {"minor": 1, "medium": 2, "major": 3}
 SEASONS = ("winter", "spring", "summer", "autumn")
 SEASON_OF_MONTH = ("winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter")   # January first
 # What a season makes likelier (a missing entry is 1): which categories come up, and the tone of a category (see DESIGN-happenings.md, "Seasons").
-SEASON_CATEGORY = {
-    "winter": {"garden": 0.5, "creature": 1.2, "pantry": 1.3, "body": 1.3, "mishap": 1.2, "atmosphere": 1.4, "found": 0.8},
-    "spring": {"garden": 1.5, "creature": 1.3, "found": 1.2, "kindness": 1.1, "atmosphere": 1.1},
-    "summer": {"garden": 1.2, "pantry": 1.5, "creature": 1.1, "market": 1.2, "body": 0.9},
-    "autumn": {"found": 1.4, "creature": 1.2, "memory": 1.5, "market": 1.2, "atmosphere": 1.2, "garden": 0.9},
-}
-SEASON_TONE = {
-    "winter": {("body", "bad"): 1.5, ("garden", "bad"): 1.3, ("body", "good"): 0.8},
-    "spring": {("garden", "good"): 1.4, ("body", "good"): 1.3},
-    "summer": {("pantry", "bad"): 1.4, ("garden", "good"): 1.1},
-    "autumn": {("memory", "bad"): 1.4, ("found", "good"): 1.2},
-}
-NIGHT_STALE_HOURS = 2             # a night is rolled within this long of waking, or not at
 MENDING_QTY = (1, 3)                                                    # units of a material a major mishap asks for
 OLD_NOTE_DAYS = 2                                                       # a note this old can come back to mind
 MIN_DIARY = 7
@@ -72,27 +56,7 @@ MIN_TEXT = 20
 TITLE_MAX = 60
 
 
-# --- slots and the roll ------------------------------------------------------------------------------------
-def slot_starts(settings, day: date) -> list[tuple[str, float]]:
-    """The slots of the awake day that begins at `day`'s wake hour: (key, start timestamp), `happenings_slot_hours` apart."""
-    wake, bed = settings.wake_hour, settings.bedtime_hour
-    length = (bed - wake) % 24 or 24
-    midnight = datetime(day.year, day.month, day.day)
-    out, k = [], 0
-    while k * settings.happenings_slot_hours < length:
-        start = midnight + timedelta(hours=wake + k * settings.happenings_slot_hours)
-        out.append((f"{day.isoformat()}#{k}", start.timestamp()))
-        k += 1
-    return out
-
-
-def current_slot(settings, now: float) -> tuple[str, float]:
-    """The latest slot that has started, of today's or yesterday's awake day (yesterday's first slot has always started)."""
-    today = datetime.fromtimestamp(now).date()
-    started = [s for d in (today - timedelta(days=1), today) for s in slot_starts(settings, d) if s[1] <= now]
-    return max(started, key=lambda s: s[1])
-
-
+# --- the dice the engine still owns: a secret per install, the season, the lens, the amounts ----------------------------
 def salt(state) -> str:
     """A secret per install, so the dice are reproducible here and not guessable from outside."""
     value = state.meta("happenings_salt")
@@ -102,44 +66,10 @@ def salt(state) -> str:
     return value
 
 
-def roll_slot(state, settings, slot: str, now: float) -> bool:
-    """Roll a slot once (the roll is recorded, so a restart cannot roll it again); True when it is a hit."""
-    done = state.happening_roll(slot)
-    if done:
-        return bool(done["hit"])
-    roll = random.Random(f"{salt(state)}:{slot}").random()
-    hit = roll < settings.happenings_chance
-    state.add_happening_roll(slot, now, roll, hit)
-    return hit
-
-
-# --- the dice -------------------------------------------------------------------------------------------------
-def pick_severity(rng: random.Random, weights) -> str:
-    return rng.choices(SEVERITIES, weights=weights)[0]
-
-
 def season_of(now: float, hemisphere: str = "north") -> str:
     """The meteorological season of a timestamp (December to February is winter in the north; the south is half a year along)."""
     month = datetime.fromtimestamp(now).month - 1
     return SEASON_OF_MONTH[(month + (6 if hemisphere == "south" else 0)) % 12]
-
-
-def category_weight(season: str | None, category: str) -> float:
-    return SEASON_CATEGORY.get(season, {}).get(category, 1)
-
-
-def tone_factor(season: str | None, category: str, tone: str) -> float:
-    return SEASON_TONE.get(season, {}).get((category, tone), 1)
-
-
-def pick_tone(rng: random.Random, allowed, recent, factors: dict | None = None) -> str | None:
-    """Good, bad or neutral from the base weights (times the season's factors), bad much less likely after two bad ones in a row."""
-    tones = [t for t in TONE_WEIGHTS if t in allowed]
-    if not tones:
-        return None
-    factors = factors or {}
-    weights = [TONE_WEIGHTS[t] * factors.get(t, 1) * (PITY if t == "bad" and list(recent[:2]) == ["bad", "bad"] else 1) for t in tones]
-    return rng.choices(tones, weights=weights)[0]
 
 
 def pick_lens(rng: random.Random, tone: str) -> str:
@@ -206,26 +136,6 @@ def _one_of(rng: random.Random, seq):
     return seq[rng.randrange(len(seq))]
 
 
-def _plan_garden(w, tone, severity, rng):
-    plot = _one_of(rng, w["plots"])
-    crop = plot["crop"]
-    if tone == "neutral":
-        return Plan([], [crop])
-    sign = 1 if tone == "good" else -1
-    if tone == "bad" and severity == "major" and rng.random() < 0.5:
-        return Plan([{"kind": "crop_ruin", "plot": plot["plot"], "crop": crop}], [crop])
-    if rng.random() < 0.5:
-        left = max(0.0, plot["ready_at"] - w["now"])
-        shift = round(left / 60 * SHIFT[severity])
-        if shift < 1:
-            return None
-        return Plan([{"kind": "crop_time", "plot": plot["plot"], "crop": crop, "factor": 1 - sign * SHIFT[severity], "minutes": sign * shift}], [crop])
-    delta = YIELD_GOOD[severity] if tone == "good" else min(YIELD_BAD[severity], plot["yield"] - 1)
-    if delta < 1:
-        return None
-    return Plan([{"kind": "crop_yield", "plot": plot["plot"], "crop": crop, "delta": sign * delta}], [crop])
-
-
 def _find_pool(kinds) -> list:
     return [e for e in gathering.WOODS if e[1] in kinds]
 
@@ -244,79 +154,10 @@ def _pest_loss(w, severity, rng, smallest):
     return Plan([{"kind": "food_loss", "name": stack["name"], "qty": food_loss(stack["qty"], severity, rng.random())}], [stack["name"]])
 
 
-def _plan_creature(w, tone, severity, rng):
-    if tone == "neutral":
-        return Plan()
-    if tone == "good":
-        item = _found_item(rng, severity, ("seed", "material"))
-        return Plan([item], [item["name"]])
-    return _pest_loss(w, severity, rng, 5)
-
-
-def _plan_pantry(w, tone, severity, rng):
-    if tone == "neutral":
-        return Plan()
-    return _pest_loss(w, severity, rng, 20)
-
-
-def _plan_found(w, tone, severity, rng):
-    if tone == "neutral":
-        return Plan()
-    if tone == "bad":
-        loss = coin_loss(w["coins"], severity)
-        return Plan([{"kind": "coins", "delta": -loss}]) if loss >= 1 else None
-    if rng.random() < 0.5:
-        item = _found_item(rng, severity, ("food", "seed", "material"))
-        return Plan([item], [item["name"]])
-    lo, hi = FOUND_COINS[severity]
-    return Plan([{"kind": "coins", "delta": rng.randint(lo, hi)}])
-
-
-def _plan_body(w, tone, severity, rng):
-    if tone == "neutral":
-        return Plan()
-    sign = 1 if tone == "good" else -1
-    if tone == "bad" and w["low"]:
-        return None
-    stat = _one_of(rng, ("energy", "hunger"))
-    return Plan([{"kind": stat, "delta": sign * ENERGY[severity] * (1 if stat == "energy" else -1)}])
-
-
-def _plan_market(w, tone, severity, rng):
-    booth = _one_of(rng, w["booths"])
-    held = [i["name"] for i in w["foods"]]
-    table = [e[0] for e in (booth["loot"] or [])]
-    pool = held or table
-    if not pool:
-        return None
-    item = _one_of(rng, pool)
-    if tone == "neutral":
-        return Plan([], [booth["key"], item])
-    units = PRICE_UNITS[severity] * (1 if tone == "good" else -1)
-    return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": units}], [booth["key"], item])
-
-
 def _mending_part(rng):
     pool = [e for e in gathering.JUNKYARD if e[1] == "material"]
     entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
     return {"name": entry[0], "qty": rng.randint(*MENDING_QTY)}
-
-
-def _plan_mishap(w, tone, severity, rng):
-    if tone == "neutral":
-        return Plan([], w["tools"][:1])
-    if severity == "minor":
-        return None if w["low"] else Plan([{"kind": "energy", "delta": -ENERGY["minor"]}], w["tools"][:1])
-    if not w["stoppable"]:
-        return None
-    c = _one_of(rng, w["stoppable"])
-    part = _mending_part(rng) if severity == "major" else None
-    return Plan([{"kind": "creation_stop", "id": c["id"], "name": c["name"], "part": part}], [c["name"]] + ([part["name"]] if part else []))
-
-
-def _plan_neighbor(w, tone, severity, rng):
-    name = _one_of(rng, w["neighbors"])
-    return Plan([] if tone == "neutral" else [{"kind": "news", "name": name, "tone": tone}], [name])
 
 
 def _proper_nouns(text: str) -> list[str]:
@@ -327,62 +168,6 @@ def _plan_memory(w, tone, severity, rng):
     note = _one_of(rng, w["old_notes"])
     text = clip(note["text"], 200)
     return Plan([], _proper_nouns(text), {"memory": text})
-
-
-def _plan_kindness(w, tone, severity, rng):
-    name = _one_of(rng, w["neighbors"])
-    if rng.random() < 0.5:
-        item = {**_found_item(rng, severity, ("food", "seed", "material")), "gift": True}
-        return Plan([item], [item["name"], name])
-    lo, hi = FOUND_COINS[severity]
-    return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), "gift": True}], [name])
-
-
-def _plan_atmosphere(w, tone, severity, rng):
-    return Plan()
-
-
-@dataclass(frozen=True)
-class Category:
-    name: str
-    tones: tuple
-    needs: object      # (world) -> bool
-    plan: object       # (world, tone, severity, rng) -> Plan | None
-    night: bool = True # can it happen while Pip sleeps (and be found on waking)?
-
-
-CATEGORIES = {c.name: c for c in (
-    Category("garden", ("good", "bad", "neutral"), lambda w: bool(w["plots"]), _plan_garden),
-    Category("creature", ("good", "bad", "neutral"), lambda w: True, _plan_creature),
-    Category("pantry", ("bad", "neutral"), lambda w: True, _plan_pantry),
-    Category("found", ("good", "bad", "neutral"), lambda w: True, _plan_found),
-    Category("body", ("good", "bad", "neutral"), lambda w: True, _plan_body),
-    Category("market", ("good", "bad", "neutral"), lambda w: bool(w["booths"]), _plan_market, night=False),
-    Category("mishap", ("bad", "neutral"), lambda w: bool(w["stoppable"] or w["tools"]), _plan_mishap),
-    Category("neighbor", ("good", "bad", "neutral"), lambda w: bool(w["neighbors"]), _plan_neighbor, night=False),
-    Category("memory", ("good", "bad", "neutral"), lambda w: w["diary_count"] >= MIN_DIARY and bool(w["old_notes"]), _plan_memory),
-    Category("kindness", ("good",), lambda w: bool(w["neighbors"]), _plan_kindness),
-    Category("atmosphere", ("neutral",), lambda w: True, _plan_atmosphere),
-)}
-
-
-def build(state, settings, w: dict, now: float, rng: random.Random, night: bool = False) -> dict | None:
-    """Choose a happening for the world as it is: category, tone, severity, effects and lens. None when nothing is possible."""
-    recent = state.happenings(2 * len(CATEGORIES) + 10)       # more than the categories there are, so every one in its cooldown is seen
-    cooling = {h["category"] for h in recent if now - h["ts"] < COOLDOWN_HOURS * 3600 and h["status"] != "skipped"}
-    last_tones = [h["tone"] for h in recent]
-    options = [c for c in CATEGORIES.values() if c.name not in cooling and c.needs(w) and (c.night or not night)]
-    season = w.get("season")
-    while options:
-        cat = rng.choices(options, weights=[category_weight(season, c.name) for c in options])[0]
-        tone = pick_tone(rng, cat.tones, last_tones, {t: tone_factor(season, cat.name, t) for t in cat.tones})
-        severity = "minor" if tone == "neutral" else pick_severity(rng, settings.happenings_severity)
-        plan = cat.plan(w, tone, severity, rng)
-        if plan is not None:
-            return {"category": cat.name, "tone": tone, "severity": severity, "lens": pick_lens(rng, tone),
-                    "effects": plan.effects, "names": plan.names, "facts": plan.facts, "line": effects_line(plan.effects)}
-        options.remove(cat)
-    return None
 
 
 # --- effects: described, then applied ---------------------------------------------------------------------------
@@ -473,43 +258,12 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
 LENS_CLAUSE = {"joy": "You can't help smiling.", "sadness": "It leaves you a little low.", "anger": "It rankles.", "fear": "It unsettles you.",
                "trust": "It feels like the world is on your side.", "disgust": "You'd rather not look too closely.",
                "surprise": "You didn't see that coming.", "anticipation": "You wonder what comes next."}
-TEMPLATES = {
-    ("garden", "good"): ("A kind spell", "The light is kind to the garden this morning."),
-    ("garden", "bad"): ("A bad turn", "Something is off in the garden: a chill, a pest, a wind."),
-    ("garden", "neutral"): ("The garden shifts", "The air in the garden changes, and then settles again."),
-    ("creature", "good"): ("A small visitor", "A small creature comes by and leaves something behind."),
-    ("creature", "bad"): ("Nibbling", "Something has been at the pantry in the night."),
-    ("creature", "neutral"): ("Watched", "A small creature watches you from the fence, then wanders off."),
-    ("pantry", "bad"): ("Turned", "Some of what you stored has turned."),
-    ("pantry", "neutral"): ("The shelves", "You look over the shelves and find everything as it was."),
-    ("found", "good"): ("A small find", "You come across something small and useful."),
-    ("found", "bad"): ("A hole in a pocket", "You find a hole in your pocket where something should be."),
-    ("found", "neutral"): ("An odd thing", "You notice an odd little thing and turn it over."),
-    ("body", "good"): ("Rested", "You wake with a lightness you hadn't expected."),
-    ("body", "bad"): ("A rough day", "Your body is slow and heavy today."),
-    ("body", "neutral"): ("A yawn", "A great yawn takes you by surprise."),
-    ("market", "good"): ("Good word", "You hear that things are selling well."),
-    ("market", "bad"): ("Bad word", "You hear the shelves are full and buyers are few."),
-    ("market", "neutral"): ("Market talk", "You hear some idle talk about the market."),
-    ("mishap", "bad"): ("Something slips", "Something in the workshop slips, jars or gives way."),
-    ("mishap", "neutral"): ("A squeak", "Something in the workshop squeaks, and nothing is wrong."),
-    ("neighbor", "good"): ("Good news", "Word comes from a neighbor that things are going well."),
-    ("neighbor", "bad"): ("A small worry", "Word comes from a neighbor of a small worry."),
-    ("neighbor", "neutral"): ("Neighbourly talk", "You hear a little idle talk about a neighbor."),
-    ("memory", "good"): ("A fond thought", "An old thought of your own comes back to you."),
-    ("memory", "bad"): ("A wistful thought", "An old thought of your own comes back, and lingers."),
-    ("memory", "neutral"): ("A thought returns", "An old thought of your own comes back and puzzles you."),
-    ("kindness", "good"): ("Left for you", "Someone has left something for you and gone."),
-    ("atmosphere", "neutral"): ("In the air", "You notice a sound, a light, a smell, and then it is gone."),
-}
-
-
 FALLBACK = {"good": ("A small good turn", "Something small goes your way."), "bad": ("A small bad turn", "Something small goes against you."),
             "neutral": ("A moment", "Something small happens, and passes.")}
 
 
 def template(c: dict) -> tuple[str, str]:
-    title, text = c.get("fallback") or TEMPLATES.get((c["category"], c["tone"])) or FALLBACK[c["tone"]]
+    title, text = c.get("fallback") or FALLBACK[c["tone"]]
     memory = (c.get("facts") or {}).get("memory")
     if memory:                                                  # the thought itself, not just that there was one
         text = f"An old thought of your own comes back to you: \"{memory}\""
@@ -565,14 +319,6 @@ async def author(gm, c: dict, facts: dict, recent: list[str], log=None) -> tuple
 # --- making one --------------------------------------------------------------------------------------------------
 def _today_start(now: float) -> float:
     return datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-
-
-async def create(state, settings, gm, w: dict, now: float, slot: str, rng: random.Random, night: bool = False) -> dict | None:
-    """One happening for this slot: chosen, written, applied (unless HAPPENINGS=log) and logged. None when nothing fits."""
-    c = build(state, settings, w, now, rng, night)
-    if not c:
-        return None
-    return await record(state, settings, gm, c, w, now, slot, night)
 
 
 async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, night: bool = False, by: str = "") -> dict:
@@ -704,7 +450,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
 
 def shape(p) -> None:
     """A proposed happening's form (raises ValueError): what can be checked without looking at the world."""
-    if not isinstance(p, dict) or not CATEGORY.match(str(p.get("category") or "")) or p.get("tone") not in TONE_WEIGHTS \
+    if not isinstance(p, dict) or not CATEGORY.match(str(p.get("category") or "")) or p.get("tone") not in TONES \
             or p.get("severity", "minor") not in SEVERITIES:
         raise ValueError("`happen` is {category (a word or two), tone (good, bad, neutral), severity (minor, medium, major), effects?, about?, names?}")
     effects, about, names = p.get("effects") or [], p.get("about") or "", p.get("names") or []
@@ -838,56 +584,13 @@ def resolve_due(state, now: float) -> bool:
 
 
 # --- the monitor's step ------------------------------------------------------------------------------------------
-async def _night(state, settings, gm, now: float) -> bool:
-    """When Pip has woken, roll once for each slot it slept through; a hit is something that happened in the night, found on waking."""
-    woke = next((e for e in state.events(200) if e["kind"] == "woke"), None)
-    if not woke or sleepmod.asleep(state) or state.meta("happenings_night") == str(woke["id"]):
-        return False
-    state.set_meta(happenings_night=woke["id"])                                      # one go per sleep, whatever comes of it
-    slots = int(woke["data"]["hours"] // settings.happenings_slot_hours)
-    if slots < 1 or now - woke["ts"] > NIGHT_STALE_HOURS * 3600:
-        return False
-    if unresolved(state) or sum(1 for h in state.happenings(20) if h["ts"] >= _today_start(now)) >= settings.happenings_max_per_day:
-        return False
-    key = f"night:{woke['id']}"
-    hits = [k for k in range(slots) if roll_slot(state, settings, f"{key}#{k}", now)]        # every slot is rolled and recorded
-    if not hits:
-        return False
-    slot = f"{key}#{hits[0]}"
-    rng = random.Random(hashlib.sha256(f"{salt(state)}:{slot}:build".encode()).hexdigest())
-    return await create(state, settings, gm, world(state, settings, now), now, slot, rng, night=True) is not None
-
-
 async def step(state, settings, gm, now: float | None = None) -> bool:
-    """Resolve what is due and, at the start of a slot, roll for a new happening. True when something happened that Pip should hear about."""
+    """Land the meaning of what Pip has been shown and not read. The dice are a module's (module_library/happenings.py); what modules
+    propose is written by `from_modules`."""
     if settings.happenings == "off":
         return False
-    now = now or time.time()
-    resolve_due(state, now)
-    from . import modules
-    if modules.live_named(state, "happenings"):           # a module rolls the dice (module_library/happenings.py)
-        return False
-    if await _night(state, settings, gm, now):
-        return True
-    slot = current_slot(settings, now)
-    if now - slot[1] > SLOT_WINDOW or state.happening_roll(slot[0]):
-        return False
-    busy = sleepmod.asleep(state) or (state.session() or {}).get("kind") == "walk" or unresolved(state)
-    if busy or sum(1 for h in state.happenings(20) if h["ts"] >= _today_start(now)) >= settings.happenings_max_per_day:
-        return False
-    if not roll_slot(state, settings, slot[0], now):
-        return False
-    rng = random.Random(hashlib.sha256(f"{salt(state)}:{slot[0]}:build".encode()).hexdigest())
-    return await create(state, settings, gm, world(state, settings, now), now, slot[0], rng) is not None
-
-
-def replay(state, settings, h: dict) -> dict:
-    """Roll a happening's slot again from its stored seed, to check the dice: the recorded roll, whether it still matches, and what the chance says now."""
-    roll = random.Random(h["seed"]).random()
-    recorded = state.happening_roll(h["slot"])
-    return {"id": h["id"], "slot": h["slot"], "seed": h["seed"], "roll": roll, "recorded_roll": recorded["roll"] if recorded else None,
-            "matches": bool(recorded) and recorded["roll"] == roll, "chance": settings.happenings_chance, "would_hit": roll < settings.happenings_chance,
-            "decided": {k: h[k] for k in ("category", "tone", "severity", "lens")}}
+    resolve_due(state, now or time.time())
+    return False
 
 
 def public_row(h: dict) -> dict:
