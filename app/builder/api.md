@@ -2,6 +2,8 @@ A module is one Python file (plain Python; you may import math, random, json, re
 statistics, heapq, bisect; nothing else, no files, no network, no attributes starting with "_", no .format). Define any of:
 - on_install(ctx): once, when it goes live. on_time(ctx): at the time it asked for with "schedule". on_event(ctx): when one of the
   event kinds you list happens (ctx["event"] = {"kind", "data"}). on_tick(ctx): every few minutes (costly: prefer on_time).
+  on_message(ctx): Pip said something to one of your voices (ctx["message"] = {to, text}). on_answer(ctx): the model's words for an
+  "ask" (ctx["answer"] = {purpose, text}; text is "" if none came).
 Each gets ctx and returns a dict (or nothing). ctx holds:
 - now (seconds since the epoch, local clock), seed (for random.Random(ctx["seed"])), state (the dict you returned last time as "state").
 - time: {hour, minute, weekday ("Monday"...), season}. weather: {condition, temp, unit, daylight} or None.
@@ -15,6 +17,12 @@ Each gets ctx and returns a dict (or nothing). ctx holds:
 Return any of:
 - "state": a dict to keep. "publish": facts other modules may read. "schedule": when to call on_time next (a time, like ctx["now"] + 3600).
 - "perceive": one line Pip will notice (rare: a few a day at most). "log": one line for the day's record. "wake": true to wake Pip (rarer).
+- "voices": someone or something Pip can talk to, that your code speaks for: [{"name": "the Ferryman", "at": a place's key or "home",
+  "about": "who Pip sees"}] (up to 4; never a name already in the world). Pip talks to them with say(to=...) when it is there; you hear
+  it in on_message. ctx["voices"] holds yours. "speak": {"as": one of your voices, "text": a line, "to_pip": true when it answers Pip
+  (that wakes Pip)}. "ask": {"prompt": what to write and who is speaking (you keep the conversation in your state), "purpose": a word,
+  "most": characters (up to 600)}: the model's words come back later to on_answer; ctx["asking"] is how many are still waiting (3 at
+  most). A dozen asks and two dozen lines a day.
 - "show": up to 8 pixel pictures in scenes: [{"id": "bell", "sprite": {"rows": ["..kk..", ...], "palette": {"k": "#3a2a1c"}},
   "size": 0.6, "frame": false, "at": {"type": "wall"|"surface"|"floor"|"ground", "place": "home" or a place key, "tags": [...]},
   "motion": "bob"|"sway"|"spin", "tip": {"title": "...", "text": "..."}}]. Rows are 4 to 32 letters long, all the same length, 4 to 32

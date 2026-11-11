@@ -1,4 +1,1 @@
-{"name": "workings", "kind": "thing", "api": 1, "subject": "",
- "hooks": ["on_install", "on_time", "on_tick", "on_action"], "reads": ["subject", "time", "pip", "garden", "visitors"],
- "proposes": ["state", "schedule", "offer", "runtime", "log", "perceive", "wake", "consume", "affect", "garden", "find"],
- "consumes": {"*": 5}, "tends": "tend"}
+{"name": "workings", "kind": "thing", "api": 1, "subject": "", "hooks": ["on_install", "on_time", "on_tick", "on_action", "on_message", "on_answer"], "reads": ["subject", "time", "pip", "garden", "visitors"], "proposes": ["state", "schedule", "offer", "runtime", "log", "perceive", "wake", "consume", "affect", "garden", "find", "voices", "ask", "speak"], "consumes": {"*": 5}, "tends": "tend"}

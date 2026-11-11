@@ -24,9 +24,9 @@ log = logging.getLogger(__name__)
 
 API = 1
 KINDS = ("thing", "rule", "part", "place")
-HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
+HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer")
 READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell", "voices", "ask", "speak")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -64,8 +64,9 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
                             "it is. Replaces the engine's own stall customers."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200}
-SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12}   # the engine's own: a creation ticking every minute
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200, "ask": 12, "speak": 24}
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150}
+VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, HURRY_RANGE, FINDS_MAX = 0.1, (0.01, 0.2), 8
 FAILS_TO_DISABLE = 3
 DRY_HOURS, DRY_STEP_MINUTES = 24, 30                  # a whole day, so what happens at dusk or on the hour is tried too
@@ -99,6 +100,10 @@ def check_manifest(m, author: str, state=None) -> dict:
         out[key] = list(dict.fromkeys(vals))
     if not out["hooks"]:
         raise Refused("`hooks` needs at least one hook")
+    if "on_message" in out["hooks"] and "voices" not in out["proposes"]:
+        raise Refused("`on_message` hears what Pip says to the module's voices: it needs `voices` among what it proposes")
+    if "on_answer" in out["hooks"] and "ask" not in out["proposes"]:
+        raise Refused("`on_answer` gets the words it asked for: it needs `ask` among what it proposes")
     if kind in ("part", "place"):
         if author == "pip" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
             raise Refused("parts and places are the world's; they have just on_build, and read and propose nothing")
@@ -218,6 +223,10 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     """What a hook may know: the clock, a seed, its own state, and what its manifest says it reads."""
     man = m["manifest"]
     ctx = {"now": now, "seed": int(now) * 7919 + m["id"], "state": m["state"], "offers": m["offers"], **extra}
+    if "voices" in m["manifest"]["proposes"]:
+        ctx["voices"] = m.get("voices") or []
+    if "ask" in m["manifest"]["proposes"]:
+        ctx["asking"] = len(m.get("asks") or [])          # questions still waiting for the model's words
     reads = man["reads"]
     if "time" in reads:
         from .happenings import season_of
@@ -235,7 +244,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
-                                              "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"]}
+                                              "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": c["spec"]["quirks"]}
     if "items" in reads:
         ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"]} for i in state.items()]
     if "works" in reads:
@@ -332,6 +341,20 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         if m["author"] == "pip" and any(o["at"]["place"] != "subject" for o in shown):
             raise Refused("your things show themselves where they are: `at.place` is \"subject\"")
         changes.append(("show", shown))
+    voices = m.get("voices") or []
+    if "voices" in result:
+        voices = _voices(state, m, result["voices"])
+        changes.append(("voices", voices))
+    if "speak" in result:
+        if budget["speak"] >= cap["speak"]:
+            raise Refused(f"it has used today's {cap['speak']} `speak`")
+        changes.append(("speak", _speak(voices, result["speak"])))
+    if "ask" in result:
+        if budget["ask"] >= cap["ask"]:
+            raise Refused(f"it has used today's {cap['ask']} `ask`")
+        if len(m.get("asks") or []) >= ASKS_WAITING:
+            raise Refused(f"it already has {ASKS_WAITING} questions waiting for words")
+        changes.append(("ask", _ask(result["ask"])))
     if "sell" in result:
         if budget["sell"] >= cap["sell"]:
             raise Refused(f"it has used today's {cap['sell']} `sell`")
@@ -382,6 +405,44 @@ def _find(man, v) -> dict:
 
 
 EFFECTS = {"affect": _affect, "garden": _garden, "find": _find}
+
+
+def _voices(state, m: dict, v) -> list:
+    """The names a module speaks as: each somewhere ("home", "subject" or a place's key), never someone already in the world."""
+    shape = f"`voices` is a list of up to {VOICES_MAX} {{name, at, about?}}: at is \"home\", \"subject\" or a place's key"
+    if not isinstance(v, list) or len(v) > VOICES_MAX or not all(
+            isinstance(x, dict) and isinstance(x.get("name"), str) and 1 <= len(x["name"].strip()) <= 40 and isinstance(x.get("at"), str)
+            and x["at"].strip() and isinstance(x.get("about", ""), str) and len(x.get("about", "")) <= 200 for x in v):
+        raise Refused(shape)
+    names = [x["name"].strip().lower() for x in v]
+    if len(names) != len(set(names)):
+        raise Refused("two voices can't share a name")
+    own = _creation(state, m["manifest"]["subject"]) if m["manifest"].get("subject") else None
+    taken = {c["name"].lower() for c in state.characters() if not (own and c["kind"] == "creation" and c["creation_id"] == own["id"])} \
+        | {x["name"].lower() for o in state.modules("live") if o["id"] != m["id"] for x in o["voices"]}
+    for x in v:
+        if x["name"].strip().lower() in taken:
+            raise Refused(f"someone called {x['name'].strip()} is already in the world")
+    return [{"name": x["name"].strip(), "at": x["at"].strip()[:60], "about": x.get("about", "").strip()} for x in v]
+
+
+def _speak(voices: list, v) -> dict:
+    """A line spoken as one of the module's own voices (to Pip, or just aloud)."""
+    if not isinstance(v, dict) or not isinstance(v.get("as"), str) or not isinstance(v.get("text"), str) \
+            or not v["text"].strip() or len(v["text"]) > SPEAK_MAX:
+        raise Refused(f"`speak` is {{as, text, to_pip?}}: text is a line of up to {SPEAK_MAX} characters")
+    voice = next((x for x in voices if x["name"].lower() == v["as"].strip().lower()), None)
+    if not voice:
+        raise Refused("it can only speak as its own voices: " + (", ".join(x["name"] for x in voices) or "it has none"))
+    return {"name": voice["name"], "text": v["text"].strip(), "to_pip": v.get("to_pip") is True}
+
+
+def _ask(v) -> dict:
+    """A prompt for the model; the words come back later, to on_answer."""
+    if not isinstance(v, dict) or not isinstance(v.get("prompt"), str) or not v["prompt"].strip() or len(v["prompt"]) > ASK_PROMPT_MAX \
+            or not isinstance(v.get("purpose", ""), str) or len(v.get("purpose", "")) > 40 or not _number(v.get("most", 300), 20, ASK_MOST):
+        raise Refused(f"`ask` is {{prompt, purpose?, most?}}: a prompt of up to {ASK_PROMPT_MAX} characters, at most {ASK_MOST} characters back")
+    return {"prompt": v["prompt"].strip(), "purpose": v.get("purpose", ""), "most": int(v.get("most", 300))}
 SELL_LINES = 3
 
 
@@ -518,6 +579,16 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "find":
             state.add_item(val["item"], val["qty"], "material", f"found by your {m['manifest'].get('subject') or m['name']}")
             budget["find"] += 1
+        elif kind == "voices":
+            fields["voices"] = val
+        elif kind == "speak":
+            state.log("companion", name=val["name"], text=val["text"], reply=val["to_pip"], module=m["name"])
+            out["wake"] = out["wake"] or val["to_pip"]
+            budget["speak"] += 1
+        elif kind == "ask":
+            asks = fields.get("asks", m.get("asks") or [])
+            fields["asks"] = asks + [{**val, "id": max([a["id"] for a in asks] + [0]) + 1, "ts": now}]
+            budget["ask"] += 1
         elif kind == "sell":
             from . import market
             for place, item, qty in val:
@@ -605,7 +676,59 @@ async def step(state, settings, runner, now: float | None = None) -> bool:
             state.update_module(m["id"], cursor=m["cursor"])
         if "on_tick" in hooks and m["status"] == "live":
             wake |= (await call(state, settings, run, m, "on_tick", now))["wake"]
+        if m.get("heard") and m["status"] == "live":           # what Pip said to its voices, once each
+            heard = m["heard"]
+            state.update_module(m["id"], heard=[])
+            m["heard"] = []
+            if "on_message" in hooks:
+                for msg in heard:
+                    wake |= (await call(state, settings, run, m, "on_message", now, message=msg))["wake"]
     return wake
+
+
+async def answer(state, settings, gm, runner, now: float | None = None) -> bool:
+    """Ask the model what live modules asked for, and hand each its words (empty when there were none). True if Pip should wake."""
+    now, wake, local = now or time.time(), False, LocalRunner()
+    for m in state.modules("live"):
+        run = runner or (local if m["author"] == SHIPPED else None)
+        if not m.get("asks") or run is None:
+            continue
+        asks = m["asks"]
+        state.update_module(m["id"], asks=[])
+        m["asks"] = []
+        for a in asks:
+            words = (await gm.words(a["prompt"], a["most"]) if gm else None) or ""
+            if "on_answer" in m["manifest"]["hooks"] and m["status"] == "live":
+                wake |= (await call(state, settings, run, m, "on_answer", now, answer={"purpose": a["purpose"], "text": words}))["wake"]
+    return wake
+
+
+def voice_named(state, name: str):
+    """(module, voice) for a live module's voice by name (case aside), or None."""
+    q = str(name or "").strip().lower()
+    return next(((m, v) for m in state.modules("live") for v in m.get("voices") or [] if v["name"].lower() in (q, f"the {q}")), None)
+
+
+def voice_where(state, m: dict, v: dict) -> str | None:
+    return where(state, m, v["at"])
+
+
+def voices_here(state) -> list[str]:
+    """Who Pip can talk to where it is, among modules' voices."""
+    from . import places
+    here = places.present_at(state)
+    found = [v for m in state.modules("live") for v in m.get("voices") or [] if here and voice_where(state, m, v) == here]
+    if not found:
+        return []
+    return ["Here to talk to (say with `to`): " + "; ".join(v["name"] + (f" ({v['about']})" if v["about"] else "") for v in found) + "."]
+
+
+def hear(state, m: dict, voice: dict, text: str, now: float | None = None) -> bool:
+    """Pip spoke to a module's voice: kept for its on_message. False if the module has no ears."""
+    if "on_message" not in m["manifest"]["hooks"]:
+        return False
+    state.update_module(m["id"], heard=(m.get("heard") or [])[-4:] + [{"to": voice["name"], "text": str(text)[:1000], "from": "Pip", "ts": now or time.time()}])
+    return True
 
 
 def perception(state) -> list[str]:
@@ -698,7 +821,7 @@ def trial_text(report: dict) -> str:
         return "It couldn't be tried just now."
     parts = [f"On a trial run it was called {report['calls']} times."]
     for key, label in (("errors", "It went wrong"), ("refused", "Not allowed"), ("perceived", "It would tell you"), ("logged", "It would note"),
-                       ("replies", "Using it"), ("unplaced", "Couldn't show")):
+                       ("replies", "Using it"), ("unplaced", "Couldn't show"), ("asked", "It would ask the model"), ("spoken", "It would say")):
         items = list(dict.fromkeys(report.get(key) or []))[:3]
         if items:
             parts.append(f"{label}: " + "; ".join(items) + ".")
@@ -890,7 +1013,8 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         world = State(replace(settings, db_path=str(copy_db)))
         world.update_module(m["id"], status="live", cursor=(world.events(limit=1) or [{"id": 0}])[0]["id"])
         sim = world.module(m["id"])
-        report = {"calls": 0, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "slowest_ms": 0}
+        report = {"calls": 0, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "slowest_ms": 0,
+                  "asked": [], "spoken": []}
         placed, unplaced = {}, {}                                       # every placement seen along the way, not just the last
 
         async def run(hook, at, **extra):
@@ -906,7 +1030,16 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
             if r["reply"]:
                 report["replies"].append(f"{extra.get('action')}: {r['reply']}")
             report["logged"] += [e["data"]["text"] for e in world.events(after_id=last) if e["kind"] == "module"]
+            report["spoken"] += [f"{e['data']['name']}: {e['data']['text']}" for e in world.events(after_id=last) if e["kind"] == "companion"]
             sim.update(world.module(sim["id"]))
+            asks = sim.get("asks") or []
+            if asks:                                                    # the model isn't asked on a trial: the words are stood in for
+                report["asked"] += [a["prompt"] for a in asks]
+                world.update_module(sim["id"], asks=[])
+                sim["asks"] = []
+                if "on_answer" in sim["manifest"]["hooks"] and hook != "on_answer":
+                    for a in asks:
+                        await run("on_answer", at, answer={"purpose": a["purpose"], "text": "(the model's words)"})
             report["perceived"] += [l["text"] for l in sim["lines"]]
             world.update_module(sim["id"], lines=[])
             sim["lines"] = []
@@ -929,11 +1062,15 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
             sample = next((e for e in state.events(limit=500) if e["kind"] == kind), None)
             if sample:
                 await run("on_event", at, event=pv.public_event(sample))
+        if "on_message" in hooks:
+            for v in list(sim.get("voices") or [])[:2]:
+                await run("on_message", at, message={"to": v["name"], "text": "Hello.", "from": "Pip", "ts": at})
         report["offers"] = [o["name"] for o in sim["offers"]]
         if "on_action" in hooks:
             for o in list(sim["offers"]):
                 await run("on_action", at, action=o["name"], args={"purpose": "trying it"})
         report["placed"], report["unplaced"] = list(placed), list(unplaced)
+        report["asked"], report["spoken"] = list(dict.fromkeys(report["asked"]))[:10], list(dict.fromkeys(report["spoken"]))[:10]
         report["clean"] = not report["errors"] and not report["refused"] and not report["unplaced"] and sim["status"] == "live"
         return report
     finally:
@@ -964,20 +1101,25 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-RUNS = {"upkeep", "periodic", "sensor", "helper"}          # capabilities a creation's workings run (a clock that never stops has nothing to run)
+RUNS = {"upkeep", "periodic", "sensor", "helper", "companion"}          # capabilities a creation's workings run (a clock that never stops has nothing to run)
 WORKS = {"upkeep": "it stops when it runs down, and can be tended", "timekeeper": "it keeps time, and can be set",
-         "periodic": "it says something now and then", "sensor": "it tells you when something happens", "helper": "it helps on its own"}
+         "periodic": "it says something now and then", "sensor": "it tells you when something happens", "helper": "it helps on its own",
+         "companion": "it talks, and answers when you talk to it", "provides": "it brings news when you listen"}
 
 
 def workings_manifest(c: dict) -> tuple[dict, str]:
     """The shipped workings for one creation: (manifest, source), with only the hooks, effects and finds its capabilities need."""
     man, source = library("workings")
     caps = c["spec"]["capabilities"]
-    hooks = ["on_install"] + (["on_time"] if "upkeep" in caps else []) + (["on_tick"] if {"periodic", "sensor", "helper"} & set(caps) else []) \
-        + (["on_action"] if "upkeep" in caps or "timekeeper" in caps else [])
+    talks, news = "companion" in caps, caps.get("provides", {}).get("ability") == "news"
+    hooks = ["on_install"] + (["on_time"] if "upkeep" in caps else []) + (["on_tick"] if {"periodic", "sensor", "helper", "companion"} & set(caps) else []) \
+        + (["on_action"] if "upkeep" in caps or "timekeeper" in caps or news else []) + (["on_message"] if talks else []) \
+        + (["on_answer"] if talks or news else [])
     finds = caps.get("helper", {}).get("finds") or []
     out = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"], "hooks": hooks,
-           "proposes": [p for p in man["proposes"] if p != "find" or finds], **({"finds": finds} if finds else {})}
+           "reads": man["reads"] + (["weather"] if news else []),
+           "proposes": [p for p in man["proposes"] if (p != "find" or finds) and (p not in ("voices", "speak") or talks) and (p != "ask" or talks or news)],
+           **({"finds": finds} if finds else {})}
     if "upkeep" not in caps:
         out.pop("tends")
     return out, source
@@ -1008,7 +1150,7 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
             log.warning("library module %s refused: %s", name, r["error"])
     for c in state.creations():                              # a creation's workings, for each one that does something on its own
         caps = c["spec"]["capabilities"]
-        if not set(caps) & RUNS:
+        if not set(caps) & RUNS and caps.get("provides", {}).get("ability") != "news":
             continue
         man, source = workings_manifest(c)
         last = ([o for o in state.modules() if o["subject"].lower() == c["name"].lower()] or [None])[-1]

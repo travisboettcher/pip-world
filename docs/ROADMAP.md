@@ -95,7 +95,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Module reads for the garden, visitors and Pip's needs; `affect`, `garden` and `find` effects; creations' workings (upkeep,
         clock, periodic lines, sensors, helpers) as a shipped module (0.25.0)
   - [x] Stall reads and `sell`: customers at Pip's stall as a shipped module (0.26.0)
-  - [ ] `ask` (the model's words, answered later) and happenings' effects: then happenings, creation news and companions as modules
+  - [x] Voices, `on_message`, `ask`/`on_answer`, `speak`: things to talk to owned by modules; companions and creation news on them (0.27.0)
+  - [ ] Happenings as modules (a `happen` effect, or a full port: to decide)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 

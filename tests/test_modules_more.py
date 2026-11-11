@@ -27,7 +27,7 @@ def test_manifest_refusals_word_for_word(tmp_path):
     bad = lambda m: refusal(M.check_manifest, m, "world", st)
     events = ", ".join(sorted(__import__("app.public_view", fromlist=["x"]).EVENT_FIELDS))
     assert bad({k: v for k, v in rule().items() if k != "name"}) == "`name` is 3 to 40 lowercase letters, digits and dashes, starting with a letter"
-    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action"
+    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer"
     assert bad(rule(kind="thing")) == "a thing needs a `subject`: the name of the creation it makes work"
     assert bad(rule(subject="x")) == "only a thing has a subject (and reads or changes its runtime)"
     assert bad(rule(hooks=["on_event"], events=["inbox"])) == "`events` is a list of public event kinds: " + events
@@ -89,7 +89,7 @@ def test_the_context_word_for_word(tmp_path):
     assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
                           "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False} and ctx["facts"] == {}
     c = st.creations()[0]
-    assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"]}
+    assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": []}
     st.give_creation(c["id"], "Oriel")
     assert M.context(st, s, m, NOW)["subject"] is None
 
@@ -131,7 +131,7 @@ async def test_budgets_add_up_and_a_due_time_ends_on_its_moment(tmp_path):
     for _ in range(2):
         r = await M.call(st, s, agent.runner, m, "on_tick", NOW)
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": ""}
-    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "garden": 0, "find": 0, "sell": 0}
+    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "garden": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0}
     got = st.module(m["id"])
     assert got["due"] is None and [l["text"] for l in got["lines"]] == ["a", "a"]
     calls = st.module_calls(m["id"])
@@ -278,7 +278,7 @@ async def test_the_dry_run_report_precisely(tmp_path):
     assert rep["perceived"] == ["saw beans"] and rep["replies"] == ["poke: trying it"] and rep["offers"] == ["poke"]
     assert rep["calls"] == 1 + ticks + 1 + 1 and rep["errors"] == [] and rep["clean"] is False         # it logs too much for one day
     assert rep["refused"] and set(rep["refused"]) == {"on_tick: it has used today's 24 `log` lines"}
-    assert set(rep) == {"calls", "errors", "refused", "perceived", "logged", "replies", "offers", "slowest_ms", "clean", "placed", "unplaced"} and 1 <= rep["slowest_ms"] < 5000
+    assert set(rep) == {"calls", "errors", "refused", "perceived", "logged", "replies", "offers", "slowest_ms", "clean", "placed", "unplaced", "asked", "spoken"} and 1 <= rep["slowest_ms"] < 5000
     assert [e["data"]["text"] for e in st.events(10) if e["kind"] == "module"] == ["from before"]               # the real world untouched
 
 

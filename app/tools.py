@@ -223,6 +223,13 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     mine = [e["data"]["text"] for e in ctx.state.events(100) if e["kind"] == "say" and time.time() - e["ts"] < SAY_LOOKBACK][:6]
     if conv.repeats(text, mine):
         return ToolResult("not said: you said that a moment ago. Say something new, ask something, or say goodbye.", followup=True)
+    if args.get("to") and (hit := modules.voice_named(ctx.state, args["to"])):     # someone a module speaks for
+        m, v = hit
+        if modules.voice_where(ctx.state, m, v) != places.present_at(ctx.state):
+            return ToolResult(f"{v['name']} can't hear you from here", followup=True)
+        ears = modules.hear(ctx.state, m, v, text)
+        ctx.state.log("say", text=text, to=[], to_name=v["name"], **({"goodbye": True} if args.get("goodbye") is True else {}))
+        return ToolResult(f"said it to {v['name']}" + ("; it will answer in a moment" if ears else ""))
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
         where = places.place_of(ctx.state, ch) if ch else None
@@ -422,7 +429,8 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
                                   {"purpose": str(args.get("purpose") or "")[:200]})
             return ToolResult(r, followup=r.startswith("error"))
         if made:
-            return ToolResult(await cr.use(ctx.state, ctx.gm, made, str(args.get("purpose") or "")[:200]),
+            owned = (modules.bound(ctx.state).get(made["name"].lower()) or {}).get("author") == modules.SHIPPED
+            return ToolResult(await cr.use(ctx.state, ctx.gm, made, str(args.get("purpose") or "")[:200], bulletins=not owned),
                               followup=True)
         return ToolResult(f"error: {err}", followup=True)
     if item["kind"] == "seed":

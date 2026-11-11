@@ -39,7 +39,7 @@ def test_a_programs_manifest_comes_from_its_code(tmp_path):
     assert man["tends"] == "tend" and man["hooks"] == ["on_event"] and man["events"] == ["garden"]
     with pytest.raises(M.Refused) as e:
         M.program_manifest("def helper(ctx):\n    pass\n", bell)
-    assert str(e.value) == "define at least one of on_install, on_tick, on_time, on_event, on_action"
+    assert str(e.value) == "define at least one of on_install, on_tick, on_time, on_event, on_action, on_message, on_answer"
     with pytest.raises(M.Refused) as e:
         M.program_manifest("def on_event(ctx):\n    pass\n", bell)
     assert str(e.value) == "on_event needs `events`: the kinds of thing that happen it listens for"

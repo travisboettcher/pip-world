@@ -115,7 +115,7 @@ async def test_every_creation_that_does_something_gets_its_workings(tmp_path):
         made(st, name, caps)
     ids = [i for i in await M.offer_library(st, s, None, now=NOW) if st.module(i)["subject"]]
     mods = {st.module(i)["subject"]: st.module(i) for i in ids}
-    assert set(mods) == {"Sandy", "Bell", "Ferret", "Clock"}                                     # nothing to run in a sundial, a vase, a lamp
+    assert set(mods) == {"Sandy", "Bell", "Ferret", "Clock", "Lamp"}                             # nothing to run in a sundial or a vase
     assert all(m["status"] == "live" and m["author"] == M.SHIPPED and m["name"].endswith("-workings") for m in mods.values())
     assert mods["Sandy"]["manifest"]["hooks"] == ["on_install", "on_tick"] and mods["Clock"]["manifest"]["hooks"] == ["on_install", "on_time", "on_action"]
     assert mods["Ferret"]["manifest"]["finds"] == ["acorn", "snail shell"] and "finds" not in mods["Sandy"]["manifest"]
@@ -267,3 +267,132 @@ async def test_a_creation_with_nothing_to_run_doesnt_stop_the_next_getting_its_w
     t0 = time.time()
     ids = [i for i in await M.offer_library(st, s, None) if st.module(i)["subject"]]
     assert [st.module(i)["subject"] for i in ids] == ["Sandy"] and t0 <= st.module(ids[0])["created_at"] <= time.time()
+
+
+# --- companions: a creation with a mind of its own, on voices, ask and speak (0.27.0) -------------------------------------------
+COMPANION = {"companion": {"persona": "A brass finch, nosy and fond of rhymes.", "chatter_minutes": 120}}
+
+
+class Words:
+    def __init__(self, *texts):
+        self.texts, self.prompts = list(texts), []
+
+    async def words(self, prompt, most):
+        self.prompts.append(prompt)
+        return self.texts.pop(0) if self.texts else "Cheep."
+
+
+@pytest.mark.asyncio
+async def test_a_companion_is_a_voice_where_its_creation_is(tmp_path):
+    s, st, agent, c, m = await workings(tmp_path, COMPANION)
+    st.add_character(c["name"], "creation", c["id"], "x", 120, NOW)                 # the engine's old character for it steps aside
+    assert set(m["manifest"]["hooks"]) == {"on_install", "on_tick", "on_message", "on_answer"}
+    assert {"voices", "ask", "speak"} <= set(m["manifest"]["proposes"])
+    assert m["voices"] == [{"name": "Sandy", "at": "subject", "about": "a thing"}]
+    assert M.voices_here(st) == ["Here to talk to (say with `to`): Sandy (a thing)."]
+    workings_plain, _ = M.workings_manifest(made(st, "Clock", TIMEKEEPER["capabilities"]))
+    assert not {"voices", "ask", "speak"} & set(workings_plain["proposes"])
+
+
+@pytest.mark.asyncio
+async def test_a_companion_chatters_now_and_then_without_waking_pip(tmp_path):
+    s, st, agent, c, m = await workings(tmp_path, COMPANION)
+    await M.step(st, s, None, NOW + 60)
+    assert st.module(m["id"])["asks"] == []                                                       # not yet
+    await M.step(st, s, None, NOW + 3 * 3600)
+    asks = st.module(m["id"])["asks"]
+    assert len(asks) == 1 and asks[0]["purpose"] == "chatter" and "A brass finch, nosy and fond of rhymes." in asks[0]["prompt"]
+    assert "Nobody spoke to Sandy" in asks[0]["prompt"]
+    assert await M.answer(st, s, Words("Tweedle-dee."), None, NOW + 3 * 3600 + 60) is False
+    said = next(e["data"] for e in st.events(5) if e["kind"] == "companion")
+    assert (said["name"], said["text"], said["reply"]) == ("Sandy", "Tweedle-dee.", False)
+    await M.step(st, s, None, NOW + 3 * 3600 + 120)
+    assert st.module(m["id"])["asks"] == []                                                       # it just spoke
+
+
+@pytest.mark.asyncio
+async def test_a_companion_answers_pip_and_remembers_the_conversation(tmp_path):
+    from tests.test_projects import call
+    s, st, agent, c, m = await workings(tmp_path, COMPANION)
+    r = await call(agent, "say", text="Hello, Sandy.", to="sandy")
+    assert r.text == "said it to Sandy; it will answer in a moment"
+    await M.step(st, s, None, NOW + 60)
+    gm = Words("Hello yourself!", "Rhymes with cello.")
+    assert await M.answer(st, s, gm, None, NOW + 90) is True                                        # an answer wakes Pip
+    assert 'Pip just said to Sandy: "Hello, Sandy."' in gm.prompts[0] and "Answer Pip as Sandy" in gm.prompts[0]
+    await call(agent, "say", text="What rhymes?", to="sandy")
+    await M.step(st, s, None, NOW + 120)
+    await M.answer(st, s, gm, None, NOW + 150)
+    assert "Pip: Hello, Sandy.\nSandy: Hello yourself!" in gm.prompts[1]
+    said = [e["data"]["text"] for e in st.events(10) if e["kind"] == "companion"]
+    assert said == ["Rhymes with cello.", "Hello yourself!"]
+
+
+@pytest.mark.asyncio
+async def test_a_companion_answers_only_so_often_and_not_when_stopped_or_given_away(tmp_path):
+    from tests.test_projects import call
+    s, st, agent, c, m = await workings(tmp_path, {**COMPANION, "upkeep": {"verb": "wound", "hours": 12}})
+    gm = Words()
+    for i in range(6):
+        await call(agent, "say", text=f"Line {i}?", to="sandy")
+        await M.step(st, s, None, NOW + 60 + i * 120)
+        await M.answer(st, s, gm, None, NOW + 90 + i * 120)
+    assert sum(1 for e in st.events(40) if e["kind"] == "companion" and e["data"]["reply"]) == 4      # four answers an hour
+    await M.step(st, s, None, NOW + 13 * 3600)                                                      # run down
+    await call(agent, "say", text="Still there?", to="sandy")
+    await M.step(st, s, None, NOW + 13 * 3600 + 60)
+    assert st.module(m["id"])["asks"] == []
+    st.give_creation(c["id"], "Oriel")
+    assert M.voice_named(st, "sandy") is None or M.voices_here(st) == []
+
+
+@pytest.mark.asyncio
+async def test_the_engine_leaves_an_owned_companion_alone(tmp_path):
+    from app import companions as comp
+    s, st, agent, c, m = await workings(tmp_path, COMPANION)
+    ch = st.add_character(c["name"], "creation", c["id"], "x", 1, NOW - 99999)
+    class Loud:
+        async def speak(self, *a):
+            return "I should not speak."
+    owned = {k for k, b in M.bound(st).items() if b["author"] == M.SHIPPED}
+    assert await comp.step(st, s, Loud(), agent.rng, NOW, owned=owned) is False
+    assert not [e for e in st.events(5) if e["kind"] == "companion"]
+
+
+# --- news: a receiver that brings bulletins, on ask (0.27.0) ---------------------------------------------------------------------
+RADIO = {"provides": {"ability": "news"}}
+
+
+@pytest.mark.asyncio
+async def test_a_radio_offers_listening_and_brings_three_bulletins_a_day(tmp_path):
+    s, st, agent, c, m = await workings(tmp_path, RADIO)
+    assert m["offers"] == [{"name": "listen", "help": "listen for news (up to 3 bulletins a day)"}]
+    assert set(m["manifest"]["hooks"]) == {"on_install", "on_action", "on_answer"} and "ask" in m["manifest"]["proposes"]
+    assert "voices" not in m["manifest"]["proposes"]
+    r = await M.act(st, s, None, m, "listen", {"purpose": "news"}, NOW)
+    assert r == "you tune in to your Sandy; a bulletin is coming through"
+    gm = Words("Fog on the marsh road; Oriel's hens have stopped laying.")
+    assert await M.answer(st, s, gm, None, NOW + 60) is False
+    assert "news about Pip's own small world only" in gm.prompts[0] and "never real-world events" in gm.prompts[0]
+    assert M.perception(st) == ["Things in the world:", "- Your Sandy: Fog on the marsh road; Oriel's hens have stopped laying."]
+    for i in range(2):
+        await M.act(st, s, None, st.module(m["id"]), "listen", {}, NOW + 120 + i)
+        await M.answer(st, s, gm, None, NOW + 130 + i)
+    assert await M.act(st, s, None, st.module(m["id"]), "listen", {}, NOW + 200) == "only static now: your Sandy has told you all the news it has today"
+    assert (await M.act(st, s, None, st.module(m["id"]), "listen", {}, NOW + 86400 + 300)).startswith("you tune in")
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_radio_brings_nothing_and_the_engine_offers_no_bulletin_for_an_owned_one(tmp_path):
+    s, st, agent, c, m = await workings(tmp_path, {**RADIO, "upkeep": {"verb": "charged", "hours": 4}})
+    assert await M.act(st, s, None, m, "listen", {}, NOW + 5 * 3600) == "your Sandy has stopped; it needs tending (charged) first"
+    from app import creations as cr
+    class Narrator:
+        def __init__(self):
+            self.bulletin = None
+        async def use(self, line, purpose, situation, timekeeper, can_stop, bulletin=False, tend_verb=""):
+            self.bulletin = bulletin
+            return {"text": "You listen."}
+    n = Narrator()
+    await cr.use(st, n, st.creations()[0], "listen", NOW, bulletins=False)
+    assert n.bulletin is False

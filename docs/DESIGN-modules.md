@@ -419,10 +419,38 @@ renderer on anchors a layout tags for it, so the layout stays plain geometry and
   credited at most an hour at a time; the first look only starts the clock. While it is live the engine's own stall customers stay
   quiet. Fixed alongside: a shipped module's larger call allowance (0.25.0) was not applied when calling it.
 
+**Voices: things Pip can talk to, owned by modules (0.27.0).** The owner's question: if companions didn't exist, could the builder add
+something Pip converses with, without the engine knowing about it? Now it can. Four general primitives, none about companions:
+- **`voices`**: a module declares up to 4 names it speaks as, each somewhere (`"home"`, `"subject"`: where its creation is, or a place's
+  key), with a line of `about`. A name already in the world (a character, another module's voice) is refused; a creation's own old
+  companion character steps aside for its module. `say(to=...)` finds module voices before characters, but only where Pip is ("can't
+  hear you from here" otherwise), and Pip's prompt lists who is here to talk to.
+- **`on_message`**: what Pip said to one of its voices, delivered on the next engine step (`ctx["message"] = {to, text, from, ts}`). A
+  module hears only what was said to its own voices, and keeps the conversation in its own state. A voice whose module has no
+  `on_message` hears nothing ("said it to the Statue").
+- **`ask` / `on_answer`**: a module writes its own prompt (up to 2000 characters, at most 600 back, a `purpose` to tell answers apart);
+  the engine asks the model (`gm.words`: plain words, trimmed at a word), and hands the words to `on_answer` (`""` if none came). At most
+  3 wait at once; 12 a day for the world's modules, 150 for the engine's. A trial doesn't call the model: it stands in "(the model's
+  words)" and the report lists every prompt it would send (`asked`) and every line it would say (`spoken`), so the owner sees them before
+  approving.
+- **`speak`**: a line as one of its own voices, logged as the same event every character's line is (`companion`: perception, memory,
+  conversation threads, firsts and the public feed treat it alike); `to_pip` wakes Pip. 24 a day for the world's, 150 for the engine's.
+The builder's rules may use all four. Pip's programs can't (yet).
+
+Built on them, in the shipped `workings`:
+- **Companions**: a creation with a mind of its own is a voice where it is (so Pip talks to it at home, not from the market), chatters on
+  its own every so often (about its `chatter_minutes`, never waking Pip), and answers what Pip says (at most 4 answers an hour, waking
+  Pip), with the model given who it is, what it is, how Pip is, and the last few lines between them, as before. A stopped one says
+  nothing; one sold or given away does nothing at all (the workings now go quiet for any creation that's gone, which in 0.25.0 would
+  have failed). While it is live the engine's own companion code leaves that creation alone; it remains only as the fallback with the
+  module library off.
+- **News**: a receiver offers `listen`; up to 3 bulletins a day come through (the model writes them from the day, the season and the
+  weather, about Pip's own small world only), told to Pip when they arrive. Using the receiver without `listen` no longer asks for a
+  bulletin while its workings are live.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|
-| Creation news and companions | `ask_gm` for prose; companions also need a way to talk |
 | Happenings | `ask_gm`, `affect`, effects on stock and the garden |
 | Neighbors' letters, weather, sleep, reflection, memory | engine systems by design (the agent's own life, or outside data): not candidates |
 

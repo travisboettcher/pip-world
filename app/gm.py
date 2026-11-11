@@ -309,6 +309,16 @@ class GameMaster:
         }, ["text"], "use")
 
     # --- phase 3: companions ------------------------------------------------
+    async def words(self, prompt: str, most: int) -> str | None:
+        """Words a module asked for (modules.py, `ask`): its own prompt, answered plainly, trimmed to `most` characters. None if none came."""
+        task = (f"{prompt}\n\nWrite only the words asked for, in plain prose, at most {most} characters: no quotes around them, no notes "
+                "about them, nothing about being asked.")
+        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "module_words")
+        text = " ".join(str((out or {}).get("text") or "").split()).strip(' "\u201c\u201d')
+        if len(text) > most:                                    # cut at a word, within the length
+            text = text[:most].rsplit(" ", 1)[0].rstrip(",;: ")
+        return text or None
+
     async def speak(self, name: str, persona: str, about: str, situation: str, conversation: list[str],
                     heard: list[str]) -> str | None:
         task = (

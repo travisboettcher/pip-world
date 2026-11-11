@@ -325,7 +325,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr"}
     got = st.module(m["id"])
     assert got["state"] == {"n": 1} and got["facts"] == {"n": 1} and got["due"] == NOW + 60 and got["lines"] == [{"ts": NOW, "text": "tick"}]
-    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "garden": 0, "find": 0, "sell": 0}
+    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "garden": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0}
     assert st.find_item("brass wire")[0]["qty"] == 1 and "halted_at" not in st.creations()[0]["runtime"] and st.creations()[0]["runtime"]["stop_logged"]
     ev = [e for e in st.events(5) if e["kind"] == "module"][0]["data"]
     assert (ev["name"], ev["text"], ev["author"]) == ("bells", "It whirrs.", "world")

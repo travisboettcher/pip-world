@@ -191,11 +191,14 @@ class Agent:
         await modules.offer_library(self.state, self.s, self.runner)
         if await modules.step(self.state, self.s, self.runner):
             self.request_wake()
+        if await modules.answer(self.state, self.s, self.gm, self.runner):     # the model's words for what modules asked
+            self.request_wake()
         await modules.notify_owner(self.state, self.s, self.outreach)
         await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
         if await self.finish_work():
             self.request_wake()
-        if await comp.step(self.state, self.s, self.gm, self.rng):
+        if await comp.step(self.state, self.s, self.gm, self.rng,
+                           owned={k for k, m in modules.bound(self.state).items() if m["author"] == modules.SHIPPED}):
             self.request_wake()
         if await happenings.step(self.state, self.s, self.gm):
             self.request_wake()
@@ -729,6 +732,7 @@ class Agent:
         lines += self._gallery()
         lines += happenings.perception(self.state, self.tools, time.time()) if self.s.happenings != "off" else []
         lines += modules.perception(self.state)
+        lines += modules.voices_here(self.state)
         lines += self._free_time(time.time())
         lines += self._belongings()
         lines += self._projects()

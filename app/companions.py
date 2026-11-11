@@ -35,15 +35,16 @@ def conversation(state, name: str, verbatim_since: float | None = None) -> list[
     return lines[-CONVERSATION_LINES:]
 
 
-async def step(state, settings, gm, rng: random.Random, now: float | None = None) -> bool:
-    """Let every companion that's due say one line. Returns True if Pip should wake (it was answered)."""
+async def step(state, settings, gm, rng: random.Random, now: float | None = None, owned: set | frozenset = frozenset()) -> bool:
+    """Let every companion that's due say one line. Returns True if Pip should wake (it was answered). Creations named (lowercase) in
+    `owned` talk through their shipped `workings` module (modules.py, voices) instead."""
     now = now or time.time()
     wake = False
     for ch in state.characters():
         if ch["kind"] != "creation":
             continue
         c = state.creation(ch["creation_id"])
-        if not c or c.get("given_to") or not running(c, now):
+        if not c or c.get("given_to") or not running(c, now) or c["name"].lower() in owned:
             continue
         recent = [t for t in ch["replies"] if now - t < 3600]
         answering = bool(ch["heard"]) and len(recent) < settings.companion_replies_per_hour

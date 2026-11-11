@@ -277,15 +277,16 @@ async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -
     return c
 
 
-async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str:
-    """Pip uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects."""
+async def use(state, gm, c: dict, purpose: str, now: float | None = None, bulletins: bool = True) -> str:
+    """Pip uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects. Without `bulletins`, a receiver's
+    bulletins come from its workings module (its `listen` offer) instead."""
     now = now or time.time()
     caps, rt = c["spec"]["capabilities"], c["runtime"]
     if not running(c, now):
         return f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"
     a = state.agent()
     situation = f"Pip is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
-    left = abilities.news_left(c, now)
+    left = abilities.news_left(c, now) if bulletins else 0
     verb = caps["upkeep"]["verb"] if "upkeep" in caps else ""
     out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps, bulletin=left > 0,
                        tend_verb=verb) if gm else None
@@ -320,7 +321,7 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None) -> str
         state.set_runtime(c["id"], rt)
         state.log("creation", name=c["name"], what="news", text=news)
         text += f" Bulletin: {news}"
-    elif "provides" in caps and not left:
+    elif "provides" in caps and not left and bulletins:
         done.append("only static now: it has told you all the news it has today")
     if "upkeep" in caps and "halted_at" not in rt and not tended:  # using it for anything else doesn't tend it
         left = (rt["tended_until"] - now) / 3600
