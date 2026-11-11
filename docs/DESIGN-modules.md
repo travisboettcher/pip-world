@@ -16,6 +16,8 @@ Pip can't be in two places, nothing changes without a logged reason) and gives c
 never touches the database or the network.
 
 ## Principles
+- **The engine stays generic; world features are modules.** A feature that can't be written as a module shows a missing generic hook;
+  add the hook (naming no feature), never a feature-specific branch. See DESIGN-world-packs.md and CLAUDE.md.
 - **Modules propose; the referee decides.** Every change a module wants is a *proposal* that the engine checks and applies, or refuses
   with a reason the author can read. That is the same pattern the GM already follows: the engine decides, the model narrates.
 - **Pure functions.** A hook gets everything it may know as JSON (time, a seed, the parts of the world it declared it reads, its own state)

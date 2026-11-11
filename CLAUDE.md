@@ -18,6 +18,31 @@ Rules:
 - A bug fix includes its regression test, and the test goes in the file for the module it exercises.
 - Don't weaken or delete a test to get green. A surviving mutant is a missing assertion; fix the test.
 
+## Keep the engine generic: world features are modules
+The engine is meant to run any world, not just Pip's (docs/DESIGN-world-packs.md). It is the **referee and the mind**: the agent loop,
+memory, emotions, sleep, places, people and conversation, belongings, the module system and the generic checks it applies. Everything that
+makes a world *this* world (a garden, crafting, letters, a market, the weather, a lighthouse, tomato seeds, "the workshop", the agent's name)
+belongs in a **module** or in the world's **data**, never in engine code or engine prompts.
+
+When you add or change something, decide where it goes first:
+- **A feature** (something the agent does or the world does: grow crops, trade, write letters, a fair on Thursdays, a talking well) is a
+  module: a shipped one in `app/module_library/` today, a world pack's later. Not a new engine file, table, tool or loop step.
+- **World content** (place kinds, item kinds and find tables, starting belongings, scene props and textures, happenings' categories,
+  wording) is data: a list or registry the world supplies, not a constant in an engine module or a sentence in an engine prompt.
+- **The engine** gets only what any world would need: a generic hook (a read, an effect, a hook point), a check that keeps every world
+  coherent and safe (sizes, caps, the referee), or part of the mind.
+
+If a feature can't be expressed as a module, that is a **missing generic hook**: design the hook so it names no feature (as `voices`,
+`ask`, `happen` and `sell` were added), build the feature on it, and write both down in DESIGN-modules.md. Never add a branch for one
+feature ("if the module is the garden...") or a read or effect that only one world could use.
+
+Checks before committing:
+- No engine code, engine prompt, tool description or engine test fixture introduces a world noun (a place, item, creature, feature) or
+  the agent's name where a neutral word or a setting would do. Existing ones are being moved out (DESIGN-world-packs.md, phases 1 to 7);
+  don't add more, and when you touch one, prefer moving it out over extending it.
+- A new engine read or effect is checked as generic: would a wasteland, a space station and Pip's world each have a use for it?
+- A shipped module carries the world's specifics; the engine carries the limits.
+
 ## Prefer general tools over specific ones
 Pip's tool list is small on purpose. Don't add a one-off tool for a single situation (`save_seeds`, `wind_clock`); extend a general one
 (`use_item`, `tend`, `go_to`, `say`...) so the new behaviour falls out of what Pip would naturally try. Pip already reaches for

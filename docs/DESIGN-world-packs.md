@@ -52,6 +52,9 @@ What is a mechanic hard-wired to this world (needs engine work):
    `"pip"`, the `pip` read), `PIP_READS`, and the CLI. The agent's name isn't a setting.
 
 ## Principles
+- **This is a standing rule, not just a plan.** Until every phase lands, new work follows it already: no new world-specific engine code,
+  tables, tools or prompt wording; features go into modules, content into data, and the engine gains only generic hooks and checks
+  (CLAUDE.md, "Keep the engine generic").
 - **The engine has no world in it.** Engine code and engine prompts never name a place, an item, a creature, a feature or the agent.
   A CI check enforces it (a list of forbidden words grepped in `app/` outside `worlds/`), the way `hllc check` guards the homelab.
 - **A world is a pack.** Everything world-specific is data or modules in one directory, versioned with the world, chosen by the owner

@@ -126,7 +126,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
 Changes are test-driven, and engine code is checked with mutation testing (a 95% cutoff on what you change): the rules, and the one hard-won one about running
-mutation tests, are in [`CLAUDE.md`](CLAUDE.md). The design of each area is in [`docs/`](docs/): start with
+mutation tests, are in [`CLAUDE.md`](CLAUDE.md). The engine stays generic: a feature of the world (a garden, a market, letters, the weather)
+is a module, and the engine only gains generic hooks and checks ([`CLAUDE.md`](CLAUDE.md), "Keep the engine generic";
+[`docs/DESIGN-world-packs.md`](docs/DESIGN-world-packs.md)). The design of each area is in [`docs/`](docs/): start with
 [`docs/reference.md`](docs/reference.md) (everything Pip can do, tool by tool) and [`docs/ROADMAP.md`](docs/ROADMAP.md) (what is done and what is next).
 
 ## License
