@@ -17,6 +17,7 @@ Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an e
 | M3.7 | Day/night and sleep ([design](DESIGN-sleep.md)) | Deployed |
 | M3.8 | Sense of self: firsts, cited reflections, portraits, expectations, turning points, capabilities, night pass | Deployed (first night pending) |
 | M4 | Richer tools, optional exposure | Not started |
+| M5 | World packs: a world-neutral engine ([design](DESIGN-world-packs.md), [guide](GUIDE-world-pack.md)) | Designed |
 
 ## M1 - Headless brain (done)
 - [x] Python/FastAPI service, plain asyncio loop, SQLite state in a named volume
@@ -98,6 +99,19 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Voices, `on_message`, `ask`/`on_answer`, `speak`: things to talk to owned by modules; companions and creation news on them (0.27.0)
   - [x] `happen`: happenings any module can propose, with the engine's checks; the dice as a shipped rule (0.28.0)
   - [ ] Remove the engine's built-in fallbacks for what now runs as shipped modules (workings, companions, customers, happenings' dice)
+- [ ] World packs: a world-neutral engine; everything that makes a world *that* world comes from a pack, and features are modules a world
+      includes (**designed: [DESIGN-world-packs.md](DESIGN-world-packs.md)**, from the 2026-11-11 audit; bootstrapping guide:
+      [GUIDE-world-pack.md](GUIDE-world-pack.md))
+  - [ ] Phase 1: the pack with Pip's world in it (`WORLD_PACK`, persona, narrator, bible, guide); the agent's name and pronoun as settings;
+        engine prompts written around them; a CI check that engine code names no world
+  - [ ] Phase 2: data out of code: place kinds, items and find tables, starting belongings, scene vocabulary, happenings' categories,
+        world effects and abilities move to the pack
+  - [ ] Phase 3: stats and tone: pack-declared needs (hunger and energy become two of them), `affect` on any stat, `tone.json` with the
+        engine's floor
+  - [ ] Phase 4: hooks for features as modules: tools, sessions, storage, belongings, status (proved on the garden and the market)
+  - [ ] Phase 5: features move: gathering, letters and neighbours (characters), the library and weather (sources), crafting
+  - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
+  - [ ] Phase 7: remove the engine's fallbacks for every moved feature
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
