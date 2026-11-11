@@ -166,14 +166,16 @@ def _help(state, rng: random.Random, c: dict, h: dict, now: float) -> None:
         state.log("creation", name=c["name"], what="helper", text=h["line"])
 
 
-def tick(state, rng: random.Random, now: float | None = None, skip: set | frozenset = frozenset()) -> bool:
+def tick(state, rng: random.Random, now: float | None = None, skip: set | frozenset = frozenset(),
+         owned: set | frozenset = frozenset()) -> bool:
     """Run every creation's capabilities once. Returns True if Pip should be woken. Creations named (lowercase) in `skip` have their
-    workings as a module (modules.py), which notices them stopping instead."""
+    workings as a module (modules.py), which notices them stopping instead; those in `owned` are run wholly by the engine's shipped
+    `workings` module, and left alone here."""
     now = now or time.time()
     wake = False
     for c in state.creations():
         caps, rt = c["spec"]["capabilities"], c["runtime"]
-        if not caps:
+        if not caps or c["name"].lower() in owned:
             continue
         before = dict(rt, last=dict(rt["last"]))
         if not running(c, now) and c["name"].lower() in skip:

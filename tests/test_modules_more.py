@@ -86,7 +86,8 @@ def test_the_context_word_for_word(tmp_path):
     from app.happenings import season_of
     assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(NOW, "south")}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
-    assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True} and ctx["facts"] == {}
+    assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
+                          "hunger": 0.2, "energy": 0.9, "mood": "curious"} and ctx["facts"] == {}
     c = st.creations()[0]
     assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"]}
     st.give_creation(c["id"], "Oriel")
@@ -130,7 +131,7 @@ async def test_budgets_add_up_and_a_due_time_ends_on_its_moment(tmp_path):
     for _ in range(2):
         r = await M.call(st, s, agent.runner, m, "on_tick", NOW)
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": ""}
-    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2}
+    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "garden": 0, "find": 0}
     got = st.module(m["id"])
     assert got["due"] is None and [l["text"] for l in got["lines"]] == ["a", "a"]
     calls = st.module_calls(m["id"])

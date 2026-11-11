@@ -1,4 +1,0 @@
-{"name": "timekeeper", "kind": "thing", "api": 1, "subject": "",
- "hooks": ["on_install", "on_time", "on_action"], "reads": ["subject"],
- "proposes": ["schedule", "offer", "runtime", "log", "perceive", "wake", "consume"],
- "consumes": {"*": 5}, "tends": "tend"}

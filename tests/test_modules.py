@@ -314,7 +314,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     src = ("def on_action(ctx):\n    return {'state': {'n': ctx['state'].get('n', 0) + 1}, 'consume': {'brass wire': ctx['args']['n']},"
            " 'runtime': {'halted_at': None, 'stop_logged': True}, 'perceive': 'tick', 'log': 'It whirrs.', 'wake': True, 'reply': 'whirr',"
            " 'publish': {'n': 1}, 'offer': [{'name': 'whirr', 'help': 'make it whirr'}], 'schedule': ctx['now'] + 60}\n")
-    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=list(M.PROPOSES), consumes={"brass wire": 2})
+    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=list(M.PROPOSES), consumes={"brass wire": 2}, finds=["acorn"])
     m = live(st, man, src)
     c = cr.tend(st, st.creations()[0], NOW) and st.creations()[0]
     st.set_runtime(c["id"], {**c["runtime"], "halted_at": NOW})
@@ -325,7 +325,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr"}
     got = st.module(m["id"])
     assert got["state"] == {"n": 1} and got["facts"] == {"n": 1} and got["due"] == NOW + 60 and got["lines"] == [{"ts": NOW, "text": "tick"}]
-    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1}
+    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "garden": 0, "find": 0}
     assert st.find_item("brass wire")[0]["qty"] == 1 and "halted_at" not in st.creations()[0]["runtime"] and st.creations()[0]["runtime"]["stop_logged"]
     ev = [e for e in st.events(5) if e["kind"] == "module"][0]["data"]
     assert (ev["name"], ev["text"], ev["author"]) == ("bells", "It whirrs.", "world")
@@ -414,7 +414,8 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     assert set(bare) == {"now", "seed", "state", "offers", "due"} and bare["seed"] == int(NOW) * 7919 + 2
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] in ("spring", "summer", "autumn", "winter") and 0 <= full["time"]["hour"] < 24
-    assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False} and full["weather"] is None
+    assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
+                            "hunger": 0.2, "energy": 0.9, "mood": "curious"} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
     assert {"name": "oil", "qty": 2, "kind": "material"} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
 
@@ -502,7 +503,7 @@ async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
     assert [st.module(i)["name"] for i in made] == [*M.RULES, "gear-clock-workings"]
     m = st.module(made[-1])
     assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "library", "Gear Clock", "live")   # shipped: live
-    assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and "clockwork as code" in m["reason"]
+    assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and m["reason"] == "Your Gear Clock's workings as code: it keeps time, and can be set; it stops when it runs down, and can be tended."
     assert all(st.module(i)["status"] == "live" and st.module(i)["author"] == "library" for i in made)
     M.disable(st, m["id"])
     assert await M.offer_library(st, s, agent.runner, now=NOW) == []                                   # once, whatever was decided

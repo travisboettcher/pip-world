@@ -92,8 +92,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Shipped modules live without approval and run without the runner; kind-level layouts; the outdoors template retired (0.23.0)
   - [x] Live elements in layouts (garden, creations, Pip's poses, residents, booths, crowds), conditional shapes, moving sprites; the
         home, neighbor, market, shop and library templates retired: every scene is a layout (0.24.0)
-  - [ ] Module reads for the garden, visitors and Pip's needs; `affect`, `transfer` with sources, garden effects, `ask_gm`: then creation
-        capabilities, happenings and stall customers as modules
+  - [x] Module reads for the garden, visitors and Pip's needs; `affect`, `garden` and `find` effects; creations' workings (upkeep,
+        clock, periodic lines, sensors, helpers) as a shipped module (0.25.0)
+  - [ ] `ask_gm` and `transfer`: then happenings, stall customers, creation news and companions as modules
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 

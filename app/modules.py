@@ -25,11 +25,11 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
-READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show")
+READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
-PIP_READS = ("time", "weather", "pip", "subject", "items")                      # what Pip's own programs may know, and do (step 3)
+PIP_READS = ("time", "weather", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
 PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
 MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
@@ -62,7 +62,9 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
          "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4}
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4}
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12}   # the engine's own: a creation ticking every minute
+AFFECT_ENERGY, HURRY_RANGE, FINDS_MAX = 0.1, (0.01, 0.2), 8
 FAILS_TO_DISABLE = 3
 DRY_HOURS, DRY_STEP_MINUTES = 24, 30                  # a whole day, so what happens at dusk or on the hour is tried too
 TICK_ONLY_HOOKS = ("on_tick", "on_time", "on_event")      # hooks the engine runs on its own each step
@@ -150,6 +152,14 @@ def check_manifest(m, author: str, state=None) -> dict:
     if bool(consumes) != ("consume" in out["proposes"]):
         raise Refused("`consume` and `consumes` go together: say which materials it may use up")
     out["consumes"] = consumes
+    finds = m.get("finds")
+    if finds is not None and (not isinstance(finds, list) or not finds or len(finds) > FINDS_MAX
+                              or not all(isinstance(f, str) and f.strip() and len(f) <= 40 for f in finds)):
+        raise Refused(f"`finds` is a list of up to {FINDS_MAX} names of things it may find")
+    if bool(finds) != ("find" in out["proposes"]):
+        raise Refused(f"`find` and `finds` go together: say what it may find (up to {FINDS_MAX} names)")
+    if finds:
+        out["finds"] = list(dict.fromkeys(f.strip().lower() for f in finds))
     tends = m.get("tends")
     if tends is not None and (kind != "thing" or not isinstance(tends, str) or not OFFER_NAME.match(tends)):
         raise Refused("`tends` is the name of the offer that tending the thing means")
@@ -218,7 +228,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "pip" in reads:
         a = state.agent()
         from . import places
-        ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping"}
+        ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
+                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"]}
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -234,6 +245,10 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import worldmap
         ctx["places"] = [{"key": p["key"], "label": p["label"], "kind": p["kind"]}
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
+    if "garden" in reads:
+        ctx["garden"] = [{k: g[k] for k in ("plot", "crop", "state", "ready_in_min") if k in g} for g in state.garden(now)]
+    if "visitors" in reads:
+        ctx["visitors"] = {"waiting": len(state.pending_inbox())}
     if "facts" in reads:
         ctx["facts"] = {o["name"]: o["facts"] for o in state.modules("live") if o["id"] != m["id"] and o["facts"]}
     return ctx
@@ -256,6 +271,11 @@ def _day(now: float) -> str:
     return datetime.fromtimestamp(now).strftime("%Y-%m-%d")
 
 
+def limits(m: dict) -> dict:
+    """A module's daily allowance: the engine's own modules run creations that tick every minute."""
+    return SHIPPED_PER_DAY if m["author"] == SHIPPED else PER_DAY
+
+
 def _budget(m: dict, now: float) -> dict:
     b = m["budget"] if m["budget"].get("day") == _day(now) else {"day": _day(now)}
     return {k: b.get(k, 0) for k in PER_DAY} | {"day": b["day"]}
@@ -263,7 +283,7 @@ def _budget(m: dict, now: float) -> dict:
 
 def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
     """Check a hook's proposals and return the changes to make, in order; raises Refused (and changes nothing) if any is not allowed."""
-    man, budget, changes = m["manifest"], _budget(m, now), []
+    man, budget, changes, cap = m["manifest"], _budget(m, now), [], limits(m)
     allowed = set(man["proposes"]) | ({"reply"} if hook == "on_action" else set())
     extra = sorted(set(result) - allowed)
     if extra:
@@ -279,12 +299,12 @@ def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
         changes.append(("facts", result["publish"]))
     for key in ("perceive", "log"):
         if key in result:
-            if budget[key] >= PER_DAY[key]:
-                raise Refused(f"it has used today's {PER_DAY[key]} `{key}` lines")
+            if budget[key] >= cap[key]:
+                raise Refused(f"it has used today's {cap[key]} `{key}` lines")
             changes.append((key, _text(result[key], key)))
     if result.get("wake"):
-        if budget["wake"] >= PER_DAY["wake"]:
-            raise Refused(f"it has woken Pip {PER_DAY['wake']} times today")
+        if budget["wake"] >= cap["wake"]:
+            raise Refused(f"it has woken Pip {cap['wake']} times today")
         changes.append(("wake", True))
     if "schedule" in result and result["schedule"] is not None:
         at = result["schedule"]
@@ -306,9 +326,52 @@ def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
         if m["author"] == "pip" and any(o["at"]["place"] != "subject" for o in shown):
             raise Refused("your things show themselves where they are: `at.place` is \"subject\"")
         changes.append(("show", shown))
+    for key in ("affect", "garden", "find"):
+        if key in result:
+            if budget[key] >= cap[key]:
+                raise Refused(f"it has used today's {cap[key]} `{key}`")
+            changes.append((key, EFFECTS[key](man, result[key])))
     if "reply" in result:
         changes.append(("reply", _text(result["reply"], "reply")))
     return changes
+
+
+def _number(v, lo: float, hi: float) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def _affect(man, v) -> dict:
+    """How Pip feels: a little energy either way, a mood."""
+    if not isinstance(v, dict) or not v or set(v) - {"energy", "mood"}:
+        raise Refused("`affect` is {energy?, mood?}")
+    if "energy" in v and not _number(v["energy"], -AFFECT_ENERGY, AFFECT_ENERGY):
+        raise Refused(f"`affect.energy` is a number from -{AFFECT_ENERGY} to {AFFECT_ENERGY}")
+    if "mood" in v and not (isinstance(v["mood"], str) and v["mood"].strip() and len(v["mood"]) <= 40):
+        raise Refused("`affect.mood` is a word or two")
+    return {k: (v[k].strip() if k == "mood" else float(v[k])) for k in v}
+
+
+def _garden(man, v) -> dict:
+    """Help the garden along: cut the growing time left by a share."""
+    if not isinstance(v, dict) or not _number(v.get("hurry"), *HURRY_RANGE):
+        raise Refused(f"`garden.hurry` is a number from {HURRY_RANGE[0]} to {HURRY_RANGE[1]}")
+    return {"hurry": float(v["hurry"])}
+
+
+def _find(man, v) -> dict:
+    """Something found: only what its manifest says it may find, one or two at a time."""
+    if not isinstance(v, dict) or not isinstance(v.get("item"), str):
+        raise Refused("`find` is {item, qty}")
+    item = v["item"].strip().lower()
+    if item not in man.get("finds", []):
+        raise Refused(f"it can only find: {', '.join(man.get('finds', []))}")
+    qty = v.get("qty", 1)
+    if qty not in (1, 2) or isinstance(qty, bool):
+        raise Refused("`find.qty` is 1 or 2")
+    return {"item": item, "qty": qty}
+
+
+EFFECTS = {"affect": _affect, "garden": _garden, "find": _find}
 
 
 def _show(objs) -> list:
@@ -411,6 +474,18 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
                 for k in [k for k, v in val.items() if v is None]:
                     rt.pop(k, None)
                 state.set_runtime(c["id"], rt)
+        elif kind == "affect":
+            from .state import clamp
+            a = state.agent()
+            state.update_agent(**({"energy": clamp(a["energy"] + val["energy"])} if "energy" in val else {}),
+                               **({"mood": val["mood"]} if "mood" in val else {}))
+            budget["affect"] += 1
+        elif kind == "garden":
+            state.hurry_garden(val["hurry"], now)
+            budget["garden"] += 1
+        elif kind == "find":
+            state.add_item(val["item"], val["qty"], "material", f"found by your {m['manifest'].get('subject') or m['name']}")
+            budget["find"] += 1
         elif kind == "reply":
             out["reply"] = val
     if "due" not in fields and m.get("due") and m["due"] <= now:
@@ -845,6 +920,25 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
+RUNS = {"upkeep", "periodic", "sensor", "helper"}          # capabilities a creation's workings run (a clock that never stops has nothing to run)
+WORKS = {"upkeep": "it stops when it runs down, and can be tended", "timekeeper": "it keeps time, and can be set",
+         "periodic": "it says something now and then", "sensor": "it tells you when something happens", "helper": "it helps on its own"}
+
+
+def workings_manifest(c: dict) -> tuple[dict, str]:
+    """The shipped workings for one creation: (manifest, source), with only the hooks, effects and finds its capabilities need."""
+    man, source = library("workings")
+    caps = c["spec"]["capabilities"]
+    hooks = ["on_install"] + (["on_time"] if "upkeep" in caps else []) + (["on_tick"] if {"periodic", "sensor", "helper"} & set(caps) else []) \
+        + (["on_action"] if "upkeep" in caps or "timekeeper" in caps else [])
+    finds = caps.get("helper", {}).get("finds") or []
+    out = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"], "hooks": hooks,
+           "proposes": [p for p in man["proposes"] if p != "find" or finds], **({"finds": finds} if finds else {})}
+    if "upkeep" not in caps:
+        out.pop("tends")
+    return out, source
+
+
 def slug(text: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:28] or "thing"
 
@@ -868,14 +962,18 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
             made.append(r["id"])
         else:
             log.warning("library module %s refused: %s", name, r["error"])
-    for c in state.creations():
+    for c in state.creations():                              # a creation's workings, for each one that does something on its own
         caps = c["spec"]["capabilities"]
-        if not ("timekeeper" in caps and "upkeep" in caps) or any(o["subject"].lower() == c["name"].lower() for o in state.modules()):
+        if not set(caps) & RUNS:
             continue
-        man, source = library("timekeeper")
-        man = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"]}
+        man, source = workings_manifest(c)
+        last = ([o for o in state.modules() if o["subject"].lower() == c["name"].lower()] or [None])[-1]
+        if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live" and last["name"] == man["name"]
+                         and (last["source"] != source or last["manifest"] != check_manifest(man, SHIPPED))):
+            continue
         r = await propose(state, settings, runner, SHIPPED, man, source,
-                          f"Your {c['name']}'s clockwork as code: it keeps time, stops when it runs down, and can be wound and set.", now=now)
+                          f"Your {c['name']}'s workings as code: " + "; ".join(WORKS[k] for k in caps if k in WORKS) + ".",
+                          replaces=last["id"] if last else None, now=now)
         if "id" in r:
             made.append(r["id"])
         else:

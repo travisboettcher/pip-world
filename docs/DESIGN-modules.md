@@ -391,10 +391,27 @@ renderer on anchors a layout tags for it, so the layout stays plain geometry and
   `anchors.py` and the builder's anchor list. A place with no layout built yet shows a note instead of a scene, and nothing modules show
   is placed there.
 
+**Creations' workings as modules (0.25.0).** What a creation does on its own now runs as code:
+- **Reads**: `garden` (the plots: crop, state, minutes to ripe), `visitors` (`{waiting}`: messages waiting for Pip), and `pip` now
+  says `hunger`, `energy` and `mood`. Pip's programs may read the garden and visitors too; the builder's rules read everything but a subject.
+- **Effects**, each capped per day and checked by the referee: `affect` (`{energy, mood}`: up to 0.1 energy either way, a word or two
+  of mood; 6 a day), `garden` (`{hurry}`: cut the growing time left by 1-20%; 24 a day), `find` (`{item, qty}`: one or two of something
+  the manifest's `finds` names, added to Pip's belongings as found by the thing; 4 a day). Pip's programs can't propose them: Pip can't
+  grant itself energy or crops. The builder's rules don't propose them yet (that comes with happenings).
+- **The engine's own modules have room for a busy day**: a shipped module may make 3000 calls, 100 lines to Pip and to the record, and
+  wake Pip 12 times a day (the world's and Pip's keep the old limits), since a creation's workings tick every minute.
+- **`workings`** (replacing `timekeeper`) is the shipped module for every creation that runs down, says things, senses or helps: upkeep
+  and stopping, the clock and setting it, periodic lines, the sensor (crop ripe, a visitor, dawn, dusk, hungry, tired: an alert and a
+  wake when it comes on), and the helper (find, hurry the crops, comfort). Its manifest has only the hooks its creation needs (`on_tick`
+  only for one that ticks) and its creation's `finds`. When it is live the engine's built-in tick leaves that creation alone entirely;
+  when it isn't (switched off, failing, no library), the built-in tick runs as before. A clock's workings that were already live are
+  upgraded to it. Companions (`companion`), news (`provides`) and lasting room in the world (`world`) stay in the engine: the first two
+  need the model, the last happens once.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|
-| Creation capabilities (periodic lines, sensors, helpers, news, companions) | **reads**: the garden, waiting visitors, Pip's hunger and energy; **proposals**: `affect` (energy, mood), effects on the garden (hurry a crop), `transfer` with a daily-capped `source` (a find); `ask_gm` for prose; companions also need a way to talk |
+| Creation news and companions | `ask_gm` for prose; companions also need a way to talk |
 | Happenings | `ask_gm`, `affect`, effects on stock and the garden |
 | Customers at Pip's stall | `transfer` (coins for goods) |
 | Neighbors' letters, weather, sleep, reflection, memory | engine systems by design (the agent's own life, or outside data): not candidates |

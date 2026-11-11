@@ -176,7 +176,9 @@ class Agent:
         for crop in self.state.garden_newly_ready():
             self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
             self.request_wake()
-        if cr.tick(self.state, self.rng, skip={k for k, m in modules.bound(self.state).items() if "runtime" in m["manifest"]["proposes"]}):
+        bound = modules.bound(self.state)
+        if cr.tick(self.state, self.rng, skip={k for k, m in bound.items() if "runtime" in m["manifest"]["proposes"]},
+                   owned={k for k, m in bound.items() if m["author"] == modules.SHIPPED}):
             self.request_wake()
         emo.drift(self.state, self.s)
         market.stall_step(self.state, self.s, self.rng)          # customers stop at Pip's stall while it is at the market

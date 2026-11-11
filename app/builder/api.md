@@ -5,7 +5,9 @@ statistics, heapq, bisect; nothing else, no files, no network, no attributes sta
 Each gets ctx and returns a dict (or nothing). ctx holds:
 - now (seconds since the epoch, local clock), seed (for random.Random(ctx["seed"])), state (the dict you returned last time as "state").
 - time: {hour, minute, weekday ("Monday"...), season}. weather: {condition, temp, unit, daylight} or None.
-- pip: {where (a place key; Pip's own home is "workshop"), at_home, activity, asleep}. items: Pip's belongings [{name, qty, kind}].
+- pip: {where (a place key; Pip's own home is "workshop"), at_home, activity, asleep, hunger, energy (0 to 1), mood}. items: Pip's
+  belongings [{name, qty, kind}]. garden: the plots [{plot, crop, state ("empty", "growing", "ready"), ready_in_min}]. visitors:
+  {waiting} (how many visitors' messages wait for Pip).
 - places: the real places [{key, label, kind}] (kinds: home, wild, yard, sight, library, neighbor, shop, market).
 - works: Pip's newest pixel drawings [{id, title, subject, rows, palette}]. stalls: Pip's stall lines [{place, item, kind, qty}].
 - facts: what other modules published, by module name.
