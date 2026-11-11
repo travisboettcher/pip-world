@@ -17,7 +17,7 @@ from . import public_view as pv
 from . import sandbox
 
 DIR = Path(__file__).parent / "builder"
-RULE_PROPOSES = ("state", "publish", "perceive", "log", "schedule", "show", "wake", "voices", "ask", "speak")   # a rule can't offer, consume or change a thing
+RULE_PROPOSES = ("state", "publish", "perceive", "log", "schedule", "show", "wake", "voices", "ask", "speak", "happen")   # a rule can't offer, consume or change a thing
 RULE_READS = tuple(r for r in M.READS if r != "subject")
 SYSTEM = "You are the world of a small simulation, adding to yourself carefully. You answer only through the report tool."
 RECENT_EVENTS, MAX_TOKENS = 40, 4000

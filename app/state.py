@@ -286,6 +286,7 @@ class State:
                 ("modules", "voices", "TEXT NOT NULL DEFAULT '[]'"),      # the names a module speaks as, and where they are (modules.py)
                 ("modules", "heard", "TEXT NOT NULL DEFAULT '[]'"),       # what Pip said to them, waiting for on_message
                 ("modules", "asks", "TEXT NOT NULL DEFAULT '[]'"),        # prompts waiting for the model's words (on_answer)
+                ("modules", "happen", "TEXT NOT NULL DEFAULT '[]'"),      # a happening it proposed, waiting to be written (happenings.py)
                 ("modules", "built", "TEXT NOT NULL DEFAULT '{}'"),       # a place module's built layout (layouts.py)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
@@ -1022,7 +1023,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
-    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks")
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen")
 
     def _module(self, row) -> dict:
         return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}

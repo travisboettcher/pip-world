@@ -25,8 +25,8 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer")
-READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell", "voices", "ask", "speak")
+READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors", "people", "creations", "happenings")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell", "voices", "ask", "speak", "happen")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -61,11 +61,13 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
          "shop": "Every shop as a layout: the shopfront, its counter and stock, the keeper while it's open, a note while it's shut. Replaces the hand-written shop scene.",
          "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene.",
          "stall-customers": "Customers at Pip's stall: while Pip is at an open market, people stop now and then and buy at Pip's ask, fewer the dearer "
-                            "it is. Replaces the engine's own stall customers."}
+                            "it is. Replaces the engine's own stall customers.",
+         "happenings": "Small events from the world: a roll for each slot of the awake day (and for the night, on waking), a category the world "
+                       "allows and the season favours, a tone and a size; the engine sets what changes. Replaces the engine's own rolling."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200, "ask": 12, "speak": 24}
-SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150}
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2}
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8}
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, HURRY_RANGE, FINDS_MAX = 0.1, (0.01, 0.2), 8
 FAILS_TO_DISABLE = 3
@@ -78,6 +80,16 @@ class Refused(ValueError):
 
 
 # --- manifests ---------------------------------------------------------------------------------------------------------------------
+def _params(m: dict, lists: bool = True) -> dict:
+    """Settings a module is given: plain values (and, except for a part, short lists of them)."""
+    params = m.get("params") or {}
+    plain = (int, float, str, bool)
+    if not isinstance(params, dict) or len(params) > 16 or not all(isinstance(v, plain) or (lists and isinstance(v, list) and len(v) <= 8 and all(isinstance(x, plain) for x in v))
+                                                                    for v in params.values()):
+        raise Refused("`params` maps up to 16 names to plain default values")
+    return params
+
+
 def check_manifest(m, author: str, state=None) -> dict:
     """A manifest as the referee will hold the module to it; raises Refused with what to fix."""
     if not isinstance(m, dict):
@@ -108,10 +120,7 @@ def check_manifest(m, author: str, state=None) -> dict:
         if author == "pip" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
             raise Refused("parts and places are the world's; they have just on_build, and read and propose nothing")
         if kind == "part":
-            params = m.get("params") or {}
-            if not isinstance(params, dict) or len(params) > 16 or not all(isinstance(v, (int, float, str, bool)) for v in params.values()):
-                raise Refused("`params` maps up to 16 names to plain default values")
-            out["params"] = params
+            out["params"] = _params(m, lists=False)
         elif m.get("kinds") is not None:                     # every place of these kinds that has no layout of its own
             from . import layouts
             ks = m["kinds"]
@@ -159,6 +168,8 @@ def check_manifest(m, author: str, state=None) -> dict:
     if bool(consumes) != ("consume" in out["proposes"]):
         raise Refused("`consume` and `consumes` go together: say which materials it may use up")
     out["consumes"] = consumes
+    if m.get("params"):                                      # settings the module is given (ctx["params"]): plain values, or lists of them
+        out["params"] = _params(m)
     finds = m.get("finds")
     if finds is not None and (not isinstance(finds, list) or not finds or len(finds) > FINDS_MAX
                               or not all(isinstance(f, str) and f.strip() and len(f) <= 40 for f in finds)):
@@ -223,6 +234,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     """What a hook may know: the clock, a seed, its own state, and what its manifest says it reads."""
     man = m["manifest"]
     ctx = {"now": now, "seed": int(now) * 7919 + m["id"], "state": m["state"], "offers": m["offers"], **extra}
+    if man.get("params") and m["kind"] != "part":
+        ctx["params"] = man["params"]
     if "voices" in m["manifest"]["proposes"]:
         ctx["voices"] = m.get("voices") or []
     if "ask" in m["manifest"]["proposes"]:
@@ -240,7 +253,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         a = state.agent()
         from . import places
         ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
-                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk"}
+                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
+                      "coins": state.coins()}
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -262,6 +276,18 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
     if "garden" in reads:
         ctx["garden"] = [{k: g[k] for k in ("plot", "crop", "state", "ready_in_min") if k in g} for g in state.garden(now)]
+    if "people" in reads:                                   # who lives in Pip's world (not what they're like)
+        ctx["people"] = [{"name": c["name"], "kind": c["kind"]} for c in state.characters() if c["kind"] != "creation"]
+    if "creations" in reads:
+        from . import creations as cr
+        ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"]} for c in state.creations()]
+    if "happenings" in reads:
+        from . import happenings as hp
+        recent = state.happenings(30)
+        ctx["happenings"] = {"recent": [{k: h[k] for k in ("category", "tone", "severity", "ts", "status")} for h in recent],
+                             "today": sum(1 for h in recent if h["ts"] >= hp._today_start(now)), "room": hp.room_for(state, settings, now),
+                             "can_remember": len(state.memories("diary", limit=hp.MIN_DIARY)) >= hp.MIN_DIARY
+                             and any(n["ts"] < now - hp.OLD_NOTE_DAYS * 86400 for n in state.memories("diary", limit=500))}
     if "visitors" in reads:
         ctx["visitors"] = {"waiting": len(state.pending_inbox())}
     if "facts" in reads:
@@ -355,6 +381,21 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         if len(m.get("asks") or []) >= ASKS_WAITING:
             raise Refused(f"it already has {ASKS_WAITING} questions waiting for words")
         changes.append(("ask", _ask(result["ask"])))
+    if "happen" in result:
+        from . import happenings as hp
+        if budget["happen"] >= cap["happen"]:
+            raise Refused(f"it has used today's {cap['happen']} `happen`")
+        if m.get("happen"):
+            raise Refused("its last happening is still being written")
+        why = hp.room_for(state, settings, now) if settings is not None else "happenings can't be checked here"
+        if why:
+            raise Refused(f"nothing can happen now: {why}")
+        try:
+            hp.shape(result["happen"])                         # the world is checked when it's written (or it's dropped, saying why)
+        except ValueError as e:
+            raise Refused(str(e)) from None
+        p = result["happen"]
+        changes.append(("happen", {k: p[k] for k in ("category", "tone", "severity", "effects", "about", "names", "fallback", "night") if k in p}))
     if "sell" in result:
         if budget["sell"] >= cap["sell"]:
             raise Refused(f"it has used today's {cap['sell']} `sell`")
@@ -581,6 +622,9 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             budget["find"] += 1
         elif kind == "voices":
             fields["voices"] = val
+        elif kind == "happen":
+            fields["happen"] = [val]
+            budget["happen"] += 1
         elif kind == "speak":
             state.log("companion", name=val["name"], text=val["text"], reply=val["to_pip"], module=m["name"])
             out["wake"] = out["wake"] or val["to_pip"]
@@ -821,7 +865,7 @@ def trial_text(report: dict) -> str:
         return "It couldn't be tried just now."
     parts = [f"On a trial run it was called {report['calls']} times."]
     for key, label in (("errors", "It went wrong"), ("refused", "Not allowed"), ("perceived", "It would tell you"), ("logged", "It would note"),
-                       ("replies", "Using it"), ("unplaced", "Couldn't show"), ("asked", "It would ask the model"), ("spoken", "It would say")):
+                       ("replies", "Using it"), ("unplaced", "Couldn't show"), ("asked", "It would ask the model"), ("spoken", "It would say"), ("happened", "It would make happen")):
         items = list(dict.fromkeys(report.get(key) or []))[:3]
         if items:
             parts.append(f"{label}: " + "; ".join(items) + ".")
@@ -1014,7 +1058,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         world.update_module(m["id"], status="live", cursor=(world.events(limit=1) or [{"id": 0}])[0]["id"])
         sim = world.module(m["id"])
         report = {"calls": 0, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "slowest_ms": 0,
-                  "asked": [], "spoken": []}
+                  "asked": [], "spoken": [], "happened": []}
         placed, unplaced = {}, {}                                       # every placement seen along the way, not just the last
 
         async def run(hook, at, **extra):
@@ -1032,6 +1076,11 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
             report["logged"] += [e["data"]["text"] for e in world.events(after_id=last) if e["kind"] == "module"]
             report["spoken"] += [f"{e['data']['name']}: {e['data']['text']}" for e in world.events(after_id=last) if e["kind"] == "companion"]
             sim.update(world.module(sim["id"]))
+            if sim.get("happen"):                                       # what would happen, not written on a trial
+                h = sim["happen"][0]
+                report["happened"].append(f"{h['tone']} {h['category']} ({h.get('severity', 'minor')})")
+                world.update_module(sim["id"], happen=[])
+                sim["happen"] = []
             asks = sim.get("asks") or []
             if asks:                                                    # the model isn't asked on a trial: the words are stood in for
                 report["asked"] += [a["prompt"] for a in asks]
@@ -1071,6 +1120,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
                 await run("on_action", at, action=o["name"], args={"purpose": "trying it"})
         report["placed"], report["unplaced"] = list(placed), list(unplaced)
         report["asked"], report["spoken"] = list(dict.fromkeys(report["asked"]))[:10], list(dict.fromkeys(report["spoken"]))[:10]
+        report["happened"] = report["happened"][:10]
         report["clean"] = not report["errors"] and not report["refused"] and not report["unplaced"] and sim["status"] == "live"
         return report
     finally:
@@ -1099,6 +1149,19 @@ LIBRARY = Path(__file__).parent / "module_library"
 def library(name: str) -> tuple[dict, str]:
     """A module from the library: (manifest template, source)."""
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
+
+
+SETTINGS_PARAMS = {"happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
+                                  "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
+
+
+def settings_params(settings, name: str, defaults: dict) -> dict:
+    """A shipped module's params from the engine's settings (HAPPENINGS_CHANCE and the like), so the owner's tuning still applies."""
+    out = dict(defaults)
+    for key, attr in SETTINGS_PARAMS.get(name, {}).items():
+        val = getattr(settings, attr)
+        out[key] = list(val) if isinstance(val, tuple) else val
+    return out
 
 
 RUNS = {"upkeep", "periodic", "sensor", "helper", "companion"}          # capabilities a creation's workings run (a clock that never stops has nothing to run)
@@ -1140,8 +1203,10 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
     made = []
     for name, reason in RULES.items():                       # the world's own rules, once each, and again when the engine changes one
         man, source = library(name)
+        man = {**man, "params": settings_params(settings, name, man["params"])} if name in SETTINGS_PARAMS else man
         last = ([o for o in state.modules() if o["name"] == name] or [None])[-1]
-        if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live" and last["source"] != source):   # once shipped as the world's
+        if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live"           # once shipped as the world's
+                         and (last["source"] != source or last["manifest"] != check_manifest(man, SHIPPED))):
             continue
         r = await propose(state, settings, runner, SHIPPED, man, source, reason, replaces=last["id"] if last else None, now=now)
         if "id" in r:

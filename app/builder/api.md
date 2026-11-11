@@ -7,13 +7,15 @@ statistics, heapq, bisect; nothing else, no files, no network, no attributes sta
 Each gets ctx and returns a dict (or nothing). ctx holds:
 - now (seconds since the epoch, local clock), seed (for random.Random(ctx["seed"])), state (the dict you returned last time as "state").
 - time: {hour, minute, weekday ("Monday"...), season}. weather: {condition, temp, unit, daylight} or None.
-- pip: {where (a place key; Pip's own home is "workshop"), at_home, activity, asleep, hunger, energy (0 to 1), mood}. items: Pip's
+- pip: {where (a place key; Pip's own home is "workshop"), at_home, activity, asleep, walking, hunger, energy (0 to 1), mood, coins}. items: Pip's
   belongings [{name, qty, kind}]. garden: the plots [{plot, crop, state ("empty", "growing", "ready"), ready_in_min}]. visitors:
   {waiting} (how many visitors' messages wait for Pip).
 - places: the real places [{key, label, kind}] (kinds: home, wild, yard, sight, library, neighbor, shop, market).
 - works: Pip's newest pixel drawings [{id, title, subject, rows, palette}]. stalls: Pip's stall lines [{place, item, kind, qty, ask,
   fair (the going price), sold_today, selling (Pip is there and it is open)}].
-- facts: what other modules published, by module name.
+- facts: what other modules published, by module name. people: who lives in Pip's world [{name, kind}]. creations: Pip's things
+  [{name, running, tended}]. happenings: {recent: [{category, tone, severity, ts, status}], today, room ("" when one can happen now,
+  else why not), can_remember}.
 Return any of:
 - "state": a dict to keep. "publish": facts other modules may read. "schedule": when to call on_time next (a time, like ctx["now"] + 3600).
 - "perceive": one line Pip will notice (rare: a few a day at most). "log": one line for the day's record. "wake": true to wake Pip (rarer).
@@ -23,6 +25,14 @@ Return any of:
   (that wakes Pip)}. "ask": {"prompt": what to write and who is speaking (you keep the conversation in your state), "purpose": a word,
   "most": characters (up to 600)}: the model's words come back later to on_answer; ctx["asking"] is how many are still waiting (3 at
   most). A dozen asks and two dozen lines a day.
+- "happen": something happens to Pip (twice a day at most): {"category": a word or two ("fog", "lost cat"), "tone": "good" | "bad" |
+  "neutral", "severity": "minor" | "medium" | "major", "effects": up to 2 of {"kind": "coins"} (found, or lost), {"kind": "item",
+  "name"?: something found in this world, "gift"?: true}, {"kind": "food_loss"}, {"kind": "crop", "plot": n, "how": "time" | "yield" |
+  "ruin"}, {"kind": "energy"}, {"kind": "hunger"}, {"kind": "price", "place": a place that sells, "item"?}, {"kind": "stop", "creation":
+  one of Pip's things that need tending}, {"kind": "news", "name": a neighbor}, {"kind": "memory"} (an old thought of Pip's comes back),
+  "about": what happened, in a line (the writer keeps to it), "names": who or what it may mention}. You say what kind of thing changes;
+  the world decides how much, by the severity. A good turn only gives, a bad one only takes, a neutral one changes nothing. It is written
+  later; one that no longer fits is dropped. Only when ctx["happenings"]["room"] is "".
 - "show": up to 8 pixel pictures in scenes: [{"id": "bell", "sprite": {"rows": ["..kk..", ...], "palette": {"k": "#3a2a1c"}},
   "size": 0.6, "frame": false, "at": {"type": "wall"|"surface"|"floor"|"ground", "place": "home" or a place key, "tags": [...]},
   "motion": "bob"|"sway"|"spin", "tip": {"title": "...", "text": "..."}}]. Rows are 4 to 32 letters long, all the same length, 4 to 32

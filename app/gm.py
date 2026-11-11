@@ -547,6 +547,7 @@ class GameMaster:
             + (f"What really changes, which you must not contradict or add to: {line}\n" if line else "Nothing in the world changes: nothing breaks, moves, grows, appears or is lost; it is only a moment.\n")
             + ("It happened in the night, while Pip slept, and Pip finds out on waking: tell it in the past tense.\n" if facts.get("night") else "")
             + f"It is {facts.get('period', 'day')}{' in ' + facts['season'] if facts.get('season') else ''}. Names you may use: {', '.join(facts.get('names') or []) or 'none'}. Do not name anyone else.\n"
+            + (f"What happened, as the world tells it (keep to it): {facts['about']}\n" if facts.get("about") else "")
             + (f"Something Pip once wrote comes back to mind: \"{facts['memory']}\" Build the moment from it, in your own words.\n" if facts.get("memory") else "")
             + (f"Recent events, so you do not repeat them: {'; '.join(recent)}\n" if recent else "")
             + "Two or three sentences, under 300 characters, second person (you), plain and concrete. Do not mention numbers or objects beyond what really changes, "

@@ -1,0 +1,3 @@
+{"name": "happenings", "kind": "rule", "api": 1, "hooks": ["on_install", "on_tick"],
+ "reads": ["time", "pip", "garden", "items", "places", "people", "creations", "happenings"], "proposes": ["state", "happen"],
+ "params": {"chance": 0.1, "slot_hours": 3, "severity": [50, 45, 5], "seasons": true, "wake_hour": 6, "bedtime_hour": 22}}

@@ -191,6 +191,7 @@ def world(state, settings, now: float) -> dict:
             "creations": [c["name"] for c in creations],
             "stoppable": [{"id": c["id"], "name": c["name"]} for c in creations if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now)],
             "tools": [i["name"] for i in state.items() if i["kind"] == "tool"],
+            "places": [places.label(r["key"]) for r in state.place_rows() if r["status"] == "real"],
             "old_notes": [m for m in diary if m["ts"] < now - OLD_NOTE_DAYS * 86400], "diary_count": len(diary)}
 
 
@@ -503,8 +504,12 @@ TEMPLATES = {
 }
 
 
+FALLBACK = {"good": ("A small good turn", "Something small goes your way."), "bad": ("A small bad turn", "Something small goes against you."),
+            "neutral": ("A moment", "Something small happens, and passes.")}
+
+
 def template(c: dict) -> tuple[str, str]:
-    title, text = TEMPLATES[(c["category"], c["tone"])]
+    title, text = c.get("fallback") or TEMPLATES.get((c["category"], c["tone"])) or FALLBACK[c["tone"]]
     memory = (c.get("facts") or {}).get("memory")
     if memory:                                                  # the thought itself, not just that there was one
         text = f"An old thought of your own comes back to you: \"{memory}\""
@@ -567,6 +572,11 @@ async def create(state, settings, gm, w: dict, now: float, slot: str, rng: rando
     c = build(state, settings, w, now, rng, night)
     if not c:
         return None
+    return await record(state, settings, gm, c, w, now, slot, night)
+
+
+async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, night: bool = False, by: str = "") -> dict:
+    """A decided happening (category, tone, severity, lens, effects): written, stored, applied (unless HAPPENINGS=log) and logged."""
     recent = [h["title"] for h in state.happenings(5)]
     facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"],
              **({"season": w["season"]} if w.get("season") else {}), **({"night": True} if night else {})}
@@ -582,8 +592,181 @@ async def create(state, settings, gm, w: dict, now: float, slot: str, rng: rando
     if not logged:
         apply_effects(state, c["effects"], now, title)
     state.log("happening", id=row["id"], category=c["category"], tone=c["tone"], severity=c["severity"], lens=c["lens"], title=title,
-              text=text, effects=c["line"], jolt=0 if logged else jolt, status=row["status"])
+              text=text, effects=c["line"], jolt=0 if logged else jolt, status=row["status"], **({"by": by} if by else {}))
     return row
+
+
+async def from_modules(state, settings, gm, now: float | None = None) -> bool:
+    """Write and record the happenings live modules proposed. True when one happened (Pip should hear of it)."""
+    now, made = now or time.time(), False
+    for m in state.modules("live"):
+        if m.get("happen"):
+            state.update_module(m["id"], happen=[])
+            made |= await from_module(state, settings, gm, m["name"], m["happen"][0], now) is not None
+    return made
+
+
+# --- happenings a module proposes (modules.py, `happen`) --------------------------------------------------------
+# A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
+# target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
+# day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
+INTENTS = ("coins", "item", "food_loss", "crop", "energy", "hunger", "price", "stop", "news", "memory")
+INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
+GAINS, LOSSES = {"coins", "item", "crop", "energy", "hunger", "price", "news"}, {"coins", "food_loss", "crop", "energy", "hunger", "price", "stop", "news"}
+
+
+def world_names(w: dict) -> set:
+    """Every name a happening may mention: neighbors, creations, crops, belongings, tools, places."""
+    return {n.lower() for n in [*w["neighbors"], *w["creations"], *(p["crop"] for p in w["plots"]), *(f["name"] for f in w["foods"]), *w["tools"],
+                                *(b["key"] for b in w["booths"]), *w.get("places", [])]}
+
+
+def _intent(w, tone, severity, i: dict, rng) -> Plan:
+    """One effect a module asked for, made real by the engine; raises ValueError saying why it can't be."""
+    kind = i.get("kind")
+    if kind not in INTENTS:
+        raise ValueError(f"an effect's kind is one of {', '.join(INTENTS)}")
+    if kind == "memory":
+        if w["diary_count"] < MIN_DIARY or not w["old_notes"]:
+            raise ValueError("Pip has no old thought to come back to it")
+        return _plan_memory(w, tone, severity, rng)
+    if tone == "neutral":
+        raise ValueError("a neutral happening changes nothing (only a memory may come back)")
+    if kind not in (GAINS if tone == "good" else LOSSES):
+        raise ValueError(f"a {tone} turn can't bring {kind.replace('_', ' ')}")
+    sign = 1 if tone == "good" else -1
+    if kind == "coins":
+        if tone == "bad":
+            loss = coin_loss(w["coins"], severity)
+            if loss < 1:
+                raise ValueError("Pip has no coins to lose")
+            return Plan([{"kind": "coins", "delta": -loss}])
+        lo, hi = FOUND_COINS[severity]
+        return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), **({"gift": True} if i.get("gift") else {})}])
+    if kind == "item":
+        pool = {e[0]: e for e in gathering.WOODS + gathering.JUNKYARD}
+        name = str(i.get("name") or "").strip().lower()
+        if name and name not in pool:
+            raise ValueError(f"nothing called {name} is found in this world; leave the name out, or use one of: {', '.join(sorted(pool))}")
+        item = _found_item(rng, severity, ("food", "seed", "material")) if not name else \
+            {"kind": "item", "name": name, "qty": rng.randint(*FOUND_ITEMS[severity]), "item_kind": pool[name][1], "description": pool[name][4], "attrs": pool[name][5]}
+        return Plan([{**item, **({"gift": True} if i.get("gift") else {})}], [item["name"]])
+    if kind == "food_loss":
+        plan = _pest_loss(w, severity, rng, 5)
+        if plan is None:
+            raise ValueError("there is nothing to lose from the pantry (or Pip is too low for it)")
+        return plan
+    if kind in ("energy", "hunger"):
+        if tone == "bad" and w["low"]:
+            raise ValueError("Pip is too low already")
+        return Plan([{"kind": kind, "delta": sign * ENERGY[severity] * (1 if kind == "energy" else -1)}])
+    if kind == "crop":
+        plot = next((p for p in w["plots"] if p["plot"] == i.get("plot")), None)
+        if not plot:
+            raise ValueError("`plot` is the number of a plot with something growing")
+        how = i.get("how", "time")
+        if how == "ruin":
+            if tone != "bad" or severity != "major":
+                raise ValueError("only a major bad turn ruins a crop")
+            return Plan([{"kind": "crop_ruin", "plot": plot["plot"], "crop": plot["crop"]}], [plot["crop"]])
+        if how == "time":
+            shift = round(max(0.0, plot["ready_at"] - w["now"]) / 60 * SHIFT[severity])
+            if shift < 1:
+                raise ValueError("that crop is as good as ripe")
+            return Plan([{"kind": "crop_time", "plot": plot["plot"], "crop": plot["crop"], "factor": 1 - sign * SHIFT[severity], "minutes": sign * shift}],
+                        [plot["crop"]])
+        if how != "yield":
+            raise ValueError("`how` is time, yield or ruin")
+        delta = YIELD_GOOD[severity] if tone == "good" else min(YIELD_BAD[severity], plot["yield"] - 1)
+        if delta < 1:
+            raise ValueError("that crop can't give any less")
+        return Plan([{"kind": "crop_yield", "plot": plot["plot"], "crop": plot["crop"], "delta": sign * delta}], [plot["crop"]])
+    if kind == "price":
+        booth = next((b for b in w["booths"] if b["key"] == i.get("place")), None)
+        if not booth:
+            raise ValueError("`place` is the key of a place that sells")
+        pool = [f["name"] for f in w["foods"]] + [e[0] for e in booth["loot"] or []]
+        item = str(i.get("item") or "").strip().lower() or (pool[rng.randrange(len(pool))] if pool else "")
+        if not item or item not in {p.lower() for p in pool}:
+            raise ValueError(f"`item` is something sold at {booth['key']} or that Pip has")
+        return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": sign * PRICE_UNITS[severity]}], [booth["key"], item])
+    if kind == "stop":
+        c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
+        if not c or severity == "minor":
+            raise ValueError("`creation` is one of Pip's running things that need tending, and a minor turn stops nothing")
+        part = _mending_part(rng) if severity == "major" and i.get("mend") else None
+        return Plan([{"kind": "creation_stop", "id": c["id"], "name": c["name"], "part": part}], [c["name"]] + ([part["name"]] if part else []))
+    name = next((n for n in w["neighbors"] if n.lower() == str(i.get("name") or "").strip().lower()), None)   # news
+    if not name:
+        raise ValueError("`name` is one of Pip's neighbors")
+    return Plan([{"kind": "news", "name": name, "tone": tone}], [name])
+
+
+def shape(p) -> None:
+    """A proposed happening's form (raises ValueError): what can be checked without looking at the world."""
+    if not isinstance(p, dict) or not CATEGORY.match(str(p.get("category") or "")) or p.get("tone") not in TONE_WEIGHTS \
+            or p.get("severity", "minor") not in SEVERITIES:
+        raise ValueError("`happen` is {category (a word or two), tone (good, bad, neutral), severity (minor, medium, major), effects?, about?, names?}")
+    effects, about, names = p.get("effects") or [], p.get("about") or "", p.get("names") or []
+    if not isinstance(effects, list) or len(effects) > INTENTS_MAX or not all(isinstance(e, dict) for e in effects):
+        raise ValueError(f"`effects` is a list of up to {INTENTS_MAX} {{kind, ...}}")
+    if not isinstance(about, str) or len(about) > ABOUT_MAX or not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise ValueError(f"`about` is a line of up to {ABOUT_MAX} characters, and `names` a list of names")
+    if any(e.get("kind") not in INTENTS for e in effects):
+        raise ValueError(f"an effect's kind is one of {', '.join(INTENTS)}")
+
+
+def decide(state, settings, p: dict, now: float, rng) -> dict:
+    """A module's proposed happening, made concrete: {category, tone, severity, lens, effects, names, facts, line}. Raises ValueError."""
+    shape(p)
+    effects, about, names = p.get("effects") or [], p.get("about") or "", p.get("names") or []
+    tone = p["tone"]
+    severity = "minor" if tone == "neutral" else p.get("severity", "minor")
+    w = world(state, settings, now)
+    unknown = [n for n in names if n.lower() not in world_names(w)]
+    if unknown:
+        raise ValueError(f"no one and nothing called {unknown[0]} is in Pip's world")
+    plan = Plan()
+    for i in effects:
+        one = _intent(w, tone, severity, i, rng)
+        plan.effects += one.effects
+        plan.names += one.names
+        plan.facts.update(one.facts)
+    if len({e["kind"] for e in plan.effects}) < len(plan.effects):
+        raise ValueError("one effect of each kind")
+    return {"category": p["category"], "tone": tone, "severity": severity, "lens": pick_lens(rng, tone), "effects": plan.effects,
+            "names": list(dict.fromkeys(plan.names + names)), "facts": {**plan.facts, **({"about": about.strip()} if about.strip() else {})},
+            "line": effects_line(plan.effects)}
+
+
+def room_for(state, settings, now: float) -> str:
+    """Why no happening can come now ('' when one can): the same limits the engine's own keep."""
+    if settings.happenings == "off":
+        return "happenings are off"
+    if unresolved(state):
+        return "Pip hasn't taken in the last one yet"
+    if sum(1 for h in state.happenings(20) if h["ts"] >= _today_start(now)) >= settings.happenings_max_per_day:
+        return f"there have been {settings.happenings_max_per_day} today already"
+    if sleepmod.asleep(state) or (state.session() or {}).get("kind") == "walk":
+        return "Pip is asleep or out walking"
+    return ""
+
+
+async def from_module(state, settings, gm, name: str, p: dict, now: float) -> dict | None:
+    """A happening a module proposed, checked again now, written and recorded (None if it no longer fits: logged as dropped)."""
+    rng = random.Random(hashlib.sha256(f"{salt(state)}:{name}:{now}".encode()).hexdigest())
+    why = room_for(state, settings, now)
+    try:
+        c = None if why else decide(state, settings, p, now, rng)
+    except ValueError as e:
+        why = str(e)
+    if why:
+        state.log("happening_dropped", module=name, category=str(p.get("category"))[:24], reason=why)
+        return None
+    w = world(state, settings, now)
+    if isinstance(p.get("fallback"), dict) and p["fallback"].get("title") and p["fallback"].get("text"):
+        c["fallback"] = (clip(p["fallback"]["title"], TITLE_MAX), clip(p["fallback"]["text"], MAX_TEXT))
+    return await record(state, settings, gm, c, w, now, f"module:{name}:{int(now)}", bool(p.get("night")), by=name)
 
 
 # --- Pip's reading -----------------------------------------------------------------------------------------------
@@ -681,6 +864,9 @@ async def step(state, settings, gm, now: float | None = None) -> bool:
         return False
     now = now or time.time()
     resolve_due(state, now)
+    from . import modules
+    if modules.live_named(state, "happenings"):           # a module rolls the dice (module_library/happenings.py)
+        return False
     if await _night(state, settings, gm, now):
         return True
     slot = current_slot(settings, now)

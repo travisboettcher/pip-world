@@ -193,6 +193,8 @@ class Agent:
             self.request_wake()
         if await modules.answer(self.state, self.s, self.gm, self.runner):     # the model's words for what modules asked
             self.request_wake()
+        if await happenings.from_modules(self.state, self.s, self.gm):        # what modules said happens, written and recorded
+            self.request_wake()
         await modules.notify_owner(self.state, self.s, self.outreach)
         await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
         if await self.finish_work():

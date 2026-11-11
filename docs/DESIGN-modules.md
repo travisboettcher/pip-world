@@ -448,10 +448,33 @@ Built on them, in the shipped `workings`:
   weather, about Pip's own small world only), told to Pip when they arrive. Using the receiver without `listen` no longer asks for a
   bulletin while its workings are live.
 
+**Happenings as a module (0.28.0).** The owner's rule: the engine keeps the checks where they are generic and broadly applicable.
+- **`happen`** (any author but Pip; 2 a day for the world's modules, 8 for the engine's): `{category, tone, severity, effects?, about?,
+  names?, fallback?, night?}`. A module says *what kind* of thing changes, as intents: `coins`, `item` (a find from this world, or a
+  gift), `food_loss`, `crop` (time, yield, or ruin), `energy`, `hunger`, `price`, `stop` (a creation that needs tending), `news` (a
+  neighbor), `memory` (an old thought of Pip's comes back: the diary stays with the engine). The engine makes them real by the severity
+  with the same tables and caps its own happenings use, checks every target, and that the tone fits: a good turn only gives, a bad one
+  only takes, a neutral one changes nothing. The referee checks only the shape and the day's room (`happenings.room_for`: switched on,
+  nothing waiting to be taken in, the day's limit, Pip awake and not walking); the world is checked when it is written, and a happening
+  that no longer fits is dropped with the reason logged (`happening_dropped`), so a module's state is never lost to a refusal. It is then
+  written by the model with the same checks (a module's `about` is given to the writer to keep to; its `names` must be real), falls back
+  to the module's own `fallback` or a plain line by tone, is recorded, applied and taken in by Pip as any happening is; the event says
+  `by` which module.
+- **Reads**: `people` (who lives here: names and kinds, nothing private), `creations` (running, tended), `happenings` (the recent record,
+  today's count, `room`, whether an old thought could come back), and `pip.coins`.
+- **`params`** for any module (plain values or short lists): settings it is given in `ctx["params"]`. A shipped module's params can come
+  from the engine's settings: the happenings rule gets `HAPPENINGS_CHANCE`, `HAPPENINGS_SLOT_HOURS`, `HAPPENINGS_SEVERITY`,
+  `HAPPENINGS_SEASONS`, `WAKE_HOUR` and `BEDTIME_HOUR`, and a change to them (or to a shipped manifest) proposes its new version.
+- **`happenings`** (shipped rule, `on_tick`): the dice as before: a roll per slot of the awake day in its first half hour (not while Pip is
+  walking or something waits), the slots slept through rolled on waking (a hit happened in the night: no market or neighbor news), a
+  category the world allows and the season favours that hasn't come up in twelve hours, a tone (bad much less likely after two bad ones),
+  a size, and what changes. While it is live the engine only resolves happenings (Pip's reading of them) and no longer rolls. Not kept:
+  the dice record for replaying a roll (`happening_rolls`), which the engine's own rolling still writes. Trials list what would happen.
+- The builder's rules may propose happenings too.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|
-| Happenings | `ask_gm`, `affect`, effects on stock and the garden |
 | Neighbors' letters, weather, sleep, reflection, memory | engine systems by design (the agent's own life, or outside data): not candidates |
 
 ## Steps
