@@ -1,0 +1,1 @@
+{"name": "stall-customers", "kind": "rule", "api": 1, "hooks": ["on_tick"], "reads": ["pip", "stalls"], "proposes": ["state", "sell"]}

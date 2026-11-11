@@ -162,9 +162,11 @@ def test_the_new_reads_works_and_stalls(tmp_path):
     ctx = M.context(st, s, live(st, rule(reads=["works", "stalls"]), "x"), NOW)
     assert len(ctx["works"]) == M.WORKS_SHOWN and ctx["works"][0]["title"] == f"P{M.WORKS_SHOWN + 1}"
     assert set(ctx["works"][0]) == {"id", "title", "subject", "rows", "palette"}
-    assert ctx["stalls"] == [{"place": "Brygdon", "item": "P1", "kind": "work", "qty": 3, "work": "drawing"},
-                             {"place": "Brygdon", "item": "carrots", "kind": "food", "qty": 2},
-                             {"place": "Saltholm", "item": "Gear Clock", "kind": "creation", "qty": 1}]
+    short = [{k: r[k] for k in ("place", "item", "kind", "qty", "work") if k in r} for r in ctx["stalls"]]
+    assert short == [{"place": "Brygdon", "item": "P1", "kind": "work", "qty": 3, "work": "drawing"},
+                     {"place": "Brygdon", "item": "carrots", "kind": "food", "qty": 2},
+                     {"place": "Saltholm", "item": "Gear Clock", "kind": "creation", "qty": 1}]
+    assert all(r["selling"] is False and r["sold_today"] == 0 and r["ask"] > 0 and r["fair"] > 0 for r in ctx["stalls"])
     assert [r["item"] for r in st.stall_rows()] == ["P1", "carrots", "Gear Clock"] and [r["item"] for r in st.stall_rows("Saltholm")] == ["Gear Clock"]
 
 

@@ -9,7 +9,8 @@ Each gets ctx and returns a dict (or nothing). ctx holds:
   belongings [{name, qty, kind}]. garden: the plots [{plot, crop, state ("empty", "growing", "ready"), ready_in_min}]. visitors:
   {waiting} (how many visitors' messages wait for Pip).
 - places: the real places [{key, label, kind}] (kinds: home, wild, yard, sight, library, neighbor, shop, market).
-- works: Pip's newest pixel drawings [{id, title, subject, rows, palette}]. stalls: Pip's stall lines [{place, item, kind, qty}].
+- works: Pip's newest pixel drawings [{id, title, subject, rows, palette}]. stalls: Pip's stall lines [{place, item, kind, qty, ask,
+  fair (the going price), sold_today, selling (Pip is there and it is open)}].
 - facts: what other modules published, by module name.
 Return any of:
 - "state": a dict to keep. "publish": facts other modules may read. "schedule": when to call on_time next (a time, like ctx["now"] + 3600).

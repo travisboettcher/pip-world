@@ -408,12 +408,22 @@ renderer on anchors a layout tags for it, so the layout stays plain geometry and
   upgraded to it. Companions (`companion`), news (`provides`) and lasting room in the world (`world`) stay in the engine: the first two
   need the model, the last happens once.
 
+**Customers at Pip's stall as a module (0.26.0).**
+- **Reads**: each `stalls` line now says its `ask`, the going price here (`fair`), how many sold today (`sold_today`) and whether it is
+  `selling` (Pip is there, awake and not walking, and the market is open); `pip` says whether Pip is `walking`.
+- **`sell`** (`[{place, item, qty}]`, up to 3 lines a call): customers buy from Pip's stall. The referee allows only lines on the stall,
+  only where Pip is selling right now, at most what is there and what the market still takes today (8 of a thing), and always at Pip's
+  own ask: a module decides how many people stop, never the price. The sale is paid, logged and nudges the local price exactly as before
+  (`market.sell_units`). Pip's programs can't sell.
+- **`stall-customers`** (shipped rule, `on_tick`): about two customers an hour at the going price, more when cheaper, none when far dearer,
+  credited at most an hour at a time; the first look only starts the clock. While it is live the engine's own stall customers stay
+  quiet. Fixed alongside: a shipped module's larger call allowance (0.25.0) was not applied when calling it.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|
 | Creation news and companions | `ask_gm` for prose; companions also need a way to talk |
 | Happenings | `ask_gm`, `affect`, effects on stock and the garden |
-| Customers at Pip's stall | `transfer` (coins for goods) |
 | Neighbors' letters, weather, sleep, reflection, memory | engine systems by design (the agent's own life, or outside data): not candidates |
 
 ## Steps

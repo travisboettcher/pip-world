@@ -94,7 +94,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
         home, neighbor, market, shop and library templates retired: every scene is a layout (0.24.0)
   - [x] Module reads for the garden, visitors and Pip's needs; `affect`, `garden` and `find` effects; creations' workings (upkeep,
         clock, periodic lines, sensors, helpers) as a shipped module (0.25.0)
-  - [ ] `ask_gm` and `transfer`: then happenings, stall customers, creation news and companions as modules
+  - [x] Stall reads and `sell`: customers at Pip's stall as a shipped module (0.26.0)
+  - [ ] `ask` (the model's words, answered later) and happenings' effects: then happenings, creation news and companions as modules
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 

@@ -369,43 +369,57 @@ def stall_tick(state, place: str, now: float, seconds: float, rng) -> list[dict]
         if row["kind"] == "creation" and not any(c["id"] == row["attrs"].get("creation_id") for c in state.creations()):
             state.delete_stall(place, row["item"])                # given away or sold elsewhere meanwhile
             continue
-        sold_today = row["sold_today"] if row["day"] == today else 0
         fair = fair_price(state, place, row["name"], row["kind"], row["attrs"], now)
         customers = poisson(rng, STALL_DEMAND_PER_HOUR * stall_factor(row["ask"] / fair) * seconds / 3600)
-        units = min(customers, row["qty"], STALL_DAILY_UNITS - sold_today)
-        if units <= 0:
-            continue
-        coins = units * row["ask"]
-        left = row["qty"] - units
-        if row["kind"] == "creation":
-            state.give_creation(row["attrs"]["creation_id"], f"a buyer at {place}")
-        state.add_coins("pip", coins)
-        nudge(state, place, row["item"], -units, now)
-        if left:
-            state.set_stall(place, row["item"], qty=left, sold=row["sold"] + units, earned=row["earned"] + coins, sold_today=sold_today + units, day=today)
-        else:
-            state.delete_stall(place, row["item"])
-        sale = {"place": place, "item": row["name"], "qty": units, "coins": coins, "left": left,
-                **({"what": row["kind"]} if row["kind"] in ("creation", "work") else {})}
-        state.log("stall_sale", **sale)
-        sales.append(sale)
+        units = min(customers, row["qty"], STALL_DAILY_UNITS - sold_today(row, now))
+        if units > 0:
+            sales.append(sell_units(state, place, row, units, now))
     return sales
+
+
+def sold_today(row: dict, now: float) -> int:
+    return row["sold_today"] if row["day"] == day_of(now) else 0
+
+
+def sell_units(state, place: str, row: dict, units: int, now: float) -> dict:
+    """Customers buy `units` of a stall line at its ask: Pip is paid, the line shrinks (or goes), the local price slips, the sale is logged."""
+    today, coins, left = day_of(now), units * row["ask"], row["qty"] - units
+    if row["kind"] == "creation":
+        state.give_creation(row["attrs"]["creation_id"], f"a buyer at {place}")
+    state.add_coins("pip", coins)
+    nudge(state, place, row["item"], -units, now)
+    if left:
+        state.set_stall(place, row["item"], qty=left, sold=row["sold"] + units, earned=row["earned"] + coins, sold_today=sold_today(row, now) + units, day=today)
+    else:
+        state.delete_stall(place, row["item"])
+    sale = {"place": place, "item": row["name"], "qty": units, "coins": coins, "left": left,
+            **({"what": row["kind"]} if row["kind"] in ("creation", "work") else {})}
+    state.log("stall_sale", **sale)
+    return sale
 
 
 def stall_step(state, settings, rng, now: float | None = None) -> list[dict]:
     """The monitor's look at the stall: customers stop only while Pip is at a market, awake, not walking, and it is open. The first look only starts the clock."""
-    from . import places, place_kinds
-    from . import sleep as sleepmod
     now = now or time.time()
     last = state.meta("stall_at")
     state.set_meta(stall_at=now)
-    here = state.agent()["location"]
-    rec = state.place_row(here)
-    if last is None or sleepmod.asleep(state) or (state.session() or {}).get("kind") == "walk":
-        return []
-    if not rec or not place_kinds.KINDS[rec["kind"]].stalls or not places.open_now(places.invented_place(rec), settings, now):
+    here = selling_at(state, settings, now)
+    if last is None or not here:
         return []
     return stall_tick(state, here, now, min(now - float(last), STALL_STEP_CAP), rng)
+
+
+def selling_at(state, settings, now: float) -> str | None:
+    """The market where Pip's stall is selling right now: where Pip is, awake and not walking, while it is open (or None)."""
+    from . import places, place_kinds
+    from . import sleep as sleepmod
+    here = state.agent()["location"]
+    rec = state.place_row(here)
+    if sleepmod.asleep(state) or (state.session() or {}).get("kind") == "walk":
+        return None
+    if not rec or not place_kinds.KINDS[rec["kind"]].stalls or not places.open_now(places.invented_place(rec), settings, now):
+        return None
+    return here
 
 
 def stall_lines(state, place: str, now: float) -> list[str]:

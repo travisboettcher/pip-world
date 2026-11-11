@@ -26,7 +26,7 @@ API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action")
 READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -59,10 +59,12 @@ RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back w
                      "Replaces the hand-written neighbor scene.",
          "market": "Every market as a layout: the square, houses lit at night, a stall for each of the day's booths and Pip's own. Replaces the hand-written market scene.",
          "shop": "Every shop as a layout: the shopfront, its counter and stock, the keeper while it's open, a note while it's shut. Replaces the hand-written shop scene.",
-         "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene."}
+         "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene.",
+         "stall-customers": "Customers at Pip's stall: while Pip is at an open market, people stop now and then and buy at Pip's ask, fewer the dearer "
+                            "it is. Replaces the engine's own stall customers."}
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4}
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200}
 SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12}   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, HURRY_RANGE, FINDS_MAX = 0.1, (0.01, 0.2), 8
 FAILS_TO_DISABLE = 3
@@ -229,7 +231,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         a = state.agent()
         from . import places
         ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
-                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"]}
+                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk"}
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -239,7 +241,11 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "works" in reads:
         ctx["works"] = state.pictures(WORKS_SHOWN)
     if "stalls" in reads:
-        ctx["stalls"] = [{"place": r["place"], "item": r["name"], "kind": r["kind"], "qty": r["qty"], **({"work": r["attrs"]["work"]} if r["attrs"].get("work") else {})}
+        from . import market
+        selling = market.selling_at(state, settings, now)
+        ctx["stalls"] = [{"place": r["place"], "item": r["name"], "kind": r["kind"], "qty": r["qty"], **({"work": r["attrs"]["work"]} if r["attrs"].get("work") else {}),
+                          "ask": r["ask"], "fair": market.fair_price(state, r["place"], r["name"], r["kind"], r["attrs"], now),
+                          "sold_today": market.sold_today(r, now), "selling": r["place"] == selling}
                          for r in state.stall_rows()]
     if "places" in reads:
         from . import worldmap
@@ -281,7 +287,7 @@ def _budget(m: dict, now: float) -> dict:
     return {k: b.get(k, 0) for k in PER_DAY} | {"day": b["day"]}
 
 
-def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
+def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> list:
     """Check a hook's proposals and return the changes to make, in order; raises Refused (and changes nothing) if any is not allowed."""
     man, budget, changes, cap = m["manifest"], _budget(m, now), [], limits(m)
     allowed = set(man["proposes"]) | ({"reply"} if hook == "on_action" else set())
@@ -326,6 +332,10 @@ def plan(state, m: dict, result: dict, now: float, hook: str) -> list:
         if m["author"] == "pip" and any(o["at"]["place"] != "subject" for o in shown):
             raise Refused("your things show themselves where they are: `at.place` is \"subject\"")
         changes.append(("show", shown))
+    if "sell" in result:
+        if budget["sell"] >= cap["sell"]:
+            raise Refused(f"it has used today's {cap['sell']} `sell`")
+        changes.append(("sell", _sell(state, settings, result["sell"], now)))
     for key in ("affect", "garden", "find"):
         if key in result:
             if budget[key] >= cap[key]:
@@ -372,6 +382,28 @@ def _find(man, v) -> dict:
 
 
 EFFECTS = {"affect": _affect, "garden": _garden, "find": _find}
+SELL_LINES = 3
+
+
+def _sell(state, settings, v, now: float) -> list:
+    """Customers buying from Pip's stall: only lines on it, where Pip is selling right now, at Pip's ask, within what the market takes today."""
+    from . import market
+    from .state import name_key
+    if not isinstance(v, list) or not 1 <= len(v) <= SELL_LINES or not all(isinstance(x, dict) and {"place", "item", "qty"} <= set(x) for x in v):
+        raise Refused("`sell` is a list of {place, item, qty}")
+    out = []
+    for x in v:
+        place = str(x["place"])
+        if settings is None or market.selling_at(state, settings, now) != place:
+            raise Refused(f"Pip isn't selling at {place} right now")
+        row = next((r for r in state.stall_rows(place) if r["item"] == name_key(str(x["item"]))), None)
+        if not row:
+            raise Refused(f"there is no {x['item']} on Pip's stall at {place}")
+        most = min(row["qty"], market.STALL_DAILY_UNITS - market.sold_today(row, now))
+        if not isinstance(x["qty"], int) or isinstance(x["qty"], bool) or not 1 <= x["qty"] <= most:
+            raise Refused(f"`sell` qty is 1 to {most} (what is on the stall, and what the market takes today)")
+        out.append((place, row["item"], x["qty"]))
+    return out
 
 
 def _show(objs) -> list:
@@ -486,6 +518,13 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "find":
             state.add_item(val["item"], val["qty"], "material", f"found by your {m['manifest'].get('subject') or m['name']}")
             budget["find"] += 1
+        elif kind == "sell":
+            from . import market
+            for place, item, qty in val:
+                row = next((r for r in state.stall_rows(place) if r["item"] == item), None)
+                if row:
+                    market.sell_units(state, place, row, min(qty, row["qty"]), now)
+            budget["sell"] += 1
         elif kind == "reply":
             out["reply"] = val
     if "due" not in fields and m.get("due") and m["due"] <= now:
@@ -509,8 +548,8 @@ def _summary(res: dict, changes: list | None, refused: str = "") -> str:
 async def call(state, settings, runner, m: dict, hook: str, now: float, trial: bool = False, **extra) -> dict:
     """Run one hook and apply what it proposes. Returns {"ok", "error", "refused", "wake", "reply"}; never raises."""
     budget = _budget(m, now)
-    if budget["calls"] >= PER_DAY["calls"]:
-        return {"ok": False, "error": "", "refused": f"it has used today's {PER_DAY['calls']} calls", "wake": False, "reply": ""}
+    if budget["calls"] >= limits(m)["calls"]:
+        return {"ok": False, "error": "", "refused": f"it has used today's {limits(m)['calls']} calls", "wake": False, "reply": ""}
     if not trial and misfires(state, m, hook, now):                # a trial shows the program itself, not its luck
         state.add_module_call(m["id"], now, hook, True, 0, "misfired (the work is rough)")
         return {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "misfired": True}
@@ -520,7 +559,7 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
     changes, refused, out = None, "", {"wake": False, "reply": ""}
     if res.get("ok") and not res.get("missing"):
         try:
-            changes = plan(state, m, res["result"], now, hook)
+            changes = plan(state, m, res["result"], now, hook, settings)
         except Refused as e:
             refused = str(e)
         else:
@@ -603,6 +642,11 @@ def scene_objects(state, key: str, kind: str) -> list[dict]:
     placed, _ = objects_for(state, key, kind)
     return [{"key": o["key"], "rows": o["sprite"]["rows"], "palette": o["sprite"]["palette"], "frame": o["frame"], "w": o["w"], "h": o["h"],
              "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], **{k: o[k] for k in ("motion", "tip") if k in o}} for o in placed]
+
+
+def live_named(state, name: str) -> dict | None:
+    """The live module with this name, if there is one."""
+    return next((m for m in state.modules("live") if m["name"] == name), None)
 
 
 def bound(state) -> dict:
