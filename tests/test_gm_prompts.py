@@ -391,20 +391,20 @@ async def test_a_neighbor_may_hand_pip_something_only_through_give(tmp_path):
 
 
 # --- using a creation (and the news a radio brings) ----------------------------------------------------------------
-USE_PROPS = {"text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
-             "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"}}
-BULLETIN_ASK = ("- `bulletin`: only if Pip is listening for news: 2-3 sentences of news about Pip's own small world only "
-                "(the weather, the neighbors, the season, something invented and harmless), never real-world events")
+USE_PROPS = {"text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"}}
 
 
 @pytest.mark.asyncio
-async def test_using_a_creation_asks_for_a_bulletin_only_when_it_may_bring_news(tmp_path):
-    gm, b, _ = master(tmp_path, report(text="Static."), report(text="Static."))
-    await gm.use("- radio", "listen", "Pip is idle.", False, True)
-    assert BULLETIN_ASK not in task(b, 0) and b.schemas[0] == {"type": "object", "properties": USE_PROPS, "required": ["text"]}
-    await gm.use("- radio", "listen", "Pip is idle.", False, True, bulletin=True)
-    assert task(b, 1).endswith(BULLETIN_ASK) and task(b, 1).startswith(task(b, 0).split("Optional effects")[0][:40])
-    assert b.schemas[1] == {"type": "object", "properties": {**USE_PROPS, "bulletin": {"type": "string"}}, "required": ["text"]}
+async def test_using_a_creation_asks_which_of_its_own_actions_pip_did(tmp_path):
+    gm, b, _ = master(tmp_path, report(text="Tick."), report(text="Tick."))
+    await gm.use("- clock", "wind it", "Pip is idle.", [{"name": "tend", "help": "wound: keeps it going about 12 hours"},
+                                                        {"name": "set", "help": "set it to the right time"}])
+    assert task(b, 0).endswith("- `action`: only if what Pip does is one of these, its name: tend (wound: keeps it going about 12 hours); "
+                               "set (set it to the right time). Looking at it, admiring it or talking about it is none of them")
+    assert b.schemas[0] == {"type": "object", "properties": {**USE_PROPS, "action": {"type": "string"}}, "required": ["text"]}
+    await gm.use("- painting", "admire it", "Pip is idle.")
+    assert "`action`" not in task(b, 1) and b.schemas[1] == {"type": "object", "properties": USE_PROPS, "required": ["text"]}
+    assert "bulletin" not in task(b, 1) and "`tend`" not in task(b, 1) and "set_clock" not in task(b, 1)
 
 
 @pytest.mark.asyncio
@@ -419,13 +419,3 @@ async def test_the_creation_design_schema_lets_the_gm_name_an_ability(tmp_path):
     assert "provides: ONLY if what Pip finished" in task(b) and "garden_plot" in task(b)
 
 
-@pytest.mark.asyncio
-async def test_using_a_tended_creation_asks_whether_that_was_its_upkeep(tmp_path):
-    gm, b, _ = master(tmp_path, report(text="Tick."), report(text="Tick."))
-    await gm.use("- clock", "wind it", "Pip is idle.", True, True, tend_verb="wound")
-    t = task(b, 0)
-    assert ("- `tend`: true only if what Pip does is the regular upkeep that keeps it going (\"wound\"): winding, charging, "
-            "oiling, feeding, whatever suits it. Looking at it, setting it or admiring it is not upkeep") in t
-    assert b.schemas[0]["properties"]["tend"] == {"type": "boolean"}
-    await gm.use("- clock", "wind it", "Pip is idle.", True, True)
-    assert "`tend`" not in task(b, 1) and "tend" not in b.schemas[1]["properties"]

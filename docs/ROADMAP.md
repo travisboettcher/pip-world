@@ -98,7 +98,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Stall reads and `sell`: customers at Pip's stall as a shipped module (0.26.0)
   - [x] Voices, `on_message`, `ask`/`on_answer`, `speak`: things to talk to owned by modules; companions and creation news on them (0.27.0)
   - [x] `happen`: happenings any module can propose, with the engine's checks; the dice as a shipped rule (0.28.0)
-  - [ ] Remove the engine's built-in fallbacks for what now runs as shipped modules (workings, companions, customers, happenings' dice)
+  - [ ] Remove the engine's built-in fallbacks for what now runs as shipped modules: creations' workings and companions (0.29.0);
+        stall customers and happenings' dice (next)
 - [ ] World packs: a world-neutral engine; everything that makes a world *that* world comes from a pack, and features are modules a world
       includes (**designed: [DESIGN-world-packs.md](DESIGN-world-packs.md)**, from the 2026-11-11 audit; bootstrapping guide:
       [GUIDE-world-pack.md](GUIDE-world-pack.md))

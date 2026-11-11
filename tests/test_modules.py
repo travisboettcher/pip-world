@@ -316,7 +316,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
            " 'publish': {'n': 1}, 'offer': [{'name': 'whirr', 'help': 'make it whirr'}], 'schedule': ctx['now'] + 60}\n")
     man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=list(M.PROPOSES), consumes={"brass wire": 2}, finds=["acorn"])
     m = live(st, man, src)
-    c = cr.tend(st, st.creations()[0], NOW) and st.creations()[0]
+    c = st.creations()[0]
     st.set_runtime(c["id"], {**c["runtime"], "halted_at": NOW})
     r = await M.call(st, s, agent.runner, m, "on_action", NOW, action="whirr", args={"n": 3})
     assert r["refused"] == "it may use up 1 to 2 brass wire at a time" and r["ok"] and not r["wake"]
@@ -524,7 +524,6 @@ async def test_the_clock_module_notices_it_stopping_once_instead_of_the_engine(t
     end = st.creations()[0]["runtime"]["tended_until"]
     assert m["due"] == end and m["offers"][0] == {"name": "tend", "help": "wound: keeps it going about 12 hours"}
     assert await M.step(st, s, agent.runner, end - 60) is False                                    # not yet
-    assert cr.tick(st, agent.rng, end + 60, skip=set(M.bound(st))) is False                        # the engine leaves it to the module
     assert await M.step(st, s, agent.runner, end + 60) is True
     rt = st.creations()[0]["runtime"]
     assert rt["stop_logged"] and [e["data"]["text"] for e in st.events(5) if e["kind"] == "module"] == ["Your Gear Clock has stopped - it needs tending (wound)."]
@@ -555,23 +554,22 @@ async def test_tending_and_setting_go_through_the_module(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_without_a_live_module_the_built_in_workings_carry_on(tmp_path):
+async def test_without_a_live_module_a_thing_has_no_actions_and_isnt_tended(tmp_path):
     s, st, agent = modular(tmp_path)
     clock(st)
     st.add_creation("Paperweight", "a stone", None, "sound", {"capabilities": {}, "quirks": []}, {})
     r = await call(agent, "use_item", item="paperweight", purpose="admire", action="spin")
     assert r.text == "error: your Paperweight doesn't list any actions; use it without `action`"
-    assert (await call(agent, "tend", creation="gear clock")).text.startswith("you tend your Gear Clock (wound)")
+    assert (await call(agent, "tend", creation="gear clock")).text == "error: your Gear Clock doesn't need tending"   # no workings yet
     (tmp_path / "b").mkdir()
     s2, st2, agent2, m = await clockwork(tmp_path / "b")
-    M.disable(st2, m["id"])
-    assert M.bound(st2) == {} and (await call(agent2, "tend", creation="gear clock")).text.startswith("you tend your Gear Clock (wound)")
     agent2.ctx.runner = None
-    await M.approve(st2, s2, agent2.runner, m["id"])
-    assert (await call(agent2, "tend", creation="gear clock")).text.startswith("you tend")                     # no runner: built in
-    assert (await M.act(st2, s2, None, st2.module(m["id"]), "set", {})).startswith("you set")               # shipped: runs locally
+    assert (await call(agent2, "tend", creation="gear clock")).text.startswith("you tend")                    # shipped: runs locally
+    assert (await M.act(st2, s2, None, st2.module(m["id"]), "set", {})).startswith("you set")
     st2.update_module(m["id"], author="world")
     assert (await M.act(st2, s2, None, st2.module(m["id"]), "set", {})) == "error: that can't be done right now"
+    M.disable(st2, m["id"])
+    assert (await call(agent2, "tend", creation="gear clock")).text == "error: your Gear Clock doesn't need tending"
 
 
 @pytest.mark.asyncio

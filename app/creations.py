@@ -4,7 +4,8 @@ A creation is a stored spec: zero to three capabilities plus a few quirks. Many 
 have no capabilities at all. The capabilities are deliberately generic primitives - the engine knows how to *run*
 them, while the GM fills in everything specific (what the thing does, says, finds, how it's tended) once, when the
 project is finished. The engine owns every number (from the project's quality) and runs capabilities each monitor
-pass without any LLM. New primitive = one entry in each of `sanitize_spec`, `tick` and `describe`.
+pass without any LLM: a creation's capabilities run in its shipped `workings` module (module_library/workings.py). New primitive = one
+entry in `sanitize_spec` and `describe`, and its behaviour in the workings.
 """
 import random
 import time
@@ -22,8 +23,6 @@ MAX_CAPABILITIES = 3
 COMPANION_MIN_DIFFICULTY = 3  # small, simple pieces don't get a mind of their own
 DRIFT_MIN_PER_DAY = {"rough": 15, "sound": 5, "fine": 1.5, "masterwork": 0.3}
 UPKEEP_FACTOR = {"rough": 0.5, "sound": 1.0, "fine": 1.5, "masterwork": 2.0}
-HURRY_FRACTION = 0.1      # hurry_crops: share of remaining growing time saved per run
-COMFORT_ENERGY = 0.05     # comfort: energy restored per run
 USE_ENERGY_COOLDOWN = 6 * 3600
 DRIFT_NOTICED = 5         # minutes a clock must be off before Pip is told (and tempted to reset it every hour)
 
@@ -127,105 +126,10 @@ def clock_reading(c: dict, now: float) -> tuple[str, float]:
     return time.strftime("%-I:%M %p", time.localtime(face)), (face - now) / 60
 
 
-def set_clock(c: dict, now: float, face: float | None = None) -> None:
-    """Restart the drift from `face` (default: the right time). Mutates the runtime."""
-    c["runtime"].update(clock_set_at=now, clock_offset=((face or now) - now) / 60)
-
-
 def _needs(c: dict) -> str:
     part = c["runtime"].get("needs_part")
     mend = f"{part['qty']} {part['name']} to mend it, then " if part else ""
     return f"it needs {mend}tending ({c['spec']['capabilities']['upkeep']['verb']})"
-
-
-# --- engine tick (no LLM) -----------------------------------------------------
-def _condition(state, cond: str, now: float) -> bool:
-    if cond == "crop_ripe":
-        return any(g["state"] == "ready" for g in state.garden(now))
-    if cond == "visitor":
-        return bool(state.pending_inbox())
-    hour = time.localtime(now).tm_hour
-    if cond == "dawn":
-        return hour == 6
-    if cond == "dusk":
-        return hour == 19
-    a = state.agent()
-    return a["hunger"] >= 0.6 if cond == "hungry" else a["energy"] <= 0.3  # tired
-
-
-def _help(state, rng: random.Random, c: dict, h: dict, now: float) -> None:
-    if h["effect"] == "hurry_crops":
-        if state.hurry_garden(HURRY_FRACTION, now):
-            state.log("creation", name=c["name"], what="helper", text=h["line"])
-    elif h["effect"] == "find":
-        found = rng.choice(h["finds"])
-        state.add_item(found, 1, "material", f"found by your {c['name']}")
-        state.log("creation", name=c["name"], what="helper", text=f"{h['line']} (found: {found})", item=found)
-    else:  # comfort
-        state.update_agent(energy=clamp(state.agent()["energy"] + COMFORT_ENERGY))
-        state.log("creation", name=c["name"], what="helper", text=h["line"])
-
-
-def tick(state, rng: random.Random, now: float | None = None, skip: set | frozenset = frozenset(),
-         owned: set | frozenset = frozenset()) -> bool:
-    """Run every creation's capabilities once. Returns True if Pip should be woken. Creations named (lowercase) in `skip` have their
-    workings as a module (modules.py), which notices them stopping instead; those in `owned` are run wholly by the engine's shipped
-    `workings` module, and left alone here."""
-    now = now or time.time()
-    wake = False
-    for c in state.creations():
-        caps, rt = c["spec"]["capabilities"], c["runtime"]
-        if not caps or c["name"].lower() in owned:
-            continue
-        before = dict(rt, last=dict(rt["last"]))
-        if not running(c, now) and c["name"].lower() in skip:
-            pass
-        elif not running(c, now):
-            if not rt.get("stop_logged"):
-                state.log("creation", name=c["name"], what="stopped",
-                          text=f"Your {c['name']} has stopped" + (f" - {_needs(c)}." if "upkeep" in caps else "."))
-                rt["stop_logged"] = True
-                wake = True
-        else:
-            last = rt["last"]
-            if "periodic" in caps and now - last.get("periodic", rt["made_at"]) >= caps["periodic"]["every_minutes"] * 60:
-                state.log("creation", name=c["name"], what="periodic", text=rng.choice(caps["periodic"]["lines"]))
-                last["periodic"] = now
-            if "sensor" in caps:
-                on = _condition(state, caps["sensor"]["condition"], now)
-                if on and not rt.get("sensor_on"):
-                    state.log("creation", name=c["name"], what="sensor", text=caps["sensor"]["alert"],
-                              condition=caps["sensor"]["condition"])
-                    wake = True
-                rt["sensor_on"] = on
-            if "helper" in caps and now - last.get("helper", rt["made_at"]) >= caps["helper"]["every_minutes"] * 60:
-                last["helper"] = now
-                _help(state, rng, c, caps["helper"], now)
-        if rt != before:
-            state.set_runtime(c["id"], rt)
-    return wake
-
-
-# --- actions ------------------------------------------------------------------
-def tend(state, c: dict, now: float | None = None) -> str:
-    now = now or time.time()
-    caps, rt = c["spec"]["capabilities"], c["runtime"]
-    if "upkeep" not in caps:
-        return f"error: your {c['name']} doesn't need tending"
-    part = rt.get("needs_part")
-    if part:  # a mishap broke something: it has to be mended with a real part before it can be tended
-        have, _ = state.find_item(part["name"], kind="material")
-        if not have or have["qty"] < part["qty"]:
-            return f"error: your {c['name']} needs {part['qty']} {part['name']} to mend it before it can be tended"
-        state.take_item(have["id"], part["qty"])
-        rt.pop("needs_part")
-    if "timekeeper" in caps and not running(c, now):
-        set_clock(c, now, clock_face(c, now))  # it starts again from the time it stopped at, so it's now behind
-    up = caps["upkeep"]
-    rt.update(tended_until=now + up["hours"] * 3600, stop_logged=False)
-    rt.pop("halted_at", None)
-    state.set_runtime(c["id"], rt)
-    return f"you tend your {c['name']} ({up['verb']}); it will keep going for about {round(up['hours'])} hours"
 
 
 def describe(c: dict, now: float | None = None) -> str:
@@ -277,33 +181,20 @@ async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -
     return c
 
 
-async def use(state, gm, c: dict, purpose: str, now: float | None = None, bulletins: bool = True) -> str:
-    """Pip uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects. Without `bulletins`, a receiver's
-    bulletins come from its workings module (its `listen` offer) instead."""
+async def use(state, gm, c: dict, purpose: str, now: float | None = None, actions=()) -> tuple[str, str | None]:
+    """Pip uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects. Returns (text, action): when
+    what Pip does is one of the thing's own `actions` (its workings' offers: tending it, setting it, listening to it...), the action's name,
+    for the caller to carry out through the module."""
     now = now or time.time()
     caps, rt = c["spec"]["capabilities"], c["runtime"]
     if not running(c, now):
-        return f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"
+        return (f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"), None
     a = state.agent()
     situation = f"Pip is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
-    left = abilities.news_left(c, now) if bulletins else 0
-    verb = caps["upkeep"]["verb"] if "upkeep" in caps else ""
-    out = await gm.use(describe(c, now), purpose, situation, "timekeeper" in caps, "upkeep" in caps, bulletin=left > 0,
-                       tend_verb=verb) if gm else None
+    actions = [x for x in actions if isinstance(x, dict) and x.get("name")]
+    out = await gm.use(describe(c, now), purpose, situation, actions) if gm else None
     if not out:
-        return f"you spend a moment with your {c['name']} ({purpose})."
-    done = []
-    if out.get("set_clock") and "timekeeper" in caps:
-        set_clock(c, now)
-        done.append("it now shows the right time")
-    tended = False
-    if out.get("stop") and "upkeep" in caps:  # only tended things can stop: tending is how they're restarted
-        rt["halted_at"] = now
-        done.append(f"it has stopped until you tend it ({verb})")
-    elif out.get("tend") and "upkeep" in caps:  # what Pip did was the upkeep itself: the same as the tend tool
-        tend(state, c, now)
-        tended = True
-        done.append(f"{verb}: it will keep going for about {round(caps['upkeep']['hours'])} hours")
+        return f"you spend a moment with your {c['name']} ({purpose}).", None
     fields = {}
     if out.get("mood"):
         fields["mood"] = _line(out["mood"], 40)
@@ -315,15 +206,8 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None, bullet
     state.set_runtime(c["id"], rt)
     text = _line(out["text"], 300)
     state.log("creation", name=c["name"], what="used", text=text, purpose=_line(purpose, 120))
-    news = _line(out.get("bulletin"), 300) if left > 0 else ""
-    if news:  # a bulletin counts against the creation's allowance for the day
-        rt["news_log"] = [t for t in rt.get("news_log", []) if now - t < abilities.DAY] + [now]
-        state.set_runtime(c["id"], rt)
-        state.log("creation", name=c["name"], what="news", text=news)
-        text += f" Bulletin: {news}"
-    elif "provides" in caps and not left and bulletins:
-        done.append("only static now: it has told you all the news it has today")
-    if "upkeep" in caps and "halted_at" not in rt and not tended:  # using it for anything else doesn't tend it
+    action = out.get("action") if out.get("action") in {x["name"] for x in actions} else None
+    if "upkeep" in caps and action is None:                    # using it for anything else doesn't keep it going
         left = (rt["tended_until"] - now) / 3600
-        done.append(f"it keeps going for about {round(left)} more hours; use the tend tool to keep it going")
-    return text + (f" ({'; '.join(done)})" if done else "")
+        text += f" (it keeps going for about {round(left)} more hours; use the tend tool to keep it going)"
+    return text, action

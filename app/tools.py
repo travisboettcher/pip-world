@@ -232,6 +232,7 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"said it to {v['name']}" + ("; it will answer in a moment" if ears else ""))
     if args.get("to"):
         ch = ctx.state.find_character(args["to"])
+        ch = ch if ch and ch["kind"] != "creation" else None   # a thing that talks does so through its workings (a voice)
         where = places.place_of(ctx.state, ch) if ch else None
         if ch and ch["kind"] in places.IN_PERSON and (not where or places.present_at(ctx.state) != where):
             return ToolResult(f"{ch['name']} can't hear you from here" + (
@@ -429,9 +430,12 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
                                   {"purpose": str(args.get("purpose") or "")[:200]})
             return ToolResult(r, followup=r.startswith("error"))
         if made:
-            owned = (modules.bound(ctx.state).get(made["name"].lower()) or {}).get("author") == modules.SHIPPED
-            return ToolResult(await cr.use(ctx.state, ctx.gm, made, str(args.get("purpose") or "")[:200], bulletins=not owned),
-                              followup=True)
+            purpose = str(args.get("purpose") or "")[:200]
+            m = modules.bound(ctx.state).get(made["name"].lower())
+            text, action = await cr.use(ctx.state, ctx.gm, made, purpose, actions=m["offers"] if m else ())
+            if action:                                            # what Pip did is one of the thing's own actions: its workings carry it out
+                text += f" ({await modules.act(ctx.state, ctx.settings, ctx.runner, m, action, {'purpose': purpose})})"
+            return ToolResult(text, followup=True)
         return ToolResult(f"error: {err}", followup=True)
     if item["kind"] == "seed":
         return ToolResult("error: seeds are planted with the plant tool", followup=True)
@@ -709,11 +713,10 @@ async def tend(ctx: ToolContext, args: dict) -> ToolResult:
     if not c:
         return ToolResult(f"error: {err}", followup=True)
     m = modules.bound(ctx.state).get(c["name"].lower())
-    if m and m["manifest"].get("tends") in [o["name"] for o in m["offers"]] and (ctx.runner or m["author"] == modules.SHIPPED):   # its workings are code: tending is the action they name
-        r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, m["manifest"]["tends"], {"purpose": "tending it"})
-        return ToolResult(r, followup=r.startswith("error") or r.startswith("that didn't"))
-    r = cr.tend(ctx.state, c)
-    return ToolResult(r, followup=r.startswith("error"))
+    if not (m and m["manifest"].get("tends") in [o["name"] for o in m["offers"]]):   # its workings say what tending it means
+        return ToolResult(f"error: your {c['name']} doesn't need tending", followup=True)
+    r = await modules.act(ctx.state, ctx.settings, ctx.runner, m, m["manifest"]["tends"], {"purpose": "tending it"})
+    return ToolResult(r, followup=r.startswith("error") or r.startswith("that didn't"))
 
 
 @tool("recall", "Search your memory: your journal, what visitors said and gave you, your work, the days you've "

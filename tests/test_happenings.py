@@ -1261,35 +1261,6 @@ def test_a_mishap_stops_a_creation_that_needs_tending_and_only_that(tmp_path):
     assert st.find_creation("Gear Clock")[0]["runtime"]["halted_at"] == NOW + 5
 
 
-def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_is_tended(tmp_path):
-    from app import creations as cr
-    s, st = fresh(tmp_path)
-    c = clock(st)
-    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}], NOW)
-    stopped = st.find_creation("Gear Clock")[0]
-    assert cr._needs(stopped) == "it needs 2 brass wire to mend it, then tending (wind)"
-    assert "STOPPED - it needs 2 brass wire to mend it, then tending (wind)" in cr.describe(stopped, NOW + 10)
-    assert cr.tend(st, stopped, NOW + 10) == "error: your Gear Clock needs 2 brass wire to mend it before it can be tended"
-    st.add_item("brass wire", 1, "material", "")
-    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 10).startswith("error: your Gear Clock needs 2 brass wire")
-    assert st.find_item("brass wire")[0]["qty"] == 1                                         # nothing taken until it can be mended
-    st.add_item("brass wire", 4, "material", "")
-    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 10).startswith("you tend your Gear Clock (wind)")
-    mended = st.find_creation("Gear Clock")[0]
-    assert st.find_item("brass wire")[0]["qty"] == 3 and "needs_part" not in mended["runtime"] and "halted_at" not in mended["runtime"]
-    st.add_item("brass wire", 1, "tool", "")
-    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 20).startswith("you tend")          # a plain stop needs only tending
-
-
-def test_a_part_must_be_a_material_and_a_plain_stop_is_just_tended(tmp_path):
-    from app import creations as cr
-    s, st = fresh(tmp_path)
-    c = clock(st)
-    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 1}}], NOW)
-    st.add_item("springs", 3, "tool", "")                                                   # not a material: it does not count
-    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW).startswith("error: your Gear Clock needs 1 springs")
-
-
 def test_news_joins_a_neighbors_life_as_the_title(tmp_path):
     from app import neighbors
     s, st = fresh(tmp_path)
@@ -1468,18 +1439,6 @@ def test_news_without_a_title_or_for_a_resident_changes_nothing(tmp_path):
     assert [c["life"] for c in st.characters()] == [[], []]
 
 
-def test_a_part_the_pip_has_exactly_is_enough_and_tending_clears_the_stop_flag(tmp_path):
-    from app import creations as cr
-    s, st = fresh(tmp_path)
-    c = clock(st)
-    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 2}}], NOW)
-    st.add_item("springs", 2, "material", "")
-    assert cr.tend(st, st.find_creation("Gear Clock")[0], NOW + 5).startswith("you tend")
-    assert st.find_item("springs")[0] is None                                                        # all two were used
-    rt = st.find_creation("Gear Clock")[0]["runtime"]
-    assert rt["stop_logged"] is False and rt["tended_until"] == NOW + 5 + 24 * 3600
-
-
 # --- 0.8.1: the writer's text kept, not thrown away --------------------------------------------------------------------------
 def test_a_text_a_little_too_long_is_cut_at_the_last_sentence_that_fits():
     long = "The wind came in over the marsh. " * 10 + "And then it stopped."
@@ -1530,3 +1489,45 @@ async def test_the_author_is_given_a_length_and_told_nothing_moves_in_a_quiet_mo
     await gm.write_happening("atmosphere", "neutral", "minor", "fear", "", {}, [])
     p = task(b)
     assert "Two or three sentences, under 300 characters," in p and "nothing breaks, moves, grows, appears or is lost" in p
+
+
+# --- a stopped creation is mended through its workings (0.29.0: the engine no longer tends anything itself) -------------------------
+async def _mendable(tmp_path):
+    from app import modules as M
+    from tests.test_modules import modular
+    from tests.test_world_view import clock
+    s, st, agent = modular(tmp_path)
+    c = clock(st)
+    man, src = M.workings_manifest(c)
+    m = st.module((await M.propose(st, s, M.LocalRunner(), M.SHIPPED, man, src, "workings"))["id"])
+    return s, st, c, m
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_is_tended(tmp_path):
+    from app import creations as cr
+    from app import modules as M
+    s, st, c, m = await _mendable(tmp_path)
+    t = time.time()
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}], t)
+    stopped = st.find_creation("Gear Clock")[0]
+    assert cr._needs(stopped) == "it needs 2 brass wire to mend it, then tending (wound)"
+    assert "STOPPED - it needs 2 brass wire to mend it, then tending (wound)" in cr.describe(stopped, t + 10)
+    assert await M.act(st, s, None, m, "tend", {}, t + 10) == "that didn't work: you need 2 brass wire for that"
+    st.add_item("brass wire", 1, "material", "")
+    assert await M.act(st, s, None, st.module(m["id"]), "tend", {}, t + 10) == "that didn't work: you need 2 brass wire for that"
+    assert st.find_item("brass wire")[0]["qty"] == 1                                         # nothing taken until it can be mended
+    st.add_item("brass wire", 4, "material", "")
+    assert (await M.act(st, s, None, st.module(m["id"]), "tend", {}, t + 10)).startswith("you tend your Gear Clock (wound)")
+    mended = st.find_creation("Gear Clock")[0]
+    assert st.find_item("brass wire")[0]["qty"] == 3 and "needs_part" not in mended["runtime"] and "halted_at" not in mended["runtime"]
+    assert mended["runtime"]["stop_logged"] is False and abs(mended["runtime"]["tended_until"] - (t + 10 + 12 * 3600)) < 1
+
+
+@pytest.mark.asyncio
+async def test_a_part_must_be_a_material(tmp_path):
+    from app import modules as M
+    s, st, c, m = await _mendable(tmp_path)
+    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 1}}], time.time())
+    st.add_item("springs", 3, "tool", "")                                                   # not a material: it does not count
+    assert await M.act(st, s, None, m, "tend", {}) == "that didn't work: you need 1 springs for that"

@@ -4,7 +4,6 @@ import os
 import random
 import time
 
-from . import companions as comp
 from . import invented_places as invented
 from . import abilities
 from . import creations as cr
@@ -176,10 +175,6 @@ class Agent:
         for crop in self.state.garden_newly_ready():
             self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
             self.request_wake()
-        bound = modules.bound(self.state)
-        if cr.tick(self.state, self.rng, skip={k for k, m in bound.items() if "runtime" in m["manifest"]["proposes"]},
-                   owned={k for k, m in bound.items() if m["author"] == modules.SHIPPED}):
-            self.request_wake()
         emo.drift(self.state, self.s)
         if not modules.live_named(self.state, "stall-customers"):
             market.stall_step(self.state, self.s, self.rng)      # customers stop at Pip's stall while it is at the market (unless a module does)
@@ -198,9 +193,6 @@ class Agent:
         await modules.notify_owner(self.state, self.s, self.outreach)
         await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
         if await self.finish_work():
-            self.request_wake()
-        if await comp.step(self.state, self.s, self.gm, self.rng,
-                           owned={k for k, m in modules.bound(self.state).items() if m["author"] == modules.SHIPPED}):
             self.request_wake()
         if await happenings.step(self.state, self.s, self.gm):
             self.request_wake()
@@ -231,8 +223,7 @@ class Agent:
                 work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
             if work and work["project_done"]:
                 p = self.state.project(work["project_id"])
-                c = await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
-                comp.add_for_creation(self.state, self.rng, c)
+                await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
             return bool(work)
 
     async def reflect(self) -> dict | None:

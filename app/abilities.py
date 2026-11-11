@@ -69,11 +69,3 @@ def perception(state, now: float) -> list[str]:
     shown, off = cr.clock_reading(c, now)
     skew = "" if abs(off) < cr.DRIFT_NOTICED else f", about {round(abs(off))} min {'fast' if off > 0 else 'slow'}"
     return [f"By your {c['name']} it is {shown}{skew}."]
-
-
-def news_left(c: dict, now: float) -> int:
-    """Bulletins this creation can still bring today (0 for anything that doesn't provide news)."""
-    if c["spec"]["capabilities"].get("provides", {}).get("ability") != "news":
-        return 0
-    used = [t for t in c["runtime"].get("news_log", []) if now - t < DAY]
-    return max(0, ABILITIES["news"].per_day - len(used))

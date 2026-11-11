@@ -444,8 +444,7 @@ Built on them, in the shipped `workings`:
   its own every so often (about its `chatter_minutes`, never waking Pip), and answers what Pip says (at most 4 answers an hour, waking
   Pip), with the model given who it is, what it is, how Pip is, and the last few lines between them, as before. A stopped one says
   nothing; one sold or given away does nothing at all (the workings now go quiet for any creation that's gone, which in 0.25.0 would
-  have failed). While it is live the engine's own companion code leaves that creation alone; it remains only as the fallback with the
-  module library off.
+  have failed). While it is live the engine's own companion code leaves that creation alone (removed entirely in 0.29.0).
 - **News**: a receiver offers `listen`; up to 3 bulletins a day come through (the model writes them from the day, the season and the
   weather, about Pip's own small world only), told to Pip when they arrive. Using the receiver without `listen` no longer asks for a
   bulletin while its workings are live.
@@ -473,6 +472,20 @@ Built on them, in the shipped `workings`:
   a size, and what changes. While it is live the engine only resolves happenings (Pip's reading of them) and no longer rolls. Not kept:
   the dice record for replaying a roll (`happening_rolls`), which the engine's own rolling still writes. Trials list what would happen.
 - The builder's rules may propose happenings too.
+
+**The engine's fallbacks removed: creations and companions (0.29.0).** A creation's capabilities now run only in its `workings`
+module: the engine's own tick (periodic lines, sensors, helpers, the stop notice), its `tend`, and its companion characters (a chatter
+timer and answers for every talking creation) are gone, as are bulletins asked for while using a receiver. What stays generic:
+- **Using a thing** (`use_item` without an action) still asks the GM what happens, with a mood and energy if they follow; the GM is now
+  shown the thing's own actions (its workings' offers, `{name, help}`) and says which one Pip did, if any (`action`), and the engine carries
+  that out through the module (`modules.act`): winding a clock by hand tends it, as before, without the engine knowing what tending is.
+- **`tend`** is the action the workings name (`tends`); a thing with no live workings "doesn't need tending".
+- **A thing that runs down must offer tending**: a trial notes it and approval refuses it (`modules.untended`), so neither the world nor
+  Pip's own program can leave a clock that nobody could ever wind again.
+- `say(to=...)` no longer answers for a creation's old character: a thing talks only through a voice.
+- The module library must be on (`MODULE_LIBRARY`, on from the environment) for creations to do anything at all; bare test settings
+  leave it off, and the tests that need workings set it.
+Still to remove: the engine's stall customers and happenings' dice (0.30.0).
 
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |

@@ -978,6 +978,8 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
     m = state.module(module_id)
     if not m or m["status"] not in ("waiting", "disabled"):
         return {"error": "only a waiting or disabled module can go live"}
+    if m["report"].get("offers") is not None and (why := untended(state, m, m["report"]["offers"])):
+        return {"error": why}
     for o in state.modules("live"):
         if o["name"] == m["name"] or (m["kind"] == "thing" and o["kind"] == "thing" and o["subject"].lower() == m["subject"].lower()) \
                 or (m["kind"] == "place" and o["kind"] == "place" and _covers(m["manifest"], o["manifest"])):
@@ -1115,6 +1117,8 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
             for v in list(sim.get("voices") or [])[:2]:
                 await run("on_message", at, message={"to": v["name"], "text": "Hello.", "from": "Pip", "ts": at})
         report["offers"] = [o["name"] for o in sim["offers"]]
+        if (why := untended(state, m, report["offers"])):
+            report["refused"].append(why)
         if "on_action" in hooks:
             for o in list(sim["offers"]):
                 await run("on_action", at, action=o["name"], args={"purpose": "trying it"})
@@ -1125,6 +1129,14 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
         return report
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def untended(state, m: dict, offers) -> str:
+    """Why a thing's workings can't go live ('' if they can): a creation that runs down needs its workings to offer tending it."""
+    c = _creation(state, m["manifest"]["subject"]) if m["kind"] == "thing" else None
+    if c and "upkeep" in c["spec"]["capabilities"] and m["manifest"].get("tends", "tend") not in offers:
+        return f"the {c['name']} runs down: its workings must offer `{m['manifest'].get('tends', 'tend')}`, or nobody could keep it going"
+    return ""
 
 
 def _placement(state, settings, m: dict, now: float) -> tuple[list[str], list[str]]:

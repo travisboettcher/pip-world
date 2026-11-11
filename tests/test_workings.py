@@ -198,19 +198,6 @@ async def test_helpers_find_hurry_and_comfort(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_the_engine_leaves_a_creation_to_its_workings(tmp_path):
-    s, st, agent, c, m = await workings(tmp_path, {**PERIODIC, **FINDER})
-    owned = {k for k, b in M.bound(st).items() if b["author"] == M.SHIPPED}
-    assert owned == {"sandy"}
-    assert cr.tick(st, agent.rng, NOW + 7 * 3600, owned=owned) is False
-    assert not [e for e in st.events(10) if e["kind"] == "creation"] and not st.find_item("acorn")[0]
-    M.disable(st, m["id"])
-    owned = {k for k, b in M.bound(st).items() if b["author"] == M.SHIPPED}
-    cr.tick(st, agent.rng, NOW + 7 * 3600, owned=owned)
-    assert [e["data"]["what"] for e in st.events(10) if e["kind"] == "creation"] == ["helper", "periodic"]
-
-
-@pytest.mark.asyncio
 async def test_a_live_workings_the_engine_changed_is_upgraded(tmp_path, monkeypatch):
     s, st, agent, c, m = await workings(tmp_path, PERIODIC)
     real = M.library
@@ -346,19 +333,6 @@ async def test_a_companion_answers_only_so_often_and_not_when_stopped_or_given_a
     assert M.voice_named(st, "sandy") is None or M.voices_here(st) == []
 
 
-@pytest.mark.asyncio
-async def test_the_engine_leaves_an_owned_companion_alone(tmp_path):
-    from app import companions as comp
-    s, st, agent, c, m = await workings(tmp_path, COMPANION)
-    ch = st.add_character(c["name"], "creation", c["id"], "x", 1, NOW - 99999)
-    class Loud:
-        async def speak(self, *a):
-            return "I should not speak."
-    owned = {k for k, b in M.bound(st).items() if b["author"] == M.SHIPPED}
-    assert await comp.step(st, s, Loud(), agent.rng, NOW, owned=owned) is False
-    assert not [e for e in st.events(5) if e["kind"] == "companion"]
-
-
 # --- news: a receiver that brings bulletins, on ask (0.27.0) ---------------------------------------------------------------------
 RADIO = {"provides": {"ability": "news"}}
 
@@ -383,16 +357,56 @@ async def test_a_radio_offers_listening_and_brings_three_bulletins_a_day(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_a_stopped_radio_brings_nothing_and_the_engine_offers_no_bulletin_for_an_owned_one(tmp_path):
+async def test_a_stopped_radio_brings_nothing(tmp_path):
     s, st, agent, c, m = await workings(tmp_path, {**RADIO, "upkeep": {"verb": "charged", "hours": 4}})
     assert await M.act(st, s, None, m, "listen", {}, NOW + 5 * 3600) == "your Sandy has stopped; it needs tending (charged) first"
+
+
+# --- using and tending go through the workings (0.29.0: the engine runs no capability itself) -----------------------------------
+class Narrator:
+    def __init__(self, *outs):
+        self.outs, self.seen = list(outs), []
+
+    async def use(self, line, purpose, situation, actions=()):
+        self.seen.append(list(actions))
+        return self.outs.pop(0) if self.outs else {"text": "You look at it."}
+
+
+@pytest.mark.asyncio
+async def test_using_a_thing_the_way_its_workings_offer_does_it_for_real(tmp_path):
+    from tests.test_projects import call
+    s, st, agent, c, m = await workings(tmp_path, {**RADIO, "upkeep": {"verb": "charged", "hours": 4}, "timekeeper": {"drift_per_day": 5}})
+    agent.gm = n = Narrator({"text": "You crank the handle.", "action": "tend", "mood": "pleased"}, {"text": "You admire it."},
+                            {"text": "You twiddle it.", "action": "dance"})
+    agent.ctx.gm = n
+    r = await call(agent, "use_item", item="sandy", purpose="crank it")
+    assert r.text == "You crank the handle. (you tend your Sandy (charged); it will keep going for about 4 hours)"
+    assert [a["name"] for a in n.seen[0]] == ["tend", "set", "listen"] and st.agent()["mood"] == "pleased"
+    r = await call(agent, "use_item", item="sandy", purpose="look at it")
+    assert r.text == "You admire it. (it keeps going for about 4 more hours; use the tend tool to keep it going)"
+    r = await call(agent, "use_item", item="sandy", purpose="twiddle")                                  # not one of its actions: just words
+    assert r.text.startswith("You twiddle it. (it keeps going")
+
+
+@pytest.mark.asyncio
+async def test_without_workings_a_thing_offers_nothing_and_cant_be_tended(tmp_path):
+    from tests.test_projects import call
     from app import creations as cr
-    class Narrator:
-        def __init__(self):
-            self.bulletin = None
-        async def use(self, line, purpose, situation, timekeeper, can_stop, bulletin=False, tend_verb=""):
-            self.bulletin = bulletin
-            return {"text": "You listen."}
-    n = Narrator()
-    await cr.use(st, n, st.creations()[0], "listen", NOW, bulletins=False)
-    assert n.bulletin is False
+    s, st, agent = modular(tmp_path)
+    c = made(st, "Lamp", {"upkeep": {"verb": "trimmed", "hours": 6}})
+    agent.gm = agent.ctx.gm = n = Narrator({"text": "You trim the wick.", "action": "tend"})
+    r = await call(agent, "use_item", item="lamp", purpose="trim it")
+    assert n.seen == [[]] and r.text.startswith("You trim the wick. (it keeps going")                   # no workings: no actions to do
+    assert (await call(agent, "tend", creation="lamp")).text == "error: your Lamp doesn't need tending"
+    assert await cr.use(st, None, c, "look") == ("you spend a moment with your Lamp (look).", None)
+
+
+@pytest.mark.asyncio
+async def test_a_thing_that_runs_down_must_offer_tending_to_go_live(tmp_path):
+    s, st, agent = modular(tmp_path, modules_approval="")
+    made(st, "Lamp", {"upkeep": {"verb": "trimmed", "hours": 6}})
+    from tests.test_modules import rule
+    man = rule(kind="thing", name="lamp-glow", subject="Lamp", hooks=["on_install"], proposes=["offer"], tends="tend")
+    r = await M.propose(st, s, M.LocalRunner(), "world", man, "def on_install(ctx):\n    return {'offer': [{'name': 'glow', 'help': 'make it glow'}]}\n", now=NOW)
+    assert r["status"] == "waiting" and r["report"]["refused"] == ["the Lamp runs down: its workings must offer `tend`, or nobody could keep it going"]
+    assert (await M.approve(st, s, M.LocalRunner(), r["id"], now=NOW)) == {"error": "the Lamp runs down: its workings must offer `tend`, or nobody could keep it going"}

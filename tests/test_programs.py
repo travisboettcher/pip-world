@@ -155,12 +155,12 @@ async def test_pips_program_takes_over_from_the_worlds_and_tend_uses_its_tend(tm
     await M.approve(st, s, agent.runner, world_one, now=NOW)
     no_tend = 'def on_install(ctx):\n    return {"offer": [{"name": "polish", "help": "shine it"}]}\n'
     await call(agent, "program", creation="gear clock", code=no_tend)
-    await M.approve(st, s, agent.runner, M.programs(st)["gear clock"]["id"])
-    assert st.module(world_one)["status"] == "replaced" and [m["author"] for m in st.modules("live") if m["kind"] == "thing"] == ["pip"]
-    assert (await call(agent, "tend", creation="gear clock")).text.startswith("you tend your Gear Clock (wound)")      # its program doesn't tend: built in
+    assert (await M.approve(st, s, agent.runner, M.programs(st)["gear clock"]["id"]))["error"].startswith("the Gear Clock runs down")
+    assert st.module(world_one)["status"] == "live"                                                    # a program that can't tend it can't replace it
     tends = 'def on_install(ctx):\n    return {"offer": [{"name": "tend", "help": "wind it"}]}\ndef on_action(ctx):\n    return {"reply": "you wind it your way"}\n'
     await call(agent, "program", creation="gear clock", code=tends)
     await M.approve(st, s, agent.runner, M.programs(st)["gear clock"]["id"])
+    assert st.module(world_one)["status"] == "replaced" and [m["author"] for m in st.modules("live") if m["kind"] == "thing"] == ["pip"]
     assert (await call(agent, "tend", creation="gear clock")).text == "you wind it your way"
 
 

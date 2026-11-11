@@ -282,19 +282,14 @@ class GameMaster:
             "capabilities": {"type": "array", "items": cap}, "quirks": {"type": "array", "items": {"type": "string"}},
         }, ["description", "capabilities"], "design")
 
-    async def use(self, creation_line: str, purpose: str, situation: str, timekeeper: bool,
-                  can_stop: bool, bulletin: bool = False, tend_verb: str = "") -> dict | None:
+    async def use(self, creation_line: str, purpose: str, situation: str, actions=()) -> dict | None:
+        """Pip spends time with something it made: the words, a mood or energy if they follow, and which of the thing's own `actions`
+        ({name, help}: what its workings offer) Pip did, if any."""
         effects = ["`mood`: a word or two, if this changes how Pip feels",
-                   "`energy`: -0.1 to 0.1, only if it really tires or refreshes Pip",
-                   *(["`stop`: true if this would make it stop working until Pip tends it again"] if can_stop else [])]
-        if tend_verb:
-            effects.append(f"`tend`: true only if what Pip does is the regular upkeep that keeps it going (\"{tend_verb}\"): winding, "
-                           "charging, oiling, feeding, whatever suits it. Looking at it, setting it or admiring it is not upkeep")
-        if timekeeper:
-            effects.append("`set_clock`: true if Pip is setting it to the right time")
-        if bulletin:
-            effects.append("`bulletin`: only if Pip is listening for news: 2-3 sentences of news about Pip's own small world only "
-                           "(the weather, the neighbors, the season, something invented and harmless), never real-world events")
+                   "`energy`: -0.1 to 0.1, only if it really tires or refreshes Pip"]
+        if actions:
+            effects.append("`action`: only if what Pip does is one of these, its name: " + "; ".join(f"{a['name']} ({a['help']})" for a in actions)
+                           + ". Looking at it, admiring it or talking about it is none of them")
         task = (
             f"Pip spends time with one of the things it made (using it, looking at it, playing it, reading it... "
             f"whatever fits).\nThe thing: {creation_line}\nWhat Pip wants: {purpose}\n"
@@ -302,11 +297,8 @@ class GameMaster:
             "true to what the thing can actually do (it can't do things beyond its nature). Optional effects, only "
             "when they clearly follow:\n" + "\n".join(f"- {e}" for e in effects)
         )
-        return await self.ask(task, {
-            "text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
-            "stop": {"type": "boolean"}, "set_clock": {"type": "boolean"}, **({"bulletin": {"type": "string"}} if bulletin else {}),
-            **({"tend": {"type": "boolean"}} if tend_verb else {}),
-        }, ["text"], "use")
+        return await self.ask(task, {"text": {"type": "string"}, "mood": {"type": "string"}, "energy": {"type": "number"},
+                                     **({"action": {"type": "string"}} if actions else {})}, ["text"], "use")
 
     # --- phase 3: companions ------------------------------------------------
     async def words(self, prompt: str, most: int) -> str | None:
