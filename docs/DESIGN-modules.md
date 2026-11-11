@@ -278,7 +278,7 @@ failed calls in a row disable it, and its author is told why.
 ## Step 4 as built (0.20.0)
 - **`app/builder.py`**, once a night right after Pip's nightly reflection (whatever it found), when `MODULE_BUILDER=on` and the runner is up.
   It marks the night as done first, so a failure isn't retried until the next night.
-- **The draft** (one GM call, `max_tokens` 4000): the world bible (`app/builder/bible.md`, or the owner's own at `WORLD_BIBLE_PATH`), the
+- **The draft** (one GM call, `max_tokens` 4000): the world bible (the world pack's `bible.md`, or the owner's own at `WORLD_BIBLE_PATH`), the
   catalogue of modules (with the owner's notes on the world's own), the last two days of public events, Pip's open wishes, places only
   heard of, and the API page (`app/builder/api.md`, with the event kinds and every anchor by kind of place filled in). It answers
   `propose`, `revise` (one of its own, by name) or `nothing`; "most nights, nothing is a fine answer".

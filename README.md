@@ -80,7 +80,9 @@ Everything is an environment variable, listed with comments in [`.env.example`](
 | `DASHBOARD_URL` | the owner's dashboard address, so notices can link to it |
 | `MODULE_LIBRARY` (`on`, `off`) | the modules shipped with the engine (scenes for places out of doors, the gallery wall, clock workings...): live without approval, run even without `pip-runner` |
 | `MODULE_BUILDER` (`on`, `off`) | once a night the world may propose one small rule module of its own, checked against the world bible, then waiting for approval |
-| `WORLD_BIBLE_PATH` | your own description of what this world is and isn't, for the builder (default: the engine's `app/builder/bible.md`) |
+| `WORLD_PACK` | the world pack to run: a directory with `world.json`, `persona.md`, `narrator.md`, `bible.md` and `guide/` (default: Pip's world, `worlds/pip`; [design](docs/DESIGN-world-packs.md), [guide](docs/GUIDE-world-pack.md)) |
+| `PERSONA_PATH` | your own persona for the agent, re-read every tick (default `/srv/persona.md`; without it, the pack's `persona.md`) |
+| `WORLD_BIBLE_PATH` | your own description of what this world is and isn't, for the builder (default: the pack's `bible.md`) |
 | `CHARACTER_BOOTHS` (`on`, `off`) | neighbors have a few wares of their own (invented once), sold at home and from a market stall one day a week, and offered in their letters ([design](docs/DESIGN-market.md)) |
 | `REMINDERS` (`on`, `log`, `off`), `REMINDERS_SHOWN`, `REMIND_COOLDOWN_HOURS` | old memories come to mind by themselves when the situation cues them (who is here, where, the project, the newest words), two at a time, with when and where they were; memories never returned to fade but `recall` still finds them; `log` chooses and logs without showing ([design](docs/DESIGN-reminders.md)) |
 | `TALK_SCENES` (`on`, `off`) | a talk in person (a neighbor at home, a resident at their place) runs as its own short scene: a small prompt with the talk so far, only `say` and `feel`, until either says goodbye or six of Pip's lines ([design](docs/DESIGN-conversation.md)) |

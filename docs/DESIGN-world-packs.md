@@ -1,6 +1,7 @@
 # Design: world packs (a world-neutral engine)
 
-Status (2026-11-11): designed, nothing built. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+Status (2026-11-11): designed; **phase 1a built (0.31.0)**: the pack loader, `WORLD_PACK`, and Pip's world's persona, narrator, bible and
+guide in `worlds/pip/`. Next: 1b (the agent's name and pronoun through every engine prompt) and 1c (the check that keeps the world out). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -177,7 +178,11 @@ What stays core: the loop, the mind (memory, journal, reflection, night pass, em
 module system, happenings' checks, the world view's renderer, channels and visitors, the dashboard.
 
 ## Phases
-1. **The pack, with Pip's world in it.** `worlds/pip/` holds the persona, narrator, bible and guide; `WORLD_PACK` selects it; the agent's
+1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of
+   it/she/he/they, and kind; `api` 1), and the pack's `persona.md` (the default when `PERSONA_PATH` has no file; with none, "You are
+   <name>."), `narrator.md` (the narrator's system prompt is the pack's paragraph, then the engine's `NARRATOR_RULES`; for Pip's world it is
+   the old prompt word for word), `bible.md` (unless `WORLD_BIBLE_PATH`) and `guide/<topic>.md` (a page the pack lacks is left out). The
+   image ships `worlds/`. *Then:* `worlds/pip/` holds the persona, narrator, bible and guide; `WORLD_PACK` selects it; the agent's
    name and pronoun come from `world.json` and every engine prompt is written around them; the `pip` read becomes `agent` (the old name
    kept as an alias for live modules). No change in behaviour; the CI check starts with the prompts.
 2. **Data out of code.** Place kinds, item kinds and tables, starting belongings, scene vocabulary, happenings' categories and tables,

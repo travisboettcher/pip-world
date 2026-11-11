@@ -16,32 +16,28 @@ from . import invented_places
 from . import place_kinds
 from . import abilities
 from . import world_effects
+from . import world_pack
 from .state import State
 from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
 
 log = logging.getLogger("gm")
 
-SYSTEM = """You are the quiet narrator and game master of a small world where a curious creature named Pip lives,
-with a home, a little garden, and whatever Pip makes. Pip can make anything it can imagine and manage - objects,
-pictures, music, writing, clothes, machines, plants, gifts - so follow Pip's own ideas rather than steering them.
-Keep the world consistent: things behave the way such things plausibly would, and nothing becomes more powerful
-than it is. You never decide what Pip does and you never change a result you are given. Answer only by calling
-the `report` tool."""
+SYSTEM = world_pack._load(str(world_pack.DEFAULT), (world_pack.DEFAULT / "world.json").stat().st_mtime).narrator_system()   # Pip's world's narrator; a GameMaster takes its pack's
 
 
 class GameMaster:
-    def __init__(self, backend: LLMBackend, state: State, max_tokens: int = 1024):
-        self.backend, self.state, self.max_tokens = backend, state, max_tokens
+    def __init__(self, backend: LLMBackend, state: State, max_tokens: int = 1024, system: str = SYSTEM):
+        self.backend, self.state, self.max_tokens, self.system = backend, state, max_tokens, system
 
     async def ask(self, task: str, properties: dict, required: list[str], purpose: str,
-                  system: str = SYSTEM, max_tokens: int | None = None) -> dict | None:
+                  system: str | None = None, max_tokens: int | None = None) -> dict | None:
         """One structured call. Returns the report's arguments, or None (caller falls back)."""
         if self.state.budget_exceeded():
             return None
         spec = ToolSpec("report", "Report your answer.", {"type": "object", "properties": properties,
                                                             "required": required})
         try:
-            resp = await self.backend.complete(system=system, messages=[{"role": "user", "content": task}],
+            resp = await self.backend.complete(system=system or self.system, messages=[{"role": "user", "content": task}],
                                                tools=[spec], max_tokens=max_tokens or self.max_tokens)
         except Exception as e:
             log.warning("gm %s failed: %s", purpose, e)

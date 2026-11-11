@@ -18,9 +18,9 @@ Served on port 8000 (`/state`, `/events`, `POST /inbox`, `POST /tick`, and the d
 - `TOOLS`: comma list of registered tools. `DAILY_TOKEN_BUDGET` (default 5M, ~$0.70/day on Haiku 5.5) caps spend; ticks pause when hit.
 
 Add a backend in `brain/app/llm/` and register it in `llm/__init__.py`; add a pacing policy in `pacing.py`.
-Pip is told two things at every wake: the **guide** (how the world works: `brain/app/guide/*.md`, one file per topic, put together from only the tools and
-features that are enabled) and an optional **persona** (who Pip is: the file at `PERSONA_PATH`, default `/srv/persona.md`, re-read every tick). With no persona file it is
-only told its name ("You are Pip."). This deployment's persona is `persona.md` next to this README.
+Pip is told two things at every wake: the **guide** (how the world works: the world pack's `guide/*.md`, `worlds/pip/guide/` by default, one file per topic, put
+together from only the tools and features that are enabled) and a **persona** (who Pip is: the file at `PERSONA_PATH`, default `/srv/persona.md`, re-read every
+tick). With no persona file it is told the pack's `persona.md` (and with none there, only its name). This deployment's persona is `persona.md` next to this README.
 
 ## Tests
 `cd brain && pip install -r requirements-dev.txt && pytest`

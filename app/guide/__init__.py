@@ -1,16 +1,16 @@
 """The guide: how this world works, told to the agent at every wake (see DESIGN-extract.md, "Persona: ship a world manual, not a character").
 
-The guide is engine-owned: one text file per topic in this folder, put together from only what is enabled, so the agent is never told about something it
-cannot do and a smaller setup costs fewer tokens. It is a manual in a neutral voice; it never says who the agent is, how it feels or how it should behave
-towards people. That is the *persona*: an optional file the deployment supplies (`PERSONA_PATH`), put in front of the guide.
+The pages are the world pack's (`guide/<name>.md`, docs/DESIGN-world-packs.md); the engine puts together only those whose topic is enabled, so
+the agent is never told about something it cannot do and a smaller setup costs fewer tokens. A pack without a page simply leaves it out.
+It is a manual in a neutral voice; it never says who the agent is, how it feels or how it should behave towards people. That is the
+*persona* (the pack's `persona.md`, or the deployment's `PERSONA_PATH`), put in front of the guide.
 
-To add a topic: write `<name>.md` here and one `Section` below saying when it applies.
+To add a topic: write `<name>.md` in the pack's guide and one `Section` below saying when it applies.
 """
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
-DIR = Path(__file__).parent
+from .. import world_pack
 
 
 @dataclass(frozen=True)
@@ -66,9 +66,9 @@ SECTIONS = (
 
 def render(tools, settings, library: bool) -> str:
     """The manual for what is enabled: paragraphs, then the Guidelines list."""
-    tools = set(tools)
+    tools, pack = set(tools), world_pack.load(settings)
     paragraphs, bullets = [], []
     for section in SECTIONS:
-        if section.needs(tools, settings, library):
-            (bullets if section.bullet else paragraphs).append((DIR / f"{section.name}.md").read_text().strip("\n"))
+        if section.needs(tools, settings, library) and (page := pack.guide(section.name)):
+            (bullets if section.bullet else paragraphs).append(page)
     return "\n\n".join(paragraphs + (["Guidelines:\n" + "\n".join(bullets)] if bullets else []))

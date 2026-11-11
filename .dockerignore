@@ -4,5 +4,6 @@
 !requirements.txt
 !app
 !web
+!worlds
 **/__pycache__
 **/*.pyc

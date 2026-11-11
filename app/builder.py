@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import modules as M
+from . import world_pack
 from . import public_view as pv
 from . import sandbox
 
@@ -26,7 +27,7 @@ RECENT_EVENTS, MAX_TOKENS = 40, 4000
 def bible(settings) -> str:
     """What this world is and isn't: the owner's own if they wrote one (WORLD_BIBLE_PATH), else the engine's."""
     own = Path(settings.world_bible_path) if settings.world_bible_path else None
-    return (own.read_text() if own and own.is_file() else (DIR / "bible.md").read_text()).strip()
+    return (own.read_text() if own and own.is_file() else world_pack.load(settings).bible()).strip()
 
 
 def api(state=None) -> str:

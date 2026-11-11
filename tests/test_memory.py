@@ -103,7 +103,7 @@ async def test_reflection_consolidates_the_day_in_pips_voice(tmp_path):
     st.log("tick", text="(not material)")
     data = await agent.reflect()
     call0 = gm.calls[0]
-    assert "asleep" in call0["system"] and call0["system"].startswith("You are Pip.")  # Pip's own instructions
+    assert "asleep" in call0["system"] and call0["system"].startswith("You are Pip")  # Pip's own instructions
     task = call0["messages"][0]["content"]
     assert "Morgan said to you: How's the clock?" in task and "Morgan gave you 2 x brass wire" in task
     assert "You wrote (diary): Morgan's wire came just in time." in task and "not material" not in task

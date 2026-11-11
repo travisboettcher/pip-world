@@ -10,6 +10,7 @@ from . import creations as cr
 from . import expectations as exp
 from . import gathering
 from . import guide
+from . import world_pack
 from . import library as lib
 from . import memory as mem
 from . import builder
@@ -47,7 +48,6 @@ LEARNED_SHOWN = 5
 HIDDEN_EVENT_KINDS = {"alert", "tick_start", "reminded", "faded"}
 
 
-DEFAULT_PERSONA = "You are Pip."  # what the agent is told about itself when the deployment supplies no persona
 
 
 FREE_MINUTES = 120     # nothing due for this long is free time
@@ -65,7 +65,8 @@ class Agent:
         self.s, self.state, self.backend, self.pacing = settings, state, backend, pacing
         self.tools = enabled_tools(settings)
         self.rng = rng or random.Random()
-        self.gm = GameMaster(gm_backend or backend, state)
+        self.pack = world_pack.load(settings)
+        self.gm = GameMaster(gm_backend or backend, state, system=self.pack.narrator_system())
         self.library = lib.open_library(settings)
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
@@ -361,7 +362,7 @@ class Agent:
         if os.path.exists(self.s.persona_path):
             with open(self.s.persona_path) as f:
                 persona = f.read().strip()
-        return persona or DEFAULT_PERSONA
+        return persona or self.pack.persona()
 
     def _system_prompt(self) -> str:
         """The persona followed by how the world works (the guide, built from what is enabled)."""

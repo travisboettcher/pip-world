@@ -35,7 +35,7 @@ worlds/ashfall/
   modules/shelter-layout.{json,py}
 ```
 
-**`world.json`** (phase 1): who the agent is, the home, what's included.
+**`world.json`** (phase 1; `name`, `api` and `agent` work today, the rest later): who the agent is, the home, what's included.
 ```json
 {"name": "Ashfall", "api": 1,
  "agent": {"name": "Wren", "pronoun": "she", "kind": "a survivor"},
@@ -46,10 +46,10 @@ worlds/ashfall/
 `agent.kind` is how the narrator refers to her in a word. `home` is the place she starts and sleeps. `modules` are what the world includes:
 `ashfall:` names the pack's own (in `modules/`), `std:` the engine's standard library.
 
-**`persona.md`** (works today, as `PERSONA_PATH`): who the agent is, in the second person, as the agent reads it every tick. Who she is,
+**`persona.md`** (works today; `PERSONA_PATH` overrides it): who the agent is, in the second person, as the agent reads it every tick. Who she is,
 how she talks, what she cares about, what she wants. Not the world's rules: those come from the guide.
 
-**`narrator.md`** (phase 1): the narrator's voice and the world in a paragraph. The engine adds its own fixed instructions (never decide
+**`narrator.md`** (works today): the narrator's voice and the world in a paragraph. The engine adds its own fixed instructions (never decide
 for the agent, never change a result, keep things plausible, the content floor); this file says what plausible means here.
 ```
 A dead city under a grey sky, twenty years after the ash. Survivors live in shelters and a walled village by the reservoir; the city
@@ -66,7 +66,7 @@ and so are small kindnesses. Nothing is magic; the monsters are animals the ash 
 shipped `home` layout in `app/module_library/` for a full example). At its smallest: a ground box, a building from the `cutaway` part,
 and anchors tagged `pip` (where she stands), `bed` and `seat` (renamed `agent` in phase 1), so the renderer can draw her poses.
 
-Start it with `WORLD_PACK=worlds/ashfall` (phase 1). Check the dashboard: the scene, the journal filling, the Work tab's modules all live.
+Start it with `WORLD_PACK=worlds/ashfall` (works today). Check the dashboard: the scene, the journal filling, the Work tab's modules all live.
 
 ## 2. Give the day something to do
 An agent with nothing to do will mostly think, note and sleep. Add features, smallest first. Each is a module, from the standard library
@@ -133,11 +133,12 @@ are the same in any world.
 **Textures** (phase 2): a pack can add textures as small generator functions or images in `scene/`.
 
 ## 5. Let it grow
-**The bible** (works today as `WORLD_BIBLE_PATH`; phase 1 moves it into the pack): `bible.md` tells the builder what belongs in this world
+**The bible** (works today; `WORLD_BIBLE_PATH` overrides it): `bible.md` tells the builder what belongs in this world
 and what doesn't, so its nightly proposals fit. Ashfall's might allow danger and loss but not cruelty, and ask for rules that make the
 world feel lived in: a curfew bell, a trader's caravan every few days, the reservoir's level after rain.
 
-**The guide** (phase 1): `guide/*.md` tells Wren how her world works, in the second person, a few lines a page: home, her needs, the
+**The guide** (works today: the engine reads the topics it knows, `app/guide/__init__.py`; phase 5 lets features bring their own):
+`guide/*.md` tells Wren how her world works, in the second person, a few lines a page: home, her needs, the
 places, the people. Features bring their own pages (`std:market` brings the market's); the pack adds what's particular to it.
 
 **Real-world sources** (phase 5): decide whether the world touches the real one. Ashfall probably wants its own weather (a module that

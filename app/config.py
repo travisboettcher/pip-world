@@ -33,6 +33,7 @@ def _float(name: str, default: float) -> float:
 class Settings:
     db_path: str = "/data/agent.db"
     persona_path: str = "/srv/persona.md"
+    world_pack: str = ""                    # the world pack's directory (docs/DESIGN-world-packs.md); "" is Pip's world, worlds/pip
 
     llm_backend: str = "anthropic"
     llm_model: str = "claude-haiku-5-5"
@@ -189,6 +190,7 @@ class Settings:
             public_hosts=[h.split(":")[0].strip().lower() for h in (e("PUBLIC_HOSTS") or "").split(",") if h.strip()],
             public_redact=[n.strip() for n in (e("PUBLIC_REDACT") or "").split(",") if n.strip()],
             persona_path=e("PERSONA_PATH", "/srv/persona.md"),
+            world_pack=e("WORLD_PACK") or "",
             llm_backend=e("LLM_BACKEND") or "anthropic",
             llm_model=e("LLM_MODEL") or "claude-haiku-5-5",
             llm_base_url=e("LLM_BASE_URL", ""),

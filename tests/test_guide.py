@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import guide as G
+from app import world_pack as W
 from app import tools as T
 from app.config import Settings
 from tests.test_projects import make
@@ -143,7 +144,7 @@ def test_sections_are_paragraphs_and_the_guidelines_are_one_list():
 
 
 def test_every_section_in_the_registry_has_its_text_and_every_text_is_in_the_registry():
-    files = {p.stem for p in G.DIR.glob("*.md")}
+    files = {p.stem for p in (W.DEFAULT / "guide").glob("*.md")}
     assert files == {s.name for s in G.SECTIONS} and len(files) == len(G.SECTIONS)
 
 
@@ -152,14 +153,14 @@ def test_the_system_prompt_is_the_persona_then_the_guide_and_the_persona_is_re_r
     persona = tmp_path / "persona.md"
     s, st, gm, agent = make(tmp_path)
     s.persona_path = str(persona)
-    assert agent._system_prompt().startswith("You are Pip.\n\n")                        # no persona file: just the name
+    assert agent._system_prompt().startswith(W.load(s).persona() + "\n\n")              # no persona file: the pack's
     persona.write_text("You are Pip, who likes bees.")
     prompt = agent._system_prompt()
     assert prompt.startswith("You are Pip, who likes bees.\n\n") and "You act on your own: nobody has to prompt you." in prompt
     persona.write_text("You are Pip, who likes wasps.")
     assert agent._system_prompt().startswith("You are Pip, who likes wasps.")
     persona.write_text("  \n")
-    assert agent._system_prompt().startswith("You are Pip.\n\n")                        # an empty file counts as none
+    assert agent._system_prompt().startswith(W.load(s).persona() + "\n\n")              # an empty file counts as none
 
 
 def test_the_guide_follows_the_agents_own_tools_and_library(tmp_path):
