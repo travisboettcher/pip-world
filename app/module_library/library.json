@@ -1,1 +1,1 @@
-{"name": "library", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["library"]}
+{"name": "library", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["library"], "reason": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene."}

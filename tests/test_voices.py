@@ -147,7 +147,7 @@ async def test_speak_and_ask_are_checked_and_capped(tmp_path):
             M.plan(st, mod or st.module(m["id"]), result, NOW, "on_tick")
         return str(e.value)
     assert why({"speak": {"as": "the Ferryman", "text": "hi"}}) == "it can only speak as its own voices: the Old Well"
-    assert why({"speak": {"as": "the Old Well", "text": ""}}) == "`speak` is {as, text, to_pip?}: text is a line of up to 400 characters"
+    assert why({"speak": {"as": "the Old Well", "text": ""}}) == "`speak` is {as, text, to_agent?}: text is a line of up to 400 characters"
     assert why({"speak": {"as": "the Old Well", "text": "x" * 401}}).startswith("`speak` is {as, text")
     assert why({"speak": "hi"}).startswith("`speak` is {as, text")
     assert M.plan(st, st.module(m["id"]), {"voices": [{"name": "Bucket", "at": "home"}], "speak": {"as": "Bucket", "text": "Clank."}}, NOW, "on_tick")
@@ -229,8 +229,8 @@ def test_speak_and_ask_at_their_limits(tmp_path):
     voices = [{"name": "Bo", "at": "home", "about": ""}]
     st.update_module(m["id"], voices=voices)
     m = st.module(m["id"])
-    assert M.plan(st, m, {"speak": {"as": "bo", "text": "w" * 400}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "w" * 400, "to_pip": False})]
-    assert M.plan(st, m, {"speak": {"as": "Bo", "text": " hi ", "to_pip": 1}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "hi", "to_pip": False})]
+    assert M.plan(st, m, {"speak": {"as": "bo", "text": "w" * 400}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "w" * 400, "to_agent": False})]
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": " hi ", "to_pip": 1}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "hi", "to_agent": False})]
     for bad in ({"as": "Bo"}, {"text": "hi"}, {"as": "Bo", "text": 3}):
         with pytest.raises(M.Refused):
             M.plan(st, m, {"speak": bad}, NOW, "on_tick")

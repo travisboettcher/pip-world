@@ -1,1 +1,1 @@
-{"name": "shop", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["shop"]}
+{"name": "shop", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["shop"], "reason": "Every shop as a layout: the shopfront, its counter and stock, the keeper while it's open, a note while it's shut. Replaces the hand-written shop scene."}

@@ -81,8 +81,8 @@ def _condition(ctx, cond):
     if cond == "dusk":
         return ctx["time"]["hour"] == 19
     if cond == "hungry":
-        return ctx["pip"]["hunger"] >= 0.6
-    return ctx["pip"]["energy"] <= 0.3  # tired
+        return ctx["agent"]["hunger"] >= 0.6
+    return ctx["agent"]["energy"] <= 0.3  # tired
 
 
 def on_tick(ctx):
@@ -151,7 +151,7 @@ def on_action(ctx):
 
 # --- a mind of its own ---------------------------------------------------------------------------------------------------------
 def _prompt(ctx, heard):
-    s, pip, name = ctx["subject"], ctx["pip"], ctx["subject"]["name"]
+    s, pip, name = ctx["subject"], ctx["agent"], ctx["subject"]["name"]
     about = s["description"] + (f" Quirks: {'; '.join(s['quirks'])}." if s.get("quirks") else "")
     lines = ctx["state"].get("lines") or []
     return (f"Voice {name}, something Pip made that has a mind of its own: {about}\n"
@@ -220,4 +220,4 @@ def on_answer(ctx):
     if not a["text"] or s is None:
         return {"state": st}
     st["lines"] = ((st.get("lines") or []) + [f"{s['name']}: {a['text']}"])[-LINES_KEPT:]
-    return {"state": st, "speak": {"as": s["name"], "text": a["text"], "to_pip": reply}}
+    return {"state": st, "speak": {"as": s["name"], "text": a["text"], "to_agent": reply}}

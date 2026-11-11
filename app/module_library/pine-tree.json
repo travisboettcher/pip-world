@@ -1,1 +1,1 @@
-{"name": "pine-tree", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"scale": 1.0}}
+{"name": "pine-tree", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"scale": 1.0}, "reason": "A part: a pine (scale), darker in winter."}

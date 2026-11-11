@@ -16,6 +16,7 @@ from . import place_kinds as kinds
 from .state import _singular, name_key
 from .text import clip
 from .world import normalize_attrs
+from . import world_pack
 
 DAY = 86400
 FORGET_AFTER = 30 * DAY        # a heard-of place nobody mentions again and Pip never visits is forgotten
@@ -33,7 +34,6 @@ TRADE = {"ironmonger", "ironmongery", "shop", "store", "market", "stall", "smith
 ADJECTIVES = {"old", "new", "little", "big", "great", "high", "low", "north", "south", "east", "west", "upper",
               "lower", "next", "far", "near", "first", "second", "third"}
 RESERVED = {"home", "house", "workshop", "library", "wood", "woods", "junkyard", "market", "garden"}
-PIP = "pip"
 
 
 def _words(name: str) -> list[str]:
@@ -73,7 +73,7 @@ def _reserved(state, c: str, speaker: str = "") -> bool:
     if c in RESERVED:
         return True
     names = [ch["name"] for ch in state.characters()] + [p["name"] for p in state.people()] + state.senders() + [speaker]
-    taken = {PIP} | {w for n in names for w in _said(n) if len(w) > 2}
+    taken = {world_pack.active().agent.name.lower()} | {w for n in names for w in _said(n) if len(w) > 2}
     return bool(taken & set(c.split()))
 
 
@@ -214,7 +214,7 @@ def accept(state, speaker: str, text: str, raw, now: float | None = None, rng: r
     now = now or time.time()
     name = _name(raw)
     c = core(name) if name else ""
-    if not c or clip(speaker, 40).lower() == PIP or not set(c.split()) <= _said(text) or _reserved(state, c, speaker):
+    if not c or clip(speaker, 40).lower() == world_pack.active().agent.name.lower() or not set(c.split()) <= _said(text) or _reserved(state, c, speaker):
         return None
     known = find_record(state, name, now)
     if known:
@@ -589,7 +589,7 @@ def settle(state, key: str, raw) -> dict | None:
     if not isinstance(raw, dict) or not isinstance(raw.get("name"), str) or not isinstance(raw.get("persona"), str):
         return None
     name, persona = clip(raw["name"].strip(" ."), 40), clip(raw["persona"], 800)
-    if not name or not persona or name.lower() in {PIP} | {c["name"].lower() for c in state.characters()}:
+    if not name or not persona or name.lower() in {world_pack.active().agent.name.lower()} | {c["name"].lower() for c in state.characters()}:
         return None
     ch = state.add_character(name, "resident", None, persona, 0, 0, about=clip(raw.get("about"), 160), place=key)
     state.log("resident", name=name, place=key, about=ch["about"])
@@ -616,7 +616,7 @@ async def realise(state, gm, key: str, label: str, rng: random.Random | None = N
 
 # --- seams for the characters' prompts (neighbor letters, in-person talk, a new neighbor) -----------------------
 MENTION_PROPERTY = {"type": "object", "properties": {
-    "place": {"type": "string", "description": "the destination as you said it: the town, wood or shop Pip would walk to"},
+    "place": {"type": "string", "description": "the destination as you said it: the town, wood or shop to walk to"},
     "there": {"type": "string", "description": "what you say is there or is for, under 120 characters"},
     "distance": {"type": "string", "enum": list(DISTANCES)},
     "items": {"type": "array", "items": {"type": "string"}},
@@ -635,7 +635,7 @@ def known_names(state, settings=None, library=None) -> list[str]:
 
 def mention_instruction(state, settings=None, library=None) -> str:
     """The sentence a character's prompt carries, so the GM reuses known names (half the dedupe) and reports new ones."""
-    return ("Only if your words point Pip to a place it could go that isn't one of these: "
+    return (f"Only if your words point {world_pack.active().agent.name} to a place {world_pack.active().agent.they} could go that isn't one of these: "
             f"{', '.join(known_names(state, settings, library))}, give `mentions_place` (`place`: the destination as "
             "you said it; `there`: what you say is there, under 120 characters; `distance`: near, far or very far, "
             "as you'd put it; `items`: things you say can be had there). Not your own home, not landscape you just "
@@ -645,10 +645,10 @@ def mention_instruction(state, settings=None, library=None) -> str:
 def _line_for(state, rec: dict, name: str) -> str:
     from . import places
     told = next((m for m in rec["mentions"] if m["by"] == name), None)
-    notes = [f"you told Pip: {told['there']}"] if told and told["there"] else []
+    notes = [f"you told {world_pack.active().agent.name}: {told['there']}"] if told and told["there"] else []
     if rec["status"] == "real":
         found = [f["item"] for f in state.finds_at(rec["key"])[:2]]
-        notes.append("Pip has been" + (f" and found {', '.join(found)} there" if found else ""))
+        notes.append(f"{world_pack.active().agent.name} has been" + (f" and found {', '.join(found)} there" if found else ""))
     return f"{places.label(rec['key'])}, {WALK_WORDS[rec['distance']]}" + (f" ({'; '.join(notes)})" if notes else "")
 
 
@@ -663,7 +663,7 @@ def places_line(state, name: str, settings=None, library=None) -> str:
              if k != places.HOME and not p.invented and k != f"{name}{places.HOME_SUFFIX}"]
     parts = ([_line_for(state, r, name) for r in mine] + built
              + [_line_for(state, r, name) for r in recs if r not in mine])[:PLACES_SHOWN]
-    return "Places in Pip's world: " + "; ".join(parts) if parts else ""
+    return f"Places in {world_pack.active().agent.possessive} world: " + "; ".join(parts) if parts else ""
 
 
 # --- owner control (GET/PATCH/DELETE /places, pipchat places) ------------------------------------------------------
@@ -712,7 +712,7 @@ def patch(state, key: str, changes: dict, rng: random.Random | None = None) -> d
             raise ValueError("a description can't be empty")
     if "loot" in changes:
         if rec["status"] != "real" or not isinstance(changes["loot"], list):
-            raise ValueError("loot is a list of {name, kind, tier, description}, for a place Pip has been to")
+            raise ValueError(f"loot is a list of {{name, kind, tier, description}}, for a place {world_pack.active().agent.name} has been to")
         fields["loot"] = build_loot(changes["loot"], rec["kind"], known_items(state), [], rng or random.Random())
     state.update_place(rec["key"], **fields)
     if "description" in fields:

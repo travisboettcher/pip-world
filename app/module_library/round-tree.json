@@ -1,1 +1,1 @@
-{"name": "round-tree", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"scale": 1.0}}
+{"name": "round-tree", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"scale": 1.0}, "reason": "A part: a round, leafy tree (scale), in the season's colours."}

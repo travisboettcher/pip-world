@@ -20,8 +20,8 @@ from .memory import ago
 from .state import State
 from .text import brief, clip
 from .world import KINDS
+from . import world_pack
 
-PIP = "Pip"
 JITTER = (0.7, 1.3)
 LIFE_KEPT = 5
 CORRESPONDENCE_SHOWN = 6
@@ -46,8 +46,8 @@ def correspondence(state, name: str) -> list[str]:
     for lt in state.letters(between=name, limit=CORRESPONDENCE_SHOWN):
         if lt["delivered_at"] is None and lt["sender"] == name:
             continue  # their own letter still on the way isn't part of what's been said yet
-        if lt["sender"] == PIP:
-            out.append(f"Pip: {lt['text']}" + (f" [enclosed: {lt['enclosed']}]" if lt["enclosed"] else ""))
+        if lt["sender"] == world_pack.active().agent.name:
+            out.append(f"{world_pack.active().agent.name}: {lt['text']}" + (f" [enclosed: {lt['enclosed']}]" if lt["enclosed"] else ""))
         else:  # their own words in brief: a model copies vivid phrasing it can see (DESIGN-neighbor-memory.md)
             out.append(f"{name} (in brief): {brief(lt['gist'], lt['text'])}")
     return out
@@ -113,19 +113,20 @@ async def ensure_neighbor(state, settings, gm, rng: random.Random, now: float | 
     existing = state.characters("neighbor")
     if existing or not settings.neighbor or now < float(state.meta("neighbor_retry_at") or 0):
         return existing[0] if existing else None
-    world = "Pip lives in its home, a workshop with a small garden"
+    a = world_pack.active().agent
+    world = f"{a.name} lives in {a.their} home, a workshop with a small garden"
     made = [c["name"] for c in state.creations()]
     if made:
         world += f"; it has made {', '.join(made[:5])}"
     raw = await gm.invent_neighbor(world, invented.mention_instruction(state, settings)) if gm else None
     name = clip(raw.get("name"), 40) if raw else ""
-    if not raw or not name or not clip(raw.get("letter"), 10) or name.lower() == PIP.lower():
+    if not raw or not name or not clip(raw.get("letter"), 10) or name.lower() == world_pack.active().agent.name.lower():
         state.set_meta(neighbor_retry_at=str(now + RETRY_AFTER))
         return None
     every = settings.neighbor_writes_every_hours * 60
     ch = state.add_character(name, "neighbor", None, clip(raw["persona"], 800), every,
                              now + every * 60 * rng.uniform(*JITTER), about=clip(raw.get("about"), 160))
-    lt = state.add_letter(name, PIP, clip(raw["letter"], 1200), now + _delay(settings, rng) / 4)  # the first comes soon
+    lt = state.add_letter(name, world_pack.active().agent.name, clip(raw["letter"], 1200), now + _delay(settings, rng) / 4)  # the first comes soon
     invented.accept(state, name, lt["text"], raw.get("mentions_place"), now)
     state.log("neighbor", name=name, about=ch["about"])
     return ch
@@ -138,9 +139,9 @@ async def recall_told(state, gm, tries: dict) -> None:
         done = f"told_recalled:{ch['id']}"
         if ch["told"] or state.meta(done) or tries.get(ch["id"], 0) >= 2:
             continue
-        said = [f"{PIP if lt['sender'] == PIP else ch['name']}: {lt['text']}"
+        said = [f"{world_pack.active().agent.name if lt['sender'] == world_pack.active().agent.name else ch['name']}: {lt['text']}"
                 for lt in state.letters(between=ch["name"], limit=50)
-                if lt["delivered_at"] is not None or lt["sender"] == PIP] + talk_lines(state, ch["name"])
+                if lt["delivered_at"] is not None or lt["sender"] == world_pack.active().agent.name] + talk_lines(state, ch["name"])
         if not said:
             continue  # nothing yet (a neighbor just invented): their first letter is recalled once it arrives
         got = await gm.recall_told(ch["name"], ch["persona"], said)
@@ -218,14 +219,15 @@ def trade_note(state, ch: dict, rng, now: float) -> str:
     if not ch.get("wares"):
         return ""
     where = market.selling_where(state, ch)
-    note = f"{ch['name']} {where}; Pip can buy there."
+    a = world_pack.active().agent
+    note = f"{ch['name']} {where}; {a.name} can buy there."
     wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=30)]
     wanted = next((w for w in ch["wares"] if any(State.related(w["name"], t) for t in wishes)), None)
     offer = wanted or (rng.choice(ch["wares"]) if rng.random() < OFFER_CHANCE else None)
     if offer:
         price = market.sell_price(state, places.home_of(ch), market._entry(market.wares_table(ch), offer["name"]), now)
-        note += (f" Pip has wished for something like {offer['name']}; {ch['name']} could offer it ({price} coins each)." if wanted
-                 else f" If it fits, {ch['name']} could offer Pip {offer['name']} ({price} coins each).")
+        note += (f" {a.name} has wished for something like {offer['name']}; {ch['name']} could offer it ({price} coins each)." if wanted
+                 else f" If it fits, {ch['name']} could offer {a.name} {offer['name']} ({price} coins each).")
         state.log("offered", name=ch["name"], item=offer["name"], price=price, wished=bool(wanted))
     return note
 
@@ -246,7 +248,7 @@ async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict
         return False
     invented.accept(state, ch["name"], text, out.get("mentions_place"), now)
     parcel = clean_parcel(out.get("parcel")) if parcel_ok else None
-    state.add_letter(ch["name"], PIP, text, now + _delay(settings, rng), parcel=parcel,
+    state.add_letter(ch["name"], world_pack.active().agent.name, text, now + _delay(settings, rng), parcel=parcel,
                      reply_to=answering["id"] if answering else None, gist=clip(out.get("gist"), 200))
     fields = {"next_chatter_at": now + ch["chatter_minutes"] * 60 * rng.uniform(*JITTER), **_told(ch, out),
               **_happened(ch, now)}
@@ -275,7 +277,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
     for lt in state.letters(undelivered=True, limit=200):
         if lt["deliver_at"] > now:
             continue
-        if lt["recipient"] == PIP:
+        if lt["recipient"] == world_pack.active().agent.name:
             _deliver_to_pip(state, lt, now)
             wake = True
             continue
@@ -307,7 +309,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     answering = bool(ch["heard"])
     recent = [t for t in ch["replies"] if now - t < 3600]
     a = state.agent()
-    situation = f"Pip seems {a['mood']}."
+    situation = f"{world_pack.active().agent.name} seems {a['mood']}."
     if ch["kind"] == "neighbor" and where != places.home_of(ch):
         from . import market
         situation += f" {ch['name']} is minding a stall at {places.label(where)} today ({market.selling_where(state, ch)})."
@@ -384,7 +386,7 @@ def _hand_over(state, name: str, raw) -> str:
 
 
 def send(state, settings, rng: random.Random, to: dict, text: str, enclosed: str) -> dict:
-    lt = state.add_letter(PIP, to["name"], clip(text, 1200), time.time() + _delay(settings, rng), enclosed=enclosed)
+    lt = state.add_letter(world_pack.active().agent.name, to["name"], clip(text, 1200), time.time() + _delay(settings, rng), enclosed=enclosed)
     state.log("letter_sent", id=lt["id"], to=to["name"], text=lt["text"], enclosed=enclosed)
     return lt
 
@@ -401,6 +403,6 @@ def perception(state, now: float | None = None) -> list[str]:
         sells = market.selling_where(state, c)
         lines.append(f"- {c['name']}: {c['about']}" + (f" ({sells})" if sells else "") + (f" (you last visited {ago(visited, now)})" if visited else ""))
     for lt in state.letters(undelivered=True, limit=20):
-        if lt["sender"] == PIP:
+        if lt["sender"] == world_pack.active().agent.name:
             lines.append(f"- your letter to {lt['recipient']} (sent {ago(lt['ts'], now)}) is on its way")
     return lines

@@ -1,1 +1,1 @@
-{"name": "outdoors", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard", "sight"]}
+{"name": "outdoors", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard", "sight"], "reason": "Every wild place, yard and sight without a layout of its own, from parts: the land by its setting, heaps and a shed in a yard, a bench and something to look at at a sight. Replaces the hand-written outdoors scene."}

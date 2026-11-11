@@ -103,7 +103,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [ ] World packs: a world-neutral engine; everything that makes a world *that* world comes from a pack, and features are modules a world
       includes (**designed: [DESIGN-world-packs.md](DESIGN-world-packs.md)**, from the 2026-11-11 audit; bootstrapping guide:
       [GUIDE-world-pack.md](GUIDE-world-pack.md))
-  - [ ] Phase 1: the pack with Pip's world in it (1a, 0.31.0: the loader, `WORLD_PACK`, persona, narrator, bible and guide in `worlds/pip/`) (`WORLD_PACK`, persona, narrator, bible, guide); the agent's name and pronoun as settings;
+  - [x] Phase 1: the pack with Pip's world in it (0.31.0: the loader, `WORLD_PACK`, persona, narrator, bible and guide in `worlds/pip/`;
+        0.32.0: the agent's name and pronoun through every engine prompt, the `agent` read, and the test that keeps "Pip" out of the engine) (`WORLD_PACK`, persona, narrator, bible, guide); the agent's name and pronoun as settings;
         engine prompts written around them; a CI check that engine code names no world
   - [ ] Phase 2: data out of code: place kinds, items and find tables, starting belongings, scene vocabulary, happenings' categories,
         world effects and abilities move to the pack

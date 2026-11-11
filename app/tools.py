@@ -36,6 +36,7 @@ from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip, span
 from .world import FOOD_DEFAULT, SEEDS_PER_FOOD, seed_packet_for
+from . import world_pack
 
 
 @dataclass
@@ -749,7 +750,7 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args.get("text") or "").strip()
     if not text:
         return ToolResult("error: the letter is empty", followup=True)
-    if st.letters_since(nb.PIP, time.time() - nb.DAY) >= ctx.settings.letters_per_day:
+    if st.letters_since(world_pack.active().agent.name, time.time() - nb.DAY) >= ctx.settings.letters_per_day:
         return ToolResult("you've written plenty of letters today; wait for the post to catch up", followup=True)
     enclosed = ""
     if args.get("enclose"):
@@ -760,7 +761,7 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
             enclosed = f"1 x {item['name']}" + (f" ({item['description']})" if item["description"] else "")
         elif made:
             st.give_creation(made["id"], ch["name"])
-            enclosed = f"{made['name']}, something Pip made: {made['description']}"
+            enclosed = f"{made['name']}, something {world_pack.active().agent.name} made: {made['description']}"
         else:
             return ToolResult(f"error: {err} (nothing was sent)", followup=True)
     nb.send(st, ctx.settings, ctx.rng, ch, text, enclosed)
@@ -1112,7 +1113,7 @@ async def program(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"your program wasn't accepted: {e}. Fix it and send it again.", followup=True)
     ctx.state.set_meta(programs_day=today, programs_n=str(n + 1))
     old = modules.programs(ctx.state).get(c["name"].lower())
-    r = await modules.propose(ctx.state, ctx.settings, ctx.runner, "pip", man, args["code"], f"Pip's program for its {c['name']}.",
+    r = await modules.propose(ctx.state, ctx.settings, ctx.runner, "pip", man, args["code"], f"{world_pack.active().agent.possessive} program for {world_pack.active().agent.their} {c['name']}.",
                               replaces=old["id"] if old and old["status"] != "rejected" and old["name"] == man["name"] else None)
     if "error" in r:
         return ToolResult(f"your program wasn't accepted: {r['error']}. Fix it and send it again.", followup=True)

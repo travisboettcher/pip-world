@@ -31,12 +31,14 @@ def bible(settings) -> str:
 
 
 def api(state=None) -> str:
-    from . import geometry, place_kinds
+    from . import geometry, place_kinds, places
     from .looks import SCENE
     return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list(state))
             .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
             .replace("SETTINGS", ", ".join(SCENE["setting"])).replace("TEXTURES", ", ".join(geometry.TEXTURES))
             .replace("CONDITIONS", ", ".join(geometry.CONDITIONS))
+            .replace("AGENT_POSS", world_pack.active().agent.possessive).replace("AGENT_NAME", world_pack.active().agent.name)
+            .replace("HOME_KEY", places.HOME)
             .replace("PARTS", parts_list(state)).strip())
 
 
@@ -90,7 +92,7 @@ def catalogue(state) -> str:
         return "(none yet)"
     out = []
     for m in rows:
-        who = "you" if m["author"] == "world" else "Pip"
+        who = "you" if m["author"] == "world" else world_pack.active().agent.name
         line = f"- {m['name']} ({m['kind']}{', for ' + m['subject'] if m['subject'] else ''}; by {who}; {m['status']}): {m['reason']}"
         if m["author"] == "world" and m["note"]:
             line += f" The owner said: {m['note']}"
@@ -113,8 +115,8 @@ def lately(state, settings, now: float) -> str:
     wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=8)]
     heard = [p["label"] for p in worldmap.snapshot(state, settings, None, now)["places"] if p["heard_only"]]
     return "\n".join(["Lately:", *(lines or ["- (quiet)"]),
-                      "Pip's open wishes: " + ("; ".join(wishes) if wishes else "none"),
-                      "Places Pip has only heard of: " + (", ".join(heard) if heard else "none")])
+                      f"{world_pack.active().agent.possessive} open wishes: " + ("; ".join(wishes) if wishes else "none"),
+                      f"Places {world_pack.active().agent.name} has only heard of: " + (", ".join(heard) if heard else "none")])
 
 
 DRAFT = {"action": {"type": "string", "enum": ["propose", "revise", "nothing"]},
@@ -143,7 +145,7 @@ async def _fits(state, settings, gm, draft: dict) -> dict | None:
             f"Proposed: {draft.get('name')}: {draft.get('reason')}\n\n"
             + (f"A new place, {draft.get('label')} ({draft.get('place_kind')}, {draft.get('setting')}): {draft.get('description')}\n\n" if draft.get("module") == "place" else "")
             + f"Code:\n{draft.get('code')}\n\n"
-            "Does this fit the world as described, add something the existing modules don't, and stay quiet enough (rarely speaking to Pip)? "
+            f"Does this fit the world as described, add something the existing modules don't, and stay quiet enough (rarely speaking to {world_pack.active().agent.name})? "
             "Report fits (true or false) and why, in one sentence.")
     return await gm.ask(task, {"fits": {"type": "boolean"}, "why": {"type": "string"}}, ["fits", "why"], "builder check", system=SYSTEM)
 

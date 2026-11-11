@@ -1,1 +1,1 @@
-{"name": "lighthouse", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}}
+{"name": "lighthouse", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}, "reason": "A part: a whitewashed lighthouse whose lamp comes on at dusk."}

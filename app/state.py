@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS market_prices (   -- how far one booth's price for on
   place TEXT NOT NULL, item TEXT NOT NULL, local REAL NOT NULL, local_at REAL NOT NULL, day TEXT NOT NULL DEFAULT '',
   sold_today INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (place, item)
 );
-CREATE TABLE IF NOT EXISTS stalls (   -- Pip's own stall at a market (see market.py)
+CREATE TABLE IF NOT EXISTS stalls (   -- the agent's own stall at a market (see market.py)
   place TEXT NOT NULL, item TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', attrs TEXT NOT NULL DEFAULT '{}',
   qty INTEGER NOT NULL, ask INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, earned INTEGER NOT NULL DEFAULT 0,
   sold_today INTEGER NOT NULL DEFAULT 0, day TEXT NOT NULL DEFAULT '', PRIMARY KEY (place, item)

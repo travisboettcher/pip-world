@@ -1,1 +1,1 @@
-{"name": "neighbor", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["neighbor"]}
+{"name": "neighbor", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["neighbor"], "reason": "Every neighbor's home as a layout: their cottage and cabinet of wares, by the water or in a meadow, with what their record mentions. Replaces the hand-written neighbor scene."}

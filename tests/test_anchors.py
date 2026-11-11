@@ -192,7 +192,7 @@ async def test_the_dry_run_says_where_things_would_go_and_what_wouldnt_fit(tmp_p
 async def test_the_world_proposes_its_rules_once(tmp_path, caplog):
     s, st, agent = modular(tmp_path)
     made = await M.offer_library(st, s, agent.runner, now=NOW)
-    assert [(st.module(i)["name"], st.module(i)["reason"]) for i in made] == list(M.RULES.items())
+    assert [(st.module(i)["name"], st.module(i)["reason"]) for i in made] == [(n, M.library(n)[0]["reason"]) for n in M.RULES]
     assert all(st.module(i)["report"]["clean"] for i in made)
     M.reject(st, made[0])
     assert await M.offer_library(st, s, agent.runner, now=NOW) == []

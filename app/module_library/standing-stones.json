@@ -1,1 +1,1 @@
-{"name": "standing-stones", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}}
+{"name": "standing-stones", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}, "reason": "A part: old standing stones with a lintel."}

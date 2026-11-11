@@ -104,3 +104,35 @@ def test_the_guide_the_narrator_and_the_bible_come_from_the_pack(tmp_path):
     from app import gm as G
     assert G.SYSTEM == W.load(Settings()).narrator_system()                                        # Pip's world: word for word as before
     assert G.SYSTEM.startswith("You are the quiet narrator and game master of a small world where a curious creature named Pip lives,\n")
+
+
+@pytest.mark.parametrize("pronoun, forms", [("it", ("it", "its", "itself")), ("she", ("her", "her", "herself")),
+                                            ("he", ("him", "his", "himself")), ("they", ("them", "their", "themself"))])
+def test_the_agent_has_the_forms_prompts_need(pronoun, forms):
+    a = W.Agent("Wren", pronoun)
+    assert (a.them, a.their, a.themself) == forms and a.possessive == "Wren's"
+
+
+def test_modules_read_the_agent_and_the_old_name_still_works(tmp_path):
+    from app import modules as M
+    from tests.test_modules import NOW, live, modular, rule
+    s, st, agent = modular(tmp_path)
+    new = M.context(st, s, live(st, rule(name="new-reader", reads=["agent"]), "x"), NOW)
+    old = M.context(st, s, live(st, rule(name="old-reader", reads=["pip"]), "x"), NOW)
+    assert new["agent"] == old["pip"] and "pip" not in new and "agent" not in old and new["agent"]["where"] == "workshop"
+    m = live(st, rule(name="talker", proposes=["voices", "speak"]), "x")
+    st.update_module(m["id"], voices=[{"name": "Bo", "at": "home", "about": ""}])
+    m = st.module(m["id"])
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_pip": True}}, NOW, "on_tick")[0][1]["to_agent"] is True
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_agent": True}}, NOW, "on_tick")[0][1]["to_agent"] is True
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_agent": False, "to_pip": True}}, NOW, "on_tick")[0][1]["to_agent"] is False
+
+
+def test_until_a_world_is_set_the_active_one_is_pips_and_they_agree_with_their_verbs(tmp_path, monkeypatch):
+    from app import commands
+    monkeypatch.setattr(W, "_active", [])
+    assert W.active().agent.name == "Pip" and W.active().dir == W.DEFAULT
+    d = pack_dir(tmp_path)
+    (d / "world.json").write_text(json.dumps({"name": "Bare", "api": 1, "agent": {"name": "Ox", "pronoun": "they"}}))
+    W.set_active(W.load(Settings(world_pack=str(d))))
+    assert W.active().agent.name == "Ox" and "what Ox is doing and how they are" in commands.answer(None, Settings(), "/help")

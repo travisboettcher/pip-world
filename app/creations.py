@@ -15,6 +15,7 @@ from . import world_effects
 from .text import clip
 from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
+from . import world_pack
 
 CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world", "provides")
 SENSOR_CONDITIONS = ("crop_ripe", "visitor", "dawn", "dusk", "hungry", "tired")
@@ -190,7 +191,7 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None, action
     if not running(c, now):
         return (f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"), None
     a = state.agent()
-    situation = f"Pip is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
+    situation = f"{world_pack.active().agent.name} is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
     actions = [x for x in actions if isinstance(x, dict) and x.get("name")]
     out = await gm.use(describe(c, now), purpose, situation, actions) if gm else None
     if not out:

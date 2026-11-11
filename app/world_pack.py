@@ -14,7 +14,7 @@ API = 1
 DEFAULT = Path(__file__).resolve().parent.parent / "worlds" / "pip"
 PRONOUNS = ("it", "she", "he", "they")
 NARRATOR_RULES = """Keep the world consistent: things behave the way such things plausibly would, and nothing becomes more powerful
-than it is. You never decide what Pip does and you never change a result you are given. Answer only by calling
+than it is. You never decide what {agent} does and you never change a result you are given. Answer only by calling
 the `report` tool."""
 
 
@@ -22,11 +22,38 @@ class PackError(ValueError):
     pass
 
 
+FORMS = {"it": ("it", "its", "itself"), "she": ("her", "her", "herself"), "he": ("him", "his", "himself"), "they": ("them", "their", "themself")}
+
+
 @dataclass(frozen=True)
 class Agent:
+    """Who the agent is. Engine prompts use the name where a sentence's subject is the agent (so verbs agree in any world), and the
+    object, possessive and reflexive forms elsewhere."""
     name: str
     pronoun: str = "they"
     kind: str = ""
+
+    @property
+    def they(self) -> str:
+        """The subject form: only before a verb that agrees with any of them (a past tense, a "can")."""
+        return self.pronoun
+
+    @property
+    def them(self) -> str:
+        return FORMS[self.pronoun][0]
+
+    @property
+    def their(self) -> str:
+        return FORMS[self.pronoun][1]
+
+    @property
+    def themself(self) -> str:
+        return FORMS[self.pronoun][2]
+
+    @property
+    def possessive(self) -> str:
+        """The name's possessive: "Pip's"."""
+        return f"{self.name}'s"
 
 
 @dataclass(frozen=True)
@@ -48,7 +75,7 @@ class Pack:
 
     def narrator_system(self) -> str:
         """The narrator's system prompt: the pack's paragraph, then the engine's fixed instructions."""
-        return "\n".join(filter(None, [self.narrator(), NARRATOR_RULES]))
+        return "\n".join(filter(None, [self.narrator(), NARRATOR_RULES.format(agent=self.agent.name)]))
 
     def bible(self) -> str:
         return self._text("bible.md")
@@ -57,6 +84,18 @@ class Pack:
         """One page of the agent's guide ('' if the pack has none by that name)."""
         f = self.dir / "guide" / f"{page}.md"
         return f.read_text().strip("\n") if f.is_file() else ""
+
+
+_active: list = []
+
+
+def active() -> Pack:
+    """The world this engine is running (set when the agent starts: `set_active`); Pip's world until then."""
+    return _active[0] if _active else _load(str(DEFAULT), (DEFAULT / "world.json").stat().st_mtime)
+
+
+def set_active(pack: Pack) -> None:
+    _active[:] = [pack]
 
 
 def load(settings) -> Pack:

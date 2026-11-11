@@ -37,6 +37,9 @@ If a feature can't be expressed as a module, that is a **missing generic hook**:
 feature ("if the module is the garden...") or a read or effect that only one world could use.
 
 Checks before committing:
+- `tests/test_engine_neutral.py` fails if an engine string names Pip: use the pack's agent (`world_pack.Agent`, or
+  `world_pack.active().agent` where there are no settings at hand), with its name as a sentence's subject and its `them`, `their`,
+  `themself` elsewhere.
 - No engine code, engine prompt, tool description or engine test fixture introduces a world noun (a place, item, creature, feature) or
   the agent's name where a neutral word or a setting would do. Existing ones are being moved out (DESIGN-world-packs.md, phases 1 to 7);
   don't add more, and when you touch one, prefer moving it out over extending it.

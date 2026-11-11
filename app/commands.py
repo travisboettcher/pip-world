@@ -11,14 +11,15 @@ from . import projects as proj
 from . import sleep as sleepmod
 from .state import SECTIONS
 from .text import span
+from . import world_pack
 
 COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
 NAMES = ("help", "status", "items", "garden", "projects", "creations", "notes", "emotions", "usage")
-HELP = {"help": "this list", "status": "what Pip is doing and how it is", "items": "what Pip owns",
-        "garden": "the garden plots", "projects": "projects in progress", "creations": "what Pip has made",
+HELP = {"help": "this list", "status": "what {name} is doing and how {they} {are}", "items": "what {name} owns",
+        "garden": "the garden plots", "projects": "projects in progress", "creations": "what {name} has made",
         "notes": "open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)",
-        "emotions": "Pip's emotion state", "usage": "today's token use against the budget"}
+        "emotions": "{possessive} emotion state", "usage": "today's token use against the budget"}
 
 
 def answer(state, settings, text: str, now: float | None = None) -> str | None:
@@ -34,13 +35,15 @@ def answer(state, settings, text: str, now: float | None = None) -> str | None:
 
 
 def _help(state, settings, arg, now):
-    return "Commands (answered by the workshop, not by Pip):\n" + "\n".join(f"/{n}: {HELP[n]}" for n in NAMES)
+    a = world_pack.active().agent
+    words = {"name": a.name, "possessive": a.possessive, "they": a.they, "are": "are" if a.pronoun == "they" else "is"}
+    return f"Commands (answered by the engine, not by {a.name}):\n" + "\n".join(f"/{n}: {HELP[n].format(**words)}" for n in NAMES)
 
 
 def _status(state, settings, arg, now):
     a = state.agent()
     doing = a["activity"] + (f": {a['description']}" if a["description"] else "")
-    lines = [f"Pip is {doing}",
+    lines = [f"{world_pack.active().agent.name} is {doing}",
              f"Mood {a['mood']}; hunger {round(a['hunger'] * 100)}%, energy {round(a['energy'] * 100)}%; at the {a['location']}."]
     lines.append(f"Day {sleepmod.day_number(state, now)}" + (f", {sleepmod.period(settings, now)}" if settings.sleep else "") + ".")
     return "Status\n" + "\n".join(lines)

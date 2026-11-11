@@ -1,1 +1,1 @@
-{"name": "stall", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"color": "#d8432f", "color2": "#f5f1d7", "own": false}}
+{"name": "stall", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"color": "#d8432f", "color2": "#f5f1d7", "own": false}, "reason": "A part: a market stall with a striped awning (two colours, rolled up while the market is shut; Pip's own, while it has nothing out), and a counter to set things on."}

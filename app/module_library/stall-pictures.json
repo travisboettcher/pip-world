@@ -1,2 +1,1 @@
-{"name": "stall-pictures", "kind": "rule", "api": 1, "hooks": ["on_install", "on_time"], "reads": ["stalls", "works"],
- "proposes": ["show", "schedule"]}
+{"name": "stall-pictures", "kind": "rule", "api": 1, "hooks": ["on_install", "on_time"], "reads": ["stalls", "works"], "proposes": ["show", "schedule"], "reason": "What Pip made, shown on its market stall: copies of drawings framed, creations as Pip drew them."}

@@ -18,6 +18,7 @@ from . import gathering, market
 from . import sleep as sleepmod
 from .state import name_key
 from .text import clip, span
+from . import world_pack
 
 SEVERITIES = ("minor", "medium", "major")
 LENS_AMOUNT = {"minor": 4, "medium": 9, "major": 16}
@@ -374,7 +375,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         raise ValueError(f"an effect's kind is one of {', '.join(INTENTS)}")
     if kind == "memory":
         if w["diary_count"] < MIN_DIARY or not w["old_notes"]:
-            raise ValueError("Pip has no old thought to come back to it")
+            raise ValueError(f"{world_pack.active().agent.name} has no old thought to come back to {world_pack.active().agent.them}")
         return _plan_memory(w, tone, severity, rng)
     if tone == "neutral":
         raise ValueError("a neutral happening changes nothing (only a memory may come back)")
@@ -385,7 +386,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if tone == "bad":
             loss = coin_loss(w["coins"], severity)
             if loss < 1:
-                raise ValueError("Pip has no coins to lose")
+                raise ValueError(f"{world_pack.active().agent.name} has no coins to lose")
             return Plan([{"kind": "coins", "delta": -loss}])
         lo, hi = FOUND_COINS[severity]
         return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), **({"gift": True} if i.get("gift") else {})}])
@@ -400,11 +401,11 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
     if kind == "food_loss":
         plan = _pest_loss(w, severity, rng, 5)
         if plan is None:
-            raise ValueError("there is nothing to lose from the pantry (or Pip is too low for it)")
+            raise ValueError(f"there is nothing to lose from the pantry (or {world_pack.active().agent.name} is too low for it)")
         return plan
     if kind in ("energy", "hunger"):
         if tone == "bad" and w["low"]:
-            raise ValueError("Pip is too low already")
+            raise ValueError(f"{world_pack.active().agent.name} is too low already")
         return Plan([{"kind": kind, "delta": sign * ENERGY[severity] * (1 if kind == "energy" else -1)}])
     if kind == "crop":
         plot = next((p for p in w["plots"] if p["plot"] == i.get("plot")), None)
@@ -434,17 +435,17 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         pool = [f["name"] for f in w["foods"]] + [e[0] for e in booth["loot"] or []]
         item = str(i.get("item") or "").strip().lower() or (pool[rng.randrange(len(pool))] if pool else "")
         if not item or item not in {p.lower() for p in pool}:
-            raise ValueError(f"`item` is something sold at {booth['key']} or that Pip has")
+            raise ValueError(f"`item` is something sold at {booth['key']} or that {world_pack.active().agent.name} has")
         return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": sign * PRICE_UNITS[severity]}], [booth["key"], item])
     if kind == "stop":
         c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
         if not c or severity == "minor":
-            raise ValueError("`creation` is one of Pip's running things that need tending, and a minor turn stops nothing")
+            raise ValueError(f"`creation` is one of {world_pack.active().agent.possessive} running things that need tending, and a minor turn stops nothing")
         part = _mending_part(rng) if severity == "major" and i.get("mend") else None
         return Plan([{"kind": "creation_stop", "id": c["id"], "name": c["name"], "part": part}], [c["name"]] + ([part["name"]] if part else []))
     name = next((n for n in w["neighbors"] if n.lower() == str(i.get("name") or "").strip().lower()), None)   # news
     if not name:
-        raise ValueError("`name` is one of Pip's neighbors")
+        raise ValueError(f"`name` is one of {world_pack.active().agent.possessive} neighbors")
     return Plan([{"kind": "news", "name": name, "tone": tone}], [name])
 
 
@@ -471,7 +472,7 @@ def decide(state, settings, p: dict, now: float, rng) -> dict:
     w = world(state, settings, now)
     unknown = [n for n in names if n.lower() not in world_names(w)]
     if unknown:
-        raise ValueError(f"no one and nothing called {unknown[0]} is in Pip's world")
+        raise ValueError(f"no one and nothing called {unknown[0]} is in {world_pack.active().agent.possessive} world")
     plan = Plan()
     for i in effects:
         one = _intent(w, tone, severity, i, rng)
@@ -490,11 +491,11 @@ def room_for(state, settings, now: float) -> str:
     if settings.happenings == "off":
         return "happenings are off"
     if unresolved(state):
-        return "Pip hasn't taken in the last one yet"
+        return f"{world_pack.active().agent.name} hasn't taken in the last one yet"
     if sum(1 for h in state.happenings(20) if h["ts"] >= _today_start(now)) >= settings.happenings_max_per_day:
         return f"there have been {settings.happenings_max_per_day} today already"
     if sleepmod.asleep(state) or (state.session() or {}).get("kind") == "walk":
-        return "Pip is asleep or out walking"
+        return f"{world_pack.active().agent.name} is asleep or out walking"
     return ""
 
 

@@ -1,2 +1,1 @@
-{"name": "cutaway", "kind": "part", "api": 1, "hooks": ["on_build"],
- "params": {"width": 9.0, "depth": 5.5, "height": 3.2, "walls": "plaster", "roof": "thatch", "door": true}}
+{"name": "cutaway", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {"width": 9.0, "depth": 5.5, "height": 3.2, "walls": "plaster", "roof": "thatch", "door": true}, "reason": "A part: a building opened like a dollhouse (width, depth, height, walls, roof, a door), with its walls and floor as anchors."}

@@ -86,7 +86,7 @@ def _low(pip):
 
 def _plan(ctx, cat, tone, severity, rng):
     """What kind of thing changes ({effects, names}), or None if this category can't happen like this now."""
-    pip, garden = ctx["pip"], [g for g in ctx["garden"] if g["state"] == "growing"]
+    pip, garden = ctx["agent"], [g for g in ctx["garden"] if g["state"] == "growing"]
     foods = sorted((i for i in ctx["items"] if i["kind"] == "food"), key=lambda i: -i["qty"])
     neighbors = [p["name"] for p in ctx["people"] if p["kind"] == "neighbor"]
     tools = [i["name"] for i in ctx["items"] if i["kind"] == "tool"]
@@ -173,7 +173,7 @@ def _choose(ctx, rng, night):
 
 
 def on_tick(ctx):
-    st, pip, now, p = dict(ctx["state"]), ctx["pip"], ctx["now"], ctx["params"]
+    st, pip, now, p = dict(ctx["state"]), ctx["agent"], ctx["now"], ctx["params"]
     st.setdefault("rolled", [])
     out = {}
     if pip["asleep"]:

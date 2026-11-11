@@ -19,17 +19,18 @@ from pathlib import Path
 
 from . import public_view as pv
 from . import sandbox
+from . import world_pack
 
 log = logging.getLogger(__name__)
 
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer")
-READS = ("time", "weather", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors", "people", "creations", "happenings")
+READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors", "people", "creations", "happenings")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell", "voices", "ask", "speak", "happen")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
-PIP_READS = ("time", "weather", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
+PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
 PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
 MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
@@ -38,32 +39,8 @@ RUNTIME_KEYS = {"clock_set_at": "number", "clock_offset": "number", "tended_unti
 NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
-RULES = {"gallery-wall": "Pip's newest drawings, framed on the workshop's back wall.",
-         "stall-pictures": "What Pip made, shown on its market stall: copies of drawings framed, creations as Pip drew them.",
-         # parts and a first layout (step 5): the scene kit's own pieces as parts, and the woods built from them
-         "round-tree": "A part: a round, leafy tree (scale), in the season's colours.",
-         "pine-tree": "A part: a pine (scale), darker in winter.",
-         "well": "A part: a stone well with a little thatched roof.",
-         "stall": "A part: a market stall with a striped awning (two colours, rolled up while the market is shut; Pip's own, while it has nothing out), and a counter to set things on.",
-         "cutaway": "A part: a building opened like a dollhouse (width, depth, height, walls, roof, a door), with its walls and floor as anchors.",
-         "scrap-heap": "A part: a heap of rusted scrap, worth digging through.",
-         "shed": "A part: a plank shed with a shingled roof.",
-         "bench": "A part: a wooden bench to sit and look from; its seat is where Pip sits.",
-         "standing-stones": "A part: old standing stones with a lintel.",
-         "lighthouse": "A part: a whitewashed lighthouse whose lamp comes on at dusk.",
-         "outdoors": "Every wild place, yard and sight without a layout of its own, from parts: the land by its setting, heaps and a shed "
-                     "in a yard, a bench and something to look at at a sight. Replaces the hand-written outdoors scene.",
-         # the last hand-written scenes, as layouts with live elements (the renderer draws Pip, people, goods and the garden on tagged anchors)
-         "home": "Pip's home as a layout: the workshop opened like a dollhouse, the garden's plots, the bench, the trees. Replaces the hand-written home scene.",
-         "neighbor": "Every neighbor's home as a layout: their cottage and cabinet of wares, by the water or in a meadow, with what their record mentions. "
-                     "Replaces the hand-written neighbor scene.",
-         "market": "Every market as a layout: the square, houses lit at night, a stall for each of the day's booths and Pip's own. Replaces the hand-written market scene.",
-         "shop": "Every shop as a layout: the shopfront, its counter and stock, the keeper while it's open, a note while it's shut. Replaces the hand-written shop scene.",
-         "library": "The library as a layout: the reading room, its walls of books, the reading table and lamp. Replaces the hand-written library scene.",
-         "stall-customers": "Customers at Pip's stall: while Pip is at an open market, people stop now and then and buy at Pip's ask, fewer the dearer "
-                            "it is. Replaces the engine's own stall customers.",
-         "happenings": "Small events from the world: a roll for each slot of the awake day (and for the night, on waking), a category the world "
-                       "allows and the season favours, a tone and a size; the engine sets what changes. Replaces the engine's own rolling."}
+RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2}
@@ -113,7 +90,7 @@ def check_manifest(m, author: str, state=None) -> dict:
     if not out["hooks"]:
         raise Refused("`hooks` needs at least one hook")
     if "on_message" in out["hooks"] and "voices" not in out["proposes"]:
-        raise Refused("`on_message` hears what Pip says to the module's voices: it needs `voices` among what it proposes")
+        raise Refused(f"`on_message` hears what {world_pack.active().agent.name} says to the module's voices: it needs `voices` among what it proposes")
     if "on_answer" in out["hooks"] and "ask" not in out["proposes"]:
         raise Refused("`on_answer` gets the words it asked for: it needs `ask` among what it proposes")
     if kind in ("part", "place"):
@@ -249,12 +226,13 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import weather
         w = weather.current(state, now)
         ctx["weather"] = {"condition": w.condition, "temp": w.temp, "unit": w.unit, "daylight": w.above_horizon} if w else None
-    if "pip" in reads:
+    if "agent" in reads or "pip" in reads:                   # `pip` is the old name of the `agent` read, kept for modules written with it
         a = state.agent()
         from . import places
-        ctx["pip"] = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
+        me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
                       "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
                       "coins": state.coins()}
+        ctx.update({k: me for k in ("agent", "pip") if k in reads})
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -345,7 +323,7 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
             changes.append((key, _text(result[key], key)))
     if result.get("wake"):
         if budget["wake"] >= cap["wake"]:
-            raise Refused(f"it has woken Pip {cap['wake']} times today")
+            raise Refused(f"it has woken {world_pack.active().agent.name} {cap['wake']} times today")
         changes.append(("wake", True))
     if "schedule" in result and result["schedule"] is not None:
         at = result["schedule"]
@@ -471,11 +449,11 @@ def _speak(voices: list, v) -> dict:
     """A line spoken as one of the module's own voices (to Pip, or just aloud)."""
     if not isinstance(v, dict) or not isinstance(v.get("as"), str) or not isinstance(v.get("text"), str) \
             or not v["text"].strip() or len(v["text"]) > SPEAK_MAX:
-        raise Refused(f"`speak` is {{as, text, to_pip?}}: text is a line of up to {SPEAK_MAX} characters")
+        raise Refused(f"`speak` is {{as, text, to_agent?}}: text is a line of up to {SPEAK_MAX} characters")
     voice = next((x for x in voices if x["name"].lower() == v["as"].strip().lower()), None)
     if not voice:
         raise Refused("it can only speak as its own voices: " + (", ".join(x["name"] for x in voices) or "it has none"))
-    return {"name": voice["name"], "text": v["text"].strip(), "to_pip": v.get("to_pip") is True}
+    return {"name": voice["name"], "text": v["text"].strip(), "to_agent": v.get("to_agent", v.get("to_pip")) is True}   # to_pip: the old name
 
 
 def _ask(v) -> dict:
@@ -497,10 +475,10 @@ def _sell(state, settings, v, now: float) -> list:
     for x in v:
         place = str(x["place"])
         if settings is None or market.selling_at(state, settings, now) != place:
-            raise Refused(f"Pip isn't selling at {place} right now")
+            raise Refused(f"{world_pack.active().agent.name} isn't selling at {place} right now")
         row = next((r for r in state.stall_rows(place) if r["item"] == name_key(str(x["item"]))), None)
         if not row:
-            raise Refused(f"there is no {x['item']} on Pip's stall at {place}")
+            raise Refused(f"there is no {x['item']} on {world_pack.active().agent.possessive} stall at {place}")
         most = min(row["qty"], market.STALL_DAILY_UNITS - market.sold_today(row, now))
         if not isinstance(x["qty"], int) or isinstance(x["qty"], bool) or not 1 <= x["qty"] <= most:
             raise Refused(f"`sell` qty is 1 to {most} (what is on the stall, and what the market takes today)")
@@ -626,8 +604,8 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             fields["happen"] = [val]
             budget["happen"] += 1
         elif kind == "speak":
-            state.log("companion", name=val["name"], text=val["text"], reply=val["to_pip"], module=m["name"])
-            out["wake"] = out["wake"] or val["to_pip"]
+            state.log("companion", name=val["name"], text=val["text"], reply=val["to_agent"], module=m["name"])
+            out["wake"] = out["wake"] or val["to_agent"]
             budget["speak"] += 1
         elif kind == "ask":
             asks = fields.get("asks", m.get("asks") or [])
@@ -771,7 +749,7 @@ def hear(state, m: dict, voice: dict, text: str, now: float | None = None) -> bo
     """Pip spoke to a module's voice: kept for its on_message. False if the module has no ears."""
     if "on_message" not in m["manifest"]["hooks"]:
         return False
-    state.update_module(m["id"], heard=(m.get("heard") or [])[-4:] + [{"to": voice["name"], "text": str(text)[:1000], "from": "Pip", "ts": now or time.time()}])
+    state.update_module(m["id"], heard=(m.get("heard") or [])[-4:] + [{"to": voice["name"], "text": str(text)[:1000], "from": f"{world_pack.active().agent.name}", "ts": now or time.time()}])
     return True
 
 
@@ -885,7 +863,7 @@ def owner_notices(state, settings) -> list[tuple[int, str, str]]:
     for m in state.modules(("waiting", "disabled")):
         if m["notified"] == m["status"] or (m["status"] == "disabled" and not m["note"].startswith("its code failed")):
             continue
-        who = "the world" if m["author"] == "world" else "Pip"
+        who = "the world" if m["author"] == "world" else f"{world_pack.active().agent.name}"
         what = f"{m['name']} v{m['version']} by {who}" + (f", for {m['subject']}" if m["subject"] else "")
         if m["status"] == "waiting":
             r = m["report"]
@@ -1115,7 +1093,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
                 await run("on_event", at, event=pv.public_event(sample))
         if "on_message" in hooks:
             for v in list(sim.get("voices") or [])[:2]:
-                await run("on_message", at, message={"to": v["name"], "text": "Hello.", "from": "Pip", "ts": at})
+                await run("on_message", at, message={"to": v["name"], "text": "Hello.", "from": f"{world_pack.active().agent.name}", "ts": at})
         report["offers"] = [o["name"] for o in sim["offers"]]
         if (why := untended(state, m, report["offers"])):
             report["refused"].append(why)
@@ -1213,8 +1191,9 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
         return []
     runner = runner or LocalRunner()
     made = []
-    for name, reason in RULES.items():                       # the world's own rules, once each, and again when the engine changes one
+    for name in RULES:                                        # the world's own rules, once each, and again when the engine changes one
         man, source = library(name)
+        reason = man.pop("reason", "")
         man = {**man, "params": settings_params(settings, name, man["params"])} if name in SETTINGS_PARAMS else man
         last = ([o for o in state.modules() if o["name"] == name] or [None])[-1]
         if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live"           # once shipped as the world's

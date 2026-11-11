@@ -1,7 +1,8 @@
 # Design: world packs (a world-neutral engine)
 
-Status (2026-11-11): designed; **phase 1a built (0.31.0)**: the pack loader, `WORLD_PACK`, and Pip's world's persona, narrator, bible and
-guide in `worlds/pip/`. Next: 1b (the agent's name and pronoun through every engine prompt) and 1c (the check that keeps the world out). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+Status (2026-11-11): designed; **phase 1 built (0.31.0, 0.32.0)**: the pack loader, `WORLD_PACK`, Pip's world's persona, narrator, bible
+and guide in `worlds/pip/`; the agent's name and pronoun through every engine prompt; the `agent` read; and the test that keeps the
+engine from naming its world. Next: phase 2 (data out of code). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -182,7 +183,16 @@ module system, happenings' checks, the world view's renderer, channels and visit
    it/she/he/they, and kind; `api` 1), and the pack's `persona.md` (the default when `PERSONA_PATH` has no file; with none, "You are
    <name>."), `narrator.md` (the narrator's system prompt is the pack's paragraph, then the engine's `NARRATOR_RULES`; for Pip's world it is
    the old prompt word for word), `bible.md` (unless `WORLD_BIBLE_PATH`) and `guide/<topic>.md` (a page the pack lacks is left out). The
-   image ships `worlds/`. *Then:* `worlds/pip/` holds the persona, narrator, bible and guide; `WORLD_PACK` selects it; the agent's
+   image ships `worlds/`. *1b and 1c (0.32.0)*: every engine string that named Pip now names the pack's agent (`world_pack.Agent`:
+   `name`, `possessive`, and the pronoun's `they`, `them`, `their`, `themself`). Sentences whose subject is the agent use its name, so
+   verbs agree in any world; a pronoun's subject form appears only before a verb that agrees with all of them (a past tense, "could").
+   Code with no settings at hand asks `world_pack.active()` (one engine runs one world; the agent sets it at start). The shipped
+   modules' descriptions moved into their own manifests (`reason`), as world content. The module API's `pip` read is now `agent` and
+   `speak`'s `to_pip` is `to_agent`; the old names still work for modules already live. `tests/test_engine_neutral.py` scans every
+   string literal in the engine (not comments or docstrings) and the builder's API page, and fails on "Pip"; it also runs the
+   narrator, the help text, the builder's page and a refusal for another world's agent. Still named for Pip: identifiers (the author
+   `"pip"`, Pip's programs, `pipchat`), anchor tags (`pip`, `pip-stall`), and world content such as "workshop" and "garden", which
+   phase 2 moves out. *Then:* `worlds/pip/` holds the persona, narrator, bible and guide; `WORLD_PACK` selects it; the agent's
    name and pronoun come from `world.json` and every engine prompt is written around them; the `pip` read becomes `agent` (the old name
    kept as an alias for live modules). No change in behaviour; the CI check starts with the prompts.
 2. **Data out of code.** Place kinds, item kinds and tables, starting belongings, scene vocabulary, happenings' categories and tables,

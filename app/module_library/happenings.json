@@ -1,3 +1,1 @@
-{"name": "happenings", "kind": "rule", "api": 1, "hooks": ["on_install", "on_tick"],
- "reads": ["time", "pip", "garden", "items", "places", "people", "creations", "happenings"], "proposes": ["state", "happen"],
- "params": {"chance": 0.1, "slot_hours": 3, "severity": [50, 45, 5], "seasons": true, "wake_hour": 6, "bedtime_hour": 22}}
+{"name": "happenings", "kind": "rule", "api": 1, "hooks": ["on_install", "on_tick"], "reads": ["time", "agent", "garden", "items", "places", "people", "creations", "happenings"], "proposes": ["state", "happen"], "params": {"chance": 0.1, "slot_hours": 3, "severity": [50, 45, 5], "seasons": true, "wake_hour": 6, "bedtime_hour": 22}, "reason": "Small events from the world: a roll for each slot of the awake day (and for the night, on waking), a category the world allows and the season favours, a tone and a size; the engine sets what changes. Replaces the engine's own rolling."}

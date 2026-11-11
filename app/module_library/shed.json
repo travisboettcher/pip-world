@@ -1,1 +1,1 @@
-{"name": "shed", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}}
+{"name": "shed", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}, "reason": "A part: a plank shed with a shingled roof."}

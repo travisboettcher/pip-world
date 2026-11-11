@@ -8,6 +8,7 @@ effect. To give a new kind of change teeth, add one entry here (a few lines): no
 """
 from dataclasses import dataclass
 from typing import Callable
+from . import world_pack
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ EFFECTS: dict[str, WorldEffect] = {e.name: e for e in (
 def gm_lines() -> str:
     """The sentence the GM design prompt carries: every effect, and when it applies."""
     listing = "; ".join(f"{e.name} ({e.help})" for e in EFFECTS.values())
-    return ("world: ONLY if what Pip finished made a lasting change of one of these kinds to its world - give `effect` as one of: "
+    return (f"world: ONLY if what {world_pack.active().agent.name} finished made a lasting change of one of these kinds to {world_pack.active().agent.their} world - give `effect` as one of: "
             f"{listing}. For anything else never use it (a pond, a painting or a gift is just itself)")
 
 

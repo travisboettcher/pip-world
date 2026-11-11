@@ -18,7 +18,7 @@ def clear_items(st):
 def test_help_text(tmp_path):
     s, st, *_ = make(tmp_path)
     assert commands.answer(st, s, "/help") == (
-        "Commands (answered by the workshop, not by Pip):\n"
+        "Commands (answered by the engine, not by Pip):\n"
         "/help: this list\n"
         "/status: what Pip is doing and how it is\n"
         "/items: what Pip owns\n"

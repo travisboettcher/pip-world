@@ -6,6 +6,7 @@ running radio brings news. Like `world_effects.py`, this is a small registry: th
 registry entry here plus the place its result shows up.
 """
 import time
+from . import world_pack
 from dataclasses import dataclass
 
 DAY = 86400
@@ -31,7 +32,7 @@ ABILITIES: dict[str, Ability] = {a.name: a for a in (
 def gm_lines() -> str:
     """The sentence the GM design prompt carries: every ability it may propose, and when."""
     listing = "; ".join(f"{a.name} ({a.help})" for a in ABILITIES.values() if a.proposable)
-    return ("provides: ONLY if what Pip finished gives it something it could not have without the thing, while the thing works - give "
+    return (f"provides: ONLY if what {world_pack.active().agent.name} finished gives {world_pack.active().agent.them} something {world_pack.active().agent.they} could not have without the thing, while the thing works - give "
             f"`ability` as one of: {listing}. For anything else never use it (a pond, a painting or a gift is just itself)")
 
 

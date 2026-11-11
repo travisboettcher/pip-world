@@ -20,7 +20,7 @@ async def rule_live(tmp_path, chance=1.0, **kw):
     s, st, agent = modular(tmp_path, happenings="on", happenings_chance=chance, **kw)
     man, src = M.library("happenings")
     man = {**man, "params": M.settings_params(s, "happenings", man["params"])}
-    r = await M.propose(st, s, M.LocalRunner(), M.SHIPPED, man, src, M.RULES["happenings"], now=at(0, 5))
+    r = await M.propose(st, s, M.LocalRunner(), M.SHIPPED, man, src, man["reason"], now=at(0, 5))
     m = st.module(r["id"])
     assert m["status"] == "live" and m["report"]["clean"], m["report"]
     st.update_agent(activity="idle", hunger=0.2, energy=0.8)

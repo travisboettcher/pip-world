@@ -1,1 +1,1 @@
-{"name": "market", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["market"]}
+{"name": "market", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["market"], "reason": "Every market as a layout: the square, houses lit at night, a stall for each of the day's booths and Pip's own. Replaces the hand-written market scene."}

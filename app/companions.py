@@ -6,6 +6,7 @@ here are the people (neighbors, residents) the engine's conversation code answer
 import time
 
 from .text import brief
+from . import world_pack
 
 CONVERSATION_LINES = 6
 
@@ -19,7 +20,7 @@ def conversation(state, name: str, verbatim_since: float | None = None) -> list[
             earlier = verbatim_since is not None and e["ts"] < verbatim_since
             lines.append(f"{name} (in brief): {brief(d.get('gist'), d['text'])}" if earlier else f"{name}: {d['text']}")
         elif e["kind"] == "say" and d.get("to_name") == name:
-            lines.append(f"Pip: {d['text']}")
+            lines.append(f"{world_pack.active().agent.name}: {d['text']}")
     return lines[-CONVERSATION_LINES:]
 
 

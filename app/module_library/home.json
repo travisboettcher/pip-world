@@ -1,1 +1,1 @@
-{"name": "home", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["home"]}
+{"name": "home", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["home"], "reason": "Pip's home as a layout: the workshop opened like a dollhouse, the garden's plots, the bench, the trees. Replaces the hand-written home scene."}

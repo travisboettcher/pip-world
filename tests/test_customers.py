@@ -103,7 +103,7 @@ def test_a_creation_on_the_stall_goes_to_its_buyer(tmp_path):
 async def customers(tmp_path, **kw):
     s, st, agent, ask = mod(tmp_path, **kw)
     man, src = M.library("stall-customers")
-    r = await M.propose(st, s, M.LocalRunner(), M.SHIPPED, man, src, M.RULES["stall-customers"], now=NOW)
+    r = await M.propose(st, s, M.LocalRunner(), M.SHIPPED, man, src, man["reason"], now=NOW)
     m = st.module(r["id"])
     assert m["status"] == "live" and m["report"]["clean"], m["report"]
     return s, st, agent, ask, m
