@@ -1,0 +1,91 @@
+{
+ "world_effects": {
+  "garden_plot": {
+   "help": "clearing and preparing new ground so the garden has another plot",
+   "words": [
+    "plot",
+    "bed",
+    "garden",
+    "soil",
+    "ground",
+    "dig",
+    "clear",
+    "till",
+    "furrow",
+    "patch",
+    "earth"
+   ],
+   "min_difficulty": 2,
+   "does": "add_plot",
+   "note": "Your garden now has {n} plots: a new bed is ready for planting (plot {n})."
+  },
+  "workbench": {
+   "help": "building or setting up better workshop space (a bench, shelves, a tool rack) so more projects can be kept going at once",
+   "words": [
+    "bench",
+    "workbench",
+    "shelf",
+    "shelves",
+    "rack",
+    "desk",
+    "table",
+    "cabinet",
+    "workshop",
+    "storage"
+   ],
+   "min_difficulty": 2,
+   "does": "add_project_slot",
+   "note": "Your workshop is better set up now: you can keep {n} projects going at once."
+  }
+ },
+ "abilities": {
+  "time": {
+   "help": "the exact time of day (a clock: implied by the timekeeper capability)",
+   "words": [],
+   "per_day": 0,
+   "proposable": false,
+   "min_difficulty": 2
+  },
+  "news": {
+   "help": "a radio or other receiver that brings in short bulletins",
+   "words": [
+    "radio",
+    "wireless",
+    "receiver",
+    "receiving",
+    "crystal",
+    "aerial",
+    "antenna",
+    "transmitter"
+   ],
+   "per_day": 3,
+   "proposable": true,
+   "min_difficulty": 2
+  }
+ },
+ "crafting": {
+  "abilities": [
+   "precision",
+   "patience",
+   "ingenuity",
+   "knowledge",
+   "handiness"
+  ],
+  "default_abilities": [
+   "handiness"
+  ]
+ },
+ "happening_firsts": {
+  "garden": "had the garden change on its own",
+  "creature": "had a small creature come by",
+  "pantry": "found some of your food had turned",
+  "found": "came across something unexpected",
+  "body": "woke up feeling different",
+  "market": "heard talk of the market",
+  "mishap": "had something go wrong in the workshop",
+  "neighbor": "heard news of a neighbor",
+  "memory": "had an old thought come back",
+  "kindness": "was given something by someone unseen",
+  "atmosphere": "noticed something in the air"
+ }
+}

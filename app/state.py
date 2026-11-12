@@ -11,7 +11,8 @@ from .config import Settings
 from . import firsts as firstsmod
 from .memory import RECALL_EVENT_KINDS, event_importance, STOP_WORDS, recall_text
 from .text import craft_name
-from .world import KINDS, STARTER_ITEMS, normalize_attrs
+from . import world as world_content
+from .world import normalize_attrs
 
 log = logging.getLogger("state")
 
@@ -307,7 +308,7 @@ class State:
                 self._backfill_memory_context()
             self.merge_duplicate_items()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
-                for it in STARTER_ITEMS:  # once ever, so used-up seeds don't come back on restart
+                for it in world_content.starter_items():  # once ever, so used-up seeds don't come back on restart
                     self.add_item(it["name"], it["qty"], it["kind"], it["description"], it["attrs"])
                 self.db.execute("INSERT INTO meta VALUES ('starter_items', '1')")
             self.db.commit()
@@ -585,8 +586,8 @@ class State:
         name = name.strip()[:60]
         if not name:
             raise ValueError("item needs a name")
-        if kind not in KINDS:
-            raise ValueError(f"unknown kind {kind!r}; options: {list(KINDS)}")
+        if kind not in world_content.kinds():
+            raise ValueError(f"unknown kind {kind!r}; options: {list(world_content.kinds())}")
         if qty < 1:
             raise ValueError("qty must be at least 1")
         with self.lock:

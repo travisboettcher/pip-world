@@ -1,0 +1,348 @@
+{
+ "kinds": [
+  "tool",
+  "material",
+  "food",
+  "seed"
+ ],
+ "seed_defaults": {
+  "grow_minutes": 1440,
+  "yield": 3,
+  "food_value": 0.4
+ },
+ "food_default": 0.3,
+ "seeds_per_food": 2,
+ "start": [
+  {
+   "name": "tomato seeds",
+   "qty": 3,
+   "kind": "seed",
+   "description": "a paper packet of tomato seeds",
+   "attrs": {
+    "crop": "tomatoes",
+    "grow_minutes": 1440,
+    "yield": 3,
+    "food_value": 0.5
+   }
+  },
+  {
+   "name": "carrot seeds",
+   "qty": 3,
+   "kind": "seed",
+   "description": "a paper packet of carrot seeds",
+   "attrs": {
+    "crop": "carrots",
+    "grow_minutes": 1080,
+    "yield": 3,
+    "food_value": 0.4
+   }
+  }
+ ],
+ "finds": {
+  "woods": [
+   [
+    "sticks",
+    "material",
+    30,
+    [
+     2,
+     5
+    ],
+    "straight, dry sticks",
+    {}
+   ],
+   [
+    "bark",
+    "material",
+    12,
+    [
+     1,
+     3
+    ],
+    "curls of birch bark",
+    {}
+   ],
+   [
+    "resin",
+    "material",
+    8,
+    [
+     1,
+     2
+    ],
+    "amber lumps of sticky resin",
+    {}
+   ],
+   [
+    "feathers",
+    "material",
+    8,
+    [
+     1,
+     3
+    ],
+    "small bird feathers",
+    {}
+   ],
+   [
+    "wild berries",
+    "food",
+    15,
+    [
+     2,
+     4
+    ],
+    "tart wild berries",
+    {
+     "food_value": 0.2
+    }
+   ],
+   [
+    "hazelnuts",
+    "food",
+    10,
+    [
+     2,
+     5
+    ],
+    "a handful of hazelnuts",
+    {
+     "food_value": 0.15
+    }
+   ],
+   [
+    "mushrooms",
+    "food",
+    8,
+    [
+     1,
+     3
+    ],
+    "firm brown mushrooms from the leaf litter",
+    {
+     "food_value": 0.2
+    }
+   ],
+   [
+    "wild apples",
+    "food",
+    6,
+    [
+     1,
+     3
+    ],
+    "small, sharp wild apples",
+    {
+     "food_value": 0.25
+    }
+   ],
+   [
+    "sunflower seeds",
+    "seed",
+    5,
+    [
+     1,
+     2
+    ],
+    "seeds shaken from a dried head",
+    {
+     "crop": "sunflowers",
+     "grow_minutes": 2160,
+     "yield": 4,
+     "food_value": 0.3
+    }
+   ],
+   [
+    "carrot seeds",
+    "seed",
+    5,
+    [
+     1,
+     2
+    ],
+    "seeds from a wild carrot's dry umbels",
+    {
+     "crop": "carrots",
+     "grow_minutes": 1080,
+     "yield": 3,
+     "food_value": 0.4
+    }
+   ],
+   [
+    "pea seeds",
+    "seed",
+    5,
+    [
+     1,
+     3
+    ],
+    "dry peas rattling in a wild pod",
+    {
+     "crop": "peas",
+     "grow_minutes": 1200,
+     "yield": 4,
+     "food_value": 0.25
+    }
+   ],
+   [
+    "radish seeds",
+    "seed",
+    5,
+    [
+     1,
+     3
+    ],
+    "tiny peppery seeds from a bolted radish",
+    {
+     "crop": "radishes",
+     "grow_minutes": 720,
+     "yield": 3,
+     "food_value": 0.2
+    }
+   ],
+   [
+    "bean seeds",
+    "seed",
+    4,
+    [
+     1,
+     2
+    ],
+    "a few dry beans from a tangled vine",
+    {
+     "crop": "beans",
+     "grow_minutes": 1800,
+     "yield": 4,
+     "food_value": 0.3
+    }
+   ]
+  ],
+  "junkyard": [
+   [
+    "scrap brass",
+    "material",
+    18,
+    [
+     1,
+     3
+    ],
+    "bent offcuts of brass",
+    {}
+   ],
+   [
+    "brass wire",
+    "material",
+    20,
+    [
+     1,
+     2
+    ],
+    "short lengths of brass wire",
+    {}
+   ],
+   [
+    "copper wire",
+    "material",
+    12,
+    [
+     1,
+     3
+    ],
+    "tangled copper wire",
+    {}
+   ],
+   [
+    "springs",
+    "material",
+    8,
+    [
+     1,
+     2
+    ],
+    "small springs, mostly still springy",
+    {}
+   ],
+   [
+    "screws and bolts",
+    "material",
+    14,
+    [
+     2,
+     6
+    ],
+    "a pocketful of screws and bolts",
+    {}
+   ],
+   [
+    "rusty tin",
+    "material",
+    10,
+    [
+     1,
+     2
+    ],
+    "sheets of rusty tin",
+    {}
+   ],
+   [
+    "fine brass gears",
+    "material",
+    5,
+    [
+     1,
+     1
+    ],
+    "a small, fine brass gear",
+    {}
+   ],
+   [
+    "clock parts",
+    "material",
+    4,
+    [
+     1,
+     1
+    ],
+    "odd parts pulled from an old clock",
+    {}
+   ],
+   [
+    "needle file",
+    "tool",
+    2,
+    [
+     1,
+     1
+    ],
+    "a slim needle file with a good edge",
+    {}
+   ],
+   [
+    "tweezers",
+    "tool",
+    2,
+    [
+     1,
+     1
+    ],
+    "a pair of fine tweezers",
+    {}
+   ],
+   [
+    "small hammer",
+    "tool",
+    2,
+    [
+     1,
+     1
+    ],
+    "a small hammer, handle a bit loose",
+    {}
+   ]
+  ]
+ },
+ "gerunds": {
+  "woods": "foraging",
+  "junkyard": "scavenging"
+ }
+}

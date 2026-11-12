@@ -1,0 +1,355 @@
+{
+ "home": {
+  "key": "workshop",
+  "description": "your home: your workshop and garden",
+  "offers": [
+   "projects",
+   "garden",
+   "sleep"
+  ],
+  "about": "a workshop with a small garden",
+  "aliases": [
+   "home",
+   "house",
+   "garden",
+   "my workshop"
+  ],
+  "called": "workshop"
+ },
+ "library": {
+  "key": "library",
+  "description": "a library a short walk away, full of real books you can read",
+  "offers": [
+   "browse",
+   "read"
+  ],
+  "verbs": {
+   "browse": [
+    "look for books, by subject, title or author, or wander the shelves",
+    null
+   ],
+   "read": [
+    "settle in and read a book for a while",
+    null
+   ]
+  },
+  "about": "a library of tall shelves",
+  "tag": "books"
+ },
+ "start": [
+  {
+   "key": "woods",
+   "description": "a patch of woods past the garden: sticks, bark, resin, berries and nuts, birdsong",
+   "walk": 8,
+   "offers": [
+    "gather"
+   ],
+   "daylight_only": true,
+   "verbs": {
+    "gather": [
+     "forage for sticks, bark, berries and nuts",
+     "Forage in the woods for 15-60 minutes: sticks, bark, resin, feathers, berries, nuts, and now and then seeds. What you find is down to luck and how picked-over the place is. You'll see what you found when the time is up; resting stops early."
+    ]
+   },
+   "about": "a wood of trees past the garden",
+   "kind": "wild",
+   "tag": "foraging"
+  },
+  {
+   "key": "junkyard",
+   "description": "a scrapyard over the hill: heaps of scrap metal, wire, springs and old machine parts",
+   "walk": 15,
+   "offers": [
+    "gather",
+    "browse"
+   ],
+   "daylight_only": true,
+   "verbs": {
+    "gather": [
+     "scavenge through the heaps",
+     "Scavenge through the junkyard's heaps for 15-60 minutes: scrap metal, wire, springs, gears, odd parts, and now and then a tool. What you find is down to luck and how picked-over the heaps are. You'll see what you found when the time is up; resting stops early."
+    ],
+    "browse": [
+     "look over the heaps to see what's worth digging for",
+     null
+    ]
+   },
+   "about": "a scrapyard over the hill",
+   "kind": "yard",
+   "tag": "scrap"
+  }
+ ],
+ "kinds": {
+  "wild": {
+   "help": "somewhere outdoors to forage: a wood, a shore, a marsh edge",
+   "words": [
+    "wood",
+    "forest",
+    "copse",
+    "grove",
+    "orchard",
+    "shore",
+    "beach",
+    "flats",
+    "meadow",
+    "field",
+    "hill",
+    "marsh",
+    "fen",
+    "heath",
+    "moor",
+    "dune",
+    "cliff",
+    "bog",
+    "river",
+    "stream",
+    "brook"
+   ],
+   "verbs": {
+    "gather": [
+     "forage for what grows here",
+     "foraging"
+    ]
+   },
+   "loot_kinds": [
+    "material",
+    "food",
+    "seed"
+   ],
+   "max_tools": 0,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  },
+  "yard": {
+   "help": "somewhere to dig through what's been left: a scrapyard, a quarry, a tip",
+   "words": [
+    "scrap",
+    "heap",
+    "quarry",
+    "tip",
+    "dump",
+    "yard",
+    "wreck",
+    "salvage"
+   ],
+   "verbs": {
+    "gather": [
+     "scavenge through what's lying about",
+     "scavenging"
+    ],
+    "browse": [
+     "look over what's lying about to see what's worth digging for",
+     null
+    ]
+   },
+   "loot_kinds": [
+    "material",
+    "tool"
+   ],
+   "max_tools": 1,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  },
+  "shop": {
+   "help": "somewhere that keeps things to sell: an ironmonger, a chandler, a seed merchant",
+   "words": [
+    "shop",
+    "monger",
+    "merchant",
+    "chandler",
+    "smith",
+    "sells",
+    "keeps",
+    "stall",
+    "store",
+    "baker",
+    "grocer",
+    "draper"
+   ],
+   "verbs": {
+    "browse": [
+     "see what's in stock today",
+     null
+    ],
+    "gather": [
+     "ask to pick through the drawers, on account",
+     "rummaging"
+    ]
+   },
+   "loot_kinds": [
+    "tool",
+    "material",
+    "food",
+    "seed"
+   ],
+   "max_tools": 2,
+   "capacity": 40,
+   "refill": 2,
+   "shop_hours": true,
+   "session": [
+    15,
+    30
+   ],
+   "trades": true,
+   "stalls": false
+  },
+  "market": {
+   "help": "somewhere with several booths to buy from and sell to: a market square, a bazaar, a quayside market",
+   "words": [
+    "market",
+    "bazaar",
+    "quay"
+   ],
+   "verbs": {
+    "browse": [
+     "walk the booths and see what's on offer and at what price",
+     null
+    ]
+   },
+   "loot_kinds": [
+    "tool",
+    "material",
+    "food",
+    "seed"
+   ],
+   "max_tools": 3,
+   "capacity": 80,
+   "refill": 4,
+   "shop_hours": true,
+   "session": [
+    15,
+    60
+   ],
+   "trades": true,
+   "stalls": true
+  },
+  "sight": {
+   "help": "somewhere just to go and see: a lighthouse, a ruin, a lake with a view",
+   "words": [],
+   "verbs": {},
+   "loot_kinds": [],
+   "max_tools": 0,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  }
+ },
+ "fallback_kind": "sight",
+ "shop_default_hours": [
+  9,
+  17
+ ],
+ "opens": [
+  7,
+  10
+ ],
+ "closes": [
+  16,
+  19
+ ],
+ "words": {
+  "trade": [
+   "baker",
+   "bakery",
+   "chandler",
+   "chandlery",
+   "city",
+   "dock",
+   "emporium",
+   "fair",
+   "forge",
+   "hamlet",
+   "harbor",
+   "harbour",
+   "inn",
+   "ironmonger",
+   "ironmongery",
+   "market",
+   "merchant",
+   "mill",
+   "port",
+   "quay",
+   "shop",
+   "smithy",
+   "square",
+   "stall",
+   "store",
+   "town",
+   "village",
+   "wharf",
+   "workshop"
+  ],
+  "reserved": [
+   "garden",
+   "home",
+   "house",
+   "junkyard",
+   "library",
+   "market",
+   "wood",
+   "woods",
+   "workshop"
+  ],
+  "features": [
+   "valley",
+   "lake",
+   "mill",
+   "woods?",
+   "hills?",
+   "beach",
+   "shore",
+   "harbou?r",
+   "market",
+   "village",
+   "town",
+   "bay",
+   "cove",
+   "island",
+   "pond",
+   "marsh",
+   "fen",
+   "meadow",
+   "orchard",
+   "quarry",
+   "bridge",
+   "lighthouse",
+   "tower",
+   "ruins?",
+   "farm",
+   "inn",
+   "forest",
+   "river",
+   "square",
+   "fair",
+   "cliffs?",
+   "moor",
+   "heath",
+   "glen",
+   "dale",
+   "common",
+   "green",
+   "wharf",
+   "quay"
+  ]
+ }
+}

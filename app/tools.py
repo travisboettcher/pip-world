@@ -35,7 +35,8 @@ from .llm.base import ToolSpec
 from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip, span
-from .world import FOOD_DEFAULT, SEEDS_PER_FOOD, seed_packet_for
+from . import world as world_content
+from .world import seed_packet_for
 from . import world_pack
 
 
@@ -322,7 +323,7 @@ async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     if not item:
         return ToolResult(f"error: {err}", followup=True)
     ctx.state.take_item(item["id"])
-    value = float(item["attrs"].get("food_value", FOOD_DEFAULT))
+    value = float(item["attrs"].get("food_value", world_content.food_default()))
     ctx.state.update_agent(hunger=clamp(a["hunger"] - value),
                            **({} if working else {"activity": "eating", "description": f"eating {item['name']}"}))
     return ToolResult(f"ate {item['name']}")
@@ -445,8 +446,8 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
         if not packet:
             return ToolResult("error: food is eaten with the eat tool", followup=True)
         ctx.state.take_item(item["id"], 1)  # a crop's fruit holds seeds: one is used up, a couple of packets saved
-        ctx.state.add_item(packet["name"], SEEDS_PER_FOOD, "seed", packet["description"], packet["attrs"])
-        return ToolResult(f"scooped {SEEDS_PER_FOOD} {packet['name']} out of one of your {item['name']} and set them aside")
+        ctx.state.add_item(packet["name"], world_content.seeds_per_food(), "seed", packet["description"], packet["attrs"])
+        return ToolResult(f"scooped {world_content.seeds_per_food()} {packet['name']} out of one of your {item['name']} and set them aside")
     if item["kind"] == "tool":
         return ToolResult(f"used your {item['name']} (you keep it)")
     qty = max(1, int(args.get("quantity") or 1))

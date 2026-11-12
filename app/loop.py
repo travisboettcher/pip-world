@@ -786,7 +786,7 @@ class Agent:
                     lines.append(f"- {d['name']} said: \"{d['text']}\"" + (" (answering you)" if d.get("reply") else ""))
                 elif e["kind"] == "creation_made":
                     lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}"
-                                 + (f" (a drawing of it, with of=\"{d['name']}\", becomes how it looks in your workshop)" if "draw" in self.tools else ""))
+                                 + (f" (a drawing of it, with of=\"{d['name']}\", becomes how it looks in your {self.pack.data('places').get('home', {}).get('called', 'home')})" if "draw" in self.tools else ""))
                 elif e["kind"] == "experiment":
                     lines.append(f"- experiment on {d['project']} ({d['hypothesis']}): {d['outcome']}"
                                  + ("" if d.get("interrupted") else f" - {d['text']}")

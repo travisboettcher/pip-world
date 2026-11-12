@@ -68,7 +68,7 @@ class Settings:
     firsts_shown: int = 5              # most firsts listed at once
     night_pass: str = "apply"          # off | log (decide and record, don't act) | apply
     max_night_ops: int = 3
-    wild_places: list[str] = field(default_factory=lambda: ["woods", "junkyard"])  # places to gather at
+    wild_places: list[str] | None = None   # which of the pack's starting places to include (None: all of them)
     outreach: str = "on"                # off | on | log (record, don't deliver)
     outreach_channels: list[str] = field(default_factory=list)   # e.g. ["matrix"]; the first is primary; empty = no outside world
     outreach_per_day: int = 2           # new conversations Pip may start per local day
@@ -221,7 +221,7 @@ class Settings:
             firsts_shown=_int("FIRSTS_SHOWN", 5),
             night_pass=(e("NIGHT_PASS") or "apply").lower() if (e("NIGHT_PASS") or "apply").lower() in ("off", "log", "apply") else "apply",
             max_night_ops=_int("MAX_NIGHT_OPS", 3),
-            wild_places=[w.strip() for w in (e("WILD_PLACES") if e("WILD_PLACES") is not None else "woods,junkyard").split(",") if w.strip()],
+            wild_places=[w.strip() for w in e("WILD_PLACES").split(",") if w.strip()] if e("WILD_PLACES") is not None else None,
             outreach=(e("OUTREACH") or "on").lower() if (e("OUTREACH") or "on").lower() in ("off", "on", "log") else "on",
             outreach_channels=[c.strip() for c in (e("OUTREACH_CHANNELS") or "").split(",") if c.strip()],
             outreach_per_day=_int("OUTREACH_PER_DAY", 2),

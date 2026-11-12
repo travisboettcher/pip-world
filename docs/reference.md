@@ -194,7 +194,7 @@ The woods (8 min away) and the junkyard (15 min) are open in daylight. `gather` 
 place's loot table (sticks, bark, berries, seeds; scrap brass, wire, gears, the odd tool); the place's stock runs down and refills with
 time, so camping there yields less. The GM only narrates what the engine found. Finds are remembered per place; `where_to` answers
 "where could I get brass?" from the directory and what Pip has found, and a project step missing a material says where it was found.
-`WILD_PLACES` chooses which places exist. See [DESIGN-places.md](DESIGN-places.md).
+`WILD_PLACES` chooses which of the world pack's starting places exist (unset: all of them). See [DESIGN-places.md](DESIGN-places.md).
 
 ## Places characters mention
 Design: [DESIGN-invented-places.md](DESIGN-invented-places.md). When a neighbor (in a letter or in person), a resident or a visitor in

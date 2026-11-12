@@ -7,6 +7,7 @@ Add a new kind of first by extending `facets()`.
 """
 from . import sleep as sleepmod
 from .toolnames import canonical
+from . import world_pack
 
 MAJOR, MINOR = "major", "minor"
 ROUTINE_TOOLS = {"set_activity", "say", "edit_note"}
@@ -21,11 +22,17 @@ TOOL_LABELS = {
 TOOL_MAJOR = {"sleep"}
 WORK_RESULTS = {"setback": "had a setback on a project", "blowup": "had a try blow up",
                 "breakthrough": "had a breakthrough"}
-HAPPENING_FIRSTS = {
-    "garden": "had the garden change on its own", "creature": "had a small creature come by", "pantry": "found some of your food had turned",
-    "found": "came across something unexpected", "body": "woke up feeling different", "market": "heard talk of the market",
-    "mishap": "had something go wrong in the workshop", "neighbor": "heard news of a neighbor", "memory": "had an old thought come back",
-    "kindness": "was given something by someone unseen", "atmosphere": "noticed something in the air"}
+def happening_firsts() -> dict:
+    """What the first happening of each kind is called (the pack's content.json `happening_firsts`)."""
+    return world_pack.active().data("content").get("happening_firsts", {})
+
+
+def __getattr__(name):            # the old constant name, from the active world
+    if name == "HAPPENING_FIRSTS":
+        return happening_firsts()
+    raise AttributeError(name)
+
+
 ALERTS = {"hunger": "your hunger alert went off", "energy": "your energy alert went off"}
 
 
@@ -112,8 +119,8 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
     elif kind == "stall_sale":
         add("stall:sale", you("sold something at your own stall"), MAJOR)
     elif kind == "happening":
-        if d.get("category") in HAPPENING_FIRSTS and d.get("status") == "applied":
-            add(f"happening:{d['category']}", you(HAPPENING_FIRSTS[d["category"]]))
+        if d.get("category") in happening_firsts() and d.get("status") == "applied":
+            add(f"happening:{d['category']}", you(happening_firsts()[d["category"]]))
     elif kind == "happening_felt":
         if d.get("differs") and d.get("read_as") != "nothing":
             add("happening:read_differently", you("took something that happened differently from how it was told"), MAJOR)

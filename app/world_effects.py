@@ -20,33 +20,38 @@ class WorldEffect:
     min_difficulty: int = 2
 
 
-def _garden_plot(state) -> str | None:
-    n = state.add_plot()
-    return None if n is None else f"Your garden now has {n} plots: a new bed is ready for planting (plot {n})."
+DOES = {"add_plot": lambda state: state.add_plot(), "add_project_slot": lambda state: state.add_project_slot()}   # what an effect can do
 
 
-def _workbench(state) -> str | None:
-    n = state.add_project_slot()
-    return None if n is None else f"Your workshop is better set up now: you can keep {n} projects going at once."
+def _applier(does: str, note: str) -> Callable:
+    def apply(state) -> str | None:
+        n = DOES[does](state)
+        return None if n is None else note.format(n=n)
+    return apply
 
 
-EFFECTS: dict[str, WorldEffect] = {e.name: e for e in (
-    WorldEffect("garden_plot", "clearing and preparing new ground so the garden has another plot",
-                ("plot", "bed", "garden", "soil", "ground", "dig", "clear", "till", "furrow", "patch", "earth"), _garden_plot),
-    WorldEffect("workbench", "building or setting up better workshop space (a bench, shelves, a tool rack) so more projects can be kept going at once",
-                ("bench", "workbench", "shelf", "shelves", "rack", "desk", "table", "cabinet", "workshop", "storage"), _workbench),
-)}
+def registry() -> dict[str, WorldEffect]:
+    """The world's effects (its pack's content.json `world_effects`): what each is, the words that mark it, and what it does."""
+    raw = world_pack.active().data("content").get("world_effects", {})
+    return {name: WorldEffect(name, e["help"], tuple(e.get("words", ())), _applier(e["does"], e["note"]), e.get("min_difficulty", 2))
+            for name, e in raw.items()}
+
+
+def __getattr__(name):            # the old constant name, from the active world
+    if name == "EFFECTS":
+        return registry()
+    raise AttributeError(name)
 
 
 def gm_lines() -> str:
     """The sentence the GM design prompt carries: every effect, and when it applies."""
-    listing = "; ".join(f"{e.name} ({e.help})" for e in EFFECTS.values())
+    listing = "; ".join(f"{e.name} ({e.help})" for e in registry().values())
     return (f"world: ONLY if what {world_pack.active().agent.name} finished made a lasting change of one of these kinds to {world_pack.active().agent.their} world - give `effect` as one of: "
             f"{listing}. For anything else never use it (a pond, a painting or a gift is just itself)")
 
 
 def allowed(effect, project: dict) -> bool:
-    e = EFFECTS.get(effect)
+    e = registry().get(effect)
     if not e or project["difficulty"] < e.min_difficulty:
         return False
     words = " ".join([project["name"], project.get("goal") or ""] + [st["name"] for st in project["stages"]]).lower()
@@ -59,7 +64,7 @@ def apply(state, spec: dict) -> str | None:
     effect = spec["capabilities"].get("world", {}).get("effect")
     if not effect:
         return None
-    note = EFFECTS[effect].apply(state) if effect in EFFECTS else None
+    note = registry()[effect].apply(state) if effect in registry() else None
     if note is None:
         spec["capabilities"].pop("world", None)
     return note

@@ -16,7 +16,7 @@ from tests.test_projects import make, report
 def test_a_fallback_look_takes_what_the_persona_says_and_hashes_the_rest():
     got = L.fallback("Oriel", "A tall, white-haired widow in a grey shawl whose eyesight is failing.")
     assert got["height"] == "tall" and got["hair"] == "white" and got["accessory"] in ("shawl", "glasses")
-    assert set(got) == set(L.LOOK) and all(got[f] in L.LOOK[f] for f in L.LOOK)
+    assert set(got) == set(L.look_lists()) and all(got[f] in L.look_lists()[f] for f in L.look_lists())
     assert L.fallback("Oriel", "") == L.fallback("Oriel", "") and L.fallback("Ada", "") != L.fallback("Zed", "") or True
     assert L.fallback("Bo", "A little stout man.")["height"] == "short" and L.fallback("Bo", "bald as an egg")["hair"] == "none"
     assert L.fallback("Bo", "an apron always on")["accessory"] == "apron" and L.fallback("Bo", "a red-haired baker")["hair"] == "auburn"
@@ -131,9 +131,9 @@ async def test_the_gm_hears_who_they_are_and_gets_two_tries(tmp_path):
 def test_scene_details_fall_back_to_the_places_words_its_kind_and_its_name():
     got = L.fallback_scene("Saltholm", "shop", "An ironmonger of stone, by the harbour road, with coils of rope and a slate roof.")
     assert got["walls"] == "stone" and got["roof"] == "slate" and got["setting"] == "shore" and got["props"] == ["boats", "rope"]
-    assert got["palette"] == L._pick("Saltholm", "palette", L.SCENE) and set(got) == {"walls", "roof", "palette", "setting", "props"}
+    assert got["palette"] == L._pick("Saltholm", "palette", L.scene_lists()) and set(got) == {"walls", "roof", "palette", "setting", "props"}
     plain = L.fallback_scene("Hollin", "wild", "")
-    assert plain["setting"] == "wood" and plain["walls"] == L._pick("Hollin", "walls", L.SCENE) and plain["roof"] == L._pick("Hollin", "roof", L.SCENE) and plain["props"] == []
+    assert plain["setting"] == "wood" and plain["walls"] == L._pick("Hollin", "walls", L.scene_lists()) and plain["roof"] == L._pick("Hollin", "roof", L.scene_lists()) and plain["props"] == []
     assert L.fallback_scene("X", "market", "")["setting"] == "town" and L.fallback_scene("X", "yard", "")["setting"] == "hills" and L.fallback_scene("X", "odd", "")["setting"] == "field"
     assert L.fallback_scene("X", "shop", "a timber shed with a thatched roof")["walls"] == "planks" and L.fallback_scene("X", "shop", "a thatched roof")["roof"] == "thatch"
     assert L.fallback_scene("X", "shop", "a brick front and a tiled roof")["walls"] == "brick" and L.fallback_scene("X", "shop", "a tiled roof")["roof"] == "tile"
@@ -146,7 +146,7 @@ def test_the_gms_scene_choices_are_kept_where_they_are_on_the_lists():
     assert got["walls"] == "brick" and got["roof"] == L.fallback_scene("Bea's home", "neighbor", "rope and lanterns")["roof"] and got["palette"] == "honey" and got["setting"] == "marsh"
     assert got["props"] == ["beehives", "rope", "lanterns"]
     assert L.clean_scene({"props": "beehives"}, "K", "wild", "")["props"] == [] and L.clean_scene(None, "K", "wild", "") == L.fallback_scene("K", "wild", "")
-    assert len(L.clean_scene({"props": list(L.PROPS)}, "K", "wild", "")["props"]) == L.SCENE_PROPS_MAX
+    assert len(L.clean_scene({"props": list(L.prop_words())}, "K", "wild", "")["props"]) == L.scene_props_max()
 
 
 @pytest.mark.asyncio

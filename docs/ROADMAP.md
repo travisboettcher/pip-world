@@ -106,7 +106,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Phase 1: the pack with Pip's world in it (0.31.0: the loader, `WORLD_PACK`, persona, narrator, bible and guide in `worlds/pip/`;
         0.32.0: the agent's name and pronoun through every engine prompt, the `agent` read, and the test that keeps "Pip" out of the engine) (`WORLD_PACK`, persona, narrator, bible, guide); the agent's name and pronoun as settings;
         engine prompts written around them; a CI check that engine code names no world
-  - [ ] Phase 2: data out of code: place kinds, items and find tables, starting belongings, scene vocabulary, happenings' categories,
+  - [x] Phase 2 (0.33.0): data out of code: place kinds, items and find tables, starting belongings, scene vocabulary, happenings' categories,
         world effects and abilities move to the pack
   - [ ] Phase 3: stats and tone: pack-declared needs (hunger and energy become two of them), `affect` on any stat, `tone.json` with the
         engine's floor

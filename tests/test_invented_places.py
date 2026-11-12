@@ -1404,9 +1404,10 @@ def test_a_designed_stock_is_kept_as_it_is(tmp_path):
 
 def test_the_staples_respect_the_tool_limit_and_cannot_run_out_of_a_small_pool(monkeypatch):
     from app import gathering
-    monkeypatch.setattr(gathering, "WOODS", [("sticks", "material", 5, (1, 2), "s", {})])
-    monkeypatch.setattr(gathering, "JUNKYARD", [("awl", "tool", 5, (1, 1), "a", {}), ("saw", "tool", 5, (1, 1), "b", {}), ("file", "tool", 5, (1, 1), "c", {}),
-                                                ("vice", "tool", 5, (1, 1), "d", {}), ("tin", "material", 5, (1, 2), "e", {})])
+    tables = {"woods": [("sticks", "material", 5, (1, 2), "s", {})],
+              "junkyard": [("awl", "tool", 5, (1, 1), "a", {}), ("saw", "tool", 5, (1, 1), "b", {}), ("file", "tool", 5, (1, 1), "c", {}),
+                           ("vice", "tool", 5, (1, 1), "d", {}), ("tin", "material", 5, (1, 2), "e", {})]}
+    monkeypatch.setattr(gathering, "loot", lambda: tables)
     got = IP.staples("market", random.Random(1))
     assert sorted(e[0] for e in got if e[1] == "material") == ["sticks", "tin"] and sum(e[1] == "tool" for e in got) == K.KINDS["market"].max_tools
     assert len(got) == 5 and IP.staples("shop", random.Random(1)) and sum(e[1] == "tool" for e in IP.staples("shop", random.Random(1))) == K.KINDS["shop"].max_tools

@@ -10,44 +10,25 @@ import time
 
 from . import place_kinds as kinds
 from . import projects as proj
+from . import world as world_content
 from .text import clip
 
 # name, kind, weight, (min qty, max qty), description, attrs
-WOODS = [
-    ("sticks", "material", 30, (2, 5), "straight, dry sticks", {}),
-    ("bark", "material", 12, (1, 3), "curls of birch bark", {}),
-    ("resin", "material", 8, (1, 2), "amber lumps of sticky resin", {}),
-    ("feathers", "material", 8, (1, 3), "small bird feathers", {}),
-    ("wild berries", "food", 15, (2, 4), "tart wild berries", {"food_value": 0.2}),
-    ("hazelnuts", "food", 10, (2, 5), "a handful of hazelnuts", {"food_value": 0.15}),
-    ("mushrooms", "food", 8, (1, 3), "firm brown mushrooms from the leaf litter", {"food_value": 0.2}),
-    ("wild apples", "food", 6, (1, 3), "small, sharp wild apples", {"food_value": 0.25}),
-    ("sunflower seeds", "seed", 5, (1, 2), "seeds shaken from a dried head",
-     {"crop": "sunflowers", "grow_minutes": 2160, "yield": 4, "food_value": 0.3}),
-    ("carrot seeds", "seed", 5, (1, 2), "seeds from a wild carrot's dry umbels",
-     {"crop": "carrots", "grow_minutes": 1080, "yield": 3, "food_value": 0.4}),
-    ("pea seeds", "seed", 5, (1, 3), "dry peas rattling in a wild pod",
-     {"crop": "peas", "grow_minutes": 1200, "yield": 4, "food_value": 0.25}),
-    ("radish seeds", "seed", 5, (1, 3), "tiny peppery seeds from a bolted radish",
-     {"crop": "radishes", "grow_minutes": 720, "yield": 3, "food_value": 0.2}),
-    ("bean seeds", "seed", 4, (1, 2), "a few dry beans from a tangled vine",
-     {"crop": "beans", "grow_minutes": 1800, "yield": 4, "food_value": 0.3}),
-]
-JUNKYARD = [
-    ("scrap brass", "material", 18, (1, 3), "bent offcuts of brass", {}),
-    ("brass wire", "material", 20, (1, 2), "short lengths of brass wire", {}),
-    ("copper wire", "material", 12, (1, 3), "tangled copper wire", {}),
-    ("springs", "material", 8, (1, 2), "small springs, mostly still springy", {}),
-    ("screws and bolts", "material", 14, (2, 6), "a pocketful of screws and bolts", {}),
-    ("rusty tin", "material", 10, (1, 2), "sheets of rusty tin", {}),
-    ("fine brass gears", "material", 5, (1, 1), "a small, fine brass gear", {}),
-    ("clock parts", "material", 4, (1, 1), "odd parts pulled from an old clock", {}),
-    ("needle file", "tool", 2, (1, 1), "a slim needle file with a good edge", {}),
-    ("tweezers", "tool", 2, (1, 1), "a pair of fine tweezers", {}),
-    ("small hammer", "tool", 2, (1, 1), "a small hammer, handle a bit loose", {}),
-]
-LOOT = {"woods": WOODS, "junkyard": JUNKYARD}
-VERB = {"woods": "foraging", "junkyard": "scavenging"}
+def loot() -> dict:
+    """The built-in places' find tables (the world pack's items.json)."""
+    return world_content.finds()
+
+
+def __getattr__(name):            # the old names: WOODS, JUNKYARD, LOOT, VERB, from the active world
+    if name == "LOOT":
+        return loot()
+    if name == "VERB":
+        return world_content.gerunds()
+    if name in ("WOODS", "JUNKYARD"):
+        return loot().get(name.lower(), [])
+    raise AttributeError(name)
+
+
 RARE_WEIGHT = 6          # items at or below this weight are "rare": skill helps find them
 SESSION_MINUTES = (15, 60)
 MINUTES_PER_FIND = 10    # one draw from the table per this many minutes (before depletion)
@@ -65,14 +46,14 @@ def _meta_key(place: str) -> tuple[str, str]:
 
 def _invented(state, place: str) -> dict | None:
     """The places-table record for a real invented place that has something to gather (see invented_places.py)."""
-    rec = state.place_row(place) if place not in LOOT else None
+    rec = state.place_row(place) if place not in loot() else None
     return rec if rec and rec["status"] == "real" and rec["loot"] and "gather" in rec["verbs"] else None
 
 
 def loot_for(state, place: str) -> list | None:
     """The loot table for a place: the woods' and junkyard's, or an invented place's own (None: nothing to gather)."""
-    if place in LOOT:
-        return LOOT[place]
+    if place in loot():
+        return loot()[place]
     rec = _invented(state, place)
     return [(n, k, w, tuple(q), d, a) for n, k, w, q, d, a in rec["loot"]] if rec else None
 
@@ -80,7 +61,7 @@ def loot_for(state, place: str) -> list | None:
 def verb_for(state, place: str) -> str:
     """What gathering is called here: 'foraging', 'scavenging', or the invented place's own ('rummaging')."""
     rec = _invented(state, place)
-    return VERB.get(place) or (rec["verbs"]["gather"][1] if rec else None) or "gathering"
+    return world_content.gerunds().get(place) or (rec["verbs"]["gather"][1] if rec else None) or "gathering"
 
 
 def _kind(state, place: str):
@@ -122,7 +103,7 @@ def yield_factor(level: float, full: float = FULL_YIELD_AT) -> float:
 def draw(rng: random.Random, place: str, minutes: float, factor: float, skill: float,
          table: list | None = None) -> list[tuple[str, str, int, str, dict]]:
     """The haul: (name, kind, qty, description, attrs). Weighted draws; skill nudges rare finds up; stock shrinks the count."""
-    table = table or LOOT[place]
+    table = table or loot()[place]
     n = max(0, min(MAX_DRAWS, round(minutes / MINUTES_PER_FIND * factor + rng.uniform(-0.5, 0.5))))
     weights = [w * (1 + 0.15 * skill) if w <= RARE_WEIGHT else w for _, _, w, _, _, _ in table]
     found: dict[str, list] = {}
@@ -138,7 +119,7 @@ def draw(rng: random.Random, place: str, minutes: float, factor: float, skill: f
 
 def glimpse(rng: random.Random, place: str, n: int = GLIMPSE, table: list | None = None) -> list[str]:
     """What can be seen on a look around: a few kinds of thing from the table, nothing taken."""
-    names = [item[0] for item in table or LOOT[place]]
+    names = [item[0] for item in table or loot()[place]]
     return rng.sample(names, min(n, len(names)))
 
 

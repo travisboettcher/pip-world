@@ -2,7 +2,7 @@
 
 Status (2026-11-11): designed; **phase 1 built (0.31.0, 0.32.0)**: the pack loader, `WORLD_PACK`, Pip's world's persona, narrator, bible
 and guide in `worlds/pip/`; the agent's name and pronoun through every engine prompt; the `agent` read; and the test that keeps the
-engine from naming its world. Next: phase 2 (data out of code). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack. Next: phase 3 (stats and tone). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -195,7 +195,15 @@ module system, happenings' checks, the world view's renderer, channels and visit
    phase 2 moves out. *Then:* `worlds/pip/` holds the persona, narrator, bible and guide; `WORLD_PACK` selects it; the agent's
    name and pronoun come from `world.json` and every engine prompt is written around them; the `pip` read becomes `agent` (the old name
    kept as an alias for live modules). No change in behaviour; the CI check starts with the prompts.
-2. **Data out of code.** Place kinds, item kinds and tables, starting belongings, scene vocabulary, happenings' categories and tables,
+2. **Data out of code.** *Built (0.33.0)*: `scene.json` (looks and their hints, props, scene details, settings and the words for them,
+   coastal words), `items.json` (item kinds, seed and food defaults, starting belongings, find tables and what gathering there is
+   called), `places.json` (the home: key, description, offers, aliases, what it's called; the library; the starting places with their
+   kind and tag; the place-kind registry; the words for trades, reserved names and what a place may be), `content.json` (world effects,
+   abilities, crafting's abilities, the happening firsts), and `world.json`'s `agent.lives`. Engine code reads them through functions
+   (`world.kinds()`, `place_kinds.registry()`, `places.home_key()`, `looks.vocab()`...); the old constant names still answer, from the
+   active world. `WILD_PLACES` now defaults to all of a pack's starting places. A world effect names what it does from a small engine
+   list (`add_plot`, `add_project_slot`) until the garden and crafting are modules. Still in the engine: feature code and its words (the
+   garden's tools, crafting), and the renderer's own vocabulary (textures, sprites). *Originally:* Place kinds, item kinds and tables, starting belongings, scene vocabulary, happenings' categories and tables,
    world effects and abilities move to the pack's JSON. Behaviour unchanged.
 3. **Stats and tone.** Hunger and energy become pack-declared stats; `affect` takes any stat; `tone.json` replaces the hard-coded checks
    (with the engine's floor); `eat`/`rest` follow `restored_by`.

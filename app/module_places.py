@@ -22,7 +22,8 @@ LINK = "place_module:"                                  # meta key: a place -> t
 
 def check_new(raw, state=None, name: str = "") -> dict:
     """A new place's description in a manifest, checked; raises ValueError with what to fix."""
-    from .looks import SCENE
+    from .looks import scene_lists
+    SCENE = scene_lists()
     if not isinstance(raw, dict):
         raise ValueError("`new` describes the place: {label, kind, description, distance, items, setting, opens, closes}")
     label = str(raw.get("label") or "").strip().strip(".,;:!").replace("’", "'")
@@ -57,7 +58,7 @@ def exists(state, label: str) -> bool:
     from . import places
     key = invented.key_for(label)
     return bool(invented.find_record(state, label) or state.place_row(key)
-                or key.lower() in {k.lower() for k in places.registry(state, state.s, None)} or invented.core(label) in invented.RESERVED)
+                or key.lower() in {k.lower() for k in places.registry(state, state.s, None)} or invented.core(label) in invented.reserved())
 
 
 def teller(state, key: str) -> str:

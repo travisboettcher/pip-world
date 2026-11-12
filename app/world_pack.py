@@ -32,6 +32,7 @@ class Agent:
     name: str
     pronoun: str = "they"
     kind: str = ""
+    lives: str = ""                # where and how the agent lives, for prompts that need it ("lives alone in a workshop with a garden")
 
     @property
     def they(self) -> str:
@@ -80,10 +81,20 @@ class Pack:
     def bible(self) -> str:
         return self._text("bible.md")
 
+    def data(self, name: str) -> dict:
+        """One of the pack's data files (`<name>.json`: scene, items, places...), or {} if it has none."""
+        return _data(str(self.dir / f"{name}.json"))
+
     def guide(self, page: str) -> str:
         """One page of the agent's guide ('' if the pack has none by that name)."""
         f = self.dir / "guide" / f"{page}.md"
         return f.read_text().strip("\n") if f.is_file() else ""
+
+
+@lru_cache(maxsize=32)
+def _data(path: str) -> dict:
+    f = Path(path)
+    return json.loads(f.read_text()) if f.is_file() else {}
 
 
 _active: list = []
@@ -122,4 +133,4 @@ def _load(path: str, changed: float = 0.0) -> Pack:
     pronoun = a.get("pronoun", "they")
     if pronoun not in PRONOUNS:
         raise bad(f"the agent's pronoun is one of {', '.join(PRONOUNS)}")
-    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or "")))
+    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or "")))

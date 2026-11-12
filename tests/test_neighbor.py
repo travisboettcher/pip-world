@@ -1094,7 +1094,7 @@ async def test_a_new_neighbor_exactly(tmp_path):
     st.set_meta(neighbor_retry_at=str(now))                                               # the retry is due now
     ch = await nb.ensure_neighbor(st, s, agent.gm, FixedRng(0.0), now)
     task = gm.calls[0]["messages"][0]["content"]
-    assert task.startswith("Pip's world so far: Pip lives in its home, a workshop with a small garden; it has made "
+    assert task.startswith("Pip's world so far: Pip lives alone in a workshop with a garden; it has made "
                            "thing 0, thing 1, thing 2, thing 3, thing 4\n\n")
     assert "isn't one of these: the woods, give `mentions_place`" in task
     every = s.neighbor_writes_every_hours * 60

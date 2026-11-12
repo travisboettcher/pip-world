@@ -6,6 +6,7 @@ been to each and since when, the walk in progress with its times, and the hour, 
 """
 import random
 import re
+from functools import lru_cache
 import time
 from datetime import datetime
 
@@ -16,9 +17,16 @@ from . import modules
 from . import places
 from . import weather
 from . import worldmap
+from . import world_pack
 
-COASTAL = re.compile(r"\b(sea|seas|shore|shoreline|coast|harbour|harbor|quay|quayside|tide|tides|tidal|marsh|salt|beach|mudflats?|"
-                     r"lighthouse|dunes?|cove|bay|pier|jetty|wharf)\b", re.I)
+def coastal() -> re.Pattern:
+    """What makes a place by the water, in the world's words (the pack's scene.json `coastal_words`)."""
+    return _coastal(tuple(world_pack.active().data("scene").get("coastal_words", ("sea",))))
+
+
+@lru_cache(maxsize=8)
+def _coastal(words: tuple) -> re.Pattern:
+    return re.compile(r"\b(" + "|".join(words) + r")\b", re.I)
 
 
 def seed(state) -> int:
@@ -48,7 +56,7 @@ def map_view(state, settings, library, now: float | None = None) -> dict:
         seen = state.place_visits(p["key"])
         p["first_visited"] = seen["first_ts"] if seen else None
         p["visits"] = seen["count"] if seen else 0
-        p["coastal"] = p["key"] != places.HOME and bool(COASTAL.search(_words(state, p["key"], rows)))
+        p["coastal"] = p["key"] != places.HOME and bool(coastal().search(_words(state, p["key"], rows)))
     sess = state.session()
     if snap["pip"]["walking"] and sess:
         snap["pip"]["walking"].update(started_at=sess["started_at"], ends_at=sess["ends_at"])
@@ -82,7 +90,7 @@ def place_details(state, settings, key: str, kind: str) -> dict:
     known = looks.place_text(state, key)
     scene = looks.place_scene(state, key, kind, known)
     rows = {r["key"]: r for r in state.place_rows()}
-    return {"key": key, "label": places.label(key), "kind": kind, "coastal": bool(COASTAL.search(_words(state, key, rows))),
+    return {"key": key, "label": places.label(key), "kind": kind, "coastal": bool(coastal().search(_words(state, key, rows))),
             "props": list(dict.fromkeys(scene["props"] + looks.props(known))), **{k: v for k, v in scene.items() if k != "props"}}
 
 
@@ -126,7 +134,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     out = {
         "place": {"key": key, "label": p.label, "kind": kind, "blurb": p.blurb, "description": (rows.get(key) or {}).get("description") or "",
                   "hours": list(p.hours) if p.hours else None, "open": places.open_now(p, settings, now) if not p.heard else False,
-                  "heard_only": p.heard, "coastal": bool(COASTAL.search(_words(state, key, rows))),
+                  "heard_only": p.heard, "coastal": bool(coastal().search(_words(state, key, rows))),
                   "props": list(dict.fromkeys(scene["props"] + looks.props(known))),
                   "scene": {k: v for k, v in scene.items() if k != "props"},
                   "finds": [e[0] for e in gathering.loot_for(state, key) or []][:12]},

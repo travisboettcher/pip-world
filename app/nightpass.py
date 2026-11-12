@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 
 from . import memory as mem
+from . import places
 from . import projects as proj
 from . import tools as tools_mod
 from .text import clip
@@ -69,7 +70,7 @@ def facts(state, settings, now: float, tool_names=()) -> dict:
         visits = {r["key"].removeprefix("place:"): r["last_ts"] for r in state.db.execute(
             "SELECT key, last_ts FROM facets WHERE key LIKE 'place:%'")}
     for place, ts in visits.items():
-        if place != "workshop" and (now - ts) / 86400 >= UNSEEN_PERSON_DAYS:
+        if place != places.home_key() and (now - ts) / 86400 >= UNSEEN_PERSON_DAYS:
             quiet.append(f"you haven't been to {place} for {round((now - ts) / 86400)} days")
     for t in sorted(tool_names):
         if t in used and (now - used[t]) / 86400 >= UNUSED_TOOL_DAYS and t not in ("say", "set_activity"):

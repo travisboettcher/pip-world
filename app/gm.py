@@ -17,6 +17,7 @@ from . import place_kinds
 from . import abilities
 from . import world_effects
 from . import world_pack
+from . import projects
 from .state import State
 from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
 
@@ -71,7 +72,7 @@ class GameMaster:
             f"{self.agent.name} owns: {', '.join(belongings) or 'nothing'}\n"
             + (f"About {self.agent.name}: " + " ".join(feelings) + "\n" if feelings else "")
             + f"\nThis is {self.agent.possessive} plan: do not rewrite, add or remove steps. Review it. For each step (same order, same "
-            "count) give the 1-2 `abilities` it exercises, from: precision, patience, ingenuity, knowledge, handiness, "
+            f"count) give the 1-2 `abilities` it exercises, from: {', '.join(projects.abilities())}, "
             f"and correct `minutes` only if {self.agent.possessive} guess is badly off (15-240). Give the project's `craft` (a word or "
             f"two), `difficulty` 1-5, and up to 3 `tools` or instruments that would help. Then decide what {self.agent.name} "
             "cannot know yet: if there are real unknowns in making this (anything about finding out, tuning or how "
@@ -214,8 +215,8 @@ class GameMaster:
                          + f"\n{self.agent.name} says {self.agent.they} learned, from elsewhere (reading, searching, a visitor): {because!r}.")
         task = "\n".join(parts) + "\n"
         if steps:
-            task += ("For each added step (same order and count) give `steps` notes: 1-2 `abilities` from precision, "
-                     f"patience, ingenuity, knowledge, handiness, and `minutes` only if {self.agent.possessive} guess is badly off. "
+            task += ("For each added step (same order and count) give `steps` notes: 1-2 `abilities` from "
+                     f"{', '.join(projects.abilities())}, and `minutes` only if {self.agent.possessive} guess is badly off. "
                      "Do not rename, add or remove steps. ")
         if because:
             task += (f"Decide `accepted`: true only if what {self.agent.name} learned plausibly settles one of its open questions or "
@@ -410,7 +411,8 @@ class GameMaster:
         }, ["text"], "neighbor_letter")
 
     async def invent_scene(self, label: str, kind: str, text: str) -> dict | None:
-        from .looks import SCENE, PROPS, SCENE_PROPS_MAX
+        from .looks import prop_words, scene_lists, scene_props_max
+        SCENE, PROPS, SCENE_PROPS_MAX = scene_lists(), prop_words(), scene_props_max()
         task = (f"A place in {self.agent.possessive} world: {label} ({kind}). What is known of it: {text or 'nothing more'}\n\nPick how it looks, for a small "
                 "pixel-art picture, choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in SCENE.items())
                 + f"\n- `props`: up to {SCENE_PROPS_MAX} things that belong there, from: {', '.join(PROPS)}")
@@ -418,7 +420,8 @@ class GameMaster:
                                      "props": {"type": "array", "items": {"type": "string", "enum": list(PROPS)}}}, list(SCENE), "invent_scene")
 
     async def invent_look(self, name: str, persona: str, about: str) -> dict | None:
-        from .looks import LOOK
+        from .looks import look_lists
+        LOOK = look_lists()
         task = (f"{name} lives near {self.agent.name}. Who {name} is: {persona}\n{about}\n\nPick how {name} looks, for a small pixel-art picture, "
                 "choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in LOOK.items()))
         return await self.ask(task, {f: {"type": "string", "enum": list(v)} for f, v in LOOK.items()}, list(LOOK), "invent_look")
@@ -526,7 +529,7 @@ class GameMaster:
     async def write_happening(self, category: str, tone: str, severity: str, lens: str, line: str, facts: dict, recent: list[str]) -> dict | None:
         """The words for a happening the engine has already decided (see happenings.py): `title` and `text`, written through `lens`."""
         task = (
-            f"Write a small event that happens to {self.agent.name}, who lives alone in a workshop with a garden. Category: {category}. "
+            f"Write a small event that happens to {self.agent.name}{(", who " + self.agent.lives) if self.agent.lives else ""}. Category: {category}. "
             f"Outcome: {tone}. Size: {severity}"
             + (" (a passing moment; keep it in proportion)" if severity == "minor" or tone == "neutral" else "")
             + f". Write it through {lens}: let that feeling colour how it is told, whatever the outcome (a bad turn can still be told with joy).\n"

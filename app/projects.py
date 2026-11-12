@@ -11,6 +11,7 @@ import time
 from . import expectations as exp
 from .state import name_key
 from .text import clip, craft_name
+from . import world_pack
 
 STAGE_MINUTES = (15, 240)
 SESSION_MINUTES = (15, 120)
@@ -18,8 +19,21 @@ MAX_STAGES = 5
 MAX_STAGES_REVISED = 8  # discovery can grow a plan past what the GM first saw
 MAX_QUESTIONS = 3
 MAX_HIDDEN = 3
-ABILITIES = ("precision", "patience", "ingenuity", "knowledge", "handiness")
-DEFAULT_ABILITIES = ["handiness"]
+def abilities() -> tuple:
+    """What a stage of work exercises (the pack's content.json `crafting`)."""
+    return tuple(world_pack.active().data("content").get("crafting", {}).get("abilities", ()))
+
+
+def default_abilities() -> list:
+    return list(world_pack.active().data("content").get("crafting", {}).get("default_abilities", ()))
+
+
+def __getattr__(name):            # the old constant names, from the active world
+    if name == "ABILITIES":
+        return abilities()
+    if name == "DEFAULT_ABILITIES":
+        return default_abilities()
+    raise AttributeError(name)
 FAMILIARITY = 0.5  # weight of craft-specific experience next to the transferable abilities
 DRY_LIMIT = 2      # dry experiments in a row before the next relevant one is an insight
 MAX_MATERIAL_UNITS = 8
@@ -40,8 +54,8 @@ def clamp_int(v, lo: int, hi: int, default: int) -> int:
 
 def sanitize_abilities(raw) -> list[str]:
     names = [str(a).strip().lower() for a in (raw if isinstance(raw, list) else [])]
-    out = [a for a in dict.fromkeys(names) if a in ABILITIES][:2]
-    return out or list(DEFAULT_ABILITIES)
+    out = [a for a in dict.fromkeys(names) if a in abilities()][:2]
+    return out or default_abilities()
 
 
 def sanitize_stages(raw, limit: int, units: int = 0) -> list[dict]:
@@ -130,7 +144,7 @@ def level(xp: float) -> int:
 
 
 def stage_abilities(stage: dict) -> list[str]:
-    return stage.get("abilities") or list(DEFAULT_ABILITIES)
+    return stage.get("abilities") or default_abilities()
 
 
 def skill_for(state, project: dict, abilities: list[str]) -> float:

@@ -19,7 +19,7 @@ from .companions import conversation as talk_lines
 from .memory import ago
 from .state import State
 from .text import brief, clip
-from .world import KINDS
+from . import world as world_content
 from . import world_pack
 
 JITTER = (0.7, 1.3)
@@ -34,7 +34,6 @@ OVERDUE_GRACE = 3 * 86400  # a plan never brought up this long after it was due 
 MAX_ATTEMPTS = 3
 RETRY_AFTER = 3600
 DAY = 86400
-PARCEL_KINDS = tuple(k for k in KINDS if k in ("material", "seed", "food", "tool"))
 
 
 def _delay(settings, rng: random.Random) -> float:
@@ -98,7 +97,7 @@ def clean_parcel(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
     name = clip(raw.get("name"), 40).strip(" .")
-    if not name or raw.get("kind") not in PARCEL_KINDS:
+    if not name or raw.get("kind") not in tuple(k for k in world_content.kinds() if k in ("material", "seed", "food", "tool")):
         return None
     try:
         qty = max(1, min(3, int(raw.get("qty") or 1)))
@@ -114,7 +113,7 @@ async def ensure_neighbor(state, settings, gm, rng: random.Random, now: float | 
     if existing or not settings.neighbor or now < float(state.meta("neighbor_retry_at") or 0):
         return existing[0] if existing else None
     a = world_pack.active().agent
-    world = f"{a.name} lives in {a.their} home, a workshop with a small garden"
+    world = f"{a.name} {a.lives}" if a.lives else f"{a.name} lives at home"
     made = [c["name"] for c in state.creations()]
     if made:
         world += f"; it has made {', '.join(made[:5])}"

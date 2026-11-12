@@ -47,8 +47,8 @@ async def test_a_walk_in_progress_has_its_times(tmp_path):
 
 
 def test_coastal_words():
-    assert WV.COASTAL.search("a cottage on the salt marsh") and WV.COASTAL.search("the Harbour road") and WV.COASTAL.search("walks the mudflats")
-    assert WV.COASTAL.search("a shop of drawers and wire") is None and WV.COASTAL.search("a seaside town") is None
+    assert WV.coastal().search("a cottage on the salt marsh") and WV.coastal().search("the Harbour road") and WV.coastal().search("walks the mudflats")
+    assert WV.coastal().search("a shop of drawers and wire") is None and WV.coastal().search("a seaside town") is None
 
 
 def test_the_map_endpoint_is_public(tmp_path):
@@ -63,7 +63,7 @@ def test_water_is_spotted_in_any_part_of_a_place_record(tmp_path):
     s, st, gm, agent = make(tmp_path)
     rows = {"A": {"description": "by the harbour", "blurb": "", "mentions": []}, "B": {"description": None, "blurb": "a quay town", "mentions": None},
             "C": {"description": "", "blurb": None, "mentions": [{"there": "near the beach"}, {"by": "Jo"}]}, "D": {"description": "", "blurb": "", "mentions": [{}]}}
-    assert [bool(WV.COASTAL.search(WV._words(st, k, rows))) for k in "ABCD"] == [True, True, True, False]
+    assert [bool(WV.coastal().search(WV._words(st, k, rows))) for k in "ABCD"] == [True, True, True, False]
     assert WV._words(st, "Nowhere", rows) == "" and WV._words(st, "B", rows).split() == ["a", "quay", "town"]
 
 

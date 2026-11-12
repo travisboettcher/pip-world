@@ -1,16 +1,45 @@
-"""World content: item kinds, starter belongings, and defaults for seeds and food."""
+"""World content from the pack's items.json (docs/DESIGN-world-packs.md, phase 2): item kinds, starting belongings, defaults for seeds and
+food, and what can be found where. The engine reads them through these functions; the old constant names (`KINDS`, `STARTER_ITEMS`...)
+still answer, from the active world."""
+from . import world_pack
 
-KINDS = ("tool", "material", "food", "seed")
-SEED_DEFAULTS = {"grow_minutes": 1440,  # a crop takes about a day: a plot gives one harvest a day, so replanting forever cannot flood the pantry
-                 "yield": 3, "food_value": 0.4}
-FOOD_DEFAULT = 0.3  # hunger restored by a food item with no explicit food_value
 
-STARTER_ITEMS = [
-    {"name": "tomato seeds", "qty": 3, "kind": "seed", "description": "a paper packet of tomato seeds",
-     "attrs": {"crop": "tomatoes", "grow_minutes": 1440, "yield": 3, "food_value": 0.5}},
-    {"name": "carrot seeds", "qty": 3, "kind": "seed", "description": "a paper packet of carrot seeds",
-     "attrs": {"crop": "carrots", "grow_minutes": 1080, "yield": 3, "food_value": 0.4}},
-]
+def items() -> dict:
+    return world_pack.active().data("items")
+
+
+def kinds() -> tuple:
+    """The kinds an item can be (tool, material, food, seed in Pip's world)."""
+    return tuple(items().get("kinds", ()))
+
+
+def seed_defaults() -> dict:
+    return items().get("seed_defaults", {})
+
+
+def food_default() -> float:
+    """Hunger restored by a food item with no food_value of its own."""
+    return items().get("food_default", 0.3)
+
+
+def starter_items() -> list:
+    """What the agent starts with (given once ever, so what's used up doesn't come back on a restart)."""
+    return items().get("start", [])
+
+
+def seeds_per_food() -> int:
+    """Packets of seed saved from one piece of a crop's fruit."""
+    return items().get("seeds_per_food", 2)
+
+
+def finds() -> dict:
+    """What can be found where: {place: [(name, kind, weight, (least, most), description, attrs)]}."""
+    return {place: [(n, k, w, tuple(q), d, a) for n, k, w, q, d, a in table] for place, table in items().get("finds", {}).items()}
+
+
+def gerunds() -> dict:
+    """What gathering at a built-in place is called ("foraging")."""
+    return items().get("gerunds", {})
 
 
 def normalize_attrs(name: str, kind: str, attrs: dict | None) -> dict:
@@ -20,18 +49,25 @@ def normalize_attrs(name: str, kind: str, attrs: dict | None) -> dict:
         for suffix in (" seeds", " seed"):
             base = base.removesuffix(suffix)
         a.setdefault("crop", base or name)
-        for k, v in SEED_DEFAULTS.items():
+        for k, v in seed_defaults().items():
             a.setdefault(k, v)
     elif kind == "food":
-        a.setdefault("food_value", FOOD_DEFAULT)
+        a.setdefault("food_value", food_default())
     return a
 
 
-SEEDS_PER_FOOD = 2  # packets of seed saved from one piece of a crop's fruit
-
-
 def seed_packet_for(food_name: str) -> dict | None:
-    """The starter seed packet for the crop `food_name` is the fruit of (tomatoes, carrots), if any."""
+    """The starting seed packet for the crop `food_name` is the fruit of (tomatoes, carrots), if any."""
     from .state import name_key  # state imports this module
     want = name_key(food_name)
-    return next((s for s in STARTER_ITEMS if name_key(s["attrs"]["crop"]) == want), None)
+    return next((s for s in starter_items() if name_key(s["attrs"]["crop"]) == want), None)
+
+
+_OLD = {"KINDS": kinds, "SEED_DEFAULTS": seed_defaults, "FOOD_DEFAULT": food_default, "STARTER_ITEMS": starter_items,
+        "SEEDS_PER_FOOD": seeds_per_food}
+
+
+def __getattr__(name):            # the old constant names, read from the active world
+    if name in _OLD:
+        return _OLD[name]()
+    raise AttributeError(name)

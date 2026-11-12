@@ -9,6 +9,7 @@ import math
 import time
 
 from . import places
+from . import world_pack
 
 CANDIDATES = 24      # angles tried for a new place
 MIN_RADIUS = 4.0     # nothing sits on top of home, however short its walk
@@ -54,7 +55,8 @@ def _kind(place, rows: dict) -> str:
         return "home"
     if place.invented:
         return rows[place.key]["kind"]            # every invented place in the registry comes from this table
-    return "neighbor" if place.scope == "neighbor" else "library" if place.key == "library" else "yard" if place.key == "junkyard" else "wild"
+    built_in = {p["key"]: p.get("kind", "wild") for p in world_pack.active().data("places").get("start", [])}
+    return "neighbor" if place.scope == "neighbor" else "library" if place.key == "library" else built_in.get(place.key, "wild")
 
 
 def _walk(state, spots: dict, now: float) -> tuple[tuple[float, float], dict | None]:

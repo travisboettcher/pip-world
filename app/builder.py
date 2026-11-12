@@ -32,10 +32,11 @@ def bible(settings) -> str:
 
 def api(state=None) -> str:
     from . import geometry, place_kinds, places
-    from .looks import SCENE
+    from .looks import scene_lists
+    SCENE = scene_lists()
     return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list(state))
             .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
-            .replace("SETTINGS", ", ".join(SCENE["setting"])).replace("TEXTURES", ", ".join(geometry.TEXTURES))
+            .replace("SETTINGS", ", ".join(SCENE.get("setting", []))).replace("TEXTURES", ", ".join(geometry.TEXTURES))
             .replace("CONDITIONS", ", ".join(geometry.CONDITIONS))
             .replace("AGENT_POSS", world_pack.active().agent.possessive).replace("AGENT_NAME", world_pack.active().agent.name)
             .replace("HOME_KEY", places.HOME)

@@ -22,22 +22,28 @@ class Ability:
     min_difficulty: int = 2
 
 
-ABILITIES: dict[str, Ability] = {a.name: a for a in (
-    Ability("time", "the exact time of day (a clock: implied by the timekeeper capability)", proposable=False),
-    Ability("news", "a radio or other receiver that brings in short bulletins",
-            ("radio", "wireless", "receiver", "receiving", "crystal", "aerial", "antenna", "transmitter"), per_day=3),
-)}
+def registry() -> dict[str, Ability]:
+    """The world's abilities (its pack's content.json `abilities`)."""
+    raw = world_pack.active().data("content").get("abilities", {})
+    return {name: Ability(name, a["help"], tuple(a.get("words", ())), a.get("per_day", 0), a.get("proposable", True), a.get("min_difficulty", 2))
+            for name, a in raw.items()}
+
+
+def __getattr__(name):            # the old constant name, from the active world
+    if name == "ABILITIES":
+        return registry()
+    raise AttributeError(name)
 
 
 def gm_lines() -> str:
     """The sentence the GM design prompt carries: every ability it may propose, and when."""
-    listing = "; ".join(f"{a.name} ({a.help})" for a in ABILITIES.values() if a.proposable)
+    listing = "; ".join(f"{a.name} ({a.help})" for a in registry().values() if a.proposable)
     return (f"provides: ONLY if what {world_pack.active().agent.name} finished gives {world_pack.active().agent.them} something {world_pack.active().agent.they} could not have without the thing, while the thing works - give "
             f"`ability` as one of: {listing}. For anything else never use it (a pond, a painting or a gift is just itself)")
 
 
 def allowed(ability, project: dict) -> bool:
-    a = ABILITIES.get(ability) if isinstance(ability, str) else None
+    a = registry().get(ability) if isinstance(ability, str) else None
     if not a or not a.proposable or project["difficulty"] < a.min_difficulty:
         return False
     words = " ".join([project["name"], project.get("goal") or ""] + [st["name"] for st in project.get("stages", [])]).lower()

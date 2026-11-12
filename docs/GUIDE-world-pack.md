@@ -76,21 +76,27 @@ or your own.
 ```json
 "hunger": {"start": 0.0, "rise_per_hour": 0.04, "high": 0.8, "restored_by": ["eat"]}
 ```
-and in **`items.json`** (phase 2), an item kind that restores it and something to start with:
+and in **`items.json`** (works today; `restores` waits for phase 3, so food uses `food_value` for now), an item kind that restores it and
+something to start with:
 ```json
 {"kinds": {"food": {"restores": {"hunger": 0.3}}, "scrap": {}, "tool": {}, "medicine": {}},
  "start": [{"name": "tinned beans", "kind": "food", "qty": 4, "description": "dented tins, still sealed", "restores": {"hunger": 0.5}}],
  "finds": {"ruins": [["scrap metal", "scrap", 30, [1, 3], "bent sheet and rebar"], ["tinned beans", "food", 8, [1, 1], "a tin, still sealed"]]}}
 ```
 
-**Somewhere to go and something to find** (phase 2 for data, phase 5 for gathering as a module): `places.json` names the places the
-world starts with and the kinds it can grow.
+**Somewhere to go and something to find** (works today; gathering becomes a module in phase 5): `places.json` names the home, the
+places the world starts with, and the kinds of place it can grow. See `worlds/pip/places.json` for every field.
 ```json
-{"start": [{"key": "the old mall", "kind": "ruins", "distance": "near", "description": "A collapsed shopping centre, half flooded."}],
+{"home": {"key": "shelter", "description": "your shelter", "offers": ["sleep"], "about": "a concrete bunker", "aliases": ["home", "bunker"],
+          "called": "shelter"},
+ "start": [{"key": "the old mall", "description": "a collapsed shopping centre, half flooded", "walk": 12, "kind": "yard", "tag": "salvage",
+            "offers": ["gather"], "daylight_only": true, "verbs": {"gather": ["scavenge what's left", null]}}],
  "kinds": {"ruins": {"help": "a ruined building to scavenge", "words": ["ruin", "mall", "tower", "station", "depot"],
-                      "verbs": {"gather": ["scavenge what's left", "scavenging"]}, "loot": ["scrap", "food", "tool", "medicine"]}}}
+                     "verbs": {"gather": ["scavenge what's left", "scavenging"]}, "loot_kinds": ["scrap", "food", "tool", "medicine"]}},
+ "fallback_kind": "ruins", "words": {"trade": ["camp", "trader"], "reserved": ["home", "shelter"], "features": ["ruins?", "camp", "reservoir"]}}
 ```
-Include `std:gathering` in `world.json` and the `gather` tool works wherever a place's kind has the verb, from the `finds` tables.
+The `gather` tool works wherever a place offers it, from the `finds` tables in `items.json` (keyed by place). `WILD_PLACES` can leave
+some of the starting places out.
 
 **Trade** (phase 4/5): include `std:market` with params (the currency's name, how prices move), and give a place kind `trades: true`.
 The village's market and Wren's own stall then work as Pip's do.
@@ -122,15 +128,17 @@ world's categories: `raid` (bad: `harm`, `food_loss`), `salvage` (good: `item`),
 a layout's live elements for where they prowl. They can hurt through `harm`; they can't decide for Wren.
 
 ## 4. Make it look like itself
-**Scene vocabulary** (phase 2): `scene.json` lists the props, settings, looks and palettes the narrator picks from and the renderer
-draws: `"settings": ["ruins", "wasteland", "village", "reservoir"]`, `"props": {"barricade": ["barricade", "wall"], "geiger": ["geiger",
-"counter"]}`, `"palettes": {"ash": ["#6b6862", "#a39e93", "#c9b38c"]}`.
+**Scene vocabulary** (works today): `scene.json` lists what the narrator picks from when it chooses how people and places look:
+`look` (heights, hair, skin, clothes), `look_hints` (words in a persona that settle a feature), `props` (each with the words that bring it
+into a scene), `scene` (walls, roof, palette, setting), `setting_words`, `kind_setting`, and `coastal_words` (what puts a place by the
+water). The browser draws only the values it knows (see `worlds/pip/scene.json`), so for now a pack chooses among those; new ones need
+textures or sprites (below).
 
 **Layouts** (works today): every place kind needs a layout module (`kinds: ["ruins"]`) built from parts. Start from the shipped
 `outdoors`, `market` and `home` layouts in `app/module_library/` and change the parts and textures; the shapes, anchors and live elements
 are the same in any world.
 
-**Textures** (phase 2): a pack can add textures as small generator functions or images in `scene/`.
+**Textures** (later): a pack can add textures as small generator functions or images in `scene/`.
 
 ## 5. Let it grow
 **The bible** (works today; `WORLD_BIBLE_PATH` overrides it): `bible.md` tells the builder what belongs in this world
@@ -143,6 +151,10 @@ places, the people. Features bring their own pages (`std:market` brings the mark
 
 **Real-world sources** (phase 5): decide whether the world touches the real one. Ashfall probably wants its own weather (a module that
 invents ash days and acid rain and publishes them as the world's weather), no web search, and maybe the owner's books as a ruined archive.
+
+**Registries** (works today): `content.json` holds the world's lasting effects (what a finished project can change, and the line that
+says so), its abilities (what a working thing can give: the time, news), crafting's abilities (what a stage of work exercises) and what
+the first happening of each kind is called. See `worlds/pip/content.json`.
 
 ## Checklist
 - [ ] `world.json`: name, agent (name, pronoun, kind), home, modules

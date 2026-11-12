@@ -10,6 +10,7 @@ place, a neighbor or a reserved word), the caps, the minutes, the kind's verbs a
 """
 import random
 import re
+from functools import lru_cache
 import time
 
 from . import place_kinds as kinds
@@ -28,12 +29,22 @@ DISTANCES = ("near", "far", VERY_FAR)
 ACTIVE = ("heard", "real")
 ARTICLES = {"the", "a", "an"}
 CONNECTORS = {"in", "at", "of", "by", "near", "on", "over", "past", "beyond", "from", "and"}
-TRADE = {"ironmonger", "ironmongery", "shop", "store", "market", "stall", "smithy", "village", "town", "harbour",
-         "harbor", "quay", "inn", "mill", "bakery", "baker", "chandler", "chandlery", "merchant", "forge", "wharf",
-         "dock", "port", "hamlet", "city", "square", "fair", "emporium", "workshop"}
+def _place_words() -> dict:
+    """The world's place-name words (the pack's places.json `words`): what marks a trade, what names are taken, what a place may be."""
+    return world_pack.active().data("places").get("words", {})
+
+
+def trade_words() -> set:
+    return set(_place_words().get("trade", ()))
+
+
+def reserved() -> set:
+    """Names a new place can't take: the built-in places' and the home's."""
+    return set(_place_words().get("reserved", ()))
+
+
 ADJECTIVES = {"old", "new", "little", "big", "great", "high", "low", "north", "south", "east", "west", "upper",
               "lower", "next", "far", "near", "first", "second", "third"}
-RESERVED = {"home", "house", "workshop", "library", "wood", "woods", "junkyard", "market", "garden"}
 
 
 def _words(name: str) -> list[str]:
@@ -47,7 +58,7 @@ def _words(name: str) -> list[str]:
 
 def _proper(words: list[str]) -> list[str]:
     """The proper-noun part: capitalised words that aren't trade words, articles, connectors or plain adjectives."""
-    skip = TRADE | ARTICLES | CONNECTORS
+    skip = trade_words() | ARTICLES | CONNECTORS
     if not any(w[0].isupper() and w.lower() not in skip | ADJECTIVES for w in words):
         return []
     return [w for w in words if w[0].isupper() and w.lower() not in skip]
@@ -70,7 +81,7 @@ def _said(text: str) -> set[str]:
 
 
 def _reserved(state, c: str, speaker: str = "") -> bool:
-    if c in RESERVED:
+    if c in reserved():
         return True
     names = [ch["name"] for ch in state.characters()] + [p["name"] for p in state.people()] + state.senders() + [speaker]
     taken = {world_pack.active().agent.name.lower()} | {w for n in names for w in _said(n) if len(w) > 2}
@@ -415,24 +426,29 @@ def backfill(state, now: float | None = None) -> list[dict]:
 # ("go to", "visit", "there's a ... in", "a lake called") followed by a name - a capitalised one, or "the" plus a few
 # words ending in a landscape or settlement word. Everything found still goes through `accept` (the caps, reserved
 # names, neighbors). What the patterns miss, the go_to backstop still catches, since it searches chat messages too.
-FEATURES = (r"valley|lake|mill|woods?|hills?|beach|shore|harbou?r|market|village|town|bay|cove|island|pond|marsh|fen|"
-            r"meadow|orchard|quarry|bridge|lighthouse|tower|ruins?|farm|inn|forest|river|square|fair|cliffs?|moor|"
-            r"heath|glen|dale|common|green|wharf|quay")
-PLACE = (r"(?P<place>[A-Z][\w'’-]+(?:\s+(?:of\s+|on\s+)?[A-Z][\w'’-]+){0,3}"
-         rf"|(?i:the)\s+(?:[a-z]+\s+){{0,2}}(?:{FEATURES})\b)")
-CHAT = [re.compile(p) for p in (
-    r"(?i:\b(?:go|walk|head|wander|stroll|pop)(?:\s+over|\s+down|\s+up)?\s+to|\bvisit|\bgo\s+and\s+see)\s+" + PLACE,
-    r"(?i:\b(?:there(?:'s|’s|\s+is|\s+are)|try|ask|find)\s+(?:an?|the|some)\s+[^.!?]{1,40}?\s+"
-    r"(?:in|at|near|past|beyond|by)\s+)" + PLACE,
-    rf"(?i:\b(?:place|{FEATURES}|shop|wood)\s+(?:called|named)\s+)" + PLACE,
-)]
+def _chat() -> list:
+    return _chat_for(id(world_pack.active()))
+
+
+@lru_cache(maxsize=8)
+def _chat_for(_pack) -> list:
+    """The patterns that find a place in a chat message, built from the world's words for what a place may be."""
+    features = "|".join(_place_words().get("features", ())) or "place"
+    place = (r"(?P<place>[A-Z][\w'’-]+(?:\s+(?:of\s+|on\s+)?[A-Z][\w'’-]+){0,3}"
+             rf"|(?i:the)\s+(?:[a-z]+\s+){{0,2}}(?:{features})\b)")
+    return [re.compile(p) for p in (
+        r"(?i:\b(?:go|walk|head|wander|stroll|pop)(?:\s+over|\s+down|\s+up)?\s+to|\bvisit|\bgo\s+and\s+see)\s+" + place,
+        r"(?i:\b(?:there(?:'s|’s|\s+is|\s+are)|try|ask|find)\s+(?:an?|the|some)\s+[^.!?]{1,40}?\s+"
+        r"(?:in|at|near|past|beyond|by)\s+)" + place,
+        rf"(?i:\b(?:place|{features}|shop|wood)\s+(?:called|named)\s+)" + place,
+    )]
 
 
 def chat_mentions(text: str) -> list[dict]:
     """Places a chat message points Pip to, as `mentions_place`-shaped dicts (the sentence is what's there)."""
     text = str(text or "")
     out, seen = [], set()
-    for pat in CHAT:
+    for pat in _chat():
         for m in pat.finditer(text):
             name = m.group("place")
             if core(name) in seen:
@@ -531,7 +547,7 @@ def staples(kind: str, rng: random.Random) -> list[list]:
     so a trading place is never bare. The kind's tool limit holds."""
     from . import gathering
     k = kinds.KINDS[kind]
-    pool = [e for table in (gathering.WOODS, gathering.JUNKYARD) for e in table if e[1] in k.loot_kinds]
+    pool = [e for table in gathering.loot().values() for e in table if e[1] in k.loot_kinds]
     out, tools = [], 0
     for e in rng.sample(pool, len(pool)):
         if e[1] == "tool" and tools >= k.max_tools:
@@ -622,7 +638,6 @@ MENTION_PROPERTY = {"type": "object", "properties": {
     "items": {"type": "array", "items": {"type": "string"}},
 }, "required": ["place"]}
 PLACES_SHOWN = 8
-TAGS = {"woods": "foraging", "junkyard": "scrap", "library": "books"}
 WALK_WORDS = {"near": "a short walk", "far": "a long walk", VERY_FAR: "too far to walk"}
 
 
@@ -658,7 +673,9 @@ def places_line(state, name: str, settings=None, library=None) -> str:
     from . import places
     recs = records(state)
     mine = [r for r in recs if any(m["by"] == name for m in r["mentions"])]
-    built = [places.label(k) + (f" ({TAGS[k]})" if k in TAGS else "")
+    d = world_pack.active().data("places")
+    tags = {p["key"]: p["tag"] for p in [d.get("library", {}), *d.get("start", [])] if p.get("tag")}
+    built = [places.label(k) + (f" ({tags[k]})" if k in tags else "")
              for k, p in places.registry(state, settings, library).items()
              if k != places.HOME and not p.invented and k != f"{name}{places.HOME_SUFFIX}"]
     parts = ([_line_for(state, r, name) for r in mine] + built
