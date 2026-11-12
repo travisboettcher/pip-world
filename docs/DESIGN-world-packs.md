@@ -5,7 +5,8 @@ and guide in `worlds/pip/`; the agent's name and pronoun through every engine pr
 engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack; **phase 3 built (0.34.0)**: the agent's stats and the world's tone
 are its pack's (`stats.json`, `tone.json`), over the engine's floor; **phase 4 built (0.35.0)**: the hooks a feature needs to be a
 module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module;
-**phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data. Next: 5b, the market. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+**phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data; **5b built (0.37.0)**: the neighbourhood module
+invents the neighbour and asks them to write first. Next: 5c, the market. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -252,8 +253,21 @@ moves into a shipped `gathering` module: the `gather` tool, the session, the hau
   own way (the woods' "Forage in the woods for 15-60 minutes...");
 - **a moment's `items` and `tool`** in `log`: what came of it (a first for each thing found; the agent's sense of what its tools are
   good for reads it), and a moment is shown among recent events and can be recalled;
-- **`owe`** (`{place, items}`), until the market moves (5b): what was taken at a shop goes on account there.
+- **`owe`** (`{place, items}`), until the market moves (5c): what was taken at a shop goes on account there.
 A session's label now reads as what the agent is doing ("you're out foraging at the woods (about 20 min left)").
+
+**5b, neighbours.** Characters and conversation stay the engine's, and so do letters: a letter is conversation at a distance, and a
+character answers one with the same machinery as in person (their persona, kept private; what they've told the agent; their plans;
+what's been said), as a wasteland's radio would. What moves is the neighbour feature: inventing someone who lives nearby, and when they
+write first. Into a shipped `neighborhood` module, on two generic hooks:
+- **structured asks**: `ask` may carry a `schema` (`{properties, required}`: strings, numbers, whole numbers, true/false, and objects of
+  strings); the answer comes back checked, as `ctx["answer"]["data"]` (none if the model's answer didn't fit). With `mentions: true` the
+  engine adds how a character may tell the agent about a place, and passes back `mentions_place`;
+- **characters**: `character` (`{name, kind: "neighbor", persona, about, letter?, mentions_place?}`) brings someone into the world (never
+  a name already in it, or the agent's); their first letter is on its way. `letter` (`{from}`) asks a neighbour to write to the agent
+  (the engine writes it, as it answers letters, when none of theirs is already on the way).
+The engine no longer invents a neighbour or keeps their writing schedule; `NEIGHBOR` and `NEIGHBOR_WRITES_EVERY_HOURS` become the
+module's params. A neighbour's wares wait for the market (5c).
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of
@@ -289,9 +303,9 @@ A session's label now reads as what the agent is doing ("you're out foraging at 
    (see "Phase 4 in detail" below): *4a* the hooks, each tested with a small module; *4b* the garden moves into a shipped `garden`
    module and the engine's garden (its table, tools, prompt lines, the `garden` read and proposal) is removed. *Built together (0.35.0).* The market, which the
    first plan also named here, moves with the other features in phase 5: it needs `characters` for its stallholders too.
-5. **Features move.** One feature a release, each proving the hooks it needs (see "Phase 5 in detail"): *5a* gathering, *5b* the market,
-   *5c* letters and neighbours (characters, structured asks), *5d* the library (sources), *5e* weather and calendar (sources), *5f*
-   crafting. Each removes the engine's version when its module is live, as the garden did.
+5. **Features move.** One feature a release, each proving the hooks it needs (see "Phase 5 in detail"): *5a* gathering, *5b* neighbours
+   (characters, structured asks), *5c* the market (it needs the neighbours' stalls), *5d* the library (sources), *5e* weather and
+   calendar (sources), *5f* crafting. Each removes the engine's version when its module is live, as the garden did.
 6. **Stakes and a second world.** Health and `at_zero`, `harm`; then a small **wasteland pack** as the test: a shelter, scavenging,
    radiation, a village of survivors as voices, raids as happenings, no garden. Its CI run (a day of simulated ticks with a fake model)
    proves the engine has no Pip in it.

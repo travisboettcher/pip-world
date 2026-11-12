@@ -117,8 +117,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 5a (0.36.0): gathering as a shipped module, on the engine's place data (`app/finds.py`: find tables, stock, glimpses); the
           `here` and `abilities` reads, `practice`, `deplete`, `doing`, a moment's `items` and `tool`, tools offered where a place lists
           them, and `owe` (until the market moves)
-    - [ ] 5b: the market
-    - [ ] 5c: letters and neighbours (characters, structured asks)
+    - [x] 5b (0.37.0): neighbours: the shipped `neighborhood` module invents the neighbour and asks them to write first; structured asks,
+          the `character` and `letter` hooks (letters stay the engine's, as conversation at a distance)
+    - [ ] 5c: the market
     - [ ] 5d: the library (sources)
     - [ ] 5e: weather and calendar (sources)
     - [ ] 5f: crafting

@@ -523,10 +523,17 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   verbs, stock, and the kind's session lengths, capacity, refill, shop hours, trading; none while walking) and the `abilities` read
   (levels); `practice` (`{ability: minutes}`, 240 a call), `deplete` (`{amount, place?}`), `doing` (`{activity, description}`), `give`'s
   `at` (where it was found, for `where_to`), and `owe` (`{place, items}`: on account at a place that trades, until the market is a
-  module). A tool's `where` may be `offered`: wherever a place's verbs list the tool, worded the place's own way. `log` may carry `items`
+  module, 5c). A tool's `where` may be `offered`: wherever a place's verbs list the tool, worded the place's own way. `log` may carry `items`
   (what came of the moment: each a first, "found X") and `tool` (the agent's sense of what its tools are good for reads it); a moment is
   shown among recent events and can be recalled. The agent read carries its `name`.
-- The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`. The `garden` read and proposal are gone (read its `facts`;
+- **People (0.37.0, phase 5b)**: an `ask` may carry a `schema` (`{properties, required?}`, up to 12 answers of the tool-argument types)
+  and comes back as `ctx["answer"]["data"]`, checked (none if what came back didn't fit; a dry run stands in none); with `mentions: true`
+  the engine adds how a character tells the agent about a place and passes back `mentions_place`. `character` (`{name, kind: "neighbor",
+  persona, about, letter?, mentions_place?}`, once a day) brings someone new into the world, their first letter on its way; `letter`
+  (`{from}`) asks a neighbour to write to the agent, which the engine writes as it answers letters, when none of theirs is on the way.
+  The agent read carries `lives`.
+- The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
+  the neighbourhood the third: `module_library/neighborhood.py`. The `garden` read and proposal are gone (read its `facts`;
   ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
 - **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
   ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a

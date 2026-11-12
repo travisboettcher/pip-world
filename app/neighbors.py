@@ -106,28 +106,19 @@ def clean_parcel(raw) -> dict | None:
     return {"name": name, "kind": raw["kind"], "qty": qty, "description": clip(raw.get("description"), 160)}
 
 
-async def ensure_neighbor(state, settings, gm, rng: random.Random, now: float | None = None) -> dict | None:
-    """Invent the neighbor once (their first letter follows shortly). Retries hourly if the GM fails."""
+NOT_YET = 1e18             # a neighbour writes first only when a module asks (modules.py, `letter`): never, until then
+
+
+def arrive(state, settings, new: dict, now: float | None = None, rng: random.Random | None = None) -> dict:
+    """Someone a module brought into the world (modules.py, `character`): their record, and their first letter on its way, soon."""
     now = now or time.time()
-    existing = state.characters("neighbor")
-    if existing or not settings.neighbor or now < float(state.meta("neighbor_retry_at") or 0):
-        return existing[0] if existing else None
-    a = world_pack.active().agent
-    world = f"{a.name} {a.lives}" if a.lives else f"{a.name} lives at home"
-    made = [c["name"] for c in state.creations()]
-    if made:
-        world += f"; it has made {', '.join(made[:5])}"
-    raw = await gm.invent_neighbor(world, invented.mention_instruction(state, settings)) if gm else None
-    name = clip(raw.get("name"), 40) if raw else ""
-    if not raw or not name or not clip(raw.get("letter"), 10) or name.lower() == world_pack.active().agent.name.lower():
-        state.set_meta(neighbor_retry_at=str(now + RETRY_AFTER))
-        return None
-    every = settings.neighbor_writes_every_hours * 60
-    ch = state.add_character(name, "neighbor", None, clip(raw["persona"], 800), every,
-                             now + every * 60 * rng.uniform(*JITTER), about=clip(raw.get("about"), 160))
-    lt = state.add_letter(name, world_pack.active().agent.name, clip(raw["letter"], 1200), now + _delay(settings, rng) / 4)  # the first comes soon
-    invented.accept(state, name, lt["text"], raw.get("mentions_place"), now)
-    state.log("neighbor", name=name, about=ch["about"])
+    rng = rng or random.Random()
+    ch = state.add_character(new["name"], new["kind"], None, clip(new["persona"], 800), settings.neighbor_writes_every_hours * 60, NOT_YET,
+                             about=clip(new["about"], 160))
+    if new.get("letter"):
+        lt = state.add_letter(new["name"], world_pack.active().agent.name, clip(new["letter"], 1200), now + _delay(settings, rng) / 4)
+        invented.accept(state, new["name"], lt["text"], new.get("mentions_place"), now)
+    state.log("neighbor", name=new["name"], about=ch["about"])
     return ch
 
 
@@ -249,7 +240,7 @@ async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict
     parcel = clean_parcel(out.get("parcel")) if parcel_ok else None
     state.add_letter(ch["name"], world_pack.active().agent.name, text, now + _delay(settings, rng), parcel=parcel,
                      reply_to=answering["id"] if answering else None, gist=clip(out.get("gist"), 200))
-    fields = {"next_chatter_at": now + ch["chatter_minutes"] * 60 * rng.uniform(*JITTER), **_told(ch, out),
+    fields = {"next_chatter_at": NOT_YET, **_told(ch, out),
               **_happened(ch, now)}
     fields.update(_news(fields.get("life", ch["life"]), out))
     pending, plan = fields.get("upcoming", ch["upcoming"]), clean_upcoming(out.get("upcoming"), now)

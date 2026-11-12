@@ -195,7 +195,6 @@ class Agent:
         if await happenings.step(self.state, self.s, self.gm):
             self.request_wake()
         await wishes.share_step(self.state, self.s, self.outreach)
-        await nb.ensure_neighbor(self.state, self.s, self.gm, self.rng)
         await nb.recall_told(self.state, self.gm, self._told_tries)
         if await nb.step(self.state, self.s, self.gm, self.rng, library=self.library):
             self.request_wake()

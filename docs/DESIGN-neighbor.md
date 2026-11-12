@@ -1,6 +1,8 @@
 # Design: a neighbor (slow letters)
 
-Status (2026-10-29): built and tested (unit tests and real-model runs); not yet deployed. Phase 4 of
+Status (2026-10-29): built and tested (unit tests and real-model runs). Since 0.37.0 (world packs phase 5b) the neighbour is invented, and
+asked to write first, by the shipped `neighborhood` module (structured asks, the `character` and `letter` hooks); letters and answers
+stay the engine's, as below. Phase 4 of
 DESIGN-creations.md, made concrete.
 
 ## Why

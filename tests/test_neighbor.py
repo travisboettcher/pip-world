@@ -20,30 +20,6 @@ def neighbor(st, s, rng=None, now=None):
 
 
 @pytest.mark.asyncio
-async def test_neighbor_is_invented_once_and_writes_first(tmp_path):
-    s, st, gm, agent = make(tmp_path, [report(**INVENTED)], neighbor=True)
-    now = time.time()
-    ch = await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now)
-    assert ch["name"] == "Marigold" and ch["about"] == "Lives past the hedge; keeps bees."
-    (first,) = st.letters()
-    assert first["sender"] == "Marigold" and first["recipient"] == "Pip"
-    assert now + 0.25 * 0.7 * 120 * 60 <= first["deliver_at"] <= now + 0.25 * 1.3 * 120 * 60  # soon-ish
-    await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now)
-    assert len(gm.calls) == 1 and len(st.characters("neighbor")) == 1
-
-
-@pytest.mark.asyncio
-async def test_failed_invention_retries_in_an_hour_and_pip_is_not_a_name(tmp_path):
-    s, st, gm, agent = make(tmp_path, [LLMResponse("no", [], Usage(1, 1)), report(**{**INVENTED, "name": "pip"})],
-                            neighbor=True)
-    now = time.time()
-    assert await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now) is None
-    assert await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now + 60) is None and len(gm.calls) == 1
-    assert await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now + HOUR + 1) is None  # "Pip" is rejected
-    assert st.characters() == []
-
-
-@pytest.mark.asyncio
 async def test_letter_with_parcel_lands_in_the_inbox_and_wakes_pip(tmp_path):
     s, st, gm, agent = make(tmp_path)
     neighbor(st, s)
@@ -617,7 +593,7 @@ async def test_her_letter_is_clipped_exactly_and_a_due_plan_and_news_both_join_h
     ch = st.characters()[0]
     assert ch["life"] == ["Old.", "Recently: jam day.", "l" * 200 + "..."] and ch["upcoming"] == []
     assert ch["told"] == ["a" * 80 + "..."]
-    assert ch["next_chatter_at"] == pytest.approx(now + ch["chatter_minutes"] * 60 * 1.3)
+    assert ch["next_chatter_at"] == nb.NOT_YET                      # she writes first again when the neighbourhood module asks
 
 
 @pytest.mark.asyncio
@@ -842,8 +818,10 @@ async def test_recall_reads_the_newest_fifty_letters(tmp_path):
 
 @pytest.mark.asyncio
 async def test_the_agent_loop_invents_the_neighbor_and_lets_them_answer(tmp_path):
+    from tests.test_neighborhood import module
     s, st, gm, agent = make(tmp_path, [report(**INVENTED), report(told=["keeps bees"]), report(text="Got your note!")],
                             neighbor=True)
+    st.update_module(module(st, s)["id"], due=time.time())          # the neighbourhood module asks who they are; the model answers
     await agent.resolve_world()
     (ch,) = st.characters("neighbor")
     assert ch["name"] == "Marigold" and len(gm.calls) == 1
@@ -908,20 +886,6 @@ async def test_in_person_she_can_point_pip_to_a_place(tmp_path):
     task = gm.calls[0]["messages"][0]["content"]
     assert "Places in Pip's world: the woods (foraging); the junkyard (scrap)\n" in task
     assert task.endswith(f"- {IP.mention_instruction(st, s)}\n".replace(", Saltholm", ""))
-    assert st.place_row("Saltholm")["mentions"][0]["by"] == "Marigold"
-
-
-@pytest.mark.asyncio
-async def test_a_new_neighbors_first_letter_can_name_a_place(tmp_path):
-    s, st, gm, agent = make(tmp_path, [report(**{**INVENTED, "letter": SALTHOLM, "mentions_place": MENTION})],
-                            neighbor=True)
-    await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), time.time())
-    task = gm.calls[0]["messages"][0]["content"]
-    assert "garden\n\nSomeone lives near Pip" in task and task.endswith(
-        "visiting themselves.\nOnly if your words point Pip to a place it could go that isn't one of these: the woods, "
-        "the junkyard, give `mentions_place` (`place`: the destination as you said it; `there`: what you say is "
-        "there, under 120 characters; `distance`: near, far or very far, as you'd put it; `items`: things you say can "
-        "be had there). Not your own home, not landscape you just pass through.")
     assert st.place_row("Saltholm")["mentions"][0]["by"] == "Marigold"
 
 
@@ -1082,55 +1046,6 @@ async def test_arriving_somewhere_new_pip_meets_whoever_the_design_says_is_there
 
 
 # --- exact edges (pinned by mutation testing) ------------------------------------------------------------------
-@pytest.mark.asyncio
-async def test_a_new_neighbor_exactly(tmp_path):
-    raw = {**INVENTED, "name": "N" * 41, "persona": "p" * 801, "about": "a" * 161, "letter": "l" * 1201,
-           "mentions_place": MENTION}
-    s, st, gm, agent = make(tmp_path, [report(**raw)], neighbor=True, wild_places=["woods"])
-    st.add_character("Tock", "creation", None, "a clockwork bird", 60, 0)               # not a neighbor
-    for i in range(6):
-        st.add_creation(f"thing {i}", "made", None, "fine", {"capabilities": {}}, {})
-    now = time.time()
-    st.set_meta(neighbor_retry_at=str(now))                                               # the retry is due now
-    ch = await nb.ensure_neighbor(st, s, agent.gm, FixedRng(0.0), now)
-    task = gm.calls[0]["messages"][0]["content"]
-    assert task.startswith("Pip's world so far: Pip lives alone in a workshop with a garden; it has made "
-                           "thing 0, thing 1, thing 2, thing 3, thing 4\n\n")
-    assert "isn't one of these: the woods, give `mentions_place`" in task
-    every = s.neighbor_writes_every_hours * 60
-    assert ch["name"] == "N" * 40 + "..." and ch["persona"] == "p" * 800 + "..." and ch["about"] == "a" * 160 + "..."
-    assert ch["chatter_minutes"] == every and ch["next_chatter_at"] == pytest.approx(now + every * 60 * 0.7, abs=1e-3)
-    (lt,) = st.letters()
-    assert lt["text"] == clip("l" * 1201, 1200) and lt["deliver_at"] == pytest.approx(now + s.letter_delay_minutes * 60 / 4, abs=1e-3)
-    assert st.place_row("Saltholm") is None                                              # the letter doesn't name it
-    assert st.events(limit=1)[0]["kind"] == "neighbor" and st.events(limit=1)[0]["data"] == {"name": ch["name"],
-                                                                                            "about": ch["about"]}
-    assert await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), now) == st.characters("neighbor")[0]
-
-
-@pytest.mark.asyncio
-async def test_a_new_neighbors_place_is_heard_of_at_the_time_given(tmp_path):
-    s, st, gm, agent = make(tmp_path, [report(**{**INVENTED, "letter": SALTHOLM, "mentions_place": MENTION})],
-                            neighbor=True)
-    await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), 1000.0)
-    assert st.place_row("Saltholm")["created_at"] == 1000.0
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("raw", [{**INVENTED, "letter": ""}, {**INVENTED, "name": ""}])
-async def test_a_new_neighbor_needs_a_name_and_a_letter(tmp_path, raw):
-    s, st, gm, agent = make(tmp_path, [report(**raw)], neighbor=True)
-    assert await nb.ensure_neighbor(st, s, agent.gm, FixedRng(), 1000.0) is None and st.characters() == []
-    assert st.meta("neighbor_retry_at") == str(1000.0 + nb.RETRY_AFTER)
-
-
-@pytest.mark.asyncio
-async def test_without_a_gm_no_neighbor_is_invented(tmp_path):
-    s, st, gm, agent = make(tmp_path, neighbor=True)
-    assert await nb.ensure_neighbor(st, s, None, FixedRng(), 1000.0) is None
-    assert st.meta("neighbor_retry_at") == str(1000.0 + nb.RETRY_AFTER)
-
-
 @pytest.mark.asyncio
 async def test_her_letters_and_visits_are_told_the_places_this_world_has(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="Bees!"), report(text="Come in.")], wild_places=["woods"])

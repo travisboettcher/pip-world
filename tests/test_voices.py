@@ -151,7 +151,7 @@ async def test_speak_and_ask_are_checked_and_capped(tmp_path):
     assert why({"speak": {"as": "the Old Well", "text": "x" * 401}}).startswith("`speak` is {as, text")
     assert why({"speak": "hi"}).startswith("`speak` is {as, text")
     assert M.plan(st, st.module(m["id"]), {"voices": [{"name": "Bucket", "at": "home"}], "speak": {"as": "Bucket", "text": "Clank."}}, NOW, "on_tick")
-    assert why({"ask": {"prompt": ""}}) == "`ask` is {prompt, purpose?, most?}: a prompt of up to 2000 characters, at most 600 characters back"
+    assert why({"ask": {"prompt": ""}}) == "`ask` is {prompt, purpose?, most?, schema?, mentions?}: a prompt of up to 2000 characters, at most 600 characters back"
     assert why({"ask": {"prompt": "x" * 2001}}).startswith("`ask` is {prompt")
     assert why({"ask": {"prompt": "hi", "most": 601}}).startswith("`ask` is {prompt")
     assert why({"ask": {"prompt": "hi", "purpose": "x" * 41}}).startswith("`ask` is {prompt")

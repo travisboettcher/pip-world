@@ -297,7 +297,9 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.get("/letters")
     def get_letters(limit: int = 50):
         st = app.state.agent.state
-        return {"neighbors": [{k: c[k] for k in ("name", "about", "life", "next_chatter_at")}
+        from . import neighbors as nb
+        return {"neighbors": [{**{k: c[k] for k in ("name", "about", "life")},
+                               "next_chatter_at": c["next_chatter_at"] if c["next_chatter_at"] < nb.NOT_YET else None}   # None: when a module asks
                               for c in st.characters("neighbor")],
                 "letters": st.letters(limit=min(limit, 500))}
 

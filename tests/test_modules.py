@@ -325,7 +325,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr", "changed": True}
     got = st.module(m["id"])
     assert got["state"] == {"n": 1} and got["facts"] == {"n": 1} and got["due"] == NOW + 60 and got["lines"] == [{"ts": NOW, "text": "tick"}]
-    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0}
+    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
     assert st.find_item("brass wire")[0]["qty"] == 1 and "halted_at" not in st.creations()[0]["runtime"] and st.creations()[0]["runtime"]["stop_logged"]
     ev = [e for e in st.events(5) if e["kind"] == "module"][0]["data"]
     assert (ev["name"], ev["text"], ev["author"]) == ("bells", "It whirrs.", "world")
@@ -415,7 +415,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] in ("spring", "summer", "autumn", "winter") and 0 <= full["time"]["hour"] < 24
     assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
-                            "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip"} and full["weather"] is None
+                            "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden"} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
     assert {"name": "oil", "qty": 2, "kind": "material", "attrs": {}} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
 

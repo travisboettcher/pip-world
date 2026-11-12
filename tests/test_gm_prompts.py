@@ -138,24 +138,6 @@ PLACES = "Places in Pip's world: the woods (foraging); Saltholm, a long walk"
 MENTION = "Only if your words point Pip somewhere new, give `mentions_place`."
 MENTIONS = {"mentions_place": MENTION_PROPERTY}
 
-INVENT = (
-    "Pip's world so far: Pip lives in its home\n"
-    "\n"
-    "Someone lives near Pip and is about to write to it for the first time. Invent them freely - any kind of "
-    "creature or person that fits this small world, with their own life, work, worries and way of writing. "
-    "Make their life genuinely different from Pip's (not another maker of the same kinds of things), so they "
-    "have their own world to share. Give:\n"
-    "- `name`: what they're called\n"
-    "- `persona`: 3-5 sentences, private: who they are, what their days are like, what they care about, how "
-    "they write letters\n"
-    "- `about`: one short line of what Pip would know about them from a distance (where they live, what "
-    "they're known for)\n"
-    "- `letter`: their first letter to Pip, introducing themselves (2-5 sentences, in their voice). Pip may walk "
-    "over and visit them at home some day; they don't go out visiting themselves."
-)
-INVENT_PROPS = {"name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
-                "letter": {"type": "string"}}
-
 LIFE_UPDATE = (
     "Optional:\n"
     "- `life_update`: one sentence, only if something in their life has changed since what's already happening "
@@ -216,7 +198,6 @@ RECALL = (
     'e.g. "their door rattles in the wind". At most 20, the ones that stand out most; facts and details, not '
     "greetings or feelings, and nothing that only Pip said."
 )
-
 
 @pytest.mark.asyncio
 async def test_letter_prompt_with_nothing_yet(tmp_path):
@@ -301,13 +282,15 @@ async def test_a_spoken_line_is_clipped_to_400_and_a_blank_or_failed_one_is_none
 
 
 @pytest.mark.asyncio
-async def test_invent_prompt_without_and_with_the_places_sentence(tmp_path):
+async def test_a_structured_ask_is_the_modules_prompt_and_schema(tmp_path):
     gm, b, _ = master(tmp_path)
-    await gm.invent_neighbor("Pip lives in its home")
-    await gm.invent_neighbor("Pip lives in its home", mention=MENTION)
-    assert task(b, 0) == INVENT and task(b, 1) == INVENT + "\n" + MENTION
-    assert b.schemas == [{"type": "object", "properties": INVENT_PROPS, "required": list(INVENT_PROPS)},
-                         {"type": "object", "properties": {**INVENT_PROPS, **MENTIONS}, "required": list(INVENT_PROPS)}]
+    schema = {"type": "object", "properties": {"name": {"type": "string", "description": "what they're called", "x": 1}}, "required": ["name"]}
+    await gm.structured("Who lives near?", schema)
+    await gm.structured("Who lives near?", schema, mentions=True)
+    assert task(b, 0) == "Who lives near?" and task(b, 1) == "Who lives near?"
+    props = {"name": {"type": "string", "description": "what they're called"}}
+    assert b.schemas == [{"type": "object", "properties": props, "required": ["name"]},
+                         {"type": "object", "properties": {**props, **MENTIONS}, "required": ["name"]}]
 
 
 @pytest.mark.asyncio
@@ -368,10 +351,10 @@ async def test_design_place_prompt_and_schema_exactly(tmp_path):
     assert st.events(limit=1)[0]["data"] == {"purpose": "design_place", "error": "no usable report"}
 
 
-async def test_a_failed_new_neighbor_is_logged_as_such(tmp_path):
-    gm, backend, st = master(tmp_path, report(name="Briar"))
-    assert await gm.invent_neighbor("a workshop") is None
-    assert st.events(limit=1)[0]["data"] == {"purpose": "invent_neighbor", "error": "no usable report"}
+async def test_a_failed_structured_ask_is_logged_as_such(tmp_path):
+    gm, backend, st = master(tmp_path, report(age=3))
+    assert await gm.structured("Who?", {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}) is None
+    assert st.events(limit=1)[0]["data"] == {"purpose": "module_structured", "error": "no usable report"}
 
 
 @pytest.mark.asyncio

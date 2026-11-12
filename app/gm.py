@@ -298,6 +298,11 @@ class GameMaster:
                                      **({"action": {"type": "string"}} if actions else {})}, ["text"], "use")
 
     # --- phase 3: companions ------------------------------------------------
+    async def structured(self, prompt: str, schema: dict, mentions: bool = False) -> dict | None:
+        """An answer as data, for a module's ask with a schema (modules.py): the engine checks it against the schema."""
+        props = {k: {kk: vv for kk, vv in p.items() if kk in ("type", "description", "enum")} for k, p in schema["properties"].items()}
+        return await self.ask(prompt, {**props, **self._mentions("x" if mentions else "")}, schema["required"], "module_structured")
+
     async def words(self, prompt: str, most: int) -> str | None:
         """Words a module asked for (modules.py, `ask`): its own prompt, answered plainly, trimmed to `most` characters. None if none came."""
         task = (f"{prompt}\n\nWrite only the words asked for, in plain prose, at most {most} characters: no quotes around them, no notes "
@@ -324,27 +329,6 @@ class GameMaster:
         return clip(out["text"], 300) if out else None
 
     # --- the neighbor -----------------------------------------------------------
-    async def invent_neighbor(self, pip_world: str, mention: str = "") -> dict | None:
-        task = (
-            f"{self.agent.possessive} world so far: {pip_world}\n\n"
-            f"Someone lives near {self.agent.name} and is about to write to {self.agent.them} for the first time. Invent them freely - any kind of "
-            "creature or person that fits this small world, with their own life, work, worries and way of writing. "
-            f"Make their life genuinely different from {self.agent.possessive} (not another maker of the same kinds of things), so they "
-            "have their own world to share. Give:\n"
-            "- `name`: what they're called\n"
-            "- `persona`: 3-5 sentences, private: who they are, what their days are like, what they care about, how "
-            "they write letters\n"
-            f"- `about`: one short line of what {self.agent.name} would know about them from a distance (where they live, what "
-            "they're known for)\n"
-            f"- `letter`: their first letter to {self.agent.name}, introducing themselves (2-5 sentences, in their voice). {self.agent.name} may walk "
-            "over and visit them at home some day; they don't go out visiting themselves."
-            + (f"\n{mention}" if mention else "")
-        )
-        return await self.ask(task, {
-            "name": {"type": "string"}, "persona": {"type": "string"}, "about": {"type": "string"},
-            "letter": {"type": "string"}, **self._mentions(mention),
-        }, ["name", "persona", "about", "letter"], "invent_neighbor")
-
     def _known(self, name: str, told: list[str]) -> str:
         return (f"Things {self.agent.name} already knows about {name} (refer back to them if it's natural, but don't introduce them "
                 "again as news):\n" + "".join(f"- {t}\n" for t in told) if told else "")

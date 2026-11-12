@@ -29,7 +29,8 @@ KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request")
 READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "visitors", "people", "creations", "happenings", "here", "abilities")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "sell", "voices",
-            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing", "owe")
+            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing", "owe",
+            "character", "letter")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -42,20 +43,20 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "gathering", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "gathering", "neighborhood", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2,
-           "take": 24, "give": 24, "request": 24}
+           "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
 SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
-                   "request": 200}
+                   "request": 200, "character": 2, "letter": 6}
 # What a feature needs to be a module (docs/DESIGN-world-packs.md, "Phase 4 in detail"): tools, storage, belongings, status, requests, sessions.
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
 STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
 COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
 STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 8, 8, 5, 8
 PRACTICE_MOST, DEPLETE_MOST, OWE_LINES = 240, 240, 8
-SESSION_MINUTES, KIND_WORD, ARGS_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000
+SESSION_MINUTES, KIND_WORD, ARGS_MAX, SCHEMA_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000, 12
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, FINDS_MAX = 0.1, 8
 FAILS_TO_DISABLE = 3
@@ -307,7 +308,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import places
         me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
                       **{n: a[n] for n in stats_mod.declared(settings) if n in a}, "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
-                      "coins": state.coins(), "name": world_pack.active().agent.name}
+                      "coins": state.coins(), "name": world_pack.active().agent.name, "lives": world_pack.active().agent.lives}
         ctx.update({k: me for k in ("agent", "pip") if k in reads})
     if "subject" in reads:
         c = _creation(state, man["subject"])
@@ -423,6 +424,11 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("doing", _doing(result["doing"])))
     if "owe" in result:
         changes.append(("owe", _owe(state, result["owe"])))
+    for key in ("character", "letter"):
+        if key in result:
+            if budget[key] >= cap[key]:
+                raise Refused(f"it has used today's {cap[key]} `{key}`")
+            changes.append((key, _character(state, result[key]) if key == "character" else _letter(state, result[key])))
     if result.get("wake"):
         if budget["wake"] >= cap["wake"]:
             raise Refused(f"it has woken {world_pack.active().agent.name} {cap['wake']} times today")
@@ -711,8 +717,40 @@ def _doing(v) -> dict:
     return {"activity": v["activity"], "description": _text(v.get("description"), "doing.description")}
 
 
+CHARACTER_KINDS = ("neighbor",)
+
+
+def _character(state, v) -> dict:
+    """Someone new in the world: a name nobody has (and not the agent's), who they are (private to the engine and this module), what
+    the agent would know of them, and perhaps a first letter."""
+    if not isinstance(v, dict) or set(v) - {"name", "kind", "persona", "about", "letter", "mentions_place"} or v.get("kind") not in CHARACTER_KINDS:
+        raise Refused(f"`character` is {{name, kind ({', '.join(CHARACTER_KINDS)}), persona, about, letter?, mentions_place?}}")
+    name = _text(v.get("name"), "character.name")
+    if len(name) > 40:
+        raise Refused("`character.name` is at most 40 characters")
+    if name.lower() == world_pack.active().agent.name.lower() or any(c["name"].lower() == name.lower() for c in state.characters()):
+        raise Refused(f"someone called {name} is already in the world")
+    for key, most in (("persona", 800), ("about", 160), ("letter", 1200)):
+        if (key != "letter" or v.get(key) is not None) and (not isinstance(v.get(key), str) or not v[key].strip() or len(v[key]) > most):
+            raise Refused(f"`character.{key}` is a line of text of at most {most} characters")
+    if v.get("mentions_place") is not None and not isinstance(v["mentions_place"], dict):
+        raise Refused("`character.mentions_place` is the place their words point to, as an ask with `mentions` gave it")
+    return {"name": name, "kind": v["kind"], "persona": v["persona"].strip(), "about": v["about"].strip(),
+            **({"letter": v["letter"].strip()} if v.get("letter") else {}), **({"mentions_place": v["mentions_place"]} if v.get("mentions_place") else {})}
+
+
+def _letter(state, v) -> dict:
+    """A neighbour writes to the agent (the engine writes it, as it answers letters), when none of theirs is already on the way."""
+    if not isinstance(v, dict) or set(v) != {"from"} or not isinstance(v["from"], str):
+        raise Refused("`letter` is {from: a neighbour's name}")
+    ch = next((c for c in state.characters("neighbor") if c["name"].lower() == v["from"].strip().lower()), None)
+    if not ch:
+        raise Refused(f"there is no neighbour called {v['from']!r}")
+    return {"from": ch["name"]}
+
+
 def _owe(state, v) -> dict:
-    """Things taken on account at a place that trades (until the market is a module: docs/DESIGN-world-packs.md, phase 5b)."""
+    """Things taken on account at a place that trades (until the market is a module: docs/DESIGN-world-packs.md, phase 5c)."""
     from . import place_kinds as kinds
     if not isinstance(v, dict) or set(v) - {"place", "items"} or not isinstance(v.get("items"), dict) or not 1 <= len(v["items"]) <= OWE_LINES \
             or not all(isinstance(k, str) and k.strip() and isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 50 for k, n in v["items"].items()):
@@ -765,11 +803,25 @@ def _speak(voices: list, v) -> dict:
 
 
 def _ask(v) -> dict:
-    """A prompt for the model; the words come back later, to on_answer."""
+    """A prompt for the model; the words come back later, to on_answer. With a `schema`, the answer is data, checked against it."""
     if not isinstance(v, dict) or not isinstance(v.get("prompt"), str) or not v["prompt"].strip() or len(v["prompt"]) > ASK_PROMPT_MAX \
-            or not isinstance(v.get("purpose", ""), str) or len(v.get("purpose", "")) > 40 or not _number(v.get("most", 300), 20, ASK_MOST):
-        raise Refused(f"`ask` is {{prompt, purpose?, most?}}: a prompt of up to {ASK_PROMPT_MAX} characters, at most {ASK_MOST} characters back")
-    return {"prompt": v["prompt"].strip(), "purpose": v.get("purpose", ""), "most": int(v.get("most", 300))}
+            or not isinstance(v.get("purpose", ""), str) or len(v.get("purpose", "")) > 40 or not _number(v.get("most", 300), 20, ASK_MOST) \
+            or set(v) - {"prompt", "purpose", "most", "schema", "mentions"} or not isinstance(v.get("mentions", False), bool):
+        raise Refused(f"`ask` is {{prompt, purpose?, most?, schema?, mentions?}}: a prompt of up to {ASK_PROMPT_MAX} characters, at most "
+                      f"{ASK_MOST} characters back")
+    out = {"prompt": v["prompt"].strip(), "purpose": v.get("purpose", ""), "most": int(v.get("most", 300))}
+    if v.get("schema") is not None:
+        schema = v["schema"]
+        props = schema.get("properties") if isinstance(schema, dict) else None
+        if not isinstance(props, dict) or not 1 <= len(props) <= SCHEMA_MAX or set(schema) - {"properties", "required"} \
+                or not isinstance(schema.get("required", []), list) or any(r not in props for r in schema.get("required", [])) \
+                or not all(_param_ok(k, p) for k, p in props.items()):
+            raise Refused(f"`ask.schema` is {{properties, required?}}: up to {SCHEMA_MAX} answers, each {{type ({', '.join(PARAM_TYPES)}), "
+                          "description?, enum?}")
+        out["schema"] = {"type": "object", "properties": props, "required": list(schema.get("required", []))}
+    if v.get("mentions"):
+        out["mentions"] = True
+    return out
 SELL_LINES = 3
 
 
@@ -908,6 +960,14 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             finds.deplete(state, val["place"], val["amount"], now)
         elif kind == "doing":
             state.update_agent(**val)
+        elif kind == "character":
+            from . import neighbors as nb
+            nb.arrive(state, state.s, val, now)
+            budget["character"] += 1
+        elif kind == "letter":
+            ch = next(c for c in state.characters("neighbor") if c["name"] == val["from"])
+            state.update_character(ch["id"], next_chatter_at=now)            # written on the engine's next step, as letters are answered
+            budget["letter"] += 1
         elif kind == "owe":
             owed = state.place_row(val["place"])["on_account"]
             state.update_place(val["place"], on_account={**owed, **{n: owed.get(n, 0) + q for n, q in val["items"].items()}})
@@ -1174,10 +1234,31 @@ async def answer(state, settings, gm, runner, now: float | None = None) -> bool:
         state.update_module(m["id"], asks=[])
         m["asks"] = []
         for a in asks:
-            words = (await gm.words(a["prompt"], a["most"]) if gm else None) or ""
+            got = await _answered(state, settings, gm, a)
             if "on_answer" in m["manifest"]["hooks"] and m["status"] == "live":
-                wake |= (await call(state, settings, run, m, "on_answer", now, answer={"purpose": a["purpose"], "text": words}))["wake"]
+                wake |= (await call(state, settings, run, m, "on_answer", now, answer={"purpose": a["purpose"], **got}))["wake"]
     return wake
+
+
+async def _answered(state, settings, gm, a: dict) -> dict:
+    """The model's answer to an ask: {text} for words; {text: "", data} for a schema (data None if what came back didn't fit), with the
+    place a character mentioned when the ask carries `mentions`."""
+    if "schema" not in a:
+        return {"text": (await gm.words(a["prompt"], a["most"]) if gm else None) or ""}
+    mention = ""
+    if a.get("mentions"):
+        from . import invented_places
+        mention = invented_places.mention_instruction(state, settings)
+    raw = await gm.structured(a["prompt"] + (f"\n{mention}" if mention else ""), a["schema"], bool(mention)) if gm else None
+    data, why = check_args(a["schema"], {k: v for k, v in (raw or {}).items() if k in a["schema"]["properties"]}) if raw else ({}, "none")
+    out = {"text": "", "data": None if why else {k: (clip_text(v) if isinstance(v, str) else v) for k, v in data.items()}}
+    if raw and mention and isinstance(raw.get("mentions_place"), dict):
+        out["mentions_place"] = raw["mentions_place"]
+    return out
+
+
+def clip_text(v: str) -> str:
+    return " ".join(v.split())[:ASK_MOST * 4]
 
 
 def voice_named(state, name: str):
@@ -1523,8 +1604,9 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
                 world.update_module(sim["id"], asks=[])
                 sim["asks"] = []
                 if "on_answer" in sim["manifest"]["hooks"] and hook != "on_answer":
-                    for a in asks:
-                        await run("on_answer", at, answer={"purpose": a["purpose"], "text": "(the model's words)"})
+                    for a in asks:                                   # a schema's answer stands in as none: the module must manage without
+                        await run("on_answer", at, answer={"purpose": a["purpose"], **({"text": "", "data": None} if "schema" in a
+                                                                                          else {"text": "(the model's words)"})})
             report["perceived"] += [l["text"] for l in sim["lines"]]
             world.update_module(sim["id"], lines=[])
             sim["lines"] = []
@@ -1597,7 +1679,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 
