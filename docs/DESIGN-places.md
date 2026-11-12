@@ -1,6 +1,7 @@
 # Design: more places, and tools that belong to places
 
-Status: **steps 1-3 built 2026-10-30** (tool scoping; place records, `browse`, the directory; `gather`, the woods and the junkyard,
+Status: (since 0.36.0, gathering is the shipped `gathering` module, on the engine's place data in `app/finds.py`: see
+DESIGN-world-packs.md, "Phase 5 in detail".) **steps 1-3 built 2026-10-30** (tool scoping; place records, `browse`, the directory; `gather`, the woods and the junkyard,
 depletion, hours, `place_finds`, `where_to`, the missing-material hint). Not built: `places.json`, the market and coins. Decisions (owner: "go with your
 recommendations"): shared verbs (`browse`, `gather`); woods + junkyard first, market and coins later; `places.json` waits for
 the public-repo extraction; woods/junkyard daylight-only, library always open; every built-in place known from the start. Builds on [DESIGN-library.md](DESIGN-library.md) (places, `go_to`, the library) and

@@ -133,7 +133,7 @@ def test_the_world_check_alerts_drifts_prunes_and_maps(tmp_path, monkeypatch):
 
 
 # --- what a finished or interrupted session is handed ------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("kind,where,fn", [("walk", "places", "arrive"), ("gather", "gathering", "resolve"), ("module", "modules", "end_session"),
+@pytest.mark.parametrize("kind,where,fn", [("walk", "places", "arrive"), ("module", "modules", "end_session"),
                                            ("experiment", "proj", "resolve_experiment"), ("work", "proj", "resolve_session")])
 async def test_a_finished_session_is_handed_the_settings(tmp_path, monkeypatch, kind, where, fn):
     import app.loop as L
@@ -169,7 +169,6 @@ async def test_a_finished_project_is_made_at_its_crafts_level(tmp_path, monkeypa
 
 @pytest.mark.parametrize("kind,where,fn,result,note", [
     ("read", "lib", "finish_reading", {"title": "Dune"}, " (you put Dune down early)"),
-    ("gather", "gathering", "resolve", {"label": "the woods"}, " (you cut your time at the woods short)"),
     ("experiment", "proj", "resolve_experiment", {"project": "Clock"}, " (you cut the experiment on Clock short)"),
     ("work", "proj", "resolve_session", {"project": "Clock"}, " (you stopped working on Clock early)"),
     ("module", "modules", "end_session", {"label": "tidying"}, " (you stopped tidying early)"),
@@ -189,9 +188,9 @@ async def test_stopping_early_hands_on_everything_and_says_so(tmp_path, monkeypa
     assert await T.stop_working(agent.ctx) == note
     args, kw = got[0]
     assert args[0] is st and kw == {"interrupted": True} and args[1] is s
-    if kind in ("gather", "experiment", "work", "read"):
+    if kind in ("experiment", "work", "read"):
         assert agent.ctx.gm in args
-    if kind in ("gather", "experiment", "work"):
+    if kind in ("experiment", "work"):
         assert args[-1] is agent.ctx.rng
     monkeypatch.setattr(getattr(T, where), fn, none)
     st.start_session(0, 0, 30, time.time() + 1800, kind=kind, target="x")
@@ -306,3 +305,9 @@ def test_a_working_module_session_tires_by_the_work_rate(tmp_path):
     st.start_session(0, 1, 60, time.time() + 3600, kind="module", target="x")
     st.apply_decay()
     assert st.agent()["energy"] == pytest.approx(0.7, abs=0.001)
+
+
+async def test_a_session_of_a_kind_nothing_finishes_just_ends(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    st.start_session(0, 0, 1, time.time() - 1, kind="gather", target="woods")       # from before gathering was a module
+    assert await agent.finish_work() is False and st.session() is None

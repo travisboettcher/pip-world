@@ -12,7 +12,7 @@ from . import art
 from . import companions as comp
 from . import expectations as exp
 from . import conversation as conv
-from . import gathering
+from . import finds
 from . import happenings
 from . import invented_places as invented
 from . import market
@@ -64,9 +64,6 @@ async def stop_working(ctx: "ToolContext") -> str:
     if sess["kind"] == "read":
         r = await lib.finish_reading(ctx.state, ctx.settings, ctx.gm, ctx.library, interrupted=True)
         return f" (you put {r['title']} down early)" if r else ""
-    if sess["kind"] == "gather":
-        g = await gathering.resolve(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
-        return f" (you cut your time at {g['label']} short)" if g else ""
     if sess["kind"] == "experiment":
         e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
         return f" (you cut the experiment on {e['project']} short)" if e else ""
@@ -90,10 +87,8 @@ def busy(ctx: "ToolContext") -> str:
         return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
     if sess["kind"] == "read":
         return f"you're reading {sess['target']} (about {left} min left); rest stops early"
-    if sess["kind"] == "gather":
-        return f"you're out {gathering.verb_for(ctx.state, sess['target'])} at {places.label(sess['target'])} (about {left} min left); rest stops early"
     if sess["kind"] == "module":
-        return f"you're busy: {modules.busy_with(sess)} (about {left} min left); rest stops early"
+        return f"you're {modules.busy_with(sess)} (about {left} min left); rest stops early"
     cur = ctx.state.project(sess["project_id"])
     if sess["kind"] == "experiment":
         return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
@@ -162,10 +157,30 @@ def specs_for(tools: dict, location: str, place=None, open_: bool = True) -> lis
     return out
 
 
+def offered_here(ctx, name: str) -> str:
+    """Why a tool offered where a place lists it can't be used here, or '' if it can."""
+    walk = ctx.state.session()
+    if walk and walk["kind"] == "walk":
+        return f"you're on the way to {places.label(walk['target'])}; wait until you get there"
+    here = ctx.state.agent()["location"]
+    place = places.here(ctx.state, ctx.settings, ctx.library)
+    if name not in place.verbs:
+        return f"there's nothing to {name.replace('_', ' ')} at {places.label(here)}"
+    if not places.open_now(place, ctx.settings):
+        if place.hours:
+            return f"{places.label(here)} is closed for now; it opens at {place.hours[0]}:00"
+        return f"{places.label(here)} is closed for now (it's dark); it opens in the morning"
+    return ""
+
+
 def module_specs(state, location: str, place=None, open_: bool = True) -> list[ToolSpec]:
     """The tools live modules offer, where they apply (modules.py): listed with the engine's own."""
     out = []
     for _, t in modules.tools_offered(state):
+        if t["where"] == "offered":                      # wherever the place lists it, worded its own way (the woods' foraging)
+            if place and location and t["name"] in place.verbs and open_:
+                out.append(ToolSpec(t["name"], place.verbs[t["name"]][1] or t["help"], t["params"]))
+            continue
         scope = (t["where"],)
         if not open_ and place and ANYWHERE not in scope and place.scope in scope:
             continue
@@ -180,7 +195,7 @@ async def module_tool(ctx, name: str, args: dict) -> ToolResult | None:
     if not found:
         return None
     m, t = found
-    if why := out_of_place(ctx, name, (t["where"],)):
+    if why := (offered_here(ctx, name) if t["where"] == "offered" else out_of_place(ctx, name, (t["where"],))):
         return ToolResult(why, followup=True)
     text, changed = await modules.use_tool(ctx.state, ctx.settings, ctx.runner, m, t, args)
     return ToolResult(text, followup=text.startswith("error"), noop=not changed and not text.startswith("error"), first=t.get("first", "") if changed else "",
@@ -798,13 +813,13 @@ async def browse(ctx: ToolContext, args: dict) -> ToolResult:
                               else f"there's nothing for sale at {places.label(here)}", followup=True)
         return ToolResult(market.wares_line(ctx.state, theirs[0][0], theirs[0][1], theirs[0][2], time.time())
                           + f" You have {ctx.state.coins()} coins. buy what you want, or sell them some of yours.", followup=True)
-    table = market.stock_table(ctx.state, here) or gathering.loot_for(ctx.state, here)
-    rec = ctx.state.place_row(here) if table and here not in gathering.LOOT else None
+    table = market.stock_table(ctx.state, here) or finds.loot_for(ctx.state, here)
+    rec = ctx.state.place_row(here) if table and here not in finds.loot() else None
     if rec and kinds.KINDS[rec["kind"]].trades:
         return ToolResult("\n".join([shop_stock(ctx, here, table, rec)] + [market.wares_line(ctx.state, k, f"{who}, at a stall here today,", t, time.time())
                                                                             for k, who, t in theirs]), followup=True)
     if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
-        seen = gathering.glimpse(ctx.rng, here, table=table)
+        seen = finds.glimpse(ctx.rng, here, table=table)
         return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
                           + ". gather to dig for what you need.", followup=True)
     q = str(args.get("query") or "").strip()
@@ -820,10 +835,10 @@ async def browse(ctx: ToolContext, args: dict) -> ToolResult:
 
 def shop_stock(ctx, here: str, table: list, rec: dict) -> str:
     """At a shop, browse shows what's in today with its price (fewer things as the stock runs down) and what's on account."""
-    level = gathering.stock(ctx.state, here)
-    n = round(gathering.GLIMPSE * min(1.0, level / gathering.full_yield_at(ctx.state, here)))
+    level = finds.stock(ctx.state, here)
+    n = round(finds.GLIMPSE * min(1.0, level / finds.full_yield_at(ctx.state, here)))
     now = time.time()
-    seen = [e for e in table if e[0] in gathering.glimpse(ctx.rng, here, n, table) and market.stock_left(ctx.state, here, e, now)]
+    seen = [e for e in table if e[0] in finds.glimpse(ctx.rng, here, n, table) and market.stock_left(ctx.state, here, e, now)]
     lines = [f"In stock at {places.label(here)} today: "
              + ", ".join(f"{e[0]} ({market.sell_price(ctx.state, here, e, now)} coins)" for e in seen)
              + f". You have {ctx.state.coins()} coins. buy what you need; "
@@ -980,27 +995,6 @@ async def resume_project(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"{p['name']} is active again", followup=True)
 
 
-@tool("gather", "Spend a while gathering what this place offers (15-60 minutes). What you find is down to luck and how "
-      "picked-over the place is; you'll see it when the time is up. Resting stops early.",
-      _obj({"minutes": {"type": "integer", "description": "15-60, default 30"}}, []), where=("woods", "junkyard"))
-async def gather(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := busy(ctx):
-        return ToolResult(why, followup=True)
-    place = ctx.state.agent()["location"]
-    if not gathering.loot_for(ctx.state, place):
-        return ToolResult("there's nothing to gather here", followup=True)
-    lo, hi = gathering.session_for(ctx.state, place)
-    minutes = proj.clamp_int(args.get("minutes"), lo, hi, min(30, hi))
-    verb = gathering.verb_for(ctx.state, place)
-    ctx.state.start_session(0, 0, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="gather", target=place)
-    ctx.state.update_agent(activity="gathering", description=f"{verb} at {places.label(place)}")
-    real = max(1, round(minutes / ctx.settings.work_speed))
-    note = (" The ground looks well picked over."
-            if gathering.stock(ctx.state, place) < gathering.full_yield_at(ctx.state, place) else "")
-    return ToolResult(f"you set about {verb} at {places.label(place)} for {minutes} min.{note} "
-                      f"You'll see what you found in about {real} min.")
-
-
 @tool("where_to", "Ask yourself where you could find or do something: it checks the places you know and what you've "
       "already found where. Use it when you need a material or want to do something and don't remember where.",
       _obj({"what": {"type": "string", "description": "what you're after, in a few words"}}, ["what"]))
@@ -1013,21 +1007,21 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
     for key, p in places.registry(ctx.state, ctx.settings, ctx.library).items():
         if key == places.HOME:
             continue
-        finds = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
-        stocked = [e[0] for e in market.stock_table(ctx.state, key) or gathering.loot_for(ctx.state, key) or ()] if p.invented else []
+        found = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
+        stocked = [e[0] for e in market.stock_table(ctx.state, key) or finds.loot_for(ctx.state, key) or ()] if p.invented else []
         knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))
                               | content_words(" ".join(m["there"] for m in p.mentions)) | content_words(" ".join(stocked))))
-        if not (finds or knows):
+        if not (found or knows):
             continue
         if p.heard:
             lines.append(f"- {places.label(key)}: {p.blurb} (you haven't been)")
             continue
         line = f"- {places.label(key)}: {p.blurb.split(':')[0]}"
-        if finds:
-            f = finds[0]
+        if found:
+            f = found[0]
             line += f"; you've found {f['item']} there {f['times']} time{'s' if f['times'] != 1 else ''}" \
                     f" (last {mem.ago(f['last_ts'])})"
-        elif gathering.loot_for(ctx.state, key):
+        elif finds.loot_for(ctx.state, key):
             line += "; you haven't found any yet, but it's the kind of place"
         lines.append(line)
     lines += [f"- {places.label(r['key'])}: {places.said_about(r['mentions'])} (too far to walk)"

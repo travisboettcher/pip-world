@@ -8,7 +8,7 @@ drifts back by 10% a day, `mood` is a small deterministic daily wobble. A booth 
 import time
 import zlib
 
-from . import gathering
+from . import finds
 from .state import name_key
 
 PRICE_STEP = 0.04        # a unit bought from the booth raises its price this much, a unit sold to it lowers it
@@ -56,7 +56,7 @@ def mood(place: str, item: str, day: str) -> float:
 
 
 def _weights() -> dict[str, float]:
-    return {name_key(e[0]): e[2] for table in gathering.LOOT.values() for e in table}
+    return {name_key(e[0]): e[2] for table in finds.loot().values() for e in table}
 
 
 def local(state, place: str, item: str, now: float) -> float:
@@ -98,7 +98,7 @@ def sell_price(state, place: str, entry, now: float) -> int:
 def stock_table(state, place: str) -> list:
     """What a booth here keeps: the place's gather table, or (a market has no gathering) the stock of a real trading place."""
     from . import place_kinds
-    found = gathering.loot_for(state, place)
+    found = finds.loot_for(state, place)
     if found:
         return found
     owner = keeper(state, place)

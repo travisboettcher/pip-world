@@ -113,7 +113,15 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Phase 4 (0.35.0): hooks for features as modules: tools, storage, belongings, status, logged moments, requests between
         modules (and from happenings and world effects), sessions; proved on the garden, now a shipped module (the engine's garden
         removed; an older install's plots move into its store). The market moves in phase 5
-  - [ ] Phase 5: features move: gathering, letters and neighbours (characters), the library and weather (sources), crafting
+  - [ ] Phase 5: features move, one a release (DESIGN-world-packs.md, "Phase 5 in detail")
+    - [x] 5a (0.36.0): gathering as a shipped module, on the engine's place data (`app/finds.py`: find tables, stock, glimpses); the
+          `here` and `abilities` reads, `practice`, `deplete`, `doing`, a moment's `items` and `tool`, tools offered where a place lists
+          them, and `owe` (until the market moves)
+    - [ ] 5b: the market
+    - [ ] 5c: letters and neighbours (characters, structured asks)
+    - [ ] 5d: the library (sources)
+    - [ ] 5e: weather and calendar (sources)
+    - [ ] 5f: crafting
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
   - [ ] Phase 7: remove the engine's fallbacks for every moved feature
 - [ ] Model escalation (Haiku -> bigger) for hard decisions

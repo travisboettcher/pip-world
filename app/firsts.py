@@ -150,6 +150,9 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
         key = f"{d.get('name')}:{d['moment']}"
         if (said := module_firsts().get(key)):
             add(key, you(said))                           # "garden:ripe": the same first as when the garden was the engine's
+    if kind == "module":
+        for it in d.get("items") or []:                   # what came of a module's moment: each thing found, the first time
+            add(f"found:{it['name']}", you(f"found {it['name']}"))
     elif kind == "tick":
         p = sleepmod.period(settings, ts)
         add(f"period:{p}", f"your first {p} here")

@@ -38,7 +38,7 @@ def test_tools_declare_where_they_work():
     assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
     assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
     assert T.SCOPES["browse"] == ("library", "junkyard", "neighbor") and T.SCOPES["buy"] == T.SCOPES["sell"] == ("market", "neighbor") and T.SCOPES["read"] == ("library",)
-    assert T.SCOPES["gather"] == ("woods", "junkyard")
+    assert "gather" not in T.SCOPES                                                 # gathering is a module's (0.36.0)
 
 
 def test_is_here():
@@ -66,37 +66,37 @@ def test_out_of_place_for_unscoped_names_is_always_fine(tmp_path, clock):
 
 async def test_a_wild_place_is_closed_in_the_dark(tmp_path, clock):
     ctx, st = make(tmp_path)
-    st.update_agent(location="woods")
+    st.update_agent(location="junkyard")
     clock[0] = THREE_AM
-    assert T.out_of_place(ctx, "gather") == "the woods is closed for now (it's dark); it opens in the morning"
-    r = await run(ctx, "gather")
-    assert r.followup is True and "closed for now" in r.text and st.session() is None
+    assert T.out_of_place(ctx, "browse") == "the junkyard is closed for now (it's dark); it opens in the morning"
+    r = await run(ctx, "browse")
+    assert r.followup is True and "closed for now" in r.text
     clock[0] = NOON
-    assert T.out_of_place(ctx, "gather") == ""
+    assert T.out_of_place(ctx, "browse") == ""
     clock[0] = THREE_AM
     assert T.out_of_place(ctx, "say") == ""                          # a tool that works anywhere is not shut out
 
 
 def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     ctx, st = make(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("say", "tend", "gather", "browse")}
+    tools = {n: T.REGISTRY[n] for n in ("say", "tend", "read", "browse")}
     names = lambda loc, **kw: sorted(s.name for s in T.specs_for(tools, loc, **kw))
     assert names("workshop") == ["say", "tend"]
-    assert names("woods") == ["gather", "say"]
-    assert names("junkyard") == ["browse", "gather", "say"]
+    assert names("woods") == ["say"]
+    assert names("junkyard") == ["browse", "say"]
 
     class P:
-        scope = "woods"
-        verbs = {"gather": ("short", "Forage in the woods.")}
-    out = {s.name: s for s in T.specs_for(tools, "woods", place=P())}
-    assert out["gather"].description == "Forage in the woods." and out["say"].description == T.REGISTRY["say"][0].description
-    assert out["gather"].parameters == T.REGISTRY["gather"][0].parameters
-    assert sorted(s.name for s in T.specs_for(tools, "woods", place=P(), open_=False)) == ["say"]     # closed: nothing of its own
+        scope = "junkyard"
+        verbs = {"browse": ("short", "Look over the heaps.")}
+    out = {s.name: s for s in T.specs_for(tools, "junkyard", place=P())}
+    assert out["browse"].description == "Look over the heaps." and out["say"].description == T.REGISTRY["say"][0].description
+    assert out["browse"].parameters == T.REGISTRY["browse"][0].parameters
+    assert sorted(s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=False)) == ["say"]     # closed: nothing of its own
 
     class Q:
-        scope = "woods"
+        scope = "junkyard"
         verbs = {}
-    assert {s.name: s for s in T.specs_for(tools, "woods", place=Q())}["gather"].description == T.REGISTRY["gather"][0].description
+    assert {s.name: s for s in T.specs_for(tools, "junkyard", place=Q())}["browse"].description == T.REGISTRY["browse"][0].description
     assert sorted(s.name for s in T.specs_for(tools, "workshop", place=P(), open_=False)) == ["say", "tend"]
 
 
@@ -114,10 +114,8 @@ def test_busy_says_what_pip_is_in_the_middle_of(tmp_path, clock):
     assert "about 2 min to go" in T.busy(ctx)
     st.start_session(5, 0, 30, clock[0] + 1800, kind="read", target="Moby Dick")
     assert T.busy(ctx) == "you're reading Moby Dick (about 30 min left); rest stops early"
-    st.start_session(0, 0, 30, clock[0] + 1800, kind="gather", target="woods")
+    st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="gathering", expect="out foraging at the woods")
     assert T.busy(ctx) == "you're out foraging at the woods (about 30 min left); rest stops early"
-    st.start_session(0, 0, 30, clock[0] + 1800, kind="gather", target="attic")
-    assert T.busy(ctx) == "you're out gathering at the attic (about 30 min left); rest stops early"
     p = add_project(st)
     st.start_session(p["id"], 0, 30, clock[0] + 1800, kind="experiment", target="h")
     assert T.busy(ctx) == "you're in the middle of an experiment on Clock (about 30 min left); rest stops early"
@@ -138,8 +136,8 @@ async def test_stop_working_reports_what_was_cut_short(tmp_path, clock):
     assert st.session() is None
     begin(st, p, kind="experiment", target="soak it", minutes=30, started_at=clock[0])
     assert await T.stop_working(ctx) == " (you cut the experiment on Clock short)"
-    st.start_session(0, 0, 30, clock[0] + 1800, kind="gather", target="woods")
-    assert await T.stop_working(ctx) == " (you cut your time at the woods short)"
+    st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="gone", expect="out foraging at the woods")
+    assert await T.stop_working(ctx) == " (you stopped out foraging at the woods early)"
     st.start_session(0, 0, 30, clock[0] + 1800, kind="walk", target="library")
     assert await T.stop_working(ctx) == ""
     st.start_session(77, 0, 30, clock[0] + 1800, kind="read", target="Moby")

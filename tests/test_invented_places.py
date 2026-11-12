@@ -392,7 +392,7 @@ def test_a_visitor_message_reaching_pip_is_checked_for_places(tmp_path):
 
 
 # --- real on arrival: the design -------------------------------------------------------------------------
-from app import gathering as G
+from app import finds as G
 from app import tools as T
 from app.gm import GameMaster
 from app.llm.fake import FakeBackend
@@ -619,10 +619,13 @@ def real_shop(st, now=None):
     return IP.design(st, rec, DESIGN, random.Random(2))
 
 
-def test_specs_offer_gather_at_a_real_shop_but_not_at_a_sight_or_a_heard_of_place(tmp_path):
+def test_gather_is_offered_at_a_real_shop_but_not_at_a_sight_or_a_heard_of_place(tmp_path):
+    from tests.test_gather import module
     s, st, gm, agent = make(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("say", "gather", "browse", "tend")}
-    names = lambda key, open_=True: sorted(sp.name for sp in T.specs_for(tools, key, P.registry(st, s, None)[key], open_))  # noqa: E731
+    module(st)
+    tools = {n: T.REGISTRY[n] for n in ("say", "browse", "tend")}
+    names = lambda key, open_=True: sorted(sp.name for sp in T.specs_for(tools, key, P.registry(st, s, None)[key], open_)  # noqa: E731
+                                           + T.module_specs(st, key, P.registry(st, s, None)[key], open_))
     s.invented_places_per_day = 3
     real_shop(st)
     IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
@@ -631,7 +634,7 @@ def test_specs_offer_gather_at_a_real_shop_but_not_at_a_sight_or_a_heard_of_plac
     assert names("Saltholm") == ["browse", "gather", "say"]
     assert names("Saltholm", open_=False) == ["say"]                          # a closed shop offers nothing
     assert names("Lake Ennis") == ["say"] and names("Fallow") == ["say"]
-    sp = {x.name: x for x in T.specs_for(tools, "Saltholm", P.registry(st, s, None)["Saltholm"])}
+    sp = {x.name: x for x in T.module_specs(st, "Saltholm", P.registry(st, s, None)["Saltholm"])}
     assert "15-30 minutes" in sp["gather"].description
 
 
@@ -641,13 +644,13 @@ async def test_gather_is_refused_at_a_closed_shop_and_where_it_isnt_offered(tmp_
     h = (time.localtime().tm_hour + 1) % 24
     st.update_place("Saltholm", hours=[h, (h + 1) % 24])                       # opens in an hour
     st.update_agent(location="Saltholm")
-    assert T.out_of_place(agent.ctx, "gather") == f"Saltholm is closed for now; it opens at {h}:00"
+    assert T.offered_here(agent.ctx, "gather") == f"Saltholm is closed for now; it opens at {h}:00"
     st.update_place("Saltholm", hours=None)
-    assert T.out_of_place(agent.ctx, "gather") == "" and T.out_of_place(agent.ctx, "browse") == ""
+    assert T.offered_here(agent.ctx, "gather") == "" and T.out_of_place(agent.ctx, "browse") == ""
     assert T.out_of_place(agent.ctx, "tend") == "you're at Saltholm; go_to home first"
     IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
     st.update_agent(location="Lake Ennis")
-    assert T.out_of_place(agent.ctx, "gather") == "you're not at the woods; go_to woods first"
+    assert T.offered_here(agent.ctx, "gather") == "there's nothing to gather at Lake Ennis"
 
 
 def test_perception_says_when_a_closed_shop_opens(tmp_path):
@@ -666,7 +669,7 @@ def test_perception_says_when_a_closed_shop_opens(tmp_path):
 
 
 # --- gathering at invented places, and shops on account ---------------------------------------------------
-from tests.test_gather import daytime, gather_and_wait, setup
+from tests.test_gather import call_gather, daytime, finish, gather_and_wait, haul, setup
 
 
 def wild_place(st):
@@ -681,9 +684,8 @@ async def test_gathering_at_an_invented_wild_place_draws_from_its_own_table(tmp_
     wild_place(st)
     r = await gather_and_wait(agent, 40)
     assert r.text.startswith("you set about beachcombing at Skerry for 40 min.")
-    ev = st.events(limit=5)
-    got = next(e["data"] for e in ev if e["kind"] == "gathered")
-    assert got["place"] == "Skerry" and got["stock"] == 80 and "on_account" not in got     # 120 - 40, like the woods
+    got = haul(st)
+    assert G.stock(st, "Skerry") == pytest.approx(80, abs=0.5) and "on account" not in got["text"]     # 120 - 40, like the woods
     assert {i["name"] for i in got["items"]} <= {"driftwood", "wild berries"}
     assert {f["item"] for f in st.finds_at("Skerry")} == {i["name"] for i in got["items"]}
     assert G.loot_for(st, "Skerry")[0][0] == "driftwood" and G.loot_for(st, "Nowhere") is None
@@ -695,15 +697,14 @@ async def test_rummaging_at_a_shop_is_short_slow_to_restock_and_on_account(tmp_p
     s, st, gm, agent = setup(tmp_path, where="Saltholm")
     real_shop(st)
     st.update_place("Saltholm", hours=None)
-    r = await call(agent, "gather", minutes=60)
+    r = await call_gather(agent, minutes=60)
     assert r.text.startswith("you set about rummaging in the ironmonger's drawer at Saltholm for 30 min.")  # 15-30 at a shop
     assert T.busy(agent.ctx).startswith("you're out rummaging in the ironmonger's drawer at Saltholm")
-    time.sleep(0.05)
-    await agent.resolve_world()
-    got = next(e["data"] for e in st.events(limit=5) if e["kind"] == "gathered")
-    assert got["stock"] == 10                                                  # a shop holds 40, not 120
-    haul = {i["name"]: i["qty"] for i in got["items"]}
-    assert haul and got["on_account"] == haul and st.place_row("Saltholm")["on_account"] == haul
+    await finish(agent, s)
+    got = haul(st)
+    assert G.stock(st, "Saltholm") == pytest.approx(10, abs=0.5)               # a shop holds 40, not 120
+    found = {i["name"]: i["qty"] for i in got["items"]}
+    assert found and st.place_row("Saltholm")["on_account"] == found
     assert got["text"].endswith("It's on account at Saltholm: they're happy for you to settle up later.")
     assert G.stock(st, "Saltholm", time.time() + 3600) == pytest.approx(12, abs=0.1)     # 2 an hour back
     assert G.full_yield_at(st, "Saltholm") == 20 and G.full_yield_at(st, "woods") == G.FULL_YIELD_AT
@@ -1403,7 +1404,7 @@ def test_a_designed_stock_is_kept_as_it_is(tmp_path):
 
 
 def test_the_staples_respect_the_tool_limit_and_cannot_run_out_of_a_small_pool(monkeypatch):
-    from app import gathering
+    from app import finds as gathering
     tables = {"woods": [("sticks", "material", 5, (1, 2), "s", {})],
               "junkyard": [("awl", "tool", 5, (1, 1), "a", {}), ("saw", "tool", 5, (1, 1), "b", {}), ("file", "tool", 5, (1, 1), "c", {}),
                            ("vice", "tool", 5, (1, 1), "d", {}), ("tin", "material", 5, (1, 2), "e", {})]}

@@ -466,18 +466,6 @@ class GameMaster:
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "describe_place")
         return clip(out["text"], 500) if out else None
 
-    async def narrate_haul(self, place: str, minutes: int, found: list[tuple[str, int]], depleted: bool) -> str | None:
-        got = ", ".join(f"{q} {n}" for n, q in found) or "nothing"
-        task = (
-            f"{self.agent.name} spent about {minutes} minutes gathering at {place}. What {self.agent.they} found (already decided; mention only these, "
-            f"invent no other finds): {got}."
-            + (" The place is getting picked over, so there was little to find." if depleted else "")
-            + " Describe the outing in 1-2 short concrete sentences (under 40 words), second person ('You ...'), in the "
-            "manner of someone poking around in this kind of place. No numbers."
-        )
-        out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "narrate_haul")
-        return clip(out["text"], 300) if out else None
-
     async def design_place(self, place: str, mentions: list[str], existing: list[str]) -> dict | None:
         """Make a place a character told Pip about real, on Pip's first arrival: its kind (from the registry), a
         description that agrees with what was said, what can be found there, and perhaps who lives or works there.

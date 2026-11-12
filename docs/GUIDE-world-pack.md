@@ -88,7 +88,7 @@ how much; one without restores `food_default` of whatever `eat` restores):
  "finds": {"ruins": [["scrap metal", "scrap", 30, [1, 3], "bent sheet and rebar"], ["tinned beans", "food", 8, [1, 1], "a tin, still sealed"]]}}
 ```
 
-**Somewhere to go and something to find** (works today; gathering becomes a module in phase 5): `places.json` names the home, the
+**Somewhere to go and something to find** (works today; gathering is the shipped `gathering` module): `places.json` names the home, the
 places the world starts with, and the kinds of place it can grow. See `worlds/pip/places.json` for every field.
 ```json
 {"home": {"key": "shelter", "description": "your shelter", "offers": ["sleep"], "about": "a concrete bunker", "aliases": ["home", "bunker"],
@@ -99,7 +99,8 @@ places the world starts with, and the kinds of place it can grow. See `worlds/pi
                      "verbs": {"gather": ["scavenge what's left", "scavenging"]}, "loot_kinds": ["scrap", "food", "tool", "medicine"]}},
  "fallback_kind": "ruins", "words": {"trade": ["camp", "trader"], "reserved": ["home", "shelter"], "features": ["ruins?", "camp", "reservoir"]}}
 ```
-The `gather` tool works wherever a place offers it, from the `finds` tables in `items.json` (keyed by place). `WILD_PLACES` can leave
+The `gathering` module's `gather` tool works wherever a place lists `gather` among its verbs, from the `finds` tables in `items.json`
+(keyed by place); its params name the abilities gathering practises. `WILD_PLACES` can leave
 some of the starting places out.
 
 **A feature of your own** (works today): a module can be a whole feature. The shipped `garden` (`app/module_library/garden.py` and

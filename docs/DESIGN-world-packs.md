@@ -4,8 +4,8 @@ Status (2026-11-11): designed; **phase 1 built (0.31.0, 0.32.0)**: the pack load
 and guide in `worlds/pip/`; the agent's name and pronoun through every engine prompt; the `agent` read; and the test that keeps the
 engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack; **phase 3 built (0.34.0)**: the agent's stats and the world's tone
 are its pack's (`stats.json`, `tone.json`), over the engine's floor; **phase 4 built (0.35.0)**: the hooks a feature needs to be a
-module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module. Next:
-phase 5 (features move). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module;
+**phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data. Next: 5b, the market. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -237,6 +237,24 @@ gone; `TOOLS` naming `plant` or `harvest` is fine (a tool name the engine doesn'
 Still the engine's, for phase 5: seeds as an item kind (their `crop`, growing time and yield attributes, and scooping seeds out of food
 with `use_item`), and the creation capabilities that name the garden (crafting moves last).
 
+## Phase 5 in detail
+**5a, gathering.** What a place holds stays the engine's, as place data any feature may use: its find table (the pack's `items.json`
+`finds`, or an invented place's own), how picked over it is (a stock that use draws down and time refills, at the rates of the place's
+kind), and a glimpse of it. The market's shelves and gathering draw on the same stock, which is why it is the place's. Gathering itself
+moves into a shipped `gathering` module: the `gather` tool, the session, the haul, practice, and the words. What it needs, each generic:
+- **the `here` read**: the place the agent is at (none while walking): its key, label, kind, whether it is open, its find table, its
+  verbs, its stock and the kind's numbers (session lengths, capacity, refill, whether it keeps shop hours and trades);
+- **the `abilities` read** (levels) and **`practice`** (`{ability: minutes}`, abilities the world knows, at most 240 a call);
+- **`deplete`** (`{amount, place?}`): draw down a place's stock;
+- **`doing`** (`{activity, description}`): what the agent is doing, as the engine's own tools set it;
+- **`give` at a place** (`"at": key`): what was found where, so `where_to` remembers it;
+- **a tool offered where a place lists it** (`"where": "offered"`): wherever a place's verbs include the tool's name, worded the place's
+  own way (the woods' "Forage in the woods for 15-60 minutes...");
+- **a moment's `items` and `tool`** in `log`: what came of it (a first for each thing found; the agent's sense of what its tools are
+  good for reads it), and a moment is shown among recent events and can be recalled;
+- **`owe`** (`{place, items}`), until the market moves (5b): what was taken at a shop goes on account there.
+A session's label now reads as what the agent is doing ("you're out foraging at the woods (about 20 min left)").
+
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of
    it/she/he/they, and kind; `api` 1), and the pack's `persona.md` (the default when `PERSONA_PATH` has no file; with none, "You are
@@ -271,8 +289,9 @@ with `use_item`), and the creation capabilities that name the garden (crafting m
    (see "Phase 4 in detail" below): *4a* the hooks, each tested with a small module; *4b* the garden moves into a shipped `garden`
    module and the engine's garden (its table, tools, prompt lines, the `garden` read and proposal) is removed. *Built together (0.35.0).* The market, which the
    first plan also named here, moves with the other features in phase 5: it needs `characters` for its stallholders too.
-5. **Features move.** Gathering, letters and neighbours (with characters), the library (with sources), weather and calendar, then
-   crafting. Each keeps the engine's version as a fallback until it's live, then removes it.
+5. **Features move.** One feature a release, each proving the hooks it needs (see "Phase 5 in detail"): *5a* gathering, *5b* the market,
+   *5c* letters and neighbours (characters, structured asks), *5d* the library (sources), *5e* weather and calendar (sources), *5f*
+   crafting. Each removes the engine's version when its module is live, as the garden did.
 6. **Stakes and a second world.** Health and `at_zero`, `harm`; then a small **wasteland pack** as the test: a shelter, scavenging,
    radiation, a village of survivors as voices, raids as happenings, no garden. Its CI run (a day of simulated ticks with a fake model)
    proves the engine has no Pip in it.

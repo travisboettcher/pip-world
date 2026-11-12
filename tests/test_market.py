@@ -10,7 +10,7 @@ from app import tools as T
 from tests.test_invented_places import real_shop
 from tests.test_projects import call, make
 
-TRADE_TOOLS = ("buy", "sell", "pay", "browse", "gather", "eat")
+TRADE_TOOLS = ("buy", "sell", "pay", "browse", "eat")
 DAY = 86400
 
 
@@ -78,7 +78,7 @@ def test_local_price_rises_when_the_booth_sells_falls_when_it_buys_and_drifts_ba
 def test_buying_costs_the_price_moves_it_and_fills_the_till(tmp_path):
     s, st, agent = shop(tmp_path)
     now = time.time()
-    table = {e[0]: e for e in __import__("app.gathering", fromlist=["x"]).loot_for(st, "Saltholm")}
+    table = {e[0]: e for e in __import__("app.finds", fromlist=["x"]).loot_for(st, "Saltholm")}
     unit = M.sell_price(st, "Saltholm", table["brass wire"], now)
     till_before = M.till(st, "Saltholm", now)
     ok, text = M.buy(st, "Saltholm", "brass wire", 1, now)
@@ -164,7 +164,7 @@ def test_pay_settles_what_is_on_account_at_todays_prices(tmp_path):
     ok, text = M.pay(st, "Saltholm", now)
     assert not ok and "nothing" in text
     st.update_place("Saltholm", on_account={"brass wire": 2})
-    unit = M.sell_price(st, "Saltholm", next(e for e in __import__("app.gathering", fromlist=["x"]).loot_for(st, "Saltholm")
+    unit = M.sell_price(st, "Saltholm", next(e for e in __import__("app.finds", fromlist=["x"]).loot_for(st, "Saltholm")
                                                   if e[0] == "brass wire"), now)
     assert M.owed(st, "Saltholm", now) == 2 * unit
     st.add_coins("pip", -9)

@@ -160,13 +160,13 @@ def ashfall(tmp_path):
 
 
 def test_a_worlds_content_is_its_packs(tmp_path):
-    from app import abilities, firsts, gathering, looks, place_kinds, places, projects, world, world_effects, world_view
+    from app import abilities, finds as gathering, firsts, looks, place_kinds, places, projects, world, world_effects, world_view
     from app import invented_places as IP
     try:
         W.set_active(ashfall(tmp_path))
         assert world.KINDS == ("scrap", "food", "medicine") and world.starter_items()[0]["name"] == "tinned beans" and world.food_default() == 0.2
         assert world.normalize_attrs("beans", "food", {}) == {"food_value": 0.2}
-        assert gathering.loot() == {"ruins": [("scrap metal", "scrap", 30, (1, 3), "bent sheet", {})]} and gathering.VERB == {"ruins": "scavenging"}
+        assert gathering.loot() == {"ruins": [("scrap metal", "scrap", 30, (1, 3), "bent sheet", {})]} and world.gerunds() == {"ruins": "scavenging"}
         assert places.HOME == "shelter" and places._data()["home"]["called"] == "shelter"
         assert list(place_kinds.KINDS) == ["camp", "ruin"] and place_kinds.KINDS["camp"].trades and place_kinds.guess("an old camp") == "camp"
         assert place_kinds.guess("a hill") == "ruin" and place_kinds.hours_for("camp") is None
@@ -184,7 +184,7 @@ def test_a_worlds_content_is_its_packs(tmp_path):
 
 
 def test_a_pack_with_no_content_gets_plain_defaults(tmp_path):
-    from app import abilities, firsts, gathering, looks, place_kinds, places, projects, world, world_effects, world_view
+    from app import abilities, finds as gathering, firsts, looks, place_kinds, places, projects, world, world_effects, world_view
     from app import invented_places as IP
     d = tmp_path / "bare"
     d.mkdir()
@@ -203,7 +203,7 @@ def test_a_pack_with_no_content_gets_plain_defaults(tmp_path):
         assert world_view.coastal().search("the sea") and not world_view.coastal().search("the marsh")
         assert (abilities.registry(), world_effects.registry(), projects.abilities(), projects.default_abilities(), firsts.happening_firsts()) == ({}, {}, (), [], {})
         assert (IP.reserved(), IP.trade_words()) == (set(), set())
-        for mod, name in ((world, "NOPE"), (place_kinds, "NOPE"), (places, "NOPE"), (gathering, "NOPE"), (abilities, "NOPE"), (world_effects, "NOPE"),
+        for mod, name in ((world, "NOPE"), (place_kinds, "NOPE"), (places, "NOPE"), (abilities, "NOPE"), (world_effects, "NOPE"),
                           (projects, "NOPE"), (firsts, "NOPE")):
             with pytest.raises(AttributeError):
                 getattr(mod, name)

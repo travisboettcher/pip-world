@@ -171,10 +171,10 @@ OFFER_CHANCE = 0.25          # a letter with no wish to answer still offers one 
 def clean_wares(raw) -> list[dict]:
     """A neighbor's wares as the engine keeps them: plain kinds, 1-3 a day, at most one tool; a thing the world already knows (a gather
     table's carrot seeds) keeps that thing's kind, weight and qualities, so it plants and prices like the one Pip could find."""
-    from . import gathering
+    from . import finds
     from .state import name_key
     from .world import normalize_attrs
-    known = {name_key(e[0]): e for table in gathering.LOOT.values() for e in table}
+    known = {name_key(e[0]): e for table in finds.loot().values() for e in table}
     out, seen = [], set()
     for w in raw if isinstance(raw, list) else []:
         if not isinstance(w, dict):

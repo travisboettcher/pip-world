@@ -1,7 +1,7 @@
 """Crops take about a day: a plot can be harvested once a day at most, so replanting forever cannot flood the pantry."""
 import pytest
 
-from app import gathering as G
+from app import finds as G
 from app import world
 from app.text import span
 
@@ -22,6 +22,6 @@ def test_seeds_with_no_stated_time_take_a_day():
 
 
 def test_wild_seeds_take_half_a_day_or_more():
-    times = {name: a["grow_minutes"] for name, kind, _w, _q, _d, a in G.WOODS if kind == "seed"}
+    times = {name: a["grow_minutes"] for name, kind, _w, _q, _d, a in G.loot()['woods'] if kind == "seed"}
     assert times and min(times.values()) >= 720
     assert times["radish seeds"] == 720 and times["sunflower seeds"] == 2160

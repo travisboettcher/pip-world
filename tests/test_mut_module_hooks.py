@@ -72,7 +72,7 @@ def test_belongings_in_a_world_with_no_kinds(tmp_path):
 
 def test_log_words_and_limits():
     assert refused(M._log, "") == "`log` is a line of text"
-    assert refused(M._log, {"text": "x"}) == "`log` is a line, or {text, kind, feel?}: kind is a word (lowercase letters and underscores)"
+    assert refused(M._log, {"text": "x"}) == "`log` is a line, or {text, kind, feel?, items?, tool?}: kind is a word (lowercase letters and underscores)"
     assert M._log({"text": "x", "kind": "a", "feel": {"joy": 5}})["feel"] == {"joy": 5}
     assert refused(M._log, {"text": "x", "kind": "a", "feel": {"joy": 6}}) == (
         "`log.feel` maps emotions (joy, sadness, anger, fear, trust, disgust, surprise, anticipation) to whole numbers from -5 to 5")
@@ -108,29 +108,30 @@ def test_taking_and_giving_at_their_limits(tmp_path):
     st.add_item("pea seeds", 1, "seed", "")
     st.add_item("oat seeds", 4, "seed", "")
     assert M._take(st, man, [{"item": "pea seeds"}])[0][1] == 1                       # one, unless it says
-    assert len(M._take(st, man, [{"item": "oat seeds"}] * 4)) == 4
-    assert refused(M._take, st, man, [{"item": "oat seeds"}] * 5) == "`take` is a list of up to 4 {item, qty}"
-    assert refused(M._take, st, man, ["oat seeds"]) == "`take` is a list of up to 4 {item, qty}"
-    assert refused(M._take, st, man, []) == "`take` is a list of up to 4 {item, qty}"
+    st.add_item("oat seeds", 4, "seed", "")
+    assert len(M._take(st, man, [{"item": "oat seeds"}] * 8)) == 8
+    assert refused(M._take, st, man, [{"item": "oat seeds"}] * 9) == "`take` is a list of up to 8 {item, qty}"
+    assert refused(M._take, st, man, ["oat seeds"]) == "`take` is a list of up to 8 {item, qty}"
+    assert refused(M._take, st, man, []) == "`take` is a list of up to 8 {item, qty}"
     st.add_item("brass", 1, "material", "")
     two = {**man, "belongings": {**man["belongings"], "takes": ["seed", "tool"]}}
     assert refused(M._take, st, two, [{"item": "brass"}]) == "it can only take: seed, tool"
     assert refused(M._take, st, {**man, "belongings": {**man["belongings"], "takes": []}}, [{"item": "brass"}]) == "it can only take: nothing"
     g = {"item": "pea", "kind": "food"}
-    assert M._give(man, [g])[0]["qty"] == 1 and len(M._give(man, [g] * 4)) == 4
-    assert M._give(man, [{**g, "item": "p" * 40, "qty": 1}])[0]["item"] == "p" * 40
-    shape = "`give` is a list of up to 4 {item, qty, kind, description?, attrs?}"
-    for bad in ([g] * 5, [], "ab"):
-        assert refused(M._give, man, bad) == shape
-    assert refused(M._give, man, [{**g, "x": 1}]) == "each thing in `give` is {item, qty, kind, description?, attrs?}"
-    assert refused(M._give, man, ["pea"]) == "each thing in `give` is {item, qty, kind, description?, attrs?}"
-    assert refused(M._give, man, [{**g, "item": None}]) == "`give.item` is a line of text"
-    assert refused(M._give, man, [{**g, "item": "p" * 41}]) == "`give.item` is a name of at most 40 characters"
-    assert refused(M._give, man, [{**g, "description": 5}]) == "`give.description` is a line of text"
-    assert refused(M._give, {**man, "belongings": {**man["belongings"], "gives": ["food", "tool"]}}, [{**g, "kind": "seed"}]) == "it can only give: food, tool"
-    assert refused(M._give, {**man, "belongings": {**man["belongings"], "gives": []}}, [g]) == "it can only give: nothing"
+    assert M._give(st, man, [g])[0]["qty"] == 1 and len(M._give(st, man, [g] * 8)) == 8
+    assert M._give(st, man, [{**g, "item": "p" * 40, "qty": 1}])[0]["item"] == "p" * 40
+    shape = "`give` is a list of up to 8 {item, qty, kind, description?, attrs?}"
+    for bad in ([g] * 9, [], "ab"):
+        assert refused(M._give, st, man, bad) == shape
+    assert refused(M._give, st, man, [{**g, "x": 1}]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?}"
+    assert refused(M._give, st, man, ["pea"]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?}"
+    assert refused(M._give, st, man, [{**g, "item": None}]) == "`give.item` is a line of text"
+    assert refused(M._give, st, man, [{**g, "item": "p" * 41}]) == "`give.item` is a name of at most 40 characters"
+    assert refused(M._give, st, man, [{**g, "description": 5}]) == "`give.description` is a line of text"
+    assert refused(M._give, st, {**man, "belongings": {**man["belongings"], "gives": ["food", "tool"]}}, [{**g, "kind": "seed"}]) == "it can only give: food, tool"
+    assert refused(M._give, st, {**man, "belongings": {**man["belongings"], "gives": []}}, [g]) == "it can only give: nothing"
     for qty in (0, True, "1", 4):
-        assert refused(M._give, man, [{**g, "qty": qty}]) == "`give` qty is 1 to 3"
+        assert refused(M._give, st, man, [{**g, "qty": qty}]) == "`give` qty is 1 to 3"
 
 
 def test_attributes_at_their_limits():
@@ -214,3 +215,11 @@ def test_status_lines_from_every_module(tmp_path):
         m = live(st, rule(name=name), "x")
         st.update_module(m["id"], standing={"title": name.title(), "lines": ["a"], "ready": False})
     assert M.status_lines(st) == ["Pots:", "- a", "Bees:", "- a"]
+
+
+def test_a_thing_given_where_it_was_found(tmp_path):
+    s, st, agent, m = setup(tmp_path)
+    man = m["manifest"]
+    assert M._give(st, man, [{"item": "pea", "kind": "food", "at": "woods"}])[0]["at"] == "woods"
+    assert refused(M._give, st, man, [{"item": "pea", "kind": "food", "at": "Nowhere"}]) == "`give.at` is the key of the place it was found"
+    assert refused(M._give, st, man, [{"item": "pea", "kind": "food", "at": 3}]) == "`give.at` is the key of the place it was found"

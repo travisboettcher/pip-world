@@ -79,7 +79,7 @@ def test_resting_restores_energy_at_rest_rate(tmp_path, clock):
     assert a["energy"] == pytest.approx(0.45) and a["hunger"] == pytest.approx(0.2)
 
 
-@pytest.mark.parametrize("kind,extra", [("work", 0.05), ("experiment", 0.05), ("gather", 0.05), ("walk", 0.0), ("read", 0.0)])
+@pytest.mark.parametrize("kind,extra", [("work", 0.05), ("experiment", 0.05), ("walk", 0.0), ("read", 0.0)])
 def test_busy_session_drains_extra_energy(tmp_path, clock, kind, extra):
     st = decay_state(tmp_path, clock)
     st.start_session(1, 0, 30, clock[0] + 1800, kind=kind)

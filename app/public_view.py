@@ -45,7 +45,7 @@ EVENT_FIELDS = {
     "sold_creation": ("name", "place", "coins"),
     "happening": ("id", "category", "severity", "lens", "title", "text", "effects"),
     "happening_felt": ("id", "title", "lens", "read_as"),
-    "module": ("name", "text", "author", "moment"),
+    "module": ("name", "text", "author", "moment", "items"),
     "module_live": ("name", "author", "version"),
     "module_disabled": ("name", "author"),
 }

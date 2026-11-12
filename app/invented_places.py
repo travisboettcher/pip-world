@@ -474,9 +474,9 @@ BARE = "you find {}, but can't get your bearings today"
 def known_items(state) -> dict[str, tuple[str, str]]:
     """name_key -> (name, kind) for things that already exist (the loot tables, Pip's belongings, other places'
     tables), so an invented place's 'brass wire' is the junkyard's brass wire and stacks with it."""
-    from . import gathering  # gathering reads place rows; keep the import one-way at load time
+    from . import finds  # finds reads place rows; keep the import one-way at load time
     out = {}
-    tables = list(gathering.LOOT.values()) + [r["loot"] for r in state.place_rows()]
+    tables = list(finds.loot().values()) + [r["loot"] for r in state.place_rows()]
     for name, kind in [(e[0], e[1]) for t in tables for e in t] + [(i["name"], i["kind"]) for i in state.items()]:
         out.setdefault(name_key(name), (name, kind))
     return out
@@ -545,9 +545,9 @@ STAPLE_COUNT = 8   # how many kinds of thing a trading place keeps when its desi
 def staples(kind: str, rng: random.Random) -> list[list]:
     """The standard stock of a shop or market whose design came back with nothing to sell: a spread of what Pip can find elsewhere in the world,
     so a trading place is never bare. The kind's tool limit holds."""
-    from . import gathering
+    from . import finds
     k = kinds.KINDS[kind]
-    pool = [e for table in gathering.loot().values() for e in table if e[1] in k.loot_kinds]
+    pool = [e for table in finds.loot().values() for e in table if e[1] in k.loot_kinds]
     out, tools = [], 0
     for e in rng.sample(pool, len(pool)):
         if e[1] == "tool" and tools >= k.max_tools:

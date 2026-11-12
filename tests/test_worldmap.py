@@ -256,13 +256,15 @@ async def test_the_offered_tools_are_described_for_the_place_and_a_closed_place_
     from app import places as P
     from app import tools as T
     s, st, gm, agent = make(tmp_path, sleep=True)
-    agent.tools = T.enabled_tools(Settings(tools=["gather", "say", "tend"]))
+    from tests.test_gather import module
+    module(st)                                                                   # gathering is a module: offered where a place lists it
+    agent.tools = T.enabled_tools(Settings(tools=["say", "tend"]))
     hour = datetime.now().hour
     s.bedtime_hour, s.wake_hour = (hour + 3) % 24, (hour + 8) % 24               # daytime
     st.update_agent(location="woods")
     offered = {sp.name: sp.description for sp in agent._specs()}
     own = P.registry(st, s, None)["woods"].verbs["gather"][1]
-    assert set(offered) == {"gather", "say"} and offered["gather"] == own != T.REGISTRY["gather"][0].description  # worded for the woods
+    assert set(offered) == {"gather", "say"} and offered["gather"] == own                                  # worded for the woods
     s.bedtime_hour, s.wake_hour = hour, (hour + 8) % 24                           # night: the woods are closed
     assert {sp.name for sp in agent._specs()} == {"say"}
     st.update_agent(location="workshop")

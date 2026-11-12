@@ -8,7 +8,6 @@ from . import invented_places as invented
 from . import abilities
 from . import creations as cr
 from . import expectations as exp
-from . import gathering
 from . import guide
 from . import world_pack
 from . import library as lib
@@ -214,14 +213,15 @@ class Agent:
                 return bool(await places.arrive(self.state, self.s, self.gm, self.library, self.rng))
             if sess["kind"] == "read":
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
-            if sess["kind"] == "gather":
-                return bool(await gathering.resolve(self.state, self.s, self.gm, self.rng))
             if sess["kind"] == "module":
                 return bool(await modules.end_session(self.state, self.s, self.ctx.runner))
             if sess["kind"] == "experiment":
                 work = await proj.resolve_experiment(self.state, self.s, self.gm, self.rng)
-            else:
+            elif sess["kind"] == "work":
                 work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
+            else:                                     # a kind nothing finishes any more (a gather from before 0.36.0): it just ends
+                self.state.end_session()
+                return False
             if work and work["project_done"]:
                 p = self.state.project(work["project_id"])
                 await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
@@ -746,6 +746,8 @@ class Agent:
                                  else f"- your {d['name']}: {d['text']}")
                 elif e["kind"] == "gathered":
                     lines.append(f"- {d['text']}" + (" (you cut it short)" if d.get("interrupted") else ""))
+                elif e["kind"] == "module" and d.get("moment"):              # a module's moment: a haul, a crop ripening
+                    lines.append(f"- {d['text']}")
                 elif e["kind"] == "woke":
                     lines.append(f"- {sleepmod.woke_text(d)}")
                 elif e["kind"] == "reading":

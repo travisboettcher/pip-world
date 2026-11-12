@@ -87,7 +87,7 @@ def test_the_context_word_for_word(tmp_path):
     assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(NOW, "south")}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
     assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
-                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10} and ctx["facts"] == {}
+                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip"} and ctx["facts"] == {}
     c = st.creations()[0]
     assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": []}
     st.give_creation(c["id"], "Oriel")

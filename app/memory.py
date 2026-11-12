@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening", "module")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -66,6 +66,8 @@ def recall_text(kind: str, d: dict) -> str | None:
                 else f"You answered a friend outside: {d['text']}")
     if kind == "gathered":
         return None if d.get("interrupted") and not d.get("items") else d["text"]
+    if kind == "module" and d.get("moment"):                 # a module's moment (a haul, a crop ripening)
+        return d["text"]
     if kind == "creation_made":
         return f"You finished making {d['name']}: {d['description']}"
     if kind == "companion":

@@ -519,7 +519,14 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   false; its reply is the effect's line, so it must give one) before the words are written, and to make the change after. A world effect's
   `does` may be `request:<module>:<what>` (the reply is its note). The module asked is the authority on its own state, sized by the
   severity it is told.
-- The garden is the first feature built on them: `module_library/garden.py`. The `garden` read and proposal are gone (read its `facts`;
+- **Places (0.36.0, phase 5a)**: the `here` read (the place the agent is at: its key, label, kind, whether it's open, its find table,
+  verbs, stock, and the kind's session lengths, capacity, refill, shop hours, trading; none while walking) and the `abilities` read
+  (levels); `practice` (`{ability: minutes}`, 240 a call), `deplete` (`{amount, place?}`), `doing` (`{activity, description}`), `give`'s
+  `at` (where it was found, for `where_to`), and `owe` (`{place, items}`: on account at a place that trades, until the market is a
+  module). A tool's `where` may be `offered`: wherever a place's verbs list the tool, worded the place's own way. `log` may carry `items`
+  (what came of the moment: each a first, "found X") and `tool` (the agent's sense of what its tools are good for reads it); a moment is
+  shown among recent events and can be recalled. The agent read carries its `name`.
+- The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`. The `garden` read and proposal are gone (read its `facts`;
   ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
 - **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
   ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a

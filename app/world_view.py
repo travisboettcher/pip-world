@@ -10,7 +10,7 @@ from functools import lru_cache
 import time
 from datetime import datetime
 
-from . import gathering
+from . import finds
 from . import happenings
 from . import layouts
 from . import modules
@@ -140,7 +140,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                   "heard_only": p.heard, "coastal": bool(coastal().search(_words(state, key, rows))),
                   "props": list(dict.fromkeys(scene["props"] + looks.props(known))),
                   "scene": {k: v for k, v in scene.items() if k != "props"},
-                  "finds": [e[0] for e in gathering.loot_for(state, key) or []][:12]},
+                  "finds": [e[0] for e in finds.loot_for(state, key) or []][:12]},
         "lives_here": lives_here,
         "pip": {"here": pip_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
                 "mood": a["mood"], **{n: round(v, 2) for n, v in stats_mod.values(state).items()}, "asleep": a["activity"] == "sleeping",

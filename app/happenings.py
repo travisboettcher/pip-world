@@ -14,7 +14,7 @@ from datetime import datetime
 
 from . import emotions as emo
 from . import creations as cr
-from . import gathering, market
+from . import finds, market
 from . import sleep as sleepmod
 from .state import name_key
 from .text import clip
@@ -139,7 +139,7 @@ def _one_of(rng: random.Random, seq):
 
 
 def _find_pool(kinds) -> list:
-    return [e for e in gathering.loot().get("woods", []) if e[1] in kinds]
+    return [e for e in finds.loot().get("woods", []) if e[1] in kinds]
 
 
 def _found_item(rng, severity, kinds):
@@ -157,7 +157,7 @@ def _pest_loss(w, severity, rng, smallest):
 
 
 def _mending_part(rng):
-    pool = [e for e in gathering.loot().get("junkyard", []) if e[1] == "material"]
+    pool = [e for e in finds.loot().get("junkyard", []) if e[1] == "material"]
     entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
     return {"name": entry[0], "qty": rng.randint(*tone_mod.size("mending_qty"))}
 
@@ -396,7 +396,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         lo, hi = tone_mod.size("found_coins", severity)
         return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), **({"gift": True} if i.get("gift") else {})}])
     if kind == "item":
-        pool = {e[0]: e for e in gathering.loot().get("woods", []) + gathering.loot().get("junkyard", [])}
+        pool = {e[0]: e for e in finds.loot().get("woods", []) + finds.loot().get("junkyard", [])}
         name = str(i.get("name") or "").strip().lower()
         if name and name not in pool:
             raise ValueError(f"nothing called {name} is found in this world; leave the name out, or use one of: {', '.join(sorted(pool))}")

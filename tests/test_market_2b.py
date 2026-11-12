@@ -284,9 +284,9 @@ def test_the_setting():
 
 # --- edges ---------------------------------------------------------------------------------------------------------------------------
 def test_cleaning_wares_in_detail():
-    from app import gathering
+    from app import finds as gathering
     from app.state import name_key
-    known = next(e for t in gathering.LOOT.values() for e in t if name_key(e[0]) == "carrot seed")
+    known = next(e for t in gathering.loot().values() for e in t if name_key(e[0]) == "carrot seed")
     got = nb.clean_wares(["junk", {"name": "kelp seeds", "kind": "seed", "description": "d" * 200}, {"name": "carrot seeds", "kind": "food"},
                           {"name": "x" * 60, "kind": "Food "}])
     assert got[0]["attrs"]["crop"] == "kelp" and got[0]["description"] == "d" * 120 + "..." and got[0]["weight"] is None

@@ -353,7 +353,7 @@ class State:
             a = self.agent()
             hours = max(0.0, now - a["updated_at"]) / 3600
             sess = self.session()
-            working = bool(sess and (sess["kind"] in ("work", "experiment", "gather") or (sess["kind"] == "module" and sess["stage"])))
+            working = bool(sess and (sess["kind"] in ("work", "experiment") or (sess["kind"] == "module" and sess["stage"])))
             new, fields = [], {"updated_at": now}
             for name, d in stats_mod.declared(self.s).items():
                 if name not in a:

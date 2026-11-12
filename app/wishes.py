@@ -9,7 +9,7 @@ import json
 import re
 import time
 
-from . import gathering, market
+from . import finds, market
 from . import place_kinds as kinds
 from . import places
 from . import sleep as sleepmod
@@ -42,7 +42,7 @@ def sources(state, text: str, now: float) -> list[str]:
         entry = next((e for e in market.stock_table(state, rec["key"]) if State.related(e[0], text)), None)
         if entry:
             sold.append(f"{places.label(rec['key'])} sells {entry[0]} ({market.fair_price(state, rec['key'], entry[0], entry[1], entry[5], now)} coins)")
-    for key, table in gathering.LOOT.items():
+    for key, table in finds.loot().items():
         if state.last_arrived(key) is None:
             continue
         entry = next((e for e in table if State.related(e[0], text)), None)

@@ -27,9 +27,9 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request")
-READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "visitors", "people", "creations", "happenings")
+READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "visitors", "people", "creations", "happenings", "here", "abilities")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "sell", "voices",
-            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session")
+            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing", "owe")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -42,7 +42,7 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "gathering", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
 PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2,
@@ -53,7 +53,8 @@ SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake"
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
 STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
 COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
-STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 4, 8, 5, 8
+STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 8, 8, 5, 8
+PRACTICE_MOST, DEPLETE_MOST, OWE_LINES = 240, 240, 8
 SESSION_MINUTES, KIND_WORD, ARGS_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, FINDS_MAX = 0.1, 8
@@ -306,7 +307,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import places
         me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
                       **{n: a[n] for n in stats_mod.declared(settings) if n in a}, "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
-                      "coins": state.coins()}
+                      "coins": state.coins(), "name": world_pack.active().agent.name}
         ctx.update({k: me for k in ("agent", "pip") if k in reads})
     if "subject" in reads:
         c = _creation(state, man["subject"])
@@ -339,6 +340,11 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                              "today": sum(1 for h in recent if h["ts"] >= hp._today_start(now)), "room": hp.room_for(state, settings, now),
                              "can_remember": len(state.memories("diary", limit=hp.MIN_DIARY)) >= hp.MIN_DIARY
                              and any(n["ts"] < now - hp.OLD_NOTE_DAYS * 86400 for n in state.memories("diary", limit=500))}
+    if "here" in reads:
+        ctx["here"] = here_read(state, settings, now)
+    if "abilities" in reads:
+        from . import projects as proj
+        ctx["abilities"] = {n: proj.level(xp) for n, xp in state.abilities().items()}
     if "visitors" in reads:
         ctx["visitors"] = {"waiting": len(state.pending_inbox())}
     if "facts" in reads:
@@ -405,10 +411,18 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         if key in result:
             if budget[key] >= cap[key]:
                 raise Refused(f"it has used today's {cap[key]} `{key}`")
-            changes.append((key, _take(state, man, result[key]) if key == "take" else _give(man, result[key]) if key == "give"
+            changes.append((key, _take(state, man, result[key]) if key == "take" else _give(state, man, result[key]) if key == "give"
                             else _request(state, m, result[key])))
     if "session" in result:
         changes.append(("session", _session(state, result["session"])))
+    if "practice" in result:
+        changes.append(("practice", _practice(result["practice"])))
+    if "deplete" in result:
+        changes.append(("deplete", _deplete(state, result["deplete"])))
+    if "doing" in result:
+        changes.append(("doing", _doing(result["doing"])))
+    if "owe" in result:
+        changes.append(("owe", _owe(state, result["owe"])))
     if result.get("wake"):
         if budget["wake"] >= cap["wake"]:
             raise Refused(f"it has woken {world_pack.active().agent.name} {cap['wake']} times today")
@@ -514,14 +528,22 @@ def _log(v):
     `module_firsts`), and how it moves the agent's feelings a little."""
     if not isinstance(v, dict):
         return _text(v, "log")
-    if set(v) - {"text", "kind", "feel"} or not KIND_WORD.match(str(v.get("kind") or "")):
-        raise Refused("`log` is a line, or {text, kind, feel?}: kind is a word (lowercase letters and underscores)")
+    if set(v) - {"text", "kind", "feel", "items", "tool"} or not KIND_WORD.match(str(v.get("kind") or "")):
+        raise Refused("`log` is a line, or {text, kind, feel?, items?, tool?}: kind is a word (lowercase letters and underscores)")
+    items = v.get("items")
+    if items is not None and (not isinstance(items, list) or len(items) > GIVE_LINES or not all(
+            isinstance(x, dict) and isinstance(x.get("name"), str) and x["name"].strip() and _number(x.get("qty", 1), 0, 1000) for x in items)):
+        raise Refused(f"`log.items` is a list of up to {GIVE_LINES} {{name, qty}}: what came of it")
+    if v.get("tool") is not None and not TOOL_NAME.match(str(v["tool"])):
+        raise Refused("`log.tool` is the name of the tool the moment comes of")
     feel = v.get("feel") or {}
     from . import emotions as emo
     if not isinstance(feel, dict) or any(k not in emo.NAMES or not isinstance(n, int) or isinstance(n, bool) or not -FEEL_MOST <= n <= FEEL_MOST
                                          for k, n in feel.items()):
         raise Refused(f"`log.feel` maps emotions ({', '.join(emo.NAMES)}) to whole numbers from -{FEEL_MOST} to {FEEL_MOST}")
-    return {"text": _text(v.get("text"), "log.text"), "kind": v["kind"], **({"feel": feel} if feel else {})}
+    return {"text": _text(v.get("text"), "log.text"), "kind": v["kind"], **({"feel": feel} if feel else {}),
+            **({"items": [{"name": x["name"].strip()[:40], "qty": x.get("qty", 1)} for x in items]} if items is not None else {}),
+            **({"tool": v["tool"]} if v.get("tool") else {})}
 
 
 def _store(state, name: str, v) -> dict:
@@ -580,15 +602,22 @@ def _take(state, man: dict, v) -> list:
     return out
 
 
-def _give(man: dict, v) -> list:
+def _built_in_places() -> set:
+    from . import finds
+    return set(finds.loot())
+
+
+def _give(state, man: dict, v) -> list:
     """Things to give the agent: only kinds the manifest gives, a few at a time, with plain attributes."""
     b = man["belongings"]
     if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES:
         raise Refused(f"`give` is a list of up to {GIVE_LINES} {{item, qty, kind, description?, attrs?}}")
     out = []
     for x in v:
-        if not isinstance(x, dict) or set(x) - {"item", "qty", "kind", "description", "attrs"}:
-            raise Refused("each thing in `give` is {item, qty, kind, description?, attrs?}")
+        if not isinstance(x, dict) or set(x) - {"item", "qty", "kind", "description", "attrs", "at"}:
+            raise Refused("each thing in `give` is {item, qty, kind, description?, attrs?, at?}")
+        if x.get("at") is not None and (not isinstance(x["at"], str) or not state.place_row(x["at"]) and x["at"] not in _built_in_places()):
+            raise Refused("`give.at` is the key of the place it was found")
         name = _text(x.get("item"), "give.item")
         if len(name) > 40:
             raise Refused("`give.item` is a name of at most 40 characters")
@@ -598,7 +627,7 @@ def _give(man: dict, v) -> list:
         if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= b["most"]:
             raise Refused(f"`give` qty is 1 to {b['most']}")
         out.append({"item": name, "qty": qty, "kind": x["kind"], "description": _text(x["description"], "give.description") if x.get("description") else "",
-                    "attrs": _attrs(x.get("attrs") or {})})
+                    "attrs": _attrs(x.get("attrs") or {}), **({"at": x["at"]} if x.get("at") else {})})
     return out
 
 
@@ -633,6 +662,65 @@ def answering(state, name, what) -> dict:
     if what not in answers:
         raise Refused(f"{target['name']} answers: {', '.join(answers) or 'nothing'}")
     return target
+
+
+def here_read(state, settings, now: float) -> dict | None:
+    """The place the agent is at, as a module may know it (None on the way somewhere): what it is, what it holds, how picked over."""
+    from . import finds, places
+    key = places.present_at(state)
+    if key is None:
+        return None
+    p = places.here(state, settings, None)
+    kind = finds.kind_of(state, key)
+    lo, hi = finds.session_for(state, key)
+    most, refill = finds.capacity(state, key)
+    from . import worldmap
+    kinds_ = {q["key"]: q["kind"] for q in worldmap.snapshot(state, settings, None, now)["places"]}
+    return {"key": key, "label": places.label(key), "kind": kinds_.get(key, ""),
+            "open": places.open_now(p, settings), "verbs": {v: list(x) for v, x in p.verbs.items()},
+            "finds": [list(e[:3]) + [list(e[3]), e[4], e[5]] for e in finds.loot_for(state, key) or []],
+            "stock": round(finds.stock(state, key, now), 2), "full_at": finds.full_yield_at(state, key),
+            "gerund": finds.verb_for(state, key), "session": [lo, hi], "capacity": most, "refill": refill, "shop_hours": bool(kind and kind.shop_hours), "trades": bool(kind and kind.trades)}
+
+
+def _practice(v) -> dict:
+    """Practice at the world's abilities: minutes each, a few hours at most a call."""
+    from . import projects as proj
+    known = proj.abilities()
+    if not isinstance(v, dict) or not v or any(k not in known or not _number(n, 0, PRACTICE_MOST) for k, n in v.items()) \
+            or sum(v.values()) > PRACTICE_MOST:
+        raise Refused(f"`practice` maps abilities ({', '.join(known) or 'this world has none'}) to minutes, {PRACTICE_MOST} in all at most")
+    return {k: float(n) for k, n in v.items()}
+
+
+def _deplete(state, v) -> dict:
+    """Draw down what a place holds (the place the agent is at, unless it says)."""
+    from . import places
+    if not isinstance(v, dict) or set(v) - {"amount", "place"} or not _number(v.get("amount"), 0, DEPLETE_MOST):
+        raise Refused(f"`deplete` is {{amount (0 to {DEPLETE_MOST}), place?}}")
+    place = v.get("place") or places.present_at(state)
+    if not isinstance(place, str) or not place:
+        raise Refused("`deplete.place` is a place's key (the agent is between places)")
+    return {"place": place, "amount": float(v["amount"])}
+
+
+def _doing(v) -> dict:
+    """What the agent is doing now, as the engine's own tools say it."""
+    if not isinstance(v, dict) or set(v) - {"activity", "description"} or not KIND_WORD.match(str(v.get("activity") or "")):
+        raise Refused("`doing` is {activity (a word), description}")
+    return {"activity": v["activity"], "description": _text(v.get("description"), "doing.description")}
+
+
+def _owe(state, v) -> dict:
+    """Things taken on account at a place that trades (until the market is a module: docs/DESIGN-world-packs.md, phase 5b)."""
+    from . import place_kinds as kinds
+    if not isinstance(v, dict) or set(v) - {"place", "items"} or not isinstance(v.get("items"), dict) or not 1 <= len(v["items"]) <= OWE_LINES \
+            or not all(isinstance(k, str) and k.strip() and isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 50 for k, n in v["items"].items()):
+        raise Refused(f"`owe` is {{place, items: {{name: qty}}}}: up to {OWE_LINES} things")
+    row = state.place_row(str(v.get("place") or ""))
+    if not row or not kinds.KINDS.get(row["kind"]) or not kinds.KINDS[row["kind"]].trades:
+        raise Refused("`owe.place` is a place that trades")
+    return {"place": row["key"], "items": dict(v["items"])}
 
 
 def _session(state, v) -> dict:
@@ -792,7 +880,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             budget["perceive"] += 1
         elif kind == "log":
             state.log("module", name=m["name"], author=m["author"], **({"text": val} if isinstance(val, str) else
-                                                                     {"text": val["text"], "moment": val["kind"], **({"feel": val["feel"]} if "feel" in val else {})}))
+                                                                     {"text": val["text"], "moment": val["kind"], **{k: val[k] for k in ("feel", "items", "tool") if k in val}}))
             budget["log"] += 1
         elif kind == "store":
             state.merge_store(m["name"], val)
@@ -805,12 +893,24 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "give":
             for g in val:
                 state.add_item(g["item"], g["qty"], g["kind"], g["description"], g["attrs"])
+                if g.get("at"):
+                    state.add_find(g["at"], g["item"], now)
             budget["give"] += 1
         elif kind == "request":
             target = live_named(state, val["module"])
             if target:
                 state.update_module(target["id"], requests=(target.get("requests") or [])[-9:] + [{"what": val["what"], "args": val["args"], "from": m["name"], "ts": now}])
             budget["request"] += 1
+        elif kind == "practice":
+            state.add_ability_xp(val)
+        elif kind == "deplete":
+            from . import finds
+            finds.deplete(state, val["place"], val["amount"], now)
+        elif kind == "doing":
+            state.update_agent(**val)
+        elif kind == "owe":
+            owed = state.place_row(val["place"])["on_account"]
+            state.update_place(val["place"], on_account={**owed, **{n: owed.get(n, 0) + q for n, q in val["items"].items()}})
         elif kind == "session":
             state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"])
         elif kind == "wake":
@@ -1497,7 +1597,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 

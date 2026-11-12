@@ -28,12 +28,6 @@ async def test_putting_a_book_down_early_still_records_what_was_read(tmp_path, c
     assert ev["percent"] > 0 and st.bookmark(1)["sessions"] == 1
 
 
-async def test_a_gathering_trip_to_nowhere_in_particular_leaves_no_note(tmp_path, clock):
-    ctx, st = make(tmp_path)
-    st.start_session(0, 0, 30, clock[0] + 1800, kind="gather", target="attic")
-    assert await T.stop_working(ctx) == ""
-
-
 async def test_an_experiment_whose_project_is_gone_leaves_no_note(tmp_path, clock):
     ctx, st = make(tmp_path)
     st.start_session(404, -1, 30, clock[0] + 1800, kind="experiment", target="x")
@@ -43,13 +37,13 @@ async def test_an_experiment_whose_project_is_gone_leaves_no_note(tmp_path, cloc
 
 
 def test_a_closed_place_hides_its_own_tools_even_when_they_come_first():
-    tools = {n: T.REGISTRY[n] for n in ("gather", "say")}
+    tools = {n: T.REGISTRY[n] for n in ("read", "say")}
 
     class P:
-        scope = "woods"
+        scope = "library"
         verbs = {}
-    assert [s.name for s in T.specs_for(tools, "woods", place=P(), open_=False)] == ["say"]
-    assert [s.name for s in T.specs_for(tools, "woods", place=P(), open_=True)] == ["gather", "say"]
+    assert [s.name for s in T.specs_for(tools, "library", place=P(), open_=False)] == ["say"]
+    assert [s.name for s in T.specs_for(tools, "library", place=P(), open_=True)] == ["read", "say"]
 
 
 def test_a_tool_nobody_scoped_works_anywhere():

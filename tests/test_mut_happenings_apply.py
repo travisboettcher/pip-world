@@ -130,7 +130,7 @@ def test_world_names_without_the_optional_parts():
 
 # --- what a module can propose, at its edges -----------------------------------------------------------------------------------------------
 def test_intents_at_their_edges(monkeypatch):
-    from app import gathering
+    from app import finds as gathering
     from tests.test_happenings import w
     monkeypatch.setattr(gathering, "loot", lambda: {"woods": [("acorn", "material", 1, (1, 1), "a nut", {})],
                                                      "junkyard": [("cog", "material", 1, (1, 1), "a cog", {})]})

@@ -157,7 +157,7 @@ async def test_a_modules_first_moment_of_a_kind_can_be_a_first(tmp_path, monkeyp
 
 
 def test_what_a_module_logs_and_shows(tmp_path):
-    for v, why in (({"text": "x", "kind": "Bad"}, "`log` is a line, or {text, kind, feel?}"), ({"text": "x", "kind": "a", "z": 1}, "`log` is a line"),
+    for v, why in (({"text": "x", "kind": "Bad"}, "`log` is a line, or {text, kind, feel?, items?, tool?}"), ({"text": "x", "kind": "a", "z": 1}, "`log` is a line"),
                    ({"text": "x", "kind": "a", "feel": {"joy": 6}}, "`log.feel` maps emotions"), ({"text": "x", "kind": "a", "feel": {"glee": 1}}, "`log.feel`"),
                    ({"text": "x", "kind": "a", "feel": {"joy": True}}, "`log.feel`"), ({"kind": "a"}, "`log.text` is a line of text")):
         with pytest.raises(M.Refused, match=__import__("re").escape(why)):
@@ -199,13 +199,13 @@ def test_belongings_taken_and_given_within_the_manifest(tmp_path):
         with pytest.raises(M.Refused, match=__import__("re").escape(why)):
             M._take(st, man, v)
     good = {"item": "pea", "qty": 3, "kind": "food"}
-    assert M._give(man, [good]) == [{"item": "pea", "qty": 3, "kind": "food", "description": "", "attrs": {}}]
+    assert M._give(st, man, [good]) == [{"item": "pea", "qty": 3, "kind": "food", "description": "", "attrs": {}}]
     for v, why in (({}, "`give` is a list"), ([{**good, "x": 1}], "each thing in `give`"), ([{**good, "kind": "seed"}], "it can only give: food"),
                    ([{**good, "qty": 4}], "`give` qty is 1 to 3"), ([{**good, "item": "p" * 41}], "at most 40 characters"),
                    ([{**good, "attrs": {"restores": {"luck": 0.1}}}], "`attrs` is up to 8"), ([{**good, "attrs": {"restores": {"hunger": 2}}}], "`attrs`"),
                    ([{**good, "attrs": {"a": [1]}}], "`attrs`"), ([{**good, "attrs": {f"a{i}": 1 for i in range(9)}}], "`attrs`")):
         with pytest.raises(M.Refused, match=__import__("re").escape(why)):
-            M._give(man, v)
+            M._give(st, man, v)
 
 
 # --- requests ---------------------------------------------------------------------------------------------------------------------------
@@ -252,7 +252,7 @@ async def test_a_module_tool_starts_a_session_that_ends_in_on_time(tmp_path):
     assert r["content"] == "you start tidying"
     sess = st.session()
     assert (sess["kind"], sess["target"], sess["expect"], sess["stage"], sess["minutes"]) == ("module", "pots", "tidying the pots", 1, 30)
-    assert T.busy(agent.ctx).startswith("you're busy: tidying the pots (about 30 min left)")
+    assert T.busy(agent.ctx).startswith("you're tidying the pots (about 30 min left)")
     assert (await use(agent, "tidy"))["content"] == "error: Pip is busy with something else"
     st.update_agent(updated_at=time.time() - 3600)
     before = st.agent()["energy"]

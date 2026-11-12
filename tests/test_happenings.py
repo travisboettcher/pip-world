@@ -511,14 +511,14 @@ async def test_the_loop_hears_about_a_happening_and_tells_pip(tmp_path, monkeypa
 
 # --- the details the mutation run found loose ------------------------------------------------------------------------
 def test_a_found_item_is_a_real_entry_of_the_table_picked_by_its_weight():
-    from app import gathering
-    table = {e[0]: e for e in gathering.WOODS}
+    from app import finds as gathering
+    table = {e[0]: e for e in gathering.loot()['woods']}
     rng = random.Random(5)
     picks = [H._found_item(rng, "minor", ("food", "seed", "material")) for _ in range(6000)]
     for item in picks:
         e = table[item["name"]]
         assert item == {"kind": "item", "name": e[0], "qty": 1, "item_kind": e[1], "description": e[4], "attrs": e[5]}
-    pool = [e for e in gathering.WOODS if e[1] in ("food", "seed", "material")]
+    pool = [e for e in gathering.loot()['woods'] if e[1] in ("food", "seed", "material")]
     total = sum(e[2] for e in pool)
     for e in pool:
         assert sum(1 for i in picks if i["name"] == e[0]) / len(picks) == pytest.approx(e[2] / total, abs=0.03)
