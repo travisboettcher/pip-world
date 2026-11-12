@@ -495,6 +495,36 @@ for happenings, `happen` and its intents, the amounts and caps, the words and th
 `step`, which now only lands the meaning of what Pip has been shown. Gone with the dice: the replay of a roll (`/happenings/{id}/replay`,
 `pipchat happenings --replay`); a module's calls are recorded, seeded and replayable like any other's.
 
+**What a feature needs (0.35.0, world packs phase 4; DESIGN-world-packs.md, "Phase 4 in detail").** For a feature to be a module, the
+engine knowing nothing of it, a pack's or the engine's own modules (not the world's builder, and not Pip's programs) may also use:
+- **`tools`** in the manifest: `[{name, help, params, where}]`, `params` a small JSON schema (`{type: object, properties, required}`, each
+  argument a string, integer, number or boolean, with `description` and `enum`), `where` one of `anywhere`, `home` or a place key. They
+  are offered with the engine's own tools where they apply (and not at a closed place), their arguments checked first (a number given
+  as a string is taken), and used through `on_action` with `ctx["tool"]` and `ctx["args"]`; its `reply` is the result. Each use is a
+  `tool` event like the engine's own (public, with its result). A name may not be an engine tool's. A tool's `first` ("planted
+  something") makes its first use a first and each use that changed something a diary moment; one that changed nothing is a no-op.
+- **`store`**: `{collection: {key: value or null}}`, merged on each call, read back as `ctx["store"]`; kept by the module's name (a new
+  version keeps it), at most 8 collections of 200 keys and 64 KB.
+- **`take`** and **`give`**, with `belongings` in the manifest (`{takes: [kinds], gives: [kinds], most}`): `take` `[{item, qty}]` from what
+  the agent has, `give` `[{item, qty, kind, description?, attrs?}]` (plain attributes; `restores` names only the world's stats). The `items`
+  read now carries each item's `attrs`.
+- **`status`**: `{title, lines, ready?, next_at?}`, replaced on each call (`{}` clears it): a section of the agent's prompt every time, on
+  `/status`, `/standing` and the dashboard. `{in:<time>}` in a line is worded by the engine as it is shown ("45 min"). `ready` (something waits for the agent now) and `next_at` (when something next will) feed the free-time line.
+- **`log`** may be `{text, kind, feel?}`: the event (`module`) carries the kind as `moment`; the pack's `content.json` `module_firsts`
+  (`{"<module>:<kind>": "had a crop ripen"}`) names a first of it, and `feel` (`{"joy": 3}`, at most 5 either way) moves the agent's
+  emotions.
+- **requests**: a module lists what it `answers` (`{word: what it does}`) and has `on_request` (`ctx["request"]` = `{what, args, from,
+  apply, tone?, severity?}`; it may `reply`, or `refuse` with a reason). Another module proposes `request` (`{module, what, args?}`), heard on the target's next step.
+  A happening's effect may be `{"kind": "request", "module", "what", "args"?}`: the module is asked to say what it would change (`apply`
+  false; its reply is the effect's line, so it must give one) before the words are written, and to make the change after. A world effect's
+  `does` may be `request:<module>:<what>` (the reply is its note). The module asked is the authority on its own state, sized by the
+  severity it is told.
+- The garden is the first feature built on them: `module_library/garden.py`. The `garden` read and proposal are gone (read its `facts`;
+  ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
+- **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
+  ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a
+  `working` one tires like work.
+
 **What's left, and what it needs** (each gap is a candidate hook or ability):
 | Feature | Blocked by |
 |---|---|

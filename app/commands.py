@@ -1,7 +1,7 @@
 """Slash commands: information straight from the engine, not a reply from Pip.
 
 A message to Pip over a channel that starts with `/word` is answered here from state: no LLM call, nothing in Pip's
-inbox, no wake. They mirror `pipchat` (status, items, garden...). Everything is read-only.
+inbox, no wake. They mirror `pipchat` (status, items, projects...). Everything is read-only.
 """
 import re
 import time
@@ -16,9 +16,9 @@ from . import stats as stats_mod
 
 COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
-NAMES = ("help", "status", "items", "garden", "projects", "creations", "notes", "emotions", "usage")
+NAMES = ("help", "status", "items", "projects", "creations", "notes", "emotions", "usage")
 HELP = {"help": "this list", "status": "what {name} is doing and how {they} {are}", "items": "what {name} owns",
-        "garden": "the garden plots", "projects": "projects in progress", "creations": "what {name} has made",
+        "projects": "projects in progress", "creations": "what {name} has made",
         "notes": "open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)",
         "emotions": "{possessive} emotion state", "usage": "today's token use against the budget"}
 
@@ -48,6 +48,8 @@ def _status(state, settings, arg, now):
              f"Mood {a['mood']}; " + ", ".join(f"{d.get('label', n)} {round(a[n] * 100)}%" for n, d in stats_mod.declared(settings).items() if n in a)
              + f"; at the {a['location']}."]
     lines.append(f"Day {sleepmod.day_number(state, now)}" + (f", {sleepmod.period(settings, now)}" if settings.sleep else "") + ".")
+    from . import modules
+    lines += modules.status_lines(state)                      # what live modules show the agent (its garden, say)
     return "Status\n" + "\n".join(lines)
 
 
@@ -56,18 +58,6 @@ def _items(state, settings, arg, now):
     if not items:
         return "Items\nNothing in the workshop."
     return "Items\n" + "\n".join(f"{i['name']} x{i['qty']} ({i['kind']})" for i in items)
-
-
-def _garden(state, settings, arg, now):
-    lines = []
-    for g in state.garden(now):
-        if g["state"] == "empty":
-            lines.append(f"Plot {g['plot']}: empty")
-        elif g["state"] == "ready":
-            lines.append(f"Plot {g['plot']}: {g['crop']}, ready to harvest")
-        else:
-            lines.append(f"Plot {g['plot']}: {g['crop']}, growing (ready in about {span(g['ready_in_min'])})")
-    return "Garden\n" + "\n".join(lines)
 
 
 def _projects(state, settings, arg, now):
@@ -113,5 +103,5 @@ def _usage(state, settings, arg, now):
     return f"Usage\n{u['total_tokens']:,} of {u['budget']:,} tokens today ({pct}%). Calls: {u['calls']}."
 
 
-_HANDLERS = {"help": _help, "status": _status, "items": _items, "garden": _garden, "projects": _projects,
+_HANDLERS = {"help": _help, "status": _status, "items": _items, "projects": _projects,
              "creations": _creations, "notes": _notes, "emotions": _emotions, "usage": _usage}

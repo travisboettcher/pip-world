@@ -61,7 +61,7 @@ def test_gift_endpoint_and_inventory(tmp_path):
         assert any(e["kind"] == "gift" and e["data"]["item"] == "tiny needle file" for e in ev)
         assert any(e["kind"] == "inbox" and "Morgan gave you 1 x tiny needle file" in e["data"]["text"] for e in ev)
         assert c.post("/items", json={"name": "x", "kind": "weapon"}).status_code == 422
-        assert [g["state"] for g in c.get("/garden").json()] == ["empty"] * 3
+        assert c.get("/standing").json() == [] and c.get("/garden").status_code == 404
 
 
 def test_ui_is_served_and_root_redirects(tmp_path):

@@ -10,7 +10,7 @@ MAX_PUBLIC_STREAMS = 50
 CACHE_SECONDS = 5
 
 PUBLIC_PATHS = frozenset({
-    "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/garden", "/projects",
+    "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/standing", "/projects",
     "/creations", "/works", "/map", "/world/map", "/world/scene", "/places", "/memory", "/happenings", "/modules",
 })
 PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"), re.compile(r"/modules/\d+"))
@@ -19,7 +19,7 @@ PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png
 # companion, errors, start...) is dropped. `firsts` and `returns` are facts the engine computes about an event.
 EVENT_FIELDS = {
     "tick": ("step", "text", "tools"),
-    "garden": ("plot", "crop"),
+    "garden": ("plot", "crop"),                       # events from before the garden was a module (0.35.0)
     "woke": ("hours", "early"),
     "emotion": ("emotion", "value", "cause"),
     "settled": ("emotion", "from", "to", "how"),
@@ -45,15 +45,16 @@ EVENT_FIELDS = {
     "sold_creation": ("name", "place", "coins"),
     "happening": ("id", "category", "severity", "lens", "title", "text", "effects"),
     "happening_felt": ("id", "title", "lens", "read_as"),
-    "module": ("name", "text", "author"),
+    "module": ("name", "text", "author", "moment"),
     "module_live": ("name", "author", "version"),
     "module_disabled": ("name", "author"),
 }
 ALWAYS = ("firsts", "returns")
 
-# A tool's result is shown only for these; any other tool (say, letters, postcards, recall) shows just its name.
+# A tool's result is shown only for these and for a module's tools (planting is the garden module's); any other tool (say, letters,
+# postcards, recall) shows just its name.
 TOOLS_WITH_RESULT = frozenset({
-    "set_activity", "eat", "rest", "use_item", "plant", "harvest", "start_project", "work_on", "abandon_project", "tend",
+    "set_activity", "eat", "rest", "use_item", "start_project", "work_on", "abandon_project", "tend",
     "go_to", "browse", "read", "gather", "where_to", "experiment", "revise_plan", "sleep", "resume_project", "draw",
     "write_piece", "look", "settle", "note_to_self", "edit_note", "resolve_note", "web_search", "buy", "sell", "pay", "feel",
 })
@@ -101,7 +102,7 @@ def public_event(event: dict) -> dict | None:
     data = event["data"]
     if kind == "tool":
         keep = {"tool": data.get("tool")}
-        if data.get("tool") in TOOLS_WITH_RESULT and "result" in data:
+        if (data.get("tool") in TOOLS_WITH_RESULT or data.get("module")) and "result" in data:
             keep["result"] = data["result"]
     elif kind in EVENT_FIELDS:
         keep = {k: data[k] for k in (*EVENT_FIELDS[kind], *ALWAYS) if k in data}

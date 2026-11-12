@@ -102,7 +102,13 @@ places the world starts with, and the kinds of place it can grow. See `worlds/pi
 The `gather` tool works wherever a place offers it, from the `finds` tables in `items.json` (keyed by place). `WILD_PLACES` can leave
 some of the starting places out.
 
-**Trade** (phase 4/5): include `std:market` with params (the currency's name, how prices move), and give a place kind `trades: true`.
+**A feature of your own** (works today): a module can be a whole feature. The shipped `garden` (`app/module_library/garden.py` and
+`.json`) is the example to copy: tools the agent uses (`plant`, `harvest`, at home), its own store (the plots), what it takes and gives
+(a seed in, food out), a status section the agent sees every tick ("Your garden: plot 1: peas growing, ready in about {in:...}"), a
+logged moment that wakes the agent (a crop ripening), and what other modules may ask of it (`hurry`, `crop`, `add_plot`). Ashfall's
+version might be a still for clean water, or a salvage bench. See DESIGN-modules.md, "What a feature needs", for every hook.
+
+**Trade** (phase 5): include `std:market` with params (the currency's name, how prices move), and give a place kind `trades: true`.
 The village's market and Wren's own stall then work as Pip's do.
 
 **People** (works today for voices; phase 5 for characters with letters and visits): a village of survivors starts as a module with

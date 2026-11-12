@@ -5,7 +5,7 @@ from app import tools as T
 from app.llm.base import LLMResponse, ToolCall, Usage
 from tests.test_projects import call, make
 
-HOME_ONLY = {"program", "work_on", "experiment", "plant", "harvest", "tend", "sleep"}
+HOME_ONLY = {"program", "work_on", "experiment", "tend", "sleep"}
 LIBRARY_ONLY = {"browse", "read"}
 
 
@@ -37,7 +37,7 @@ def test_the_tool_list_depends_on_where_pip_is():
 async def test_using_a_tool_from_the_wrong_place_is_refused_the_same_way_everywhere(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.update_agent(location="library")
-    for tool, args in (("plant", {"seed": "tomato"}), ("tend", {"creation": "x"}), ("sleep", {}),
+    for tool, args in (("tend", {"creation": "x"}), ("sleep", {}),
                        ("work_on", {"project": "x"}), ("experiment", {"project": "x", "hypothesis": "something"})):
         r = await call(agent, tool, **args)
         assert r.text == "you're at the library; go_to home first" and r.followup, tool
@@ -45,7 +45,7 @@ async def test_using_a_tool_from_the_wrong_place_is_refused_the_same_way_everywh
     r = await call(agent, "read", book="x")
     assert r.text == "you're not at the library; go_to library first" and r.followup
     st.update_agent(location="Marigold's home")
-    assert (await call(agent, "plant", seed="tomato")).text == "you're at Marigold's home; go_to home first"
+    assert (await call(agent, "tend", creation="x")).text == "you're at Marigold's home; go_to home first"
 
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_a_tick_offers_only_what_belongs_where_pip_is(tmp_path):
     assert not HOME_ONLY & set(at_library) and "note_to_self" in at_library
     st.update_agent(location=places.HOME)
     await agent.tick("test")
-    assert HOME_ONLY & set(agent.backend.calls[-1]["tools"]) >= {"plant", "work_on"}
+    assert HOME_ONLY & set(agent.backend.calls[-1]["tools"]) >= {"tend", "work_on"}
 
 
 class FakeLibrary:
@@ -83,7 +83,7 @@ async def test_away_from_home_pip_is_told_what_the_place_offers(tmp_path):
 @pytest.mark.asyncio
 async def test_a_stale_tool_call_gets_a_helpful_result_not_an_error(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    agent.tools["plant"] = T.REGISTRY["plant"]
+    agent.tools["tend"] = T.REGISTRY["tend"]
     st.update_agent(location="library")
-    out = await agent._run_tool(ToolCall("1", "plant", {"seed": "tomato"}), 0)
+    out = await agent._run_tool(ToolCall("1", "tend", {"creation": "x"}), 0)
     assert out["content"] == "you're at the library; go_to home first" and out["followup"] and not out["is_error"]

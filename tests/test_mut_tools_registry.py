@@ -59,14 +59,7 @@ def test_the_shipped_tools_have_object_schemas_and_descriptions():
         assert set(spec.parameters["required"]) <= set(spec.parameters["properties"])
 
 
-# --- plots and stages --------------------------------------------------------------------------------
-@pytest.mark.parametrize("args,expected", [({}, None), ({"plot": None}, None), ({"plot": ""}, None), ({"plot": 2}, 2),
-                                           ({"plot": "3"}, 3), ({"plot": 0}, 0), ({"plot": "x"}, "bad"),
-                                           ({"plot": [1]}, "bad"), ({"plot": 2.9}, 2)])
-def test_plot_arg(args, expected):
-    assert T._plot_arg(args) == expected
-
-
+# --- stages ----------------------------------------------------------------------------------------
 def test_describe_stage_summarises_a_step():
     p = {"stages": [{"name": "cut", "minutes": 45, "materials": {"brass wire": 2, "glue": 1}, "started": False},
                     {"name": "fit", "minutes": 30, "materials": {}, "started": False},
@@ -114,12 +107,13 @@ def test_the_postcard_needs_outreach_and_a_channel(tmp_path, kw):
     assert list(T.enabled_tools(ok)) == ["send_postcard"]
 
 
-def test_an_unknown_tool_name_is_an_error_listing_the_options(tmp_path):
-    with pytest.raises(ValueError) as e:
-        T.enabled_tools(settings(tmp_path, tools=["say", "teleport"]))
-    msg = str(e.value)
-    assert msg.startswith("unknown tool 'teleport'; options: [") and "'say'" in msg
-    assert msg.index("'draw'") < msg.index("'say'")                            # sorted
+def test_a_tool_name_the_engine_doesnt_have_is_skipped_with_a_warning(tmp_path, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="app.tools"):
+        got = T.enabled_tools(settings(tmp_path, tools=["say", "plant", "teleport"]))      # plant: the garden module's, since 0.35.0
+    assert list(got) == ["say"]
+    assert [r.getMessage() for r in caplog.records] == [
+        f"TOOLS names {n!r}, which isn't one of the engine's tools; skipped (a module may offer it)" for n in ("plant", "teleport")]
 
 
 def test_enabled_tools_for_a_plain_setup_keeps_everything_asked_for(tmp_path):

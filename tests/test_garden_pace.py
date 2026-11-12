@@ -4,7 +4,6 @@ import pytest
 from app import gathering as G
 from app import world
 from app.text import span
-from tests.test_projects import call, make
 
 
 @pytest.mark.parametrize("minutes,text", [(1, "1 min"), (45, "45 min"), (119, "119 min"), (120, "2 hours"), (1440, "24 hours"),
@@ -26,12 +25,3 @@ def test_wild_seeds_take_half_a_day_or_more():
     times = {name: a["grow_minutes"] for name, kind, _w, _q, _d, a in G.WOODS if kind == "seed"}
     assert times and min(times.values()) >= 720
     assert times["radish seeds"] == 720 and times["sunflower seeds"] == 2160
-
-
-@pytest.mark.asyncio
-async def test_planting_says_how_long_in_hours(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    r = await call(agent, "plant", seed="tomato seeds")
-    assert "ready in about 24 hours" in r.text
-    r = await call(agent, "harvest")
-    assert "next ready in about 24 hours" in r.text

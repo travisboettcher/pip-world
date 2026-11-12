@@ -14,7 +14,8 @@ def keys(st):
 
 
 def tool_event(st, name, result="ok", **args):
-    return st.log("tool", tool=name, args=args, result=result)
+    first = {"plant": "planted something", "harvest": "harvested something"}.get(name)          # the garden module's tools say their own
+    return st.log("tool", tool=name, args=args, result=result, **({"first": first} if first else {}))
 
 
 def test_a_first_is_marked_once_and_counted_after(tmp_path):

@@ -621,7 +621,7 @@ def real_shop(st, now=None):
 
 def test_specs_offer_gather_at_a_real_shop_but_not_at_a_sight_or_a_heard_of_place(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("say", "gather", "browse", "plant")}
+    tools = {n: T.REGISTRY[n] for n in ("say", "gather", "browse", "tend")}
     names = lambda key, open_=True: sorted(sp.name for sp in T.specs_for(tools, key, P.registry(st, s, None)[key], open_))  # noqa: E731
     s.invented_places_per_day = 3
     real_shop(st)
@@ -644,7 +644,7 @@ async def test_gather_is_refused_at_a_closed_shop_and_where_it_isnt_offered(tmp_
     assert T.out_of_place(agent.ctx, "gather") == f"Saltholm is closed for now; it opens at {h}:00"
     st.update_place("Saltholm", hours=None)
     assert T.out_of_place(agent.ctx, "gather") == "" and T.out_of_place(agent.ctx, "browse") == ""
-    assert T.out_of_place(agent.ctx, "plant") == "you're at Saltholm; go_to home first"
+    assert T.out_of_place(agent.ctx, "tend") == "you're at Saltholm; go_to home first"
     IP.accept(st, "Briar", "Lake Ennis has a view.", {"place": "Lake Ennis", "there": "a view"}, now=time.time())
     st.update_agent(location="Lake Ennis")
     assert T.out_of_place(agent.ctx, "gather") == "you're not at the woods; go_to woods first"

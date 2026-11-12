@@ -196,7 +196,7 @@ async def test_the_trade_tools_work_at_a_shop_through_the_registry(tmp_path):
 @pytest.mark.asyncio
 async def test_trade_tools_are_refused_away_from_a_booth_and_listed_at_one(tmp_path):
     s, st, agent = shop(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("buy", "sell", "pay", "say", "plant")}
+    tools = {n: T.REGISTRY[n] for n in ("buy", "sell", "pay", "say", "tend")}
     listed = lambda key: sorted(x.name for x in T.specs_for(tools, key, P.registry(st, s, None)[key], True))  # noqa: E731
     assert listed("Saltholm") == ["buy", "pay", "say", "sell"]
     assert "buy" not in listed("workshop")

@@ -31,7 +31,7 @@ SECTIONS = (
     Section("world", always),
     Section("visitors", tool("say")),
     Section("journal", tool("note_to_self", "edit_note", "resolve_note")),
-    Section("belongings", tool("plant", "use_item")),
+    Section("belongings", tool("use_item")),
     Section("market", tool("buy", "sell", "pay")),   # right after belongings; the old manual is one run from "projects" to the guidelines
     Section("projects", tool("start_project")),
     Section("creations", tool("start_project")),

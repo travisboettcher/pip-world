@@ -22,7 +22,6 @@ def test_help_text(tmp_path):
         "/help: this list\n"
         "/status: what Pip is doing and how it is\n"
         "/items: what Pip owns\n"
-        "/garden: the garden plots\n"
         "/projects: projects in progress\n"
         "/creations: what Pip has made\n"
         "/notes: open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)\n"
@@ -57,15 +56,6 @@ def test_items_text(tmp_path):
     st.add_item("brass wire", 3, "material")
     st.add_item("needle file", 1, "tool")
     assert commands.answer(st, s, "/items") == "Items\nbrass wire x3 (material)\nneedle file x1 (tool)"
-
-
-def test_garden_text(tmp_path):
-    s, st, *_ = make(tmp_path)
-    st.plant(1, "tomato seeds", "tomato", 60, 3, 0.4)
-    st.plant(2, "carrot seeds", "carrot", 0, 2, 0.4)
-    ready_at = st.garden()[0]["ready_at"]
-    assert commands.answer(st, s, "/garden", ready_at - 600) == (
-        "Garden\nPlot 1: tomato, growing (ready in about 10 min)\nPlot 2: carrot, ready to harvest\nPlot 3: empty")
 
 
 def test_projects_text(tmp_path):

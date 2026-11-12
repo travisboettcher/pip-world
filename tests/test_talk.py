@@ -3,6 +3,8 @@ import time
 
 import pytest
 
+from tests.test_garden import planted
+
 from app import talk
 from app import tools as T
 from app.config import Settings
@@ -204,7 +206,7 @@ def test_free_time_is_said_with_what_pip_wants_to_do(tmp_path):
     st.add_memory("Build a self-winding clock.", "ambitions")
     st.add_memory("To run my own stall.", "wishlist", "activity")
     st.add_memory("A spool of wire.", "wishlist", "thing")
-    st.plant(1, "s", "tomatoes", 600, 3, 0.5)
+    planted(st, s, 1, "tomatoes", 600)
     got = agent._free_time(time.time())
     assert got[0] == "Nothing needs you for about 10 hours."
     assert got[1].startswith("Your ambitions: #") and "Build a self-winding clock." in got[1]
@@ -215,7 +217,7 @@ def test_free_time_is_said_with_what_pip_wants_to_do(tmp_path):
 
 def test_no_free_time_when_something_is_due_soon_or_pip_is_out_or_busy(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    st.plant(1, "s", "tomatoes", 60, 3, 0.5)
+    planted(st, s, 1, "tomatoes", 60)
     assert agent._free_time(time.time()) == []                                   # ripe within the hour
     (tmp_path / "b").mkdir()
     s2, st2, gm2, agent2 = make(tmp_path / "b")
@@ -437,9 +439,8 @@ async def test_only_her_last_few_letters_are_checked_for_repeats(tmp_path):
 
 def test_no_free_time_with_a_crop_ready_to_pick(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    st.plant(1, "s", "tomatoes", 0.001, 3, 0.5)
-    st.plant(2, "s", "carrots", 900, 3, 0.5)
-    time.sleep(0.1)
+    planted(st, s, 2, "carrots", 900)
+    planted(st, s, 1, "tomatoes", -1)
     assert agent._free_time(time.time()) == []
 
 

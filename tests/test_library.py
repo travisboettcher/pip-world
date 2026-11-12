@@ -161,7 +161,7 @@ async def test_walking_to_the_library_and_location_rules(world):
     p = agent._perception("event", [])
     assert "You are at: the library - Tall shelves, a hush" in p and "Places you can go (go_to):\n- workshop, 10 min - your home: your workshop and garden [projects, garden, sleep]" in p
     assert "You went to the library for the first time" in p and "Here you can: browse (look for books" in p and "read (settle in and read a book for a while)" in p
-    assert "go_to home first" in (await call(agent, "plant", seed="tomato")).text
+    assert "go_to home first" in (await call(agent, "tend", creation="x")).text
     assert "already at the library" in (await call(agent, "go_to", place="library")).text
     await call(agent, "go_to", place="home")
     time.sleep(0.01)

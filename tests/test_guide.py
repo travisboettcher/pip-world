@@ -77,7 +77,7 @@ def test_the_deployments_persona_file_holds_exactly_what_was_taken_out():
 
 # --- built from what is enabled -------------------------------------------------------------------------------------------
 def test_the_default_tool_list_is_the_whole_world():
-    assert len(ALL) > 25 and {"say", "plant", "write_letter", "browse", "settle", "sleep", "web_search"} <= set(ALL)
+    assert len(ALL) > 25 and {"say", "write_letter", "browse", "settle", "sleep", "web_search"} <= set(ALL)
 
 
 def test_the_basics_are_always_there_and_the_rest_follows_the_tools():

@@ -35,7 +35,7 @@ async def run(ctx, name, **args):
 # --- scopes -----------------------------------------------------------------------------------
 def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
-    assert T.SCOPES["plant"] == ("home",) and T.SCOPES["harvest"] == ("home",) and T.SCOPES["sleep"] == ("home",)
+    assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
     assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
     assert T.SCOPES["browse"] == ("library", "junkyard", "neighbor") and T.SCOPES["buy"] == T.SCOPES["sell"] == ("market", "neighbor") and T.SCOPES["read"] == ("library",)
     assert T.SCOPES["gather"] == ("woods", "junkyard")
@@ -50,7 +50,7 @@ def test_is_here():
 async def test_a_tool_used_from_the_wrong_place_says_where_to_go(tmp_path, clock):
     ctx, st = make(tmp_path)
     st.update_agent(location="library")
-    r = await run(ctx, "plant", seed="x")
+    r = await run(ctx, "tend", creation="x")
     assert r.text == "you're at the library; go_to home first" and r.followup is True
     st.update_agent(location="workshop")
     r = await run(ctx, "read", book="x")
@@ -79,9 +79,9 @@ async def test_a_wild_place_is_closed_in_the_dark(tmp_path, clock):
 
 def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     ctx, st = make(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("say", "plant", "gather", "browse")}
+    tools = {n: T.REGISTRY[n] for n in ("say", "tend", "gather", "browse")}
     names = lambda loc, **kw: sorted(s.name for s in T.specs_for(tools, loc, **kw))
-    assert names("workshop") == ["plant", "say"]
+    assert names("workshop") == ["say", "tend"]
     assert names("woods") == ["gather", "say"]
     assert names("junkyard") == ["browse", "gather", "say"]
 
@@ -97,7 +97,7 @@ def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
         scope = "woods"
         verbs = {}
     assert {s.name: s for s in T.specs_for(tools, "woods", place=Q())}["gather"].description == T.REGISTRY["gather"][0].description
-    assert sorted(s.name for s in T.specs_for(tools, "workshop", place=P(), open_=False)) == ["plant", "say"]
+    assert sorted(s.name for s in T.specs_for(tools, "workshop", place=P(), open_=False)) == ["say", "tend"]
 
 
 # --- busy --------------------------------------------------------------------------------------

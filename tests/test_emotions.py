@@ -206,7 +206,8 @@ def test_finishing_something_is_the_big_joy(tmp_path):
 
 def test_small_events(tmp_path):
     s, st, agent = fresh(tmp_path)
-    assert moves(st, "garden", plot=1, crop="tomato") == {"joy": 3}
+    assert moves(st, "module", name="garden", text="Your tomatoes ripened", moment="ripe", feel={"joy": 3}) == {"joy": 3}
+    assert moves(st, "module", name="bells", text="It rings.") == {}
     assert moves(st, "alert", stat="hunger") == {"anger": 6, "sadness": 2}
     assert moves(st, "alert", stat="energy") == {"sadness": 5, "anger": 2}
     assert moves(st, "tool", tool="plant", args={}, result="error: no free plot") == {"anger": 2}

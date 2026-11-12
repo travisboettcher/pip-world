@@ -26,12 +26,13 @@ log = logging.getLogger(__name__)
 
 API = 1
 KINDS = ("thing", "rule", "part", "place")
-HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer")
-READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "garden", "visitors", "people", "creations", "happenings")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "garden", "find", "sell", "voices", "ask", "speak", "happen")
+HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request")
+READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "visitors", "people", "creations", "happenings")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "sell", "voices",
+            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
-PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "garden", "visitors")                      # what Pip's own programs may know, and do (step 3)
+PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
 PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
 MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
@@ -41,13 +42,21 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "garden": 24, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2}
-SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8}
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2,
+           "take": 24, "give": 24, "request": 24}
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
+                   "request": 200}
+# What a feature needs to be a module (docs/DESIGN-world-packs.md, "Phase 4 in detail"): tools, storage, belongings, status, requests, sessions.
+TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
+STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
+COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
+STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 4, 8, 5, 8
+SESSION_MINUTES, KIND_WORD, ARGS_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
-AFFECT_ENERGY, HURRY_RANGE, FINDS_MAX = 0.1, (0.01, 0.2), 8
+AFFECT_ENERGY, FINDS_MAX = 0.1, 8
 FAILS_TO_DISABLE = 3
 DRY_HOURS, DRY_STEP_MINUTES = 24, 30                  # a whole day, so what happens at dusk or on the hour is tried too
 TICK_ONLY_HOOKS = ("on_tick", "on_time", "on_event")      # hooks the engine runs on its own each step
@@ -161,7 +170,70 @@ def check_manifest(m, author: str, state=None) -> dict:
         raise Refused("`tends` is the name of the offer that tending the thing means")
     if tends:
         out["tends"] = tends
+    if m.get("tools") is not None:
+        out["tools"] = _tools(m["tools"], author)
+    if out.get("tools") and "on_action" not in out["hooks"]:
+        raise Refused("a module's `tools` are used through on_action: add it to `hooks`")
+    belongings = m.get("belongings")
+    if bool(belongings) != bool({"take", "give"} & set(out["proposes"])):
+        raise Refused("`take`/`give` and `belongings` go together: say which kinds of thing it may take and give, and how many at most")
+    if belongings:
+        out["belongings"] = _belongings(belongings)
+    answers = m.get("answers") or {}
+    if not isinstance(answers, dict) or len(answers) > ANSWERS_MAX or not all(KIND_WORD.match(str(k)) and isinstance(v, str) and 0 < len(v) <= TEXT_MAX
+                                                                          for k, v in answers.items()):
+        raise Refused(f"`answers` maps up to {ANSWERS_MAX} words (what it can be asked to do) to a line saying what each does")
+    if bool(answers) != ("on_request" in out["hooks"]):
+        raise Refused("`on_request` and `answers` go together: say what it can be asked to do")
+    if answers:
+        out["answers"] = dict(answers)
+    if "session" in out["proposes"] and not {"on_action", "on_time"} <= set(out["hooks"]):
+        raise Refused("a `session` starts from on_action and ends in on_time: it needs both hooks")
     return out
+
+
+def _tools(tools, author: str) -> list:
+    """Tools a module offers the agent: each a name, a line of help, the arguments it takes (a small JSON schema) and where it works."""
+    from .tools import REGISTRY
+    if author == "pip" or not isinstance(tools, list) or not 1 <= len(tools) <= TOOLS_MAX:
+        raise Refused(f"`tools` is a list of up to {TOOLS_MAX} {{name, help, params?, where?}} (and not for {world_pack.active().agent.name}'s programs)")
+    out = []
+    for t in tools:
+        if not isinstance(t, dict) or not TOOL_NAME.match(str(t.get("name") or "")):
+            raise Refused("a tool's `name` is 2 to 24 lowercase letters and underscores")
+        name = t["name"]
+        if name in REGISTRY or name in (x["name"] for x in out):
+            raise Refused(f"there is already a tool called {name}")
+        params = t.get("params") or {"type": "object", "properties": {}}
+        props, required = params.get("properties") if isinstance(params, dict) else None, (params or {}).get("required", []) if isinstance(params, dict) else None
+        if not isinstance(props, dict) or params.get("type") != "object" or len(props) > TOOL_PARAMS_MAX or not isinstance(required, list) \
+                or any(r not in props for r in required) or not all(_param_ok(k, v) for k, v in props.items()):
+            raise Refused(f"`{name}`'s `params` is {{type: object, properties, required?}}: up to {TOOL_PARAMS_MAX} arguments, each "
+                          f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}")
+        where = t.get("where", "anywhere")
+        if not isinstance(where, str) or not where.strip() or len(where) > 60:
+            raise Refused(f"`{name}`'s `where` is anywhere, home, or a place's key")
+        first = t.get("first")
+        if first is not None and (not isinstance(first, str) or not first.strip() or len(first) > 60):
+            raise Refused(f"`{name}`'s `first` is a few words for the first time it's used (\"planted something\")")
+        out.append({"name": name, "help": _text(t.get("help"), f"{name}.help"), "where": where.strip(),
+                    "params": {"type": "object", "properties": props, "required": list(required)}, **({"first": first.strip()} if first else {})})
+    return out
+
+
+def _param_ok(name, p) -> bool:
+    return (KIND_WORD.match(str(name)) is not None and isinstance(p, dict) and p.get("type") in PARAM_TYPES and set(p) <= {"type", "description", "enum"}
+            and isinstance(p.get("description", ""), str) and len(p.get("description", "")) <= TEXT_MAX
+            and (p.get("enum") is None or (isinstance(p["enum"], list) and 0 < len(p["enum"]) <= 12)))
+
+
+def _belongings(b) -> dict:
+    from . import world as world_content
+    kinds = set(world_content.kinds())
+    if not isinstance(b, dict) or set(b) - {"takes", "gives", "most"} or not _number(b.get("most"), 1, 20) \
+            or not all(isinstance(b.get(k, []), list) and all(isinstance(x, str) and x in kinds for x in b.get(k, [])) for k in ("takes", "gives")):
+        raise Refused(f"`belongings` is {{takes?, gives?, most}}: kinds of thing ({', '.join(sorted(kinds)) or 'this world has none'}), and at most 1 to 20 at a time")
+    return {"takes": list(b.get("takes", [])), "gives": list(b.get("gives", [])), "most": int(b["most"])}
 
 
 def _creation(state, name: str) -> dict | None:
@@ -212,6 +284,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     """What a hook may know: the clock, a seed, its own state, and what its manifest says it reads."""
     man = m["manifest"]
     ctx = {"now": now, "seed": int(now) * 7919 + m["id"], "state": m["state"], "offers": m["offers"], **extra}
+    if "store" in man["proposes"]:
+        ctx["store"] = state.store(m["name"])
     if man.get("params") and m["kind"] != "part":
         ctx["params"] = man["params"]
     if "voices" in m["manifest"]["proposes"]:
@@ -239,7 +313,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
                                               "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": c["spec"]["quirks"]}
     if "items" in reads:
-        ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"]} for i in state.items()]
+        ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"], "attrs": i["attrs"]} for i in state.items()]
     if "works" in reads:
         ctx["works"] = state.pictures(WORKS_SHOWN)
     if "stalls" in reads:
@@ -253,8 +327,6 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import worldmap
         ctx["places"] = [{"key": p["key"], "label": p["label"], "kind": p["kind"]}
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
-    if "garden" in reads:
-        ctx["garden"] = [{k: g[k] for k in ("plot", "crop", "state", "ready_in_min") if k in g} for g in state.garden(now)]
     if "people" in reads:                                   # who lives in Pip's world (not what they're like)
         ctx["people"] = [{"name": c["name"], "kind": c["kind"]} for c in state.characters() if c["kind"] != "creation"]
     if "creations" in reads:
@@ -304,11 +376,14 @@ def _budget(m: dict, now: float) -> dict:
 def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> list:
     """Check a hook's proposals and return the changes to make, in order; raises Refused (and changes nothing) if any is not allowed."""
     man, budget, changes, cap = m["manifest"], _budget(m, now), [], limits(m)
-    allowed = set(man["proposes"]) | ({"reply"} if hook == "on_action" else set())
+    allowed = set(man["proposes"]) - ({"session"} if hook != "on_action" else set()) | ({"reply"} if hook in ("on_action", "on_request") else set()) \
+        | ({"refuse"} if hook == "on_request" else set())
     extra = sorted(set(result) - allowed)
     if extra:
-        raise Refused(f"it returned {', '.join(extra)}, which its manifest doesn't propose" if set(extra) - {"reply"}
-                      else "only on_action can reply")
+        raise Refused("only on_action can reply" if extra == ["reply"] else "only on_action can start a session" if extra == ["session"]
+                      else f"it returned {', '.join(extra)}, which its manifest doesn't propose")
+    if "refuse" in result:                                    # a module asked to do something says why it won't
+        raise Refused(_text(result["refuse"], "refuse"))
     if "state" in result:
         if not isinstance(result["state"], dict) or _size(result["state"]) > STATE_MAX:
             raise Refused(f"`state` is an object of at most {STATE_MAX} bytes")
@@ -321,7 +396,19 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         if key in result:
             if budget[key] >= cap[key]:
                 raise Refused(f"it has used today's {cap[key]} `{key}` lines")
-            changes.append((key, _text(result[key], key)))
+            changes.append((key, _log(result[key]) if key == "log" else _text(result[key], key)))
+    if "store" in result:
+        changes.append(("store", _store(state, m["name"], result["store"])))
+    if "status" in result:
+        changes.append(("standing", _status(result["status"])))
+    for key in ("take", "give", "request"):
+        if key in result:
+            if budget[key] >= cap[key]:
+                raise Refused(f"it has used today's {cap[key]} `{key}`")
+            changes.append((key, _take(state, man, result[key]) if key == "take" else _give(man, result[key]) if key == "give"
+                            else _request(state, m, result[key])))
+    if "session" in result:
+        changes.append(("session", _session(state, result["session"])))
     if result.get("wake"):
         if budget["wake"] >= cap["wake"]:
             raise Refused(f"it has woken {world_pack.active().agent.name} {cap['wake']} times today")
@@ -379,7 +466,7 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         if budget["sell"] >= cap["sell"]:
             raise Refused(f"it has used today's {cap['sell']} `sell`")
         changes.append(("sell", _sell(state, settings, result["sell"], now)))
-    for key in ("affect", "garden", "find"):
+    for key in ("affect", "find"):
         if key in result:
             if budget[key] >= cap[key]:
                 raise Refused(f"it has used today's {cap[key]} `{key}`")
@@ -406,13 +493,6 @@ def _affect(man, v) -> dict:
     return {k: (v[k].strip() if k == "mood" else float(v[k])) for k in v}
 
 
-def _garden(man, v) -> dict:
-    """Help the garden along: cut the growing time left by a share."""
-    if not isinstance(v, dict) or not _number(v.get("hurry"), *HURRY_RANGE):
-        raise Refused(f"`garden.hurry` is a number from {HURRY_RANGE[0]} to {HURRY_RANGE[1]}")
-    return {"hurry": float(v["hurry"])}
-
-
 def _find(man, v) -> dict:
     """Something found: only what its manifest says it may find, one or two at a time."""
     if not isinstance(v, dict) or not isinstance(v.get("item"), str):
@@ -426,7 +506,144 @@ def _find(man, v) -> dict:
     return {"item": item, "qty": qty}
 
 
-EFFECTS = {"affect": _affect, "garden": _garden, "find": _find}
+EFFECTS = {"affect": _affect, "find": _find}
+
+
+def _log(v):
+    """A line for the event log: text, or {text, kind, feel?}: a kind of moment (a first of its kind may be the pack's: content.json's
+    `module_firsts`), and how it moves the agent's feelings a little."""
+    if not isinstance(v, dict):
+        return _text(v, "log")
+    if set(v) - {"text", "kind", "feel"} or not KIND_WORD.match(str(v.get("kind") or "")):
+        raise Refused("`log` is a line, or {text, kind, feel?}: kind is a word (lowercase letters and underscores)")
+    feel = v.get("feel") or {}
+    from . import emotions as emo
+    if not isinstance(feel, dict) or any(k not in emo.NAMES or not isinstance(n, int) or isinstance(n, bool) or not -FEEL_MOST <= n <= FEEL_MOST
+                                         for k, n in feel.items()):
+        raise Refused(f"`log.feel` maps emotions ({', '.join(emo.NAMES)}) to whole numbers from -{FEEL_MOST} to {FEEL_MOST}")
+    return {"text": _text(v.get("text"), "log.text"), "kind": v["kind"], **({"feel": feel} if feel else {})}
+
+
+def _store(state, name: str, v) -> dict:
+    """Changes to a module's collections: {collection: {key: value or null}}, within its size."""
+    shape = f"`store` is {{collection: {{key: value or null}}}}: up to {STORE_COLLECTIONS} collections (lowercase words) of {STORE_KEYS} keys"
+    if not isinstance(v, dict) or not all(isinstance(c, str) and COLLECTION.match(c) and isinstance(keys, dict)
+                                          and all(isinstance(k, str) and STORE_KEY.match(k) for k in keys) for c, keys in v.items()):
+        raise Refused(shape)
+    merged = state.store(name)
+    for c, keys in v.items():
+        coll = merged.setdefault(c, {})
+        for k, val in keys.items():
+            coll.pop(k, None) if val is None else coll.__setitem__(k, val)
+    merged = {c: keys for c, keys in merged.items() if keys}
+    if len(merged) > STORE_COLLECTIONS or any(len(keys) > STORE_KEYS for keys in merged.values()):
+        raise Refused(shape)
+    if _size(merged) > STORE_MAX:
+        raise Refused(f"its store would be over {STORE_MAX} bytes")
+    return v
+
+
+def _status(v) -> dict:
+    """What the agent sees every time while it holds: a titled section of the prompt, replaced on each call ({} clears it)."""
+    if v == {} or v is None:
+        return {}
+    if not isinstance(v, dict) or set(v) - {"title", "lines", "ready", "next_at"} or not isinstance(v.get("lines"), list) \
+            or len(v["lines"]) > STATUS_LINES or not isinstance(v.get("ready", False), bool) \
+            or (v.get("next_at") is not None and not _number(v["next_at"], 0, 1e12)):
+        raise Refused(f"`status` is {{title, lines, ready?, next_at?}}: up to {STATUS_LINES} lines; ready says something waits for "
+                      f"{world_pack.active().agent.name} now, next_at when something next will")
+    title = _text(v.get("title"), "status.title")
+    if len(title) > STATUS_TITLE:
+        raise Refused(f"`status.title` is at most {STATUS_TITLE} characters")
+    return {"title": title, "lines": [_text(x, "status line") for x in v["lines"]], "ready": v.get("ready", False),
+            **({"next_at": float(v["next_at"])} if v.get("next_at") is not None else {})}
+
+
+def _take(state, man: dict, v) -> list:
+    """Things to take from the agent's belongings: only kinds the manifest takes, only what the agent has."""
+    b = man["belongings"]
+    if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES or not all(isinstance(x, dict) and isinstance(x.get("item"), str) for x in v):
+        raise Refused(f"`take` is a list of up to {GIVE_LINES} {{item, qty}}")
+    out = []
+    for x in v:
+        qty = x.get("qty", 1)
+        if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= b["most"]:
+            raise Refused(f"`take` qty is 1 to {b['most']}")
+        item, err = state.find_item(x["item"])
+        if not item:
+            raise Refused(err)
+        if item["kind"] not in b["takes"]:
+            raise Refused(f"it can only take: {', '.join(b['takes']) or 'nothing'}")
+        if item["qty"] < qty:
+            raise Refused(f"there are only {item['qty']} {item['name']}")
+        out.append((item["id"], qty, item["name"]))
+    return out
+
+
+def _give(man: dict, v) -> list:
+    """Things to give the agent: only kinds the manifest gives, a few at a time, with plain attributes."""
+    b = man["belongings"]
+    if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES:
+        raise Refused(f"`give` is a list of up to {GIVE_LINES} {{item, qty, kind, description?, attrs?}}")
+    out = []
+    for x in v:
+        if not isinstance(x, dict) or set(x) - {"item", "qty", "kind", "description", "attrs"}:
+            raise Refused("each thing in `give` is {item, qty, kind, description?, attrs?}")
+        name = _text(x.get("item"), "give.item")
+        if len(name) > 40:
+            raise Refused("`give.item` is a name of at most 40 characters")
+        if x.get("kind") not in b["gives"]:
+            raise Refused(f"it can only give: {', '.join(b['gives']) or 'nothing'}")
+        qty = x.get("qty", 1)
+        if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= b["most"]:
+            raise Refused(f"`give` qty is 1 to {b['most']}")
+        out.append({"item": name, "qty": qty, "kind": x["kind"], "description": _text(x["description"], "give.description") if x.get("description") else "",
+                    "attrs": _attrs(x.get("attrs") or {})})
+    return out
+
+
+def _attrs(a) -> dict:
+    """A given thing's attributes: plain values, and `restores` only naming the world's stats."""
+    plain = (int, float, str, bool)
+    stats = stats_mod.declared()
+    if not isinstance(a, dict) or len(a) > ATTRS_MAX or _size(a) > 500 or not all(
+            KIND_WORD.match(str(k)) and (isinstance(v, plain) if k != "restores" else
+                                         isinstance(v, dict) and all(s in stats and _number(n, 0, 1) for s, n in v.items()))
+            for k, v in a.items()):
+        raise Refused(f"`attrs` is up to {ATTRS_MAX} plain values; `restores` maps the world's stats ({', '.join(stats)}) to 0 to 1")
+    return a
+
+
+def _request(state, m: dict, v) -> dict:
+    """Something asked of another live module, which answers it in its on_request."""
+    if not isinstance(v, dict) or set(v) - {"module", "what", "args"} or not isinstance(v.get("args", {}), dict) or _size(v.get("args", {})) > ARGS_MAX:
+        raise Refused("`request` is {module, what, args?}")
+    target = answering(state, v.get("module"), v.get("what"))
+    if target["id"] == m["id"]:
+        raise Refused("a module changes its own state itself, not by asking")
+    return {"module": target["name"], "what": v["what"], "args": v.get("args", {})}
+
+
+def answering(state, name, what) -> dict:
+    """The live module called `name` that answers `what`; raises Refused saying why there isn't one."""
+    target = live_named(state, str(name or ""))
+    if not target:
+        raise Refused(f"there is no live module called {name!r}")
+    answers = target["manifest"].get("answers") or {}
+    if what not in answers:
+        raise Refused(f"{target['name']} answers: {', '.join(answers) or 'nothing'}")
+    return target
+
+
+def _session(state, v) -> dict:
+    """Something that takes real time: the agent is busy with it until it ends (then on_time runs)."""
+    if not isinstance(v, dict) or set(v) - {"minutes", "label", "working"} or not _number(v.get("minutes"), *SESSION_MINUTES) \
+            or not isinstance(v.get("working", False), bool):
+        raise Refused(f"`session` is {{minutes ({SESSION_MINUTES[0]} to {SESSION_MINUTES[1]}), label, working?}}")
+    if state.session():
+        raise Refused(f"{world_pack.active().agent.name} is busy with something else")
+    label = _text(v.get("label"), "session.label")
+    return {"minutes": float(v["minutes"]), "label": label[:80], "working": v.get("working", False)}
 
 
 def _voices(state, m: dict, v) -> list:
@@ -574,8 +791,28 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             fields["lines"] = (fields.get("lines", m["lines"]) + [{"ts": now, "text": val}])[-PER_DAY["perceive"]:]
             budget["perceive"] += 1
         elif kind == "log":
-            state.log("module", name=m["name"], text=val, author=m["author"])
+            state.log("module", name=m["name"], author=m["author"], **({"text": val} if isinstance(val, str) else
+                                                                     {"text": val["text"], "moment": val["kind"], **({"feel": val["feel"]} if "feel" in val else {})}))
             budget["log"] += 1
+        elif kind == "store":
+            state.merge_store(m["name"], val)
+        elif kind == "standing":
+            fields["standing"] = val
+        elif kind == "take":
+            for item_id, qty, _ in val:
+                state.take_item(item_id, qty)
+            budget["take"] += 1
+        elif kind == "give":
+            for g in val:
+                state.add_item(g["item"], g["qty"], g["kind"], g["description"], g["attrs"])
+            budget["give"] += 1
+        elif kind == "request":
+            target = live_named(state, val["module"])
+            if target:
+                state.update_module(target["id"], requests=(target.get("requests") or [])[-9:] + [{"what": val["what"], "args": val["args"], "from": m["name"], "ts": now}])
+            budget["request"] += 1
+        elif kind == "session":
+            state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"])
         elif kind == "wake":
             out["wake"] = True
             budget["wake"] += 1
@@ -594,9 +831,6 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             a = state.agent()
             state.update_agent(**{k: (v if k == "mood" else clamp(a[k] + v)) for k, v in val.items() if k == "mood" or k in a})
             budget["affect"] += 1
-        elif kind == "garden":
-            state.hurry_garden(val["hurry"], now)
-            budget["garden"] += 1
         elif kind == "find":
             state.add_item(val["item"], val["qty"], "material", f"found by your {m['manifest'].get('subject') or m['name']}")
             budget["find"] += 1
@@ -644,10 +878,10 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
     """Run one hook and apply what it proposes. Returns {"ok", "error", "refused", "wake", "reply"}; never raises."""
     budget = _budget(m, now)
     if budget["calls"] >= limits(m)["calls"]:
-        return {"ok": False, "error": "", "refused": f"it has used today's {limits(m)['calls']} calls", "wake": False, "reply": ""}
+        return {"ok": False, "error": "", "refused": f"it has used today's {limits(m)['calls']} calls", "wake": False, "reply": "", "changed": False}
     if not trial and misfires(state, m, hook, now):                # a trial shows the program itself, not its luck
         state.add_module_call(m["id"], now, hook, True, 0, "misfired (the work is rough)")
-        return {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "misfired": True}
+        return {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "misfired": True, "changed": False}
     t0 = time.monotonic()
     res = await runner.run(m["source"], hook, context(state, settings, m, now, **extra))
     ms = round((time.monotonic() - t0) * 1000)
@@ -668,7 +902,8 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
         if fails >= FAILS_TO_DISABLE and m["status"] == "live":
             disable(state, m["id"], f"its code failed {fails} times in a row: {res.get('error', '')}")
             m["status"] = "disabled"
-    return {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out}
+    return {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out,
+            "changed": any(k != "reply" for k, _ in changes or [])}
 
 
 def misfires(state, m: dict, hook: str, now: float) -> bool:
@@ -707,7 +942,125 @@ async def step(state, settings, runner, now: float | None = None) -> bool:
             if "on_message" in hooks:
                 for msg in heard:
                     wake |= (await call(state, settings, run, m, "on_message", now, message=msg))["wake"]
+        if m.get("requests") and m["status"] == "live":        # what other modules asked of it, once each
+            asked = m["requests"]
+            state.update_module(m["id"], requests=[])
+            m["requests"] = []
+            for r in asked:
+                wake |= (await call(state, settings, run, m, "on_request", now, request={**r, "apply": True}))["wake"]
     return wake
+
+
+async def ask_module(state, settings, runner, name: str, what: str, args: dict, apply: bool, now: float | None = None, **about) -> str:
+    """Ask a live module, now, to do what it answers (or, with apply false, to say what it would do): its reply. Raises Refused when it
+    can't (it doesn't answer that, its code failed, or it refused). `about` is more for it to go on: a happening's tone and severity."""
+    now = now or time.time()
+    m = answering(state, name, what)
+    run = runner or (LocalRunner() if m["author"] == SHIPPED else None)
+    if run is None:
+        raise Refused(f"{m['name']} can't run right now")
+    r = await call(state, settings, run, m, "on_request", now, request={"what": what, "args": args, "from": "engine", "apply": apply, **about})
+    if r["refused"] or not r["ok"]:
+        raise Refused(r["refused"] or f"{m['name']} failed: {r['error']}")
+    return r["reply"]
+
+
+# --- tools a module offers, and the sessions they start ------------------------------------------------------------------------
+def tools_offered(state) -> list[tuple[dict, dict]]:
+    """(module, tool) for every tool live modules offer."""
+    return [(m, t) for m in state.modules("live") for t in m["manifest"].get("tools") or []]
+
+
+def check_args(params: dict, args) -> tuple[dict, str]:
+    """A tool's arguments against its schema: (clean, '') or ({}, what's wrong). A number given as a string is taken as the number."""
+    if not isinstance(args, dict):
+        return {}, "the arguments are an object"
+    props, out = params["properties"], {}
+    for k in args:
+        if k not in props:
+            return {}, f"it takes: {', '.join(props) or 'nothing'}"
+    for k in params["required"]:
+        if args.get(k) in (None, ""):
+            return {}, f"`{k}` is needed"
+    for k, v in args.items():
+        if v is None or v == "":
+            continue
+        kind = props[k]["type"]
+        if kind in ("integer", "number") and isinstance(v, str):
+            try:
+                v = int(v) if kind == "integer" else float(v)
+            except ValueError:
+                return {}, f"`{k}` is a {kind}"
+        ok = {"string": isinstance(v, str), "boolean": isinstance(v, bool), "integer": isinstance(v, int) and not isinstance(v, bool),
+              "number": isinstance(v, (int, float)) and not isinstance(v, bool)}[kind]
+        if not ok:
+            return {}, f"`{k}` is a {kind}"
+        if props[k].get("enum") and v not in props[k]["enum"]:
+            return {}, f"`{k}` is one of {', '.join(map(str, props[k]['enum']))}"
+        out[k] = v
+    return out, ""
+
+
+async def use_tool(state, settings, runner, m: dict, tool: dict, args, now: float | None = None) -> tuple[str, bool]:
+    """The agent uses a module's tool: its arguments checked, then the module's on_action. Returns (the result for the agent, whether
+    anything changed)."""
+    now = now or time.time()
+    clean, why = check_args(tool["params"], args)
+    if why:
+        return f"error: {why}", False
+    run = runner or (LocalRunner() if m["author"] == SHIPPED else None)
+    if run is None:
+        return "error: that can't be done right now", False
+    r = await call(state, settings, run, m, "on_action", now, tool=tool["name"], args=clean)
+    if r["refused"]:
+        return f"error: {r['refused']}", False
+    if not r["ok"]:
+        return f"error: it didn't work ({r['error']})", False
+    return r["reply"] or f"you {tool['name'].replace('_', ' ')}.", r["changed"]
+
+
+def busy_with(sess: dict) -> str:
+    return sess["expect"] or "something"
+
+
+async def end_session(state, settings, runner, interrupted: bool = False, now: float | None = None) -> dict | None:
+    """A module's session is over (its time is up, or the agent rested): the module's on_time hears it. Returns {label, module}."""
+    now = now or time.time()
+    sess = state.session()
+    if not sess or sess["kind"] != "module":
+        return None
+    state.end_session()
+    m = live_named(state, sess["target"])
+    done = {"label": busy_with(sess), "module": sess["target"], "interrupted": interrupted}
+    run = runner or (LocalRunner() if m and m["author"] == SHIPPED else None)
+    if m and run and "on_time" in m["manifest"]["hooks"]:
+        await call(state, settings, run, m, "on_time", now, session={"label": done["label"], "interrupted": interrupted,
+                                                                      "minutes": round((now - sess["started_at"]) / 60)})
+    return done
+
+
+UNTIL = re.compile(r"\{in:(\d+(?:\.\d+)?)\}")
+
+
+def until(line: str, now: float) -> str:
+    """A status line as it reads now: `{in:<time>}` becomes how long until then ("45 min", "3 hours")."""
+    from .text import span
+    return UNTIL.sub(lambda m: span(max(0, -(-(float(m.group(1)) - now) // 60))), line)
+
+
+def standing(state, now: float | None = None) -> list[dict]:
+    """Live modules' status sections, oldest module first: [{title, lines, ready?, next_at?, module}], each line as it reads now."""
+    now = now or time.time()
+    return [{**m["standing"], "lines": [until(l, now) for l in m["standing"]["lines"]], "module": m["name"]}
+            for m in state.modules("live") if m.get("standing")]
+
+
+def status_lines(state) -> list[str]:
+    """The status sections for the agent's prompt."""
+    out = []
+    for s in standing(state):
+        out += [f"{s['title']}:"] + [f"- {l}" for l in s["lines"]]
+    return out
 
 
 async def answer(state, settings, gm, runner, now: float | None = None) -> bool:
@@ -810,9 +1163,10 @@ def program_manifest(source: str, creation: dict, events=None) -> dict:
     Raises sandbox.Rejected (bad code) or Refused (a hook without what it needs)."""
     import ast
     tree = sandbox.check(source)
-    hooks = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in HOOKS]
+    own = [h for h in HOOKS if h != "on_request"]                   # a program isn't asked things by other modules
+    hooks = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in own]
     if not hooks:
-        raise Refused(f"define at least one of {', '.join(HOOKS)}")
+        raise Refused(f"define at least one of {', '.join(own)}")
     events = [e for e in (events or []) if isinstance(e, str)]
     if ("on_event" in hooks) != bool(events):
         raise Refused("on_event needs `events`: the kinds of thing that happen it listens for" if "on_event" in hooks
@@ -1143,7 +1497,8 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
+SETTINGS_PARAMS = {"garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+                   "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 
 

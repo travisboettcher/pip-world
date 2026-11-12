@@ -37,7 +37,7 @@ from .pacing import PacingPolicy
 from .state import State, clean_sender
 from .text import clip, span
 from .toolnames import canonical
-from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
+from .tools import SCOPES, ToolContext, enabled_tools, is_here, module_specs, module_tool, specs_for
 from . import stats as stats_mod
 
 log = logging.getLogger("agent")
@@ -162,7 +162,7 @@ class Agent:
             await self.outreach.stop()
 
     async def _monitor(self) -> None:
-        """Cheap, LLM-free: advance stats, ripen crops, and wake the agent when something needs it."""
+        """Cheap, LLM-free: advance stats, and wake the agent when something needs it."""
         while True:
             await asyncio.sleep(self.s.monitor_seconds)
             try:
@@ -174,9 +174,6 @@ class Agent:
     def check_world(self) -> None:
         for alert in self.state.apply_decay():
             self.state.log("alert", stat=alert)
-            self.request_wake()
-        for crop in self.state.garden_newly_ready():
-            self.state.log("garden", plot=crop["plot"], crop=crop["crop"])
             self.request_wake()
         emo.drift(self.state, self.s)
         market.prune(self.state)                              # a creation that has gone elsewhere comes off Pip's stall
@@ -219,6 +216,8 @@ class Agent:
                 return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "gather":
                 return bool(await gathering.resolve(self.state, self.s, self.gm, self.rng))
+            if sess["kind"] == "module":
+                return bool(await modules.end_session(self.state, self.s, self.ctx.runner))
             if sess["kind"] == "experiment":
                 work = await proj.resolve_experiment(self.state, self.s, self.gm, self.rng)
             else:
@@ -341,6 +340,10 @@ class Agent:
         entry = self.tools.get(canonical(call.name))
         if index >= MAX_TOOL_CALLS:
             out.update(content="skipped: too many tool calls this turn", is_error=True)
+        elif not entry and (mod := await module_tool(self.ctx, call.name, call.arguments)) is not None:
+            self.state.log("tool", tool=call.name, args=call.arguments, result=mod.text, module=mod.module, **({"first": mod.first} if mod.first else {}),
+                           **({"noop": True} if mod.noop else {}))
+            out.update(content=mod.text, followup=mod.followup)
         elif not entry:
             self.state.log("tool_error", tool=call.name, error="unknown or disabled tool")
             out.update(content=f"error: unknown or disabled tool {call.name!r}", is_error=True, followup=True)
@@ -419,10 +422,11 @@ class Agent:
         """At home with nothing due for a while: say so, with what Pip has said it wants to do. Facts, not orders."""
         if self.state.agent()["location"] != places.HOME or self.state.session() or sleepmod.asleep(self.state):
             return []
-        due = [g["ready_in_min"] for g in self.state.garden(now) if g["state"] == "growing"]
-        due += [(c["runtime"]["tended_until"] - now) / 60 for c in self.state.creations()
+        due = [(c["runtime"]["tended_until"] - now) / 60 for c in self.state.creations()
                 if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now) and "tended_until" in c["runtime"]]
-        if any(g["state"] == "ready" for g in self.state.garden(now)) or self.state.pending_inbox():
+        standing = modules.standing(self.state)                      # what live modules say waits, or next will
+        due += [(x["next_at"] - now) / 60 for x in standing if x.get("next_at", 0) > now]
+        if self.state.pending_inbox() or any(x["ready"] for x in standing):
             return []
         free = min(due) if due else None
         if free is not None and free < FREE_MINUTES:
@@ -466,15 +470,6 @@ class Agent:
             if places.present_at(self.state):
                 lines += [market.wares_line(self.state, k, who + (" (at a stall here today)" if k.endswith(market.STALL_SUFFIX) else ""), t, time.time())
                           for k, who, t in market.booths(self.state, self.state.agent()["location"], time.time()) if who]
-        if "plant" in self.tools:
-            lines.append("Your garden:")
-            for g in self.state.garden():
-                if g["state"] == "empty":
-                    lines.append(f"- plot {g['plot']}: empty")
-                elif g["state"] == "ready":
-                    lines.append(f"- plot {g['plot']}: {g['crop']} are RIPE - harvest them")
-                else:
-                    lines.append(f"- plot {g['plot']}: {g['crop']} growing, ready in about {span(g['ready_in_min'])}")
         return lines
 
     def _projects(self) -> list[str]:
@@ -536,8 +531,8 @@ class Agent:
         d, k = e["data"], e["kind"]
         if k == "gift":
             return f"{d['sender']} gave you {d['qty']} x {d['item']}"
-        if k == "garden":
-            return f"Your {d['crop']} in plot {d['plot']} ripened"
+        if k == "module" and d.get("moment"):               # a moment a module logged (a crop ripening)
+            return d["text"]
         if k == "reading" and d.get("finished"):
             return f"You finished reading {d['title']}"
         if k == "arrived" and d.get("first_time") and d["place"] != places.HOME:
@@ -562,9 +557,7 @@ class Agent:
             return f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}{extra}{note}"
         if k == "tool":
             t, a, r = d["tool"], d["args"], str(d.get("result", ""))
-            if t == "plant" and r.startswith("planted"):
-                return r.capitalize()
-            if t == "harvest" and r.startswith("harvested"):
+            if d.get("first") and not r.startswith("error"):   # a module's tool that has a first is a moment each time (planting)
                 return r.capitalize()
             if t == "start_project" and r.startswith("started project"):
                 return f"You started a new project: {a.get('name')}"
@@ -698,9 +691,10 @@ class Agent:
     def _specs(self) -> list:
         """The tools to offer now: what can be done here, described for here. Mid-walk Pip is nowhere yet, so only what works anywhere."""
         if places.present_at(self.state) is None:
-            return specs_for(self.tools, "")
+            return specs_for(self.tools, "") + module_specs(self.state, "")
         here = places.here(self.state, self.s, self.library)
-        return specs_for(self.tools, here.key, here, places.open_now(here, self.s))
+        open_ = places.open_now(here, self.s)
+        return specs_for(self.tools, here.key, here, open_) + module_specs(self.state, here.key, here, open_)
 
     def _perception(self, reason: str, inbox: list[dict]) -> str:
         a = self.state.agent()
@@ -730,6 +724,7 @@ class Agent:
         lines += modules.voices_here(self.state)
         lines += self._free_time(time.time())
         lines += self._belongings()
+        lines += modules.status_lines(self.state)
         lines += self._projects()
         lines += nb.perception(self.state)
         lines += lib.perception(self.state, self.library)

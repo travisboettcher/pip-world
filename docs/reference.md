@@ -52,7 +52,7 @@ garden (`GARDEN_PLOTS`, default 3). It starts with tomato and carrot seeds (give
 ./pipchat give "basil seeds" --kind seed --grow-minutes 30            # Pip can plant it
 ./pipchat items | garden
 ```
-HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /garden`, `GET /map` (every place at its fixed spot, and where Pip is; drawn in the dashboard's World tab).
+HTTP: `GET /items`, `POST /items` (gift; wakes Pip), `GET /standing` (what live modules show Pip every time: the garden), `GET /garden` (gone in 0.35.0), `GET /map` (every place at its fixed spot, and where Pip is; drawn in the dashboard's World tab).
 
 ## Projects and creations
 Design and rationale: [DESIGN-creations.md](DESIGN-creations.md). Pip chooses what to make; the engine decides how it
@@ -117,7 +117,7 @@ Design: [DESIGN-emotions.md](DESIGN-emotions.md). Eight emotions (0-100) that ri
 stand out plus an overall tone, and can `settle` a strong one. `EMOTIONS=on|quiet|off`. `./pipchat emotions` shows the numbers and what moved them; HTTP `GET /emotions`.
 
 ## Matrix commands
-In the Matrix room, `/help`, `/status`, `/items`, `/garden`, `/projects`, `/creations`, `/notes`, `/emotions` and `/usage` return information straight from the engine
+In the Matrix room, `/help`, `/status`, `/items`, `/projects`, `/creations`, `/notes`, `/emotions` and `/usage` return information straight from the engine
 (no LLM, not a reply from Pip, nothing reaches Pip). Anything else is a message to Pip. See [DESIGN-outreach.md](DESIGN-outreach.md).
 
 ## Places and the library

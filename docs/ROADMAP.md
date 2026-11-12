@@ -110,7 +110,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
         world effects and abilities move to the pack
   - [x] Phase 3 (0.34.0): stats and tone: pack-declared needs (hunger and energy become two of them), `affect` on any stat, `tone.json` with the
         engine's floor
-  - [ ] Phase 4: hooks for features as modules: tools, sessions, storage, belongings, status (proved on the garden and the market)
+  - [x] Phase 4 (0.35.0): hooks for features as modules: tools, storage, belongings, status, logged moments, requests between
+        modules (and from happenings and world effects), sessions; proved on the garden, now a shipped module (the engine's garden
+        removed; an older install's plots move into its store). The market moves in phase 5
   - [ ] Phase 5: features move: gathering, letters and neighbours (characters), the library and weather (sources), crafting
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
   - [ ] Phase 7: remove the engine's fallbacks for every moved feature

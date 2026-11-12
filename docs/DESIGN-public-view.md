@@ -26,7 +26,7 @@ are the full, owner dashboard, unchanged. One process serves both, so a deployme
 
 ## Endpoints
 Public: `/ui/*`, `/` (redirect), `/mode`, `/healthz`, `/state` (trimmed), `/events` (filtered), `/stream` (filtered), `/notes`, `/items`,
-`/emotions`, `/garden`, `/projects`, `/creations`, `/works` (+ `/works/{id}`, `.svg`, `.png`), `/map`, `/places`, `/memory` (no `people`).
+`/emotions`, `/standing` (what modules show the agent; it was `/garden` before 0.35.0), `/projects`, `/creations`, `/works` (+ `/works/{id}`, `.svg`, `.png`), `/map`, `/places`, `/memory` (no `people`).
 
 Owner-only: `POST /inbox`, `/items`, `/tick`, `/reflect`; `PATCH`/`DELETE /places/{key}`; `/letters`, `/outreach`, `/recall`,
 `/library/*`, the API docs.

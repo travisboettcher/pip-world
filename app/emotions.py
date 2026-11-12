@@ -101,8 +101,8 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
         return dict(EXPERIMENT.get(data.get("outcome"), {})), f"an experiment: {data.get('outcome')}"
     if kind == "creation_made":
         return {"joy": 20, "anticipation": 6}, f"finished {data.get('name', 'something')}"
-    if kind == "garden":
-        return {"joy": 3}, f"{data.get('crop', 'a crop')} ripened"
+    if kind == "module" and data.get("feel"):         # a moment a module logged, and how it says it feels (modules.py, `log`)
+        return dict(data["feel"]), str(data.get("text", ""))[:80]
     if kind == "alert":
         return dict(alert_feelings(data.get("stat"))), f"{data.get('stat')} needs attention"
     if kind == "stall_sale":

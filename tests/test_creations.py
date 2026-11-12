@@ -122,32 +122,21 @@ def test_the_world_capability_needs_a_land_project_and_enough_difficulty():
 
 @pytest.mark.asyncio
 async def test_finishing_a_bed_adds_a_plot_up_to_the_cap(tmp_path):
-    s, st, gm, agent = make(tmp_path, [], garden_plots=3, garden_plots_max=4)
-    assert len(st.garden()) == 3
+    from tests.test_garden import garden
+    s, st, gm, agent = make(tmp_path, [])
+    garden(st, plots=3, plots_max=4)
     from app import creations as C
-    for expected in (4, 4):  # the second would exceed the cap: no plot, and the creation doesn't claim one
+    for expected in (1, 1):  # the second would exceed the cap: no plot, and the creation doesn't claim one
         p = st.add_project("Clear a new bed", "more room to plant", "gardening", 3,
                            [{"name": "dig out the roots", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
         gm.script[:] = [report(name="New bed", description="a freshly turned bed", quirks=[],
                                capabilities=[{"type": "world", "effect": "garden_plot"}])]
         c = await C.make(st, agent.gm, agent.rng, p, 0)
-        assert len(st.garden()) == expected
+        assert st.store("garden")["meta"] == {"extra_plots": expected}
     assert "world" not in c["spec"]["capabilities"]
     events = [e for e in st.events(20) if e["kind"] == "world_changed"]
     assert len(events) == 1 and "4 plots" in events[0]["data"]["text"]
     assert events[0]["data"]["firsts"][0]["label"] == "the first time you changed the world around you"
-    assert [g["plot"] for g in st.garden()] == [1, 2, 3, 4]
-
-
-@pytest.mark.asyncio
-async def test_a_new_plot_can_be_planted_and_shows_in_the_garden(tmp_path):
-    s, st, gm, agent = make(tmp_path, garden_plots=1, garden_plots_max=3)
-    agent.tools.update({n: tools_mod.REGISTRY[n] for n in ("plant",)})
-    assert "plots are numbered 1-1" in (await call(agent, "plant", seed="carrot seeds", plot=2)).text
-    st.add_plot()
-    assert "planted" in (await call(agent, "plant", seed="carrot seeds", plot=2)).text.lower()
-    assert [g["state"] for g in st.garden()] == ["empty", "growing"]
-    assert st.meta("extra_plots") == "1"
 
 
 # --- the world-effect registry is generic: a new kind of change is one entry ------------------------------
@@ -176,7 +165,7 @@ async def test_a_workbench_raises_the_number_of_projects_pip_can_keep_going(tmp_
     assert st.project_limit() == 2 and "world" not in c2["spec"]["capabilities"]                          # capped: no claim, no change
 
 
-def test_the_registry_drives_the_gm_prompt_and_the_checks():
+async def test_the_registry_drives_the_gm_prompt_and_the_checks():
     from app import world_effects as W
     line = W.gm_lines()
     assert "garden_plot" in line and "workbench" in line and "a pond, a painting or a gift is just itself" in line
@@ -184,7 +173,7 @@ def test_the_registry_drives_the_gm_prompt_and_the_checks():
     assert W.allowed("workbench", bench) and not W.allowed("garden_plot", bench) and not W.allowed("moon_base", bench)
     assert not W.allowed("workbench", {**bench, "difficulty": 1})
     spec = {"capabilities": {"world": {"effect": "moon_base"}}}
-    assert W.apply(None, spec) is None and "world" not in spec["capabilities"]                              # unknown effects do nothing
+    assert await W.apply(None, spec) is None and "world" not in spec["capabilities"]                              # unknown effects do nothing
 
 
 def test_a_small_drift_is_not_worth_a_clock_reset(tmp_path):

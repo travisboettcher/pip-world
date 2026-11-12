@@ -37,7 +37,7 @@ def test_the_high_band_is_entered_at_exactly_60_and_not_left_and_reentered(tmp_p
 def test_causes_read_naturally(tmp_path):
     s, st = fresh(tmp_path)
     for kind, data in (("gift", {"sender": "Morgan"}), ("inbox", {"sender": "Briar"}), ("work", {"result": "setback", "surprise": "worse"}),
-                       ("experiment", {"outcome": "clue"}), ("creation_made", {"name": "Gear Clock"}), ("garden", {"crop": "tomato"}),
+                       ("experiment", {"outcome": "clue"}), ("creation_made", {"name": "Gear Clock"}), ("module", {"text": "tomato ripened", "feel": {"joy": 3}}),
                        ("alert", {"stat": "hunger"}), ("tool", {"tool": "plant", "result": "error: no plot"}),
                        ("outreach", {"what": "postcard", "delivered": True})):
         emo.appraise(st, s, kind, data, T)
@@ -48,9 +48,10 @@ def test_causes_read_naturally(tmp_path):
 
 def test_causes_when_the_event_is_missing_details(tmp_path):
     s, st = fresh(tmp_path)
-    for kind in ("gift", "inbox", "creation_made", "garden"):
+    for kind in ("gift", "inbox", "creation_made"):
         emo.appraise(st, s, kind, {}, T)
-    assert {c for _, c in causes(st)} == {"someone gave a gift", "someone wrote", "finished something", "a crop ripened"}
+    emo.appraise(st, s, "module", {"feel": {"joy": 3}}, T)
+    assert {c for _, c in causes(st)} == {"someone gave a gift", "someone wrote", "finished something", ""}
 
 
 def test_work_without_a_surprise_has_no_direction_in_its_cause(tmp_path):

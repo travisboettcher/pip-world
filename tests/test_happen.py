@@ -7,7 +7,7 @@ import pytest
 
 from app import happenings as H
 from app import modules as M
-from tests.test_happenings import plot, food, w
+from tests.test_happenings import food, w
 from tests.test_modules import NOW, live, modular, rule
 
 
@@ -46,12 +46,6 @@ def test_a_bad_turn_takes_and_the_engine_picks_how_much():
     assert stop["effects"][0]["name"] == "Gear Clock" and stop["effects"][0]["part"]["qty"] >= 1 and "Gear Clock" in stop["names"]
     medium = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock", "mend": True}]})
     assert medium["effects"][0]["part"] is None                                                   # only a major one needs mending
-    crop = decide({"category": "garden", "tone": "bad", "severity": "medium", "effects": [{"kind": "crop", "plot": 1, "how": "time"}]})["effects"][0]
-    assert crop["kind"] == "crop_time" and crop["minutes"] == -round(600 * H.SHIFT["medium"]) and crop["factor"] == 1 + H.SHIFT["medium"]
-    ruin = decide({"category": "garden", "tone": "bad", "severity": "major", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]})["effects"][0]
-    assert ruin == {"kind": "crop_ruin", "plot": 1, "crop": "tomatoes"}
-    yield_ = decide({"category": "garden", "tone": "good", "severity": "major", "effects": [{"kind": "crop", "plot": 1, "how": "yield"}]})["effects"][0]
-    assert yield_["delta"] == H.YIELD_GOOD["major"]
     price = decide({"category": "market", "tone": "bad", "severity": "minor", "effects": [{"kind": "price", "place": "Saltholm", "item": "Tomatoes"}]})
     assert price["effects"][0] == {"kind": "price", "place": "Saltholm", "item": "tomatoes", "units": -H.PRICE_UNITS["minor"]}
     assert decide({"category": "body", "tone": "bad", "severity": "minor", "effects": [{"kind": "energy"}]})["effects"][0] == {"kind": "stat", "stat": "energy", "delta": -H.ENERGY["minor"]}
@@ -85,9 +79,6 @@ def test_a_neutral_moment_changes_nothing_but_may_bring_back_a_memory():
     ({"category": "found", "tone": "bad", "effects": [{"kind": "item"}]}, "a bad turn can't bring item"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "item", "name": "a diamond"}]}, "nothing called a diamond is found in this world"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "coins"}, {"kind": "coins"}]}, "one effect of each kind"),
-    ({"category": "garden", "tone": "good", "effects": [{"kind": "crop", "plot": 7}]}, "`plot` is the number of a plot with something growing"),
-    ({"category": "garden", "tone": "good", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]}, "only a major bad turn ruins a crop"),
-    ({"category": "garden", "tone": "good", "effects": [{"kind": "crop", "plot": 1, "how": "grow"}]}, "`how` is time, yield or ruin"),
     ({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Atlantis"}]}, "`place` is the key of a place that sells"),
     ({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Saltholm", "item": "gold"}]}, "`item` is something sold at Saltholm"),
     ({"category": "mishap", "tone": "bad", "severity": "minor", "effects": [{"kind": "stop", "creation": "Gear Clock"}]}, "`creation` is one of Pip's running"),
@@ -102,8 +93,6 @@ def test_the_world_as_it_is_limits_what_can_happen():
     assert refused({"category": "found", "tone": "bad", "effects": [{"kind": "coins"}]}, coins=0) == "Pip has no coins to lose"
     assert refused({"category": "body", "tone": "bad", "effects": [{"kind": "energy"}]}, low=True) == "Pip is too low already"
     assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[]).startswith("there is nothing to lose")
-    assert refused({"category": "garden", "tone": "good", "effects": [{"kind": "crop", "plot": 1}]}, plots=[plot(left_min=0)]) == "that crop is as good as ripe"
-    assert refused({"category": "garden", "tone": "bad", "effects": [{"kind": "crop", "plot": 1, "how": "yield"}]}, plots=[plot(yield_=1)]) == "that crop can't give any less"
     assert refused({"category": "memory", "tone": "good", "effects": [{"kind": "memory"}]}, diary_count=2) == "Pip has no old thought to come back to it"
     assert refused({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Saltholm"}]}, foods=[],
                    booths=[{"key": "Saltholm", "loot": []}]).startswith("`item` is something sold")
@@ -221,14 +210,6 @@ def test_intents_word_for_word_at_their_limits():
     assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=4)]).startswith("there is nothing")
     assert decide({"category": "body", "tone": "bad", "severity": "major", "effects": [{"kind": "hunger"}]})["effects"] == [{"kind": "stat", "stat": "hunger", "delta": H.ENERGY["major"]}]
     assert decide({"category": "body", "tone": "good", "severity": "medium", "effects": [{"kind": "energy"}]})["effects"] == [{"kind": "stat", "stat": "energy", "delta": H.ENERGY["medium"]}]
-    assert refused({"category": "garden", "tone": "bad", "severity": "medium", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]}) == "only a major bad turn ruins a crop"
-    ruin = decide({"category": "garden", "tone": "bad", "severity": "major", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]})
-    assert ruin["names"] == ["tomatoes"]
-    one = decide({"category": "garden", "tone": "good", "severity": "minor", "effects": [{"kind": "crop", "plot": 1}]}, plots=[plot(left_min=20)])
-    assert one["effects"][0]["minutes"] == 1 and one["names"] == ["tomatoes"]                       # 5% of 20 minutes: one minute sooner
-    assert refused({"category": "garden", "tone": "good", "severity": "minor", "effects": [{"kind": "crop", "plot": 1}]}, plots=[plot(left_min=9)]) == "that crop is as good as ripe"
-    least = decide({"category": "garden", "tone": "bad", "severity": "major", "effects": [{"kind": "crop", "plot": 1, "how": "yield"}]}, plots=[plot(yield_=2)])
-    assert least["effects"][0]["delta"] == -1 and least["names"] == ["tomatoes"]
     price = decide({"category": "market", "tone": "good", "severity": "medium", "effects": [{"kind": "price", "place": "Saltholm"}]}, foods=[])
     assert price["effects"] == [{"kind": "price", "place": "Saltholm", "item": "brass wire", "units": H.PRICE_UNITS["medium"]}] and price["names"] == ["Saltholm", "brass wire"]
     stop = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock"}]})

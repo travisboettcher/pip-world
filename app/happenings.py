@@ -17,7 +17,7 @@ from . import creations as cr
 from . import gathering, market
 from . import sleep as sleepmod
 from .state import name_key
-from .text import clip, span
+from .text import clip
 from . import stats as stats_mod
 from . import tone as tone_mod
 from . import world_pack
@@ -40,8 +40,8 @@ OLD_NOTE_DAYS = 2                                                       # a note
 MIN_DIARY = 7
 # The words a happening may not use, its length, and the size of every effect are the world's (its pack's tone.json, app/tone.py); the old
 # names still answer, from the active world.
-_OLD_SIZES = {"LENS_AMOUNT": "lens", "SHIFT": "crop_shift", "ENERGY": "stat", "PRICE_UNITS": "price_units", "COIN_CAPS": "coin_caps",
-              "FOUND_COINS": "found_coins", "FOUND_ITEMS": "found_items", "YIELD_BAD": "crop_yield_bad", "YIELD_GOOD": "crop_yield_good",
+_OLD_SIZES = {"LENS_AMOUNT": "lens", "ENERGY": "stat", "PRICE_UNITS": "price_units", "COIN_CAPS": "coin_caps",
+              "FOUND_COINS": "found_coins", "FOUND_ITEMS": "found_items",
               "MENDING_QTY": "mending_qty", "LOSS_SHARE": "food_loss"}
 _OLD_TEXT = {"MAX_TEXT": "max", "MIN_TEXT": "min", "TITLE_MAX": "title_max"}
 
@@ -109,7 +109,6 @@ def food_loss(stack: int, severity: str, u: float) -> int:
 def world(state, settings, now: float) -> dict:
     """The facts the categories and the author may use."""
     from . import places  # places imports sleep, and this module is imported by the loop: keep the import local
-    plots = [g for g in state.garden(now) if g["state"] == "growing"]
     foods = sorted((i for i in state.items() if i["kind"] == "food"), key=lambda i: -i["qty"])
     booths = [r for r in state.place_rows() if r["status"] == "real" and "buy" in places.invented_place(r).verbs]
     creations = state.creations()
@@ -117,7 +116,9 @@ def world(state, settings, now: float) -> dict:
     return {"now": now, "coins": state.coins(),
             "season": season_of(now, settings.hemisphere) if settings.happenings_seasons else None,
             "low": stats_mod.low(state),
-            "plots": plots, "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
+            "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
+            "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],
+            "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
             "neighbors": [c["name"] for c in state.characters("neighbor")],
             "creations": [c["name"] for c in creations],
             "stoppable": [{"id": c["id"], "name": c["name"]} for c in creations if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now)],
@@ -198,12 +199,8 @@ def describe(e: dict) -> str:
         return f"You hear news of {e['name']}."
     if kind == "food_loss":
         return f"You lose {_count(e['qty'], e['name'])}."
-    if kind == "crop_time":
-        return f"Plot {e['plot']}'s {e['crop']} will be ready about {span(abs(e['minutes']))} {'sooner' if e['minutes'] > 0 else 'later'}."
-    if kind == "crop_yield":
-        return f"Plot {e['plot']}'s {e['crop']} will give {abs(e['delta'])} {'more' if e['delta'] > 0 else 'less'}."
-    if kind == "crop_ruin":
-        return f"Plot {e['plot']}'s {e['crop']} is lost."
+    if kind == "request":                                       # in the module's own words, once it has said them (from_module)
+        return e.get("line", "")
     if kind in ("stat", "energy", "hunger"):                    # energy and hunger: effects stored before stats were the world's
         name = e.get("stat", kind)
         label = stats_mod.declared().get(name, {}).get("label", name)
@@ -230,12 +227,6 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
             have, _ = state.find_item(e["name"], kind="food")
             if have and have["qty"] > 1:
                 state.take_item(have["id"], min(e["qty"], have["qty"] - 1))
-        elif kind == "crop_time":
-            state.scale_plot_time(e["plot"], e["factor"], now)
-        elif kind == "crop_yield":
-            state.add_plot_yield(e["plot"], e["delta"])
-        elif kind == "crop_ruin":
-            state.clear_plot(e["plot"])
         elif kind in ("stat", "energy", "hunger"):
             name = e.get("stat", kind)
             d = stats_mod.declared(state.s).get(name)
@@ -330,7 +321,7 @@ def _today_start(now: float) -> float:
 async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, night: bool = False, by: str = "") -> dict:
     """A decided happening (category, tone, severity, lens, effects): written, stored, applied (unless HAPPENINGS=log) and logged."""
     recent = [h["title"] for h in state.happenings(5)]
-    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + [p["crop"] for p in w["plots"]], **c["facts"],
+    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + list(w["known"]), **c["facts"],
              **({"season": w["season"]} if w.get("season") else {}), **({"night": True} if night else {})}
     title, text, who = await author(gm, c, facts, recent,
                                     lambda why, n: state.log("happening_rejected", category=c["category"], reason=why, attempt=n))
@@ -343,6 +334,9 @@ async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, n
                               text=text, title=title, author=who, status="logged" if logged else "applied")
     if not logged:
         apply_effects(state, c["effects"], now, title)
+        for e in c["effects"]:
+            if e["kind"] == "request":
+                await _ask(state, settings, e, c, True)
     state.log("happening", id=row["id"], category=c["category"], tone=c["tone"], severity=c["severity"], lens=c["lens"], title=title,
               text=text, effects=c["line"], jolt=0 if logged else jolt, status=row["status"], **({"by": by} if by else {}))
     return row
@@ -362,9 +356,9 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
 # day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
-INTENTS = ("coins", "item", "food_loss", "crop", "stat", "price", "stop", "news", "memory")   # `stat` (or the stat's own name) is any declared stat
+INTENTS = ("coins", "item", "food_loss", "stat", "price", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
-GAINS, LOSSES = {"coins", "item", "crop", "stat", "price", "news"}, {"coins", "food_loss", "crop", "stat", "price", "stop", "news"}
+GAINS, LOSSES = {"coins", "item", "stat", "price", "news", "request"}, {"coins", "food_loss", "stat", "price", "stop", "news", "request"}
 
 
 def _kinds() -> str:
@@ -372,8 +366,8 @@ def _kinds() -> str:
 
 
 def world_names(w: dict) -> set:
-    """Every name a happening may mention: neighbors, creations, crops, belongings, tools, places."""
-    return {n.lower() for n in [*w["neighbors"], *w["creations"], *(p["crop"] for p in w["plots"]), *(f["name"] for f in w["foods"]), *w["tools"],
+    """Every name a happening may mention: neighbors, creations, belongings, tools, places, and what live modules publish as `names`."""
+    return {n.lower() for n in [*w["neighbors"], *w["creations"], *w.get("known", []), *(f["name"] for f in w["foods"]), *w["tools"],
                                 *(b["key"] for b in w["booths"]), *w.get("places", [])]}
 
 
@@ -414,6 +408,15 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if plan is None:
             raise ValueError(f"there is nothing to lose from the pantry (or {world_pack.active().agent.name} is too low for it)")
         return plan
+    if kind == "request":                     # a change another module makes to itself, sized by the severity it is given (modules.py)
+        from . import modules
+        if not isinstance(i.get("args", {}), dict):
+            raise ValueError("`args` is an object")
+        target = next((m for m in w.get("answers", {}).items() if m[0] == i.get("module")), None)
+        if not target or i.get("what") not in target[1]:
+            raise ValueError(f"`module` is a live module and `what` something it answers: "
+                             + ("; ".join(f"{k}: {', '.join(v)}" for k, v in w.get("answers", {}).items()) or "no module answers anything"))
+        return Plan([{"kind": "request", "module": i["module"], "what": i["what"], "args": i.get("args", {})}])
     if kind == "stat":
         name, declared = i.get("stat"), stats_mod.declared()
         if name not in declared:
@@ -421,27 +424,6 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if tone == "bad" and w["low"]:
             raise ValueError(f"{world_pack.active().agent.name} is too low already")
         return Plan([{"kind": "stat", "stat": name, "delta": sign * stats_mod.good_sign(declared[name]) * tone_mod.size("stat", severity)}])
-    if kind == "crop":
-        plot = next((p for p in w["plots"] if p["plot"] == i.get("plot")), None)
-        if not plot:
-            raise ValueError("`plot` is the number of a plot with something growing")
-        how = i.get("how", "time")
-        if how == "ruin":
-            if tone != "bad" or severity != "major":
-                raise ValueError("only a major bad turn ruins a crop")
-            return Plan([{"kind": "crop_ruin", "plot": plot["plot"], "crop": plot["crop"]}], [plot["crop"]])
-        if how == "time":
-            shift = round(max(0.0, plot["ready_at"] - w["now"]) / 60 * tone_mod.size("crop_shift", severity))
-            if shift < 1:
-                raise ValueError("that crop is as good as ripe")
-            return Plan([{"kind": "crop_time", "plot": plot["plot"], "crop": plot["crop"], "factor": 1 - sign * tone_mod.size("crop_shift", severity), "minutes": sign * shift}],
-                        [plot["crop"]])
-        if how != "yield":
-            raise ValueError("`how` is time, yield or ruin")
-        delta = tone_mod.size("crop_yield_good", severity) if tone == "good" else min(tone_mod.size("crop_yield_bad", severity), plot["yield"] - 1)
-        if delta < 1:
-            raise ValueError("that crop can't give any less")
-        return Plan([{"kind": "crop_yield", "plot": plot["plot"], "crop": plot["crop"], "delta": sign * delta}], [plot["crop"]])
     if kind == "price":
         booth = next((b for b in w["booths"] if b["key"] == i.get("place")), None)
         if not booth:
@@ -524,10 +506,28 @@ async def from_module(state, settings, gm, name: str, p: dict, now: float) -> di
     if why:
         state.log("happening_dropped", module=name, category=str(p.get("category"))[:24], reason=why)
         return None
+    try:
+        for e in c["effects"]:                               # what a module would change, in its own words, before the story is written
+            if e["kind"] == "request":
+                e["line"] = await _ask(state, settings, e, c, False)
+    except ValueError as e:
+        state.log("happening_dropped", module=name, category=c["category"], reason=str(e))
+        return None
+    c["line"] = effects_line(c["effects"])
     w = world(state, settings, now)
     if isinstance(p.get("fallback"), dict) and p["fallback"].get("title") and p["fallback"].get("text"):
         c["fallback"] = (clip(p["fallback"]["title"], tone_mod.text("title_max")), clip(p["fallback"]["text"], tone_mod.text("max")))
     return await record(state, settings, gm, c, w, now, f"module:{name}:{int(now)}", bool(p.get("night")), by=name)
+
+
+async def _ask(state, settings, e: dict, c: dict, apply: bool) -> str:
+    """A request effect asked of its module (to say what it would change, or to change it): its line. Raises ValueError (Refused)."""
+    from . import modules
+    line = clip(await modules.ask_module(state, settings, modules.runner_for(settings), e["module"], e["what"], e["args"], apply,
+                                         tone=c["tone"], severity=c["severity"]), 200).strip()
+    if not line:
+        raise modules.Refused(f"{e['module']} didn't say what it would change")
+    return line if line[-1] in ".!?" else line + "."
 
 
 # --- Pip's reading -----------------------------------------------------------------------------------------------

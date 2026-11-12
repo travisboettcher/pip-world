@@ -54,11 +54,6 @@ CREATE TABLE IF NOT EXISTS items (
   description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'tool',
   qty INTEGER NOT NULL DEFAULT 1, attrs TEXT NOT NULL DEFAULT '{}', ts REAL NOT NULL
 );
-CREATE TABLE IF NOT EXISTS garden (
-  plot INTEGER PRIMARY KEY, seed TEXT NOT NULL, crop TEXT NOT NULL,
-  planted_at REAL NOT NULL, ready_at REAL NOT NULL, yield INTEGER NOT NULL,
-  food_value REAL NOT NULL, notified INTEGER NOT NULL DEFAULT 0
-);
 CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, goal TEXT NOT NULL DEFAULT '',
   craft TEXT NOT NULL, difficulty INTEGER NOT NULL,
@@ -124,6 +119,10 @@ CREATE TABLE IF NOT EXISTS modules (
   show TEXT NOT NULL DEFAULT '[]', notified TEXT NOT NULL DEFAULT '', built TEXT NOT NULL DEFAULT '{}',
   report TEXT NOT NULL DEFAULT '{}', note TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT 0, budget TEXT NOT NULL DEFAULT '{}',
   created_at REAL NOT NULL, decided_at REAL
+);
+CREATE TABLE IF NOT EXISTS module_store (
+  module TEXT NOT NULL, collection TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+  PRIMARY KEY (module, collection, key)
 );
 CREATE TABLE IF NOT EXISTS module_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT, module_id INTEGER NOT NULL, ts REAL NOT NULL, hook TEXT NOT NULL, ok INTEGER NOT NULL,
@@ -292,6 +291,8 @@ class State:
                 ("modules", "heard", "TEXT NOT NULL DEFAULT '[]'"),       # what Pip said to them, waiting for on_message
                 ("modules", "asks", "TEXT NOT NULL DEFAULT '[]'"),        # prompts waiting for the model's words (on_answer)
                 ("modules", "happen", "TEXT NOT NULL DEFAULT '[]'"),      # a happening it proposed, waiting to be written (happenings.py)
+                ("modules", "standing", "TEXT NOT NULL DEFAULT '{}'"),    # its status lines for the agent: {title, lines, ready, next_at}
+                ("modules", "requests", "TEXT NOT NULL DEFAULT '[]'"),    # what other modules asked of it, waiting for on_request
                 ("modules", "built", "TEXT NOT NULL DEFAULT '{}'"),       # a place module's built layout (layouts.py)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
@@ -310,6 +311,7 @@ class State:
                                     (name, row.get(name, d.get("start", 0.5)), row.get(f"{name}_alerted", 0)))
             self._normalize_crafts()
             self._seed_abilities()
+            self._move_garden()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -351,7 +353,7 @@ class State:
             a = self.agent()
             hours = max(0.0, now - a["updated_at"]) / 3600
             sess = self.session()
-            working = bool(sess and sess["kind"] in ("work", "experiment", "gather"))
+            working = bool(sess and (sess["kind"] in ("work", "experiment", "gather") or (sess["kind"] == "module" and sess["stage"])))
             new, fields = [], {"updated_at": now}
             for name, d in stats_mod.declared(self.s).items():
                 if name not in a:
@@ -756,21 +758,22 @@ class State:
             self.db.execute("INSERT OR IGNORE INTO happening_rolls (slot, ts, roll, hit) VALUES (?, ?, ?, ?)", (slot, ts, roll, int(hit)))
             self.db.commit()
 
-    def scale_plot_time(self, plot: int, factor: float, now: float | None = None) -> None:
-        """Make the time a growing plot has left `factor` times as long."""
-        now = now or time.time()
-        with self.lock:
-            row = self.db.execute("SELECT ready_at FROM garden WHERE plot = ?", (plot,)).fetchone()
-            if row:
-                self.db.execute("UPDATE garden SET ready_at = ? WHERE plot = ?", (now + max(0.0, row["ready_at"] - now) * factor, plot))
-                self.db.commit()
+    # --- the garden, before it was a module ------------------------------
+    def _move_garden(self) -> None:
+        """Once: an install from before 0.35.0 keeps its garden. Its plots (and the plots it cleared) move into the `garden` module's
+        store, where the shipped module (module_library/garden.py) reads them, and the old table goes."""
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'garden'").fetchone():
+            return
+        plots = {str(r["plot"]): {"seed": r["seed"], "crop": r["crop"], "planted_at": r["planted_at"], "ready_at": r["ready_at"],
+                                  "yield": r["yield"], "food_value": r["food_value"], "notified": bool(r["notified"])}
+                 for r in self.db.execute("SELECT * FROM garden")}
+        extra = int(self.meta("extra_plots") or 0)
+        if not self.store("garden"):
+            self.merge_store("garden", {"plots": plots, **({"meta": {"extra_plots": extra}} if extra else {})})
+        self.db.execute("DROP TABLE garden")
+        self.db.commit()
 
-    def add_plot_yield(self, plot: int, delta: int) -> None:
-        with self.lock:
-            self.db.execute("UPDATE garden SET yield = MAX(1, yield + ?) WHERE plot = ?", (int(delta), plot))
-            self.db.commit()
-
-    # --- garden ----------------------------------------------------------
+    # --- workshop space --------------------------------------------------
     def project_limit(self) -> int:
         """Projects Pip can keep going at once: the starting limit plus workshop it built, never above the cap."""
         return min(self.s.max_active_projects_cap, self.s.max_active_projects + int(self.meta("extra_project_slots") or 0))
@@ -782,57 +785,6 @@ class State:
             self.set_meta(extra_project_slots=int(self.meta("extra_project_slots") or 0) + 1)
             return self.project_limit()
 
-    def plot_count(self) -> int:
-        """Plots Pip has: the starting number plus any it cleared, never above the cap."""
-        return min(self.s.garden_plots_max, self.s.garden_plots + int(self.meta("extra_plots") or 0))
-
-    def add_plot(self) -> int | None:
-        """One more plot, or None if the garden is as big as the world allows. Returns the new plot's number."""
-        with self.lock:
-            if self.plot_count() >= self.s.garden_plots_max:
-                return None
-            self.set_meta(extra_plots=int(self.meta("extra_plots") or 0) + 1)
-            return self.plot_count()
-
-    def garden(self, now: float | None = None) -> list[dict]:
-        now = now or time.time()
-        with self.lock:
-            rows = {r["plot"]: dict(r) for r in self.db.execute("SELECT * FROM garden")}
-        out = []
-        for n in range(1, self.plot_count() + 1):
-            r = rows.get(n)
-            if not r:
-                out.append({"plot": n, "state": "empty"})
-            else:
-                left = r["ready_at"] - now
-                out.append({**r, "state": "ready" if left <= 0 else "growing",
-                            "ready_in_min": max(0, int(left // 60) + (1 if left % 60 else 0))})
-        return out
-
-    def plant(self, plot: int, seed: str, crop: str, minutes: float, yield_: int, food_value: float) -> None:
-        now = time.time()
-        with self.lock:
-            self.db.execute("INSERT INTO garden (plot, seed, crop, planted_at, ready_at, yield, food_value) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (plot, seed, crop, now, now + minutes * 60 / self.s.garden_speed, yield_, food_value))
-            self.db.commit()
-
-    def clear_plot(self, plot: int) -> dict | None:
-        with self.lock:
-            row = self.db.execute("SELECT * FROM garden WHERE plot = ?", (plot,)).fetchone()
-            self.db.execute("DELETE FROM garden WHERE plot = ?", (plot,))
-            self.db.commit()
-            return dict(row) if row else None
-
-    def garden_newly_ready(self) -> list[dict]:
-        """Crops that ripened since we last looked (each is reported once)."""
-        now = time.time()
-        with self.lock:
-            rows = [dict(r) for r in self.db.execute(
-                "SELECT * FROM garden WHERE ready_at <= ? AND notified = 0", (now,))]
-            self.db.execute("UPDATE garden SET notified = 1 WHERE ready_at <= ?", (now,))
-            self.db.commit()
-        return rows
 
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
@@ -1033,7 +985,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
-    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen")
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen", "standing", "requests")
 
     def _module(self, row) -> dict:
         return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}
@@ -1061,6 +1013,26 @@ class State:
         vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
         with self.lock:
             self.db.execute(f"UPDATE modules SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), module_id))
+            self.db.commit()
+
+    def store(self, module: str) -> dict:
+        """A module's collections (by its name, so a new version keeps them): {collection: {key: value}}."""
+        out: dict = {}
+        with self.lock:
+            for r in self.db.execute("SELECT collection, key, value FROM module_store WHERE module = ? ORDER BY collection, key", (module,)):
+                out.setdefault(r["collection"], {})[r["key"]] = json.loads(r["value"])
+        return out
+
+    def merge_store(self, module: str, changes: dict) -> None:
+        """Set each key of each collection (None deletes it)."""
+        with self.lock:
+            for coll, keys in changes.items():
+                for key, value in keys.items():
+                    if value is None:
+                        self.db.execute("DELETE FROM module_store WHERE module = ? AND collection = ? AND key = ?", (module, coll, key))
+                    else:
+                        self.db.execute("INSERT OR REPLACE INTO module_store (module, collection, key, value) VALUES (?, ?, ?, ?)",
+                                        (module, coll, key, json.dumps(value)))
             self.db.commit()
 
     def add_module_call(self, module_id: int, ts: float, hook: str, ok: bool, ms: int, summary: str, keep: int = 200) -> None:
@@ -1154,15 +1126,6 @@ class State:
         with self.lock:
             return self.db.execute("SELECT COUNT(*) FROM letters WHERE parcel IS NOT NULL AND ts > ?",
                                    (since,)).fetchone()[0]
-
-    def hurry_garden(self, fraction: float, now: float | None = None) -> int:
-        """Cut the remaining growing time of every unripe crop by `fraction`. Returns how many were helped."""
-        now = now or time.time()
-        with self.lock:
-            n = self.db.execute("UPDATE garden SET ready_at = ready_at - (ready_at - ?) * ? WHERE ready_at > ?",
-                                (now, fraction, now)).rowcount
-            self.db.commit()
-        return n
 
     def born_at(self) -> float:
         """When Pip's life here began: the first logged event (or now, for a brand-new world)."""

@@ -1,5 +1,6 @@
 """Tool registry. Tools are declared once in a provider-neutral schema; enable by name via TOOLS."""
 import difflib
+import logging
 from datetime import datetime
 import random
 import re
@@ -24,7 +25,6 @@ from . import neighbors as nb
 from . import place_kinds as kinds
 from . import places
 from . import search
-from . import weather
 from . import wishes
 from . import projects as proj
 from . import emotions as emo
@@ -39,6 +39,8 @@ from . import world as world_content
 from . import stats as stats_mod
 from .world import seed_packet_for
 from . import world_pack
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -68,6 +70,9 @@ async def stop_working(ctx: "ToolContext") -> str:
     if sess["kind"] == "experiment":
         e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
         return f" (you cut the experiment on {e['project']} short)" if e else ""
+    if sess["kind"] == "module":
+        done = await modules.end_session(ctx.state, ctx.settings, ctx.runner, interrupted=True)
+        return f" (you stopped {done['label']} early)" if done else ""
     w = await proj.resolve_session(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
     return f" (you stopped working on {w['project']} early)" if w else ""
 
@@ -87,6 +92,8 @@ def busy(ctx: "ToolContext") -> str:
         return f"you're reading {sess['target']} (about {left} min left); rest stops early"
     if sess["kind"] == "gather":
         return f"you're out {gathering.verb_for(ctx.state, sess['target'])} at {places.label(sess['target'])} (about {left} min left); rest stops early"
+    if sess["kind"] == "module":
+        return f"you're busy: {modules.busy_with(sess)} (about {left} min left); rest stops early"
     cur = ctx.state.project(sess["project_id"])
     if sess["kind"] == "experiment":
         return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
@@ -99,6 +106,8 @@ class ToolResult:
     followup: bool = False  # the model should see this result and respond (e.g. fresh information)
     noop: bool = False      # nothing changed; kept out of the feeds and out of Pip's recent-event list
     images: list = field(default_factory=list)  # [(mime, bytes)] the model looks at in this turn (never stored in events)
+    first: str = ""         # a module's tool: what its first use is called ("planted something")
+    module: str = ""        # a module's tool: the module's name
 
 
 Handler = Callable[[ToolContext, dict], Awaitable[ToolResult]]
@@ -118,9 +127,9 @@ def listed_here(name: str, place) -> bool:
     return bool(getattr(place, "invented", False)) and name in place.verbs
 
 
-def out_of_place(ctx, name: str) -> str:
-    """Why `name` can't be used where Pip is, or '' if it can."""
-    scope = SCOPES.get(name, (ANYWHERE,))
+def out_of_place(ctx, name: str, scope: tuple[str, ...] | None = None) -> str:
+    """Why `name` can't be used where Pip is, or '' if it can (`scope`: a module's tool's own)."""
+    scope = scope or SCOPES.get(name, (ANYWHERE,))
     here = ctx.state.agent()["location"]
     place = places.here(ctx.state, ctx.settings, ctx.library)
     listed = listed_here(name, place)
@@ -151,6 +160,31 @@ def specs_for(tools: dict, location: str, place=None, open_: bool = True) -> lis
             full = place.verbs.get(name, (None, None))[1] if place else None
             out.append(ToolSpec(spec.name, full, spec.parameters) if full else spec)
     return out
+
+
+def module_specs(state, location: str, place=None, open_: bool = True) -> list[ToolSpec]:
+    """The tools live modules offer, where they apply (modules.py): listed with the engine's own."""
+    out = []
+    for _, t in modules.tools_offered(state):
+        scope = (t["where"],)
+        if not open_ and place and ANYWHERE not in scope and place.scope in scope:
+            continue
+        if is_here(scope, location):
+            out.append(ToolSpec(t["name"], t["help"], t["params"]))
+    return out
+
+
+async def module_tool(ctx, name: str, args: dict) -> ToolResult | None:
+    """Use a live module's tool by name (None if no live module offers one by that name)."""
+    found = next(((m, t) for m, t in modules.tools_offered(ctx.state) if t["name"] == name), None)
+    if not found:
+        return None
+    m, t = found
+    if why := out_of_place(ctx, name, (t["where"],)):
+        return ToolResult(why, followup=True)
+    text, changed = await modules.use_tool(ctx.state, ctx.settings, ctx.runner, m, t, args)
+    return ToolResult(text, followup=text.startswith("error"), noop=not changed and not text.startswith("error"), first=t.get("first", "") if changed else "",
+                      module=m["name"])
 
 
 def tool(name: str, description: str, parameters: dict, where: str | tuple[str, ...] = ANYWHERE):
@@ -445,7 +479,7 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
             return ToolResult(text, followup=True)
         return ToolResult(f"error: {err}", followup=True)
     if item["kind"] == "seed":
-        return ToolResult("error: seeds are planted with the plant tool", followup=True)
+        return ToolResult(f"error: {item['name']} aren't used with use_item; look for the tool that takes them", followup=True)
     if item["kind"] == "food":
         packet = seed_packet_for(item["name"]) if "seed" in str(args.get("purpose") or "").lower() else None
         if not packet:
@@ -461,61 +495,6 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
     ctx.state.take_item(item["id"], qty)
     left = item["qty"] - qty
     return ToolResult(f"used {qty} {item['name']} ({left} left)" if left else f"used up your last {item['name']}")
-
-
-def _plot_arg(args: dict):
-    try:
-        return int(args["plot"]) if args.get("plot") not in (None, "") else None
-    except (TypeError, ValueError):
-        return "bad"
-
-
-@tool("plant", "Plant a seed from your belongings in a garden plot. It grows over real time and you'll "
-      "be told when it's ready to harvest.",
-      _obj({"seed": {"type": "string"}, "plot": {"type": "integer", "description": "optional; default first empty plot"}},
-           ["seed"]), where="home")
-async def plant(ctx: ToolContext, args: dict) -> ToolResult:
-    item, err = ctx.state.find_item(args["seed"], kind="seed")
-    if not item:
-        crop = str(args["seed"]).strip().lower().removesuffix(" seeds").removesuffix(" seed")
-        food = ctx.state.find_item(crop, kind="food")[0] if seed_packet_for(crop) else None
-        hint = f"; you could scoop seeds out of your {food['name']} with use_item (say what for)" if food else ""
-        return ToolResult(f"error: {err}{hint}", followup=True)
-    plots = ctx.state.garden()
-    plot = _plot_arg(args)
-    if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
-        return ToolResult(f"error: plots are numbered 1-{len(plots)}", followup=True)
-    if plot is None:
-        free = [p["plot"] for p in plots if p["state"] == "empty"]
-        if not free:
-            return ToolResult("error: every plot is in use; harvest one first", followup=True)
-        plot = free[0]
-    elif plots[plot - 1]["state"] != "empty":
-        return ToolResult(f"error: plot {plot} is already growing {plots[plot - 1]['crop']}", followup=True)
-    at = item["attrs"]
-    ctx.state.take_item(item["id"])
-    grow = float(at["grow_minutes"]) * weather.grow_factor(ctx.state, ctx.settings, time.time())  # rain helps, snow hinders
-    ctx.state.plant(plot, item["name"], at["crop"], grow, int(at["yield"]), float(at["food_value"]))
-    mins = max(1, round(grow / ctx.settings.garden_speed))
-    return ToolResult(f"planted {item['name']} in plot {plot}; {at['crop']} will be ready in about {span(mins)}")
-
-
-@tool("harvest", "Harvest a ripe crop from the garden. Gives you food to eat.",
-      _obj({"plot": {"type": "integer", "description": "optional; default the first ripe plot"}}, []), where="home")
-async def harvest(ctx: ToolContext, args: dict) -> ToolResult:
-    plots = ctx.state.garden()
-    plot = _plot_arg(args)
-    if plot == "bad" or (plot is not None and not 1 <= plot <= len(plots)):
-        return ToolResult(f"error: plots are numbered 1-{len(plots)}", followup=True)
-    ripe = [p for p in plots if p["state"] == "ready" and plot in (None, p["plot"])]
-    if not ripe:
-        growing = [p for p in plots if p["state"] == "growing"]
-        hint = f"; next ready in about {span(min(p['ready_in_min'] for p in growing))}" if growing else "; nothing is planted"
-        return ToolResult(f"nothing ripe to harvest{hint}")
-    p = ripe[0]
-    ctx.state.clear_plot(p["plot"])
-    ctx.state.add_item(p["crop"], p["yield"], "food", f"fresh {p['crop']} from your garden", {"food_value": p["food_value"]})
-    return ToolResult(f"harvested {p['yield']} {p['crop']} from plot {p['plot']}")
 
 
 @tool("web_search", "Search the web for something you are curious about.",
@@ -939,8 +918,9 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
         name = canonical(name)  # an old name in TOOLS (browse_library) means its new one
         if name in out:
             continue
-        if name not in REGISTRY:
-            raise ValueError(f"unknown tool {name!r}; options: {sorted(REGISTRY)}")
+        if name not in REGISTRY:              # a module's tool (plant and harvest are the garden's), or a typo: not the engine's
+            log.warning("TOOLS names %r, which isn't one of the engine's tools; skipped (a module may offer it)", name)
+            continue
         if name == "web_search" and not search.ready(settings):
             continue  # silently unavailable without a key
         if name == "sleep" and not settings.sleep:

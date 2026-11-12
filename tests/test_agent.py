@@ -106,6 +106,7 @@ async def test_heartbeat_wakes_on_event(tmp_path):
 
 # --- multi-call ticks ---------------------------------------------------
 from app import tools as tools_mod  # noqa: E402
+from app import modules as M  # noqa: E402
 from app.tools import ToolResult  # noqa: E402
 
 
@@ -369,27 +370,8 @@ async def test_use_item_consumes_materials_not_tools(tmp_path):
     assert "keep it" in (await reg("use_item")(agent.ctx, {"item": "file", "purpose": "filing"})).text
     assert st.find_item("file")[0]["qty"] == 1
     assert "only have 2" in (await reg("use_item")(agent.ctx, {"item": "brass", "purpose": "x", "quantity": 5})).text
-    assert "plant" in (await reg("use_item")(agent.ctx, {"item": "carrot seeds", "purpose": "x"})).text
-
-
-@pytest.mark.asyncio
-async def test_garden_plant_harvest_eat(tmp_path):
-    s, st, _, agent = make(tmp_path, garden_speed=1e9)  # grows instantly
-    r = await reg("plant")(agent.ctx, {"seed": "tomato"})
-    assert "plot 1" in r.text and st.find_item("tomato seeds")[0]["qty"] == 2
-    await reg("plant")(agent.ctx, {"seed": "carrot seeds", "plot": 3})
-    assert "already growing" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 1})).text
-    assert "numbered 1-3" in (await reg("plant")(agent.ctx, {"seed": "tomato", "plot": 9})).text
-    time.sleep(0.05)  # speed 1e9 still needs a moment
-    ready = [g["crop"] for g in st.garden_newly_ready()]
-    assert sorted(ready) == ["carrots", "tomatoes"] and st.garden_newly_ready() == []  # reported once
-    assert "harvested 3 tomatoes" in (await reg("harvest")(agent.ctx, {})).text
-    assert st.find_item("tomatoes")[0]["kind"] == "food"
-    st.update_agent(hunger=0.9)
-    await reg("eat")(agent.ctx, {"item": "tomatoes"})
-    assert st.agent()["hunger"] == pytest.approx(0.4)  # tomatoes restore 0.5, a plain meal only 0.4
-    assert st.find_item("tomatoes")[0]["qty"] == 2
-    assert "error" in (await reg("eat")(agent.ctx, {"item": "brass"})).text
+    assert (await reg("use_item")(agent.ctx, {"item": "carrot seeds", "purpose": "x"})).text == \
+        "error: carrot seeds aren't used with use_item; look for the tool that takes them"
 
 
 @pytest.mark.asyncio
@@ -410,44 +392,17 @@ async def test_use_item_on_a_tomato_for_its_seeds_gives_seed_packets(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_planting_a_seed_you_only_hold_as_food_says_how_to_get_the_seeds(tmp_path):
-    s, st, _, agent = make(tmp_path)
-    st.take_item(st.find_item("tomato seeds")[0]["id"], 3)                  # no tomato seeds left
-    assert (await reg("plant")(agent.ctx, {"seed": "tomato seeds"})).text.startswith("error: you don't have 'tomato seeds'")
-    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "tomato seeds"})).text      # nothing to scoop them from
-    st.add_item("tomatoes", 2, "food")
-    r = await reg("plant")(agent.ctx, {"seed": "tomato seeds"})
-    assert r.text == ("error: you don't have 'tomato seeds' (kind: seed); you could scoop seeds out of your tomatoes with use_item "
-                      "(say what for)") and r.followup is True
-    assert "use_item" in (await reg("plant")(agent.ctx, {"seed": "tomatoes"})).text               # however it is named
-    assert "use_item" in (await reg("plant")(agent.ctx, {"seed": "tomato"})).text
-    st.add_item("bread", 1, "food")
-    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "bread seeds"})).text         # bread has no seeds
-    st.add_item("hazelnuts", 1, "food")
-    assert "use_item" not in (await reg("plant")(agent.ctx, {"seed": "hazelnuts"})).text           # ...nor do wild nuts
-
-
-@pytest.mark.asyncio
-async def test_harvest_when_nothing_ripe(tmp_path):
-    s, st, _, agent = make(tmp_path)
-    assert "nothing is planted" in (await reg("harvest")(agent.ctx, {})).text
-    await reg("plant")(agent.ctx, {"seed": "carrot"})
-    assert "next ready in about" in (await reg("harvest")(agent.ctx, {})).text
-
-
-@pytest.mark.asyncio
-async def test_perception_shows_belongings_and_garden_and_ripe_wakes(tmp_path):
-    s, st, backend, agent = make(tmp_path, garden_speed=1e9)
-    agent.tools = tools_mod.enabled_tools(Settings(tools=["use_item", "plant", "harvest", "eat"]))
-    await reg("plant")(agent.ctx, {"seed": "tomato"})
-    time.sleep(0.05)
-    agent.check_world()
-    assert agent._wake.is_set()  # ripe crop wakes Pip
-    assert any(e["kind"] == "garden" for e in st.events(10))
+async def test_perception_shows_belongings_and_what_modules_show(tmp_path):
+    from tests.test_garden import garden
+    s, st, backend, agent = make(tmp_path)
+    agent.tools = tools_mod.enabled_tools(Settings(tools=["use_item", "eat"]))
+    garden(st)
+    st.update_module(M.live_named(st, "garden")["id"], standing={"title": "Your garden", "lines": ["plot 1: tomatoes are RIPE - harvest them"],
+                                                                "ready": True})
     await agent.tick("event")
     p = backend.calls[0]["messages"][0]["content"]
     assert "Your belongings:" in p and "carrot seeds x3 (seed)" in p
-    assert "plot 1: tomatoes are RIPE" in p and "plot 2: empty" in p
+    assert "Your garden:\n- plot 1: tomatoes are RIPE - harvest them" in p
 
 
 # --- diary moments -----------------------------------------------------------
@@ -462,7 +417,7 @@ async def test_moments_offered_then_cleared_by_a_diary_entry(tmp_path):
     assert "this happened:" not in prompt_of(backend)  # ordinary tick: nothing notable
     st.log("inbox", id=1, text="Did you find the file?")
     st.log("gift", sender="Morgan", item="tiny needle file", qty=1, item_kind="tool")
-    st.log("garden", plot=2, crop="carrots")
+    st.log("module", name="garden", text="Your carrots in plot 2 ripened", moment="ripe")
     await agent.tick("event")
     full = prompt_of(backend)
     p = full.split("this happened:")[1]
@@ -488,8 +443,10 @@ async def test_moments_expire_after_a_few_showings(tmp_path):
 @pytest.mark.asyncio
 async def test_moments_cover_planting_harvest_and_finishing(tmp_path):
     s, st, backend, agent = make(tmp_path)
-    st.log("tool", tool="plant", args={"seed": "tomato"}, result="planted tomato seeds in plot 1; tomatoes will be ready in about 60 min")
-    st.log("tool", tool="harvest", args={}, result="harvested 3 tomatoes from plot 1")
+    st.log("tool", tool="plant", args={"seed": "tomato"}, result="planted tomato seeds in plot 1; tomatoes will be ready in about 60 min",
+           first="planted something")                                    # a module's tool with a first: each use is a moment
+    st.log("tool", tool="harvest", args={}, result="harvested 3 tomatoes from plot 1", first="harvested something")
+    st.log("tool", tool="harvest", args={}, result="error: nothing", first="harvested something")
     st.log("tool", tool="resolve_note", args={"id": 4, "outcome": "it works"}, result="crossed off #4")
     st.log("tool", tool="set_activity", args={"activity": "filing"}, result="now filing")  # ordinary
     await agent.tick("t")

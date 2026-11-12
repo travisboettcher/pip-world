@@ -16,8 +16,7 @@
     "earth"
    ],
    "min_difficulty": 2,
-   "does": "add_plot",
-   "note": "Your garden now has {n} plots: a new bed is ready for planting (plot {n})."
+   "does": "request:garden:add_plot"
   },
   "workbench": {
    "help": "building or setting up better workshop space (a bench, shelves, a tool rack) so more projects can be kept going at once",
@@ -87,5 +86,8 @@
   "memory": "had an old thought come back",
   "kindness": "was given something by someone unseen",
   "atmosphere": "noticed something in the air"
+ },
+ "module_firsts": {
+  "garden:ripe": "had a crop ripen"
  }
 }

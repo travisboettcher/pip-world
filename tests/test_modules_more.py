@@ -27,7 +27,7 @@ def test_manifest_refusals_word_for_word(tmp_path):
     bad = lambda m: refusal(M.check_manifest, m, "world", st)
     events = ", ".join(sorted(__import__("app.public_view", fromlist=["x"]).EVENT_FIELDS))
     assert bad({k: v for k, v in rule().items() if k != "name"}) == "`name` is 3 to 40 lowercase letters, digits and dashes, starting with a letter"
-    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer"
+    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer, on_request"
     assert bad(rule(kind="thing")) == "a thing needs a `subject`: the name of the creation it makes work"
     assert bad(rule(subject="x")) == "only a thing has a subject (and reads or changes its runtime)"
     assert bad(rule(hooks=["on_event"], events=["inbox"])) == "`events` is a list of public event kinds: " + events
@@ -130,21 +130,21 @@ async def test_budgets_add_up_and_a_due_time_ends_on_its_moment(tmp_path):
     m = st.module(m["id"])
     for _ in range(2):
         r = await M.call(st, s, agent.runner, m, "on_tick", NOW)
-    assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": ""}
-    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "garden": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0}
+    assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "", "changed": True}
+    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0}
     got = st.module(m["id"])
     assert got["due"] is None and [l["text"] for l in got["lines"]] == ["a", "a"]
     calls = st.module_calls(m["id"])
     assert 1 <= calls[0]["ms"] < 5000 and calls[0]["summary"] == "perceive, log, wake"
     m["budget"] = {"day": M._day(NOW), "calls": M.PER_DAY["calls"]}
-    assert await M.call(st, s, agent.runner, m, "on_tick", NOW) == {"ok": False, "error": "", "refused": "it has used today's 600 calls", "wake": False, "reply": ""}
+    assert await M.call(st, s, agent.runner, m, "on_tick", NOW) == {"ok": False, "error": "", "refused": "it has used today's 600 calls", "wake": False, "reply": "", "changed": False}
 
 
 @pytest.mark.asyncio
 async def test_each_calls_history_line_says_what_happened(tmp_path):
     s, st, agent = modular(tmp_path)
     m = live(st, rule(hooks=["on_tick", "on_time"], proposes=["state"]), "def on_tick(ctx):\n    return {}\ndef on_time(ctx):\n    return 1/0\n")
-    assert await M.call(st, s, agent.runner, m, "on_install", NOW) == {"ok": True, "error": "", "refused": "", "wake": False, "reply": ""}
+    assert await M.call(st, s, agent.runner, m, "on_install", NOW) == {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "changed": False}
     await M.call(st, s, agent.runner, m, "on_tick", NOW)
     await M.call(st, s, agent.runner, m, "on_time", NOW)
     assert [c["summary"] for c in st.module_calls(m["id"])] == ["error: line 4: ZeroDivisionError: division by zero", "nothing", "(no such hook)"]

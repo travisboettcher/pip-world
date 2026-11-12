@@ -62,7 +62,7 @@ def test_the_host_port_and_case_do_not_matter(client):
     assert client.get("/mode", headers={"host": "PIP.example.org:443"}).json()["public"] is True
 
 
-@pytest.mark.parametrize("path", ["/state", "/events", "/notes", "/items", "/emotions", "/garden", "/projects",
+@pytest.mark.parametrize("path", ["/state", "/events", "/notes", "/items", "/emotions", "/standing", "/projects",
                                   "/creations", "/works", "/map", "/places", "/memory", "/healthz", "/ui/"])
 def test_the_listed_reads_answer_and_are_cacheable(client, path):
     r = client.get(path, headers=PUBLIC)

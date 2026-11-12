@@ -31,7 +31,7 @@ def test_help_lists_every_command(tmp_path):
     r = ask(st, s, "/help")
     for name in commands.NAMES:
         assert f"/{name}" in r
-    assert set(commands.NAMES) >= {"help", "status", "items", "garden", "projects", "creations", "notes", "emotions", "usage"}
+    assert set(commands.NAMES) >= {"help", "status", "items", "projects", "creations", "notes", "emotions", "usage"}
 
 
 def test_status_reports_the_agent_and_the_day(tmp_path):
@@ -61,15 +61,14 @@ def test_items_lists_stock_and_handles_none(tmp_path):
     assert "brass wire x3 (material)" in r and "needle file x1 (tool)" in r
 
 
-def test_garden_shows_each_plot(tmp_path):
+def test_status_carries_what_modules_show(tmp_path):
+    from tests.test_garden import garden
     s, st, *_ = make(tmp_path)
-    st.plant(1, "tomato seeds", "tomato", 60, 3, 0.4)
-    st.plant(2, "carrot seeds", "carrot", 0, 2, 0.4)                          # ready now
-    r = ask(st, s, "/garden")
-    lines = r.splitlines()
-    assert any("1" in ln and "tomato" in ln and "growing" in ln and "min" in ln for ln in lines)
-    assert any("2" in ln and "carrot" in ln and "ready" in ln for ln in lines)
-    assert any("3" in ln and "empty" in ln for ln in lines)
+    m = garden(st)
+    st.update_module(m["id"], standing={"title": "Your garden", "lines": ["plot 1: tomatoes growing, ready in about {in:%d}" % (time.time() + 600)],
+                                        "ready": False})
+    assert ask(st, s, "/status").splitlines()[-2:] == ["Your garden:", "- plot 1: tomatoes growing, ready in about 10 min"]
+    assert "/garden" not in ask(st, s, "/help")
 
 
 @pytest.mark.asyncio

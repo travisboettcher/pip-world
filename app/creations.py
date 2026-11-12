@@ -174,7 +174,7 @@ async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -
     allow = project["difficulty"] >= COMPANION_MIN_DIFFICULTY
     raw = await gm.design(project, q, marks, allow) if gm else None
     name, description, spec = sanitize_spec(raw, project, q, marks, rng)
-    note = world_effects.apply(state, spec)
+    note = await world_effects.apply(state, spec)
     c = state.add_creation(name, description, project["id"], q, spec, initial_runtime(spec, time.time()))
     if note:
         state.log("world_changed", effect=spec["capabilities"]["world"]["effect"], text=note, name=name)

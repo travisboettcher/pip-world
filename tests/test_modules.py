@@ -314,7 +314,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     src = ("def on_action(ctx):\n    return {'state': {'n': ctx['state'].get('n', 0) + 1}, 'consume': {'brass wire': ctx['args']['n']},"
            " 'runtime': {'halted_at': None, 'stop_logged': True}, 'perceive': 'tick', 'log': 'It whirrs.', 'wake': True, 'reply': 'whirr',"
            " 'publish': {'n': 1}, 'offer': [{'name': 'whirr', 'help': 'make it whirr'}], 'schedule': ctx['now'] + 60}\n")
-    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=list(M.PROPOSES), consumes={"brass wire": 2}, finds=["acorn"])
+    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=[p for p in M.PROPOSES if p not in ("take", "give", "session")], consumes={"brass wire": 2}, finds=["acorn"])
     m = live(st, man, src)
     c = st.creations()[0]
     st.set_runtime(c["id"], {**c["runtime"], "halted_at": NOW})
@@ -322,10 +322,10 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     assert r["refused"] == "it may use up 1 to 2 brass wire at a time" and r["ok"] and not r["wake"]
     assert st.module(m["id"])["state"] == {} and st.find_item("brass wire")[0]["qty"] == 3                      # nothing applied
     r = await M.call(st, s, agent.runner, m, "on_action", NOW, action="whirr", args={"n": 2})
-    assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr"}
+    assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr", "changed": True}
     got = st.module(m["id"])
     assert got["state"] == {"n": 1} and got["facts"] == {"n": 1} and got["due"] == NOW + 60 and got["lines"] == [{"ts": NOW, "text": "tick"}]
-    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "garden": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0}
+    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "find": 0, "sell": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0}
     assert st.find_item("brass wire")[0]["qty"] == 1 and "halted_at" not in st.creations()[0]["runtime"] and st.creations()[0]["runtime"]["stop_logged"]
     ev = [e for e in st.events(5) if e["kind"] == "module"][0]["data"]
     assert (ev["name"], ev["text"], ev["author"]) == ("bells", "It whirrs.", "world")
@@ -417,7 +417,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
                             "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
-    assert {"name": "oil", "qty": 2, "kind": "material"} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
+    assert {"name": "oil", "qty": 2, "kind": "material", "attrs": {}} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
 
 
 # --- the lifecycle ----------------------------------------------------------------------------------------------------------

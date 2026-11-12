@@ -4,6 +4,8 @@ import time
 
 import pytest
 
+from tests.test_garden import planted
+
 from app import creations as cr
 from app import modules as M
 from tests.test_modules import NOW, live, modular, rule
@@ -25,52 +27,47 @@ COMFORT = {"helper": {"effect": "comfort", "line": "It purrs on your lap.", "eve
 # --- reads -------------------------------------------------------------------------------------------------------------------
 def test_a_module_can_read_the_garden_the_visitors_and_how_pip_is(tmp_path):
     s, st, agent = modular(tmp_path)
-    st.plant(1, "pea seeds", "peas", 600, 3, 0.25)
+    planted(st, s, 1, "peas", 600)                                       # the garden module publishes its plots
     st.update_agent(hunger=0.7, energy=0.2, mood="tired")
-    m = live(st, rule(reads=["garden", "visitors", "pip"]), "x")
+    m = live(st, rule(reads=["facts", "visitors", "pip"]), "x")
     ctx = M.context(st, s, m, time.time())
-    assert ctx["garden"][0] == {"plot": 1, "crop": "peas", "state": "growing", "ready_in_min": ctx["garden"][0]["ready_in_min"]}
-    assert ctx["garden"][0]["ready_in_min"] > 0 and all(g["state"] == "empty" for g in ctx["garden"][1:]) and set(ctx["garden"][1]) == {"plot", "state"}
+    plots = ctx["facts"]["garden"]["plots"]
+    assert plots[0]["crop"] == "peas" and plots[0]["ready_at"] > time.time() and plots[1] == {"plot": 2} and ctx["facts"]["garden"]["names"] == ["peas"]
     assert ctx["visitors"] == {"waiting": 0}
     st.add_inbox("hello", "Ada")
     assert M.context(st, s, m, time.time())["visitors"] == {"waiting": 1}
     assert (ctx["pip"]["hunger"], ctx["pip"]["energy"], ctx["pip"]["mood"]) == (0.7, 0.2, "tired")
-    assert {"garden", "visitors"} <= set(M.PIP_READS)
+    assert {"facts", "visitors"} <= set(M.PIP_READS) and "garden" not in M.READS
 
 
 # --- effects -----------------------------------------------------------------------------------------------------------------
 def test_affect_garden_and_find_are_checked_capped_and_applied(tmp_path):
     s, st, agent = modular(tmp_path)
     st.update_agent(energy=0.5, mood="fine")
-    st.plant(1, "pea seeds", "peas", 600, 3, 0.25)
-    man = rule(proposes=["affect", "garden", "find"], finds=["Acorn", "snail shell"])
+    man = rule(proposes=["affect", "find"], finds=["Acorn", "snail shell"])
     m = live(st, man, "x")
     assert m["manifest"]["finds"] == ["acorn", "snail shell"]
     now = time.time()
-    before = st.garden(now)[0]["ready_at"]
-    M.apply(st, m, M.plan(st, m, {"affect": {"energy": 0.05, "mood": "cosy"}, "garden": {"hurry": 0.1}, "find": {"item": "acorn", "qty": 2}}, now, "on_tick"), now)
+    M.apply(st, m, M.plan(st, m, {"affect": {"energy": 0.05, "mood": "cosy"}, "find": {"item": "acorn", "qty": 2}}, now, "on_tick"), now)
     a = st.agent()
     assert round(a["energy"], 3) == 0.55 and a["mood"] == "cosy"
-    assert st.garden(now)[0]["ready_at"] < before
     item, _ = st.find_item("acorn")
     assert item["qty"] == 2 and item["kind"] == "material"
     m = st.module(m["id"])
-    assert (M._budget(m, now)["affect"], M._budget(m, now)["garden"], M._budget(m, now)["find"]) == (1, 1, 1)
+    assert (M._budget(m, now)["affect"], M._budget(m, now)["find"]) == (1, 1) and "garden" not in M._budget(m, now)
     for bad, why in (({"affect": {"energy": 0.2}}, "`affect.energy` is a number from -0.1 to 0.1"),
                      ({"affect": {"mood": "x" * 41}}, "`affect.mood` is a word or two"),
                      ({"affect": {}}, "`affect` is {hunger?, energy?, mood?}"),
                      ({"affect": 1}, "`affect` is {hunger?, energy?, mood?}"),
-                     ({"garden": {"hurry": 0.5}}, "`garden.hurry` is a number from 0.01 to 0.2"),
-                     ({"garden": {}}, "`garden.hurry` is a number from 0.01 to 0.2"),
                      ({"find": {"item": "gold", "qty": 1}}, "it can only find: acorn, snail shell"),
                      ({"find": {"item": "acorn", "qty": 3}}, "`find.qty` is 1 or 2"),
                      ({"find": "acorn"}, "`find` is {item, qty}")):
         with pytest.raises(M.Refused) as e:
             M.plan(st, m, bad, now, "on_tick")
         assert str(e.value) == why
-    st.update_module(m["id"], budget={"day": M._day(now), "find": M.PER_DAY["find"], "affect": M.PER_DAY["affect"], "garden": M.PER_DAY["garden"]})
+    st.update_module(m["id"], budget={"day": M._day(now), "find": M.PER_DAY["find"], "affect": M.PER_DAY["affect"]})
     m = st.module(m["id"])
-    for key, val in (("find", {"item": "acorn", "qty": 1}), ("affect", {"energy": 0.01}), ("garden", {"hurry": 0.1})):
+    for key, val in (("find", {"item": "acorn", "qty": 1}), ("affect", {"energy": 0.01})):
         with pytest.raises(M.Refused) as e:
             M.plan(st, m, {key: val}, now, "on_tick")
         assert str(e.value) == f"it has used today's {M.PER_DAY[key]} `{key}`"
@@ -88,8 +85,9 @@ def test_find_needs_its_finds_and_pip_cant_grant_itself_effects():
     for bad in (["x" * 41], ["a"] * 9, "acorn", [3]):
         with pytest.raises(M.Refused):
             M.check_manifest(rule(proposes=["find"], finds=bad), "world")
-    for p in ("affect", "garden", "find"):
+    for p in ("affect", "find"):
         assert p in M.PROPOSES and p not in M.PIP_PROPOSES
+    assert "garden" not in M.PROPOSES                                    # the garden is a module: it's asked (`request`), not proposed to
 
 
 def test_the_engines_own_modules_have_room_for_a_busy_day():
@@ -154,7 +152,7 @@ async def test_a_sensor_wakes_pip_once_each_time_it_comes_on(tmp_path):
 
 
 @pytest.mark.parametrize("cond,setup,hour", [
-    ("crop_ripe", lambda st: st.plant(1, "pea seeds", "peas", 1, 3, 0.25), None),
+    ("crop_ripe", lambda st: planted(st, st.s, 1, "peas", 1), None),
     ("hungry", lambda st: st.update_agent(hunger=0.7), None),
     ("tired", lambda st: st.update_agent(energy=0.2), None),
     ("dawn", lambda st: None, 6),
@@ -186,10 +184,12 @@ async def test_helpers_find_hurry_and_comfort(tmp_path):
     s, st, agent, c, m = await workings(tmp_path / "h", HURRY)
     await M.step(st, s, None, NOW + 61 * 60)
     assert M.perception(st) == []                                                                   # nothing growing: nothing to do
-    st.plant(1, "pea seeds", "peas", (NOW - time.time()) / 60 + 600, 3, 0.25)               # still growing on the test's clock
-    before = st.garden(NOW)[0]["ready_at"]
-    await M.step(st, s, None, NOW + 122 * 60)
-    assert M.perception(st) == ["Things in the world:", "- It waters the beds."] and st.garden(NOW)[0]["ready_at"] < before
+    planted(st, s, 1, "peas", (NOW - time.time()) / 60 + 600)                                  # still growing on the test's clock
+    before = st.store("garden")["plots"]["1"]["ready_at"]
+    await M.step(st, s, None, NOW + 122 * 60)                                                       # the workings ask the garden...
+    assert M.perception(st) == ["Things in the world:", "- It waters the beds."]
+    await M.step(st, s, None, NOW + 123 * 60)                                                       # ...which hears it on its next step
+    assert st.store("garden")["plots"]["1"]["ready_at"] < before
     (tmp_path / "c").mkdir()
     s, st, agent, c, m = await workings(tmp_path / "c", COMFORT)
     st.update_agent(energy=0.5)
@@ -217,17 +217,17 @@ async def test_effects_at_their_limits_add_up_and_say_where_they_came_from(tmp_p
     s, st, agent = modular(tmp_path)
     st.update_agent(energy=0.5, mood="fine")
     c = made(st, "Ferret", FINDER)
-    man = rule(kind="thing", subject="Ferret", proposes=["affect", "garden", "find"], finds=["acorn"])
+    man = rule(kind="thing", subject="Ferret", proposes=["affect", "find"], finds=["acorn"])
     m = live(st, man, "x")
     now = time.time()
     for _ in range(2):
-        M.apply(st, m, M.plan(st, m, {"affect": {"energy": 0.1}, "garden": {"hurry": 0.01}, "find": {"item": "Acorn"}}, now, "on_tick"), now)
+        M.apply(st, m, M.plan(st, m, {"affect": {"energy": 0.1}, "find": {"item": "Acorn"}}, now, "on_tick"), now)
         m = st.module(m["id"])
-    M.apply(st, m, M.plan(st, m, {"affect": {"mood": "x" * 40}, "garden": {"hurry": 0.2}}, now, "on_tick"), now)
+    M.apply(st, m, M.plan(st, m, {"affect": {"mood": "x" * 40}}, now, "on_tick"), now)
     m = st.module(m["id"])
     a = st.agent()
     assert round(a["energy"], 3) == 0.7 and a["mood"] == "x" * 40
-    assert {k: M._budget(m, now)[k] for k in ("affect", "garden", "find")} == {"affect": 3, "garden": 3, "find": 2}
+    assert {k: M._budget(m, now)[k] for k in ("affect", "find")} == {"affect": 3, "find": 2}
     item = st.find_item("acorn")[0]
     assert item["qty"] == 2 and "found by your Ferret" in str(item.get("note") or item.get("source") or item)
     rule_m = live(st, rule(name="hedge", proposes=["find"], finds=["acorn"]), "x")

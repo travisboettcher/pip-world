@@ -187,12 +187,15 @@ export function build(kit, art, data) {
   // a neighbor's wares, on their shelves
   all("wares").forEach((a, i) => { const wares = (latest.lives_here?.wares || []).slice(i * 2, i * 2 + 2).map((name) => ({ name })); setOut(a, wares.length ? wares : (i === 0 && !latest.lives_here?.wares?.length ? [{ name: "jar" }, { name: "jar" }] : []), 2); });
 
-  // the garden: each plot's crop, growing
+  // the garden: each plot's crop, growing (what the garden module publishes: its plots, with when each was planted and ripens)
+  const gardenOf = (d) => { const now = Date.now() / 1000;
+    return (d.facts?.garden?.plots || []).map((p) => (p.crop ? { ...p, state: p.ready_at <= now ? "ready" : "growing", ready_in_min: Math.max(0, Math.ceil((p.ready_at - now) / 60)) }
+                                                              : { plot: p.plot, state: "empty" })); };
   const plots = all("plot").map((a, i) => {
     const [x, y, z] = a.at, [w, d] = a.extent, sprites = [];   // y: the soil's middle
     const soil = kit.boxTS(w, 0.25, d, kit.mat(T.soil([1, 2])), kit.mat(T.planks([1, 1], "#5a3d27")), x, y, z); soil.visible = false;   // a plot the garden has
     const hit = kit.hitbox(w, 0.6, d, x, y + 0.3, z);
-    kit.tipOn(hit, () => { const g = latest.garden?.[i]; if (!g || g.state === "empty") return { title: `Plot ${i + 1}`, text: "Empty, ready to plant." };
+    kit.tipOn(hit, () => { const g = gardenOf(latest)[i]; if (!g || g.state === "empty") return { title: `Plot ${i + 1}`, text: "Empty, ready to plant." };
       return { title: `Plot ${g.plot}: ${g.crop}`, text: g.state === "ready" ? "Ripe now, ready to harvest." : `${Math.round(progress(g) * 100)}% grown; ripe in about ${hours(g.ready_in_min)}.` }; });
     for (let k = 0; k < 4; k++) { const s = kit.sprite(art.crop("x", 0), 0.9, 1.12); s.position.set(x - w * 0.21 + (k % 2) * w * 0.42, y + 0.66, z - d * 0.25 + Math.floor(k / 2) * d * 0.46); s.visible = false; sprites.push(s); }
     return { sprites, soil, hit, key: "" };
@@ -250,8 +253,8 @@ export function build(kit, art, data) {
     browse = tagged("browse"), visitor = tagged("visitor");
 
   function update(d) {
-    latest = d; showGarden(d.garden); showCreations(d.creations); showPeople(d.present); showStall(d.stall);
-    const ripe = (d.garden || []).find((g) => g.state !== "empty");
+    latest = d; showGarden(gardenOf(d)); showCreations(d.creations); showPeople(d.present); showStall(d.stall);
+    const ripe = gardenOf(d).find((g) => g.state !== "empty");
     bubble.material.map = art.bubble(ripe && /tomato/i.test(ripe.crop) ? "#d8432f" : "#6aa847");
   }
   update(data);

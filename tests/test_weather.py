@@ -30,14 +30,6 @@ def test_the_line_says_what_it_is_like_and_when_the_sun_turns():
     assert reading(setting=None).line() == "Outside: rain, 8 C." and reading(above=False, rising=None).line() == "Outside: rain, 8 C."
 
 
-def test_growing_time_is_scaled_by_the_weather_within_a_cap():
-    f = lambda c: reading(c).grow_factor  # noqa: E731
-    assert f("sunny") == 0.95 and f("rainy") == 0.85 and f("pouring") == 0.85
-    assert f("snowy") == 1.15 and f("cloudy") == 1.03 and f("partlycloudy") == 1.0
-    assert f("mystery-weather") == 1.0
-    assert all(0.85 <= v <= 1.15 for v in W.GROW_FACTORS.values())
-
-
 def test_the_weather_is_kept_in_the_state_and_goes_stale_after_an_hour(tmp_path):
     s, st, *_ = make(tmp_path)
     assert W.current(st, NOW) is None
@@ -54,13 +46,13 @@ def test_the_weather_is_kept_in_the_state_and_goes_stale_after_an_hour(tmp_path)
     assert W.current(st, NOW + 4001).condition == "snowy"
 
 
-def test_perception_and_growth_need_the_feature_on_and_a_fresh_reading(tmp_path):
+def test_perception_needs_the_feature_on_and_a_fresh_reading(tmp_path):
     s, st, *_ = make(tmp_path)
     W.save(st, reading(), NOW)
-    assert W.perception(st, s, NOW) == [] and W.grow_factor(st, s, NOW) == 1.0          # off by default
+    assert W.perception(st, s, NOW) == []                                               # off by default
     s.weather = True
-    assert W.perception(st, s, NOW) == [reading().line()] and W.grow_factor(st, s, NOW) == 0.85
-    assert W.perception(st, s, NOW + 7200) == [] and W.grow_factor(st, s, NOW + 7200) == 1.0   # stale: say nothing
+    assert W.perception(st, s, NOW) == [reading().line()]
+    assert W.perception(st, s, NOW + 7200) == []                                        # stale: say nothing
 
 
 class FakeProvider:
@@ -152,17 +144,3 @@ async def test_the_http_client_helper_borrows_a_given_client_and_makes_its_own_o
     async with W.http_client() as c:
         assert c is not None and not c.is_closed
     assert c.is_closed
-
-
-@pytest.mark.asyncio
-async def test_planting_takes_the_weather_into_account(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    s.weather = True
-    W.save(st, reading("rainy"), time.time())
-    r = await call(agent, "plant", seed="carrot seeds")        # 18 hours of growing, 15% less in the rain
-    assert "ready in about 15 hours" in r.text
-    plot = st.garden()[0]
-    assert plot["ready_in_min"] in (918, 919)
-    s.weather = False
-    r = await call(agent, "plant", seed="tomato seeds")
-    assert "ready in about 24 hours" in r.text

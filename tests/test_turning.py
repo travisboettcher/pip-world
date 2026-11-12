@@ -56,15 +56,15 @@ def test_each_kind_is_capped_so_one_busy_thing_cant_swamp(tmp_path):
 
 def test_returning_after_a_long_gap_is_a_signal(tmp_path):
     s, st, *_ = make(tmp_path)
-    st.log("tool", tool="plant", args={}, result="planted")
+    st.log("tool", tool="plant", args={}, result="planted", first="planted something")
     st.db.execute("UPDATE facets SET last_ts = last_ts - ? WHERE key = 'tool:plant'", (4 * 86400,))
     st.db.commit()
-    again = st.log("tool", tool="plant", args={}, result="planted")
+    again = st.log("tool", tool="plant", args={}, result="planted", first="planted something")
     ev = [e for e in st.events(5) if e["id"] == again][0]
     assert ev["data"]["returns"] == [{"key": "tool:plant", "label": "the first time you planted something", "days": pytest.approx(4, abs=0.1)}]
     (sg,) = [x for x in detect(st)["signals"] if x["kind"] == "return"]
     assert sg["text"] == "the first time in 4 days you planted something" and sg["events"] == [again]
-    st.log("tool", tool="plant", args={}, result="planted")      # an ordinary repeat is not a return
+    st.log("tool", tool="plant", args={}, result="planted", first="planted something")      # an ordinary repeat is not a return
     assert [r for r in st.events(1)[0]["data"].get("returns", [])] == []
 
 

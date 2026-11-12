@@ -104,7 +104,7 @@ def test_a_world_with_no_stats_says_so(tmp_path):
         W.set_active(W.load(Settings(world_pack=str(pack_dir(tmp_path)))))
         with pytest.raises(ValueError, match=r"^`stat` is one of nothing \(this world has no stats\)$"):
             H._intent({"low": False}, "good", "minor", {"kind": "stat", "stat": "x"}, random.Random(1))
-        assert H._kinds() == ("an effect's kind is one of coins, item, food_loss, crop, stat, price, stop, news, memory "
+        assert H._kinds() == ("an effect's kind is one of coins, item, food_loss, stat, price, stop, news, memory, request "
                               "(or a stat's own name: this world has none)")
     finally:
         W.set_active(W.load(Settings()))

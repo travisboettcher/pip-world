@@ -28,7 +28,7 @@ def ctx(**kw):
     base = {"now": NOW, "params": dict(PARAMS), "state": {"salt": 7, "rolled": []},
             "time": {"hour": 12, "minute": 0, "weekday": "Thursday", "season": "spring"},
             "agent": {"asleep": False, "walking": False, "hunger": 0.2, "energy": 0.8, "coins": 78, "mood": "calm"},
-            "garden": [{"plot": 1, "crop": "tomatoes", "state": "growing", "ready_in_min": 600}, {"plot": 2, "state": "empty"}],
+            "facts": {"garden": {"plots": [{"plot": 1, "crop": "tomatoes", "planted_at": NOW - 3600, "ready_at": NOW + 600 * 60}, {"plot": 2}]}},
             "items": [{"name": "tomatoes", "qty": 91, "kind": "food"}, {"name": "needle file", "qty": 1, "kind": "tool"}],
             "places": [{"key": "Saltholm", "label": "Saltholm", "kind": "shop"}, {"key": "woods", "label": "the woods", "kind": "wild"}],
             "people": [{"name": "Oriel Vantosh", "kind": "neighbor"}],
@@ -88,7 +88,7 @@ def test_two_bad_ones_in_a_row_make_a_third_less_likely():
 
 
 def test_the_world_must_allow_a_category():
-    bare = ctx(garden=[], places=[], people=[], creations=[], items=[], happenings={"can_remember": False})
+    bare = ctx(facts={"garden": {}}, places=[], people=[], creations=[], items=[], happenings={"can_remember": False})
     chosen = {R._choose(bare, random.Random(i), False)["category"] for i in range(300)}
     assert chosen <= {"creature", "pantry", "found", "body", "atmosphere"} and "garden" not in chosen
     assert not R._possible(bare, "garden") and not R._possible(bare, "market") and not R._possible(bare, "mishap")
@@ -126,14 +126,17 @@ def test_the_seasons_lean_the_dice():
 
 # --- what each kind of happening changes ---------------------------------------------------------------------------------------
 def test_the_garden_shifts_a_crop_ruins_one_only_when_major_and_bad_and_spares_a_ripe_one():
+    how = lambda p: p["effects"][0]["args"]["how"]  # noqa: E731     the garden module is asked (`request`), which answers `crop`
     good = plans("garden", "good", "medium")
-    assert {p["effects"][0]["how"] for p in good} == {"time", "yield"} and all(p["effects"][0]["plot"] == 1 for p in good)
+    assert {how(p) for p in good} == {"time", "yield"} and all(p["effects"][0]["args"]["plot"] == 1 for p in good)
+    assert all(p["effects"][0]["kind"] == "request" and p["effects"][0]["module"] == "garden" and p["effects"][0]["what"] == "crop" for p in good)
     bad = plans("garden", "bad", "major")
-    assert {p["effects"][0]["how"] for p in bad} == {"time", "ruin"}
-    assert all(p["effects"][0]["how"] == "time" for p in plans("garden", "bad", "medium"))
+    assert {how(p) for p in bad} == {"time", "ruin"}
+    assert all(how(p) == "time" for p in plans("garden", "bad", "medium"))
     assert plans("garden", "neutral", "minor")[0] == {"names": ["tomatoes"]}
-    ripe = ctx(garden=[{"plot": 1, "crop": "peas", "state": "growing", "ready_in_min": 10}])
-    assert all(p["effects"][0]["how"] == "yield" for p in plans("garden", "good", "minor", ripe))      # 5% of 10 minutes: not worth it
+    ripe = ctx(facts={"garden": {"plots": [{"plot": 1, "crop": "peas", "planted_at": NOW - 60, "ready_at": NOW + 600}]}})
+    assert all(how(p) == "yield" for p in plans("garden", "good", "minor", ripe))      # 5% of 10 minutes: not worth it
+    assert R._possible(ctx(facts={"garden": {}}), "garden") is False and R._possible(ctx(facts={"garden": {"plots": [{"plot": 1}]}}), "garden") is False
 
 
 def test_creatures_pantry_and_finds():

@@ -132,7 +132,7 @@ function describe(e) {
     case 'letter_sent': return { group: 'world', cls: 'world', text: `Pip wrote to ${d.to}: ${d.text}` + (d.enclosed ? ` (enclosed: ${d.enclosed})` : '') };
     case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
-    case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };
+    case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };   // before the garden was a module
     case 'stall_sale': return { group: 'world', cls: 'world', text: `Pip sold ${d.qty} ${d.item} at its stall for ${d.coins} coin${d.coins === 1 ? '' : 's'}${d.left ? ` (${d.left} left)` : ' (sold out)'}` };
     case 'happening': return { group: 'world', cls: d.tone === 'bad' ? 'warn' : 'world', text: `Something happened — ${d.title}: ${d.text}${d.effects ? ` ${d.effects}` : ''}` };
     case 'reminded': return d.shown && d.shown.length ? { group: 'recall', text: `On Pip's mind: ${d.shown.map((m) => m.text).join(' · ')}` } : null;
@@ -347,7 +347,7 @@ $('tabbar').addEventListener('keydown', (ev) => {
 window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
 
 // ---- state panels -----------------------------------------------------------
-let state = null, notes = {}, noteTab = store.get('noteTab', 'diary'), gardenData = [];
+let state = null, notes = {}, noteTab = store.get('noteTab', 'diary'), standingData = [];
 function bar(label, value, cls = '') {
   return h('div', { class: 'stat' }, h('span', {}, label, pct(value)), h('div', { class: `bar ${cls}` }, h('i', { style: `width:${pct(value)}` })));
 }
@@ -439,17 +439,11 @@ async function refreshItems() {
     return h('li', {}, `${i.name} ×${i.qty} `, h('small', {}, [i.kind, i.description, extra].filter(Boolean).join(' · ')));
   }) : [h('li', { class: 'empty' }, 'nothing')]));
 }
-function renderGarden() {
-  const now = Date.now() / 1000;
-  $('garden').replaceChildren(...gardenData.map((g) => {
-    if (g.state === 'empty') return h('div', { class: 'plot' }, h('span', {}, `Plot ${g.plot}`, h('small', {}, 'empty')));
-    const total = g.ready_at - g.planted_at;
-    const done = g.state === 'ready' ? 1 : (now - g.planted_at) / total;
-    const left = Math.max(0, Math.ceil((g.ready_at - now) / 60));
-    return h('div', { class: 'plot' },
-      h('span', {}, `Plot ${g.plot}: ${g.crop}`, h('small', {}, g.state === 'ready' ? 'ripe!' : `ready in ~${left} min`)),
-      h('div', { class: 'bar' }, h('i', { style: `width:${pct(done)}` })));
-  }));
+// What live modules show Pip every time (the garden's plots, say): each a titled list (see DESIGN-world-packs.md, phase 4)
+function renderStanding() {
+  $('standing-card').hidden = !standingData.length;
+  $('standing').replaceChildren(...standingData.map((s) => h('div', { class: 'standing' }, h('h3', {}, s.title),
+    h('ul', { class: 'plain' }, ...s.lines.map((l) => h('li', {}, l))))));
 }
 // ---- lately: the small things that have happened (see DESIGN-happenings.md) ---------------------------------------
 function renderLately(rows) {
@@ -460,7 +454,7 @@ function renderLately(rows) {
     h('small', { class: 'lately-read' }, x.status === 'resolved' ? (x.read_as === x.lens ? `Pip took it as ${x.read_as}` : `told as ${x.lens}; Pip took it as ${x.read_as}`) : x.status === 'applied' ? 'Pip has yet to take it in' : ''))));
 }
 const refreshLately = async () => { try { renderLately(await api('/happenings?limit=6')); } catch { /* an older server has no happenings */ } };
-const refreshGarden = async () => { gardenData = await api('/garden'); renderGarden(); };
+const refreshStanding = async () => { try { standingData = await api('/standing'); } catch { standingData = []; } renderStanding(); };
 
 let projectData = { projects: [], skills: {} };
 function renderProjects() {
@@ -658,11 +652,11 @@ function handleEvent(e, live) {
   if (!live) return;
   const t = e.data?.tool;
   if (e.kind === 'tool' && ['note_to_self', 'edit_note', 'resolve_note'].includes(t)) debounce('notes', refreshNotes);
-  if (e.kind === 'gathered' || (e.kind === 'tool' && ['eat', 'use_item', 'plant', 'harvest', 'gather'].includes(t))) { debounce('items', refreshItems); debounce('garden', refreshGarden); }
+  if (e.kind === 'gathered' || e.kind === 'tool') { debounce('items', refreshItems); debounce('standing', refreshStanding); }   // a module's tool may give or take
   if (e.kind === 'gift') debounce('items', refreshItems);
-  if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'garden', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
-  if (e.kind === 'garden') debounce('garden', refreshGarden);
-  if (['happening', 'happening_felt'].includes(e.kind)) { debounce('lately', refreshLately); debounce('state', refreshState, 1200); debounce('items', refreshItems); debounce('garden', refreshGarden); }
+  if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'module', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
+  if (e.kind === 'module') debounce('standing', refreshStanding);
+  if (['happening', 'happening_felt'].includes(e.kind)) { debounce('lately', refreshLately); debounce('state', refreshState, 1200); debounce('items', refreshItems); debounce('standing', refreshStanding); }
   if (e.kind === 'arrived' || (e.kind === 'tool' && t === 'go_to')) debounce('map', refreshMap);
   if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
   if (e.kind === 'made_work') debounce('works', refreshWorks);
@@ -670,7 +664,7 @@ function handleEvent(e, live) {
   if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);
   if (['creation_made', 'creation'].includes(e.kind) || (e.kind === 'tool' && t === 'tend')) debounce('creations', refreshCreations);
   if (['module_live', 'module_disabled', 'module_rejected'].includes(e.kind)) debounce('modules', refreshModules);
-  if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('garden', refreshGarden); }
+  if (e.kind === 'creation' && e.data.what === 'helper') { debounce('items', refreshItems); debounce('standing', refreshStanding); }
   if (['tick', 'alert', 'tool'].includes(e.kind)) debounce('state', refreshState, 1200);
 }
 function connect() {
@@ -697,7 +691,7 @@ renderFilters();
   setChatOpen(!PUBLIC && store.get('chatOpen', false), false);
   try {
     const history = await api('/events?limit=300'); // newest first
-    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks(), refreshLately(), refreshModules()]);
+    await Promise.all([refreshState(), refreshEmotions(), refreshNotes(), refreshItems(), refreshStanding(), refreshProjects(), refreshCreations(), refreshMemory(), PUBLIC ? null : refreshLetters(), refreshWorks(), refreshLately(), refreshModules()]);
     for (const e of history.reverse()) handleEvent(e, false);
     $('chat').scrollTop = $('chat').scrollHeight;
   } catch (err) {
@@ -706,7 +700,7 @@ renderFilters();
   }
   connect();
   setInterval(() => Promise.all([refreshState(), refreshEmotions()]).catch(() => {}), 10_000);
-  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshGarden(), refreshProjects(), refreshCreations(), refreshMemory()]).catch(() => {}), 60_000);
-  setInterval(() => { renderGarden(); renderProjects(); }, 30_000);
+  setInterval(() => Promise.all([refreshNotes(), refreshItems(), refreshStanding(), refreshProjects(), refreshCreations(), refreshMemory()]).catch(() => {}), 60_000);
+  setInterval(() => { renderProjects(); }, 30_000);
   setInterval(() => { if (!$('tab-world').hidden) refreshMap().catch(() => {}); }, 5_000); // Pip walks while you watch
 })();

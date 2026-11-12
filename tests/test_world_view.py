@@ -108,13 +108,14 @@ def clock(st, now=None):
 def test_the_home_scene_has_pip_the_garden_the_creations_and_the_belongings(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.update_agent(activity="waiting on garden", description="Waiting for the peas.", mood="content")
-    st.plant(1, "pea seeds", "peas", 600, 3, 0.25)
+    from tests.test_garden import planted
+    planted(st, s, 1, "peas", 600)
     c = clock(st)
     st.add_coins("pip", 5)
     d = WV.scene_view(st, s, None)
     assert d["place"]["key"] == "workshop" and d["place"]["kind"] == "home" and d["place"]["open"] is True and not d["place"]["coastal"]
     assert d["pip"]["here"] and not d["pip"]["walking"] and d["pip"]["description"] == "Waiting for the peas." and d["pip"]["session"] is None
-    assert d["garden"][0]["crop"] == "peas" and d["coins"] == st.coins() and {i["name"] for i in d["items"]} == {i["name"] for i in st.items()}
+    assert d["facts"]["garden"]["plots"][0]["crop"] == "peas" and d["coins"] == st.coins() and {i["name"] for i in d["items"]} == {i["name"] for i in st.items()}
     gc = next(x for x in d["creations"] if x["name"] == c["name"])
     assert gc["capabilities"] == sorted(c["spec"]["capabilities"]) and gc["running"] and 0 <= gc["clock"]["minutes"] < 1440 and gc["tended_until"]
     assert d["present"] == [] and d["booths"] == [] and d["stall"] == []
@@ -197,9 +198,9 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     assert set(d["pip"]) == {"here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
-    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "objects", "layout"}
+    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "objects", "layout", "facts"}
     home = WV.scene_view(st, s, None)
-    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "garden", "creations", "items", "coins", "objects", "layout"}
+    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "creations", "items", "coins", "objects", "layout", "facts"}
     st.update_agent(activity="sleeping")
     assert WV.scene_view(st, s, None)["pip"]["asleep"] is True
     st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})

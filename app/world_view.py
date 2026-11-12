@@ -114,6 +114,8 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     session = None
     if sess:
         session = {k: sess[k] for k in ("kind", "started_at", "ends_at", "target")}
+        if sess["kind"] == "module":
+            session.update(label=sess["expect"])
         if sess["kind"] in ("work", "experiment"):
             pr = state.project(sess["project_id"])
             session.update(project=pr["name"], stage=pr["stages"][sess["stage"]]["name"] if 0 <= sess["stage"] < len(pr["stages"]) else None)
@@ -147,10 +149,10 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], "kind": r["kind"]} for r in state.stall_rows(key)],
         "objects": modules.scene_objects(state, key, kind),     # what live modules show here, already placed on anchors
         "layout": layouts.for_scene(state, key, kind),           # a place built from parts by a module, or None (its hand-written scene)
+        "facts": {m["name"]: m["facts"] for m in state.modules("live") if m["facts"]},   # what live modules publish (the garden's plots)
         "now": moment(state, settings, now),
     }
     if key == places.HOME:
-        out["garden"] = state.garden(now)
         out["creations"] = [{"name": c["name"], "quality": c["quality"], "capabilities": sorted(c["spec"]["capabilities"]), "running": cr.running(c, now),
                              "description": c["description"], **({"clock": _clock(c, now)} if "timekeeper" in c["spec"]["capabilities"] else {}),
                              **({"tended_until": c["runtime"].get("tended_until")} if "upkeep" in c["spec"]["capabilities"] else {}),

@@ -166,7 +166,7 @@ async def test_visiting_the_neighbor_in_person(tmp_path):
     p = agent._perception("event", [])
     assert "You are at: Marigold's home - A low cottage" in p and "You're visiting Marigold." in p
     assert 'Marigold said: "Oh, the hives are cross today." (answering you)' in p
-    assert "go_to home first" in (await call(agent, "plant", seed="tomato")).text
+    assert "go_to home first" in (await call(agent, "tend", creation="x")).text
     await call(agent, "say", text="bye!", to="Marigold")
     await call(agent, "go_to", place="home")
     time.sleep(0.01)

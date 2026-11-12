@@ -8,7 +8,7 @@ the garden a little. Nothing in the house can be read beyond the weather, and no
 
 ## Providers
 Where the weather comes from is a provider, chosen by `WEATHER_PROVIDER` (default `homeassistant`). `app/weather.py` is everything that does not
-care about the source: the `Weather` reading, how it is worded, the growing-time factors, keeping the last reading in the state's meta table,
+care about the source: the `Weather` reading, how it is worded, keeping the last reading in the state's meta table,
 and the throttled refresh. A provider is a small class registered with `@weather.register("name")`, built from the settings on each refresh,
 with:
 - `ready`: whether it is set up (e.g. a token is present); if not, nothing is requested.
@@ -33,20 +33,20 @@ deliberately tiny. `WEATHER=on|off` turns the feature on (off by default).
 1. **Perception**, one line near the time line: `Outside: light rain, 8 C; the sun sets at 4:52 PM.` Unknown or failed reads add nothing
    (never an error in the prompt). Temperature is converted to what HA reports; the condition is mapped to plain words.
 2. **Garden**: a crop's growing time is multiplied by a small factor when it is planted (never re-scaled afterwards, so state stays simple):
-   rain and snow help or hinder within a capped +-15%. See the table in `weather.py`; `GROW_SPEED` still applies on top.
+   rain and snow help or hinder within a capped +-15%. Since 0.35.0 this is the garden module's own (`WEATHER` in
+   `module_library/garden.py`, which reads `weather`); `GROW_SPEED` still applies on top.
 3. The creations' GM prompts (radio bulletins, DESIGN-abilities.md) may be handed the same one-line summary as flavour.
 
 Not in this step: sunset moving bedtime, and storms damaging plots (that belongs with LLM-free random events).
 
 ## Engine
-- `app/weather.py`: `Weather` (with `line()` and `grow_factor`), `save`/`current` (a reading older than an hour is ignored), `perception`,
-  `grow_factor`, the provider registry, and `async refresh(state, settings, now)`: at most one request every 10 minutes; a failure keeps the
+- `app/weather.py`: `Weather` (with `line()`), `save`/`current` (a reading older than an hour is ignored), `perception`, the provider registry, and `async refresh(state, settings, now)`: at most one request every 10 minutes; a failure keeps the
   last good reading.
 - `app/weather_homeassistant.py`: the provider (`parse` is pure and tested).
 - `settings.weather`, `settings.weather_provider`, and the provider's own (`hass_url`, `hass_token`, `weather_entity`).
 - Perception reads the stored reading only (the tick must never wait on a network call); the refresh runs in the monitor pass.
 
 ## Tests
-Core (`test_weather.py`): line wording, the grow factor table and its cap, storage and staleness, refresh throttling and failure handling against a
+Core (`test_weather.py`): line wording (the grow factor table and its cap, and planting in the weather, are `test_garden.py`'s), storage and staleness, refresh throttling and failure handling against a
 fake registered provider, the registry, and the garden planting time with and without weather. Home Assistant (`test_weather_homeassistant.py`):
 parsing (units, unknown condition, missing attributes) and a check that only the two entity paths are ever requested, with the token.

@@ -18,22 +18,31 @@ class WorldEffect:
     words: tuple[str, ...]                         # at least one must appear in the project's own words
     apply: Callable[[object], str | None]          # (state) -> the line to record, or None if the world has no room
     min_difficulty: int = 2
+    request: tuple[str, str] | None = None         # (module, what): a live module makes the change (`does`: "request:<module>:<what>")
 
 
-DOES = {"add_plot": lambda state: state.add_plot(), "add_project_slot": lambda state: state.add_project_slot()}   # what an effect can do
+DOES = {"add_project_slot": lambda state: state.add_project_slot()}   # what an effect can do itself (or a module does it: "request:<module>:<what>")
 
 
 def _applier(does: str, note: str) -> Callable:
     def apply(state) -> str | None:
+        if does not in DOES:                       # a module's change: made through it (see `apply` below)
+            return None
         n = DOES[does](state)
         return None if n is None else note.format(n=n)
     return apply
 
 
+def _request(does: str) -> tuple[str, str] | None:
+    parts = does.split(":")
+    return (parts[1], parts[2]) if len(parts) == 3 and parts[0] == "request" else None
+
+
 def registry() -> dict[str, WorldEffect]:
     """The world's effects (its pack's content.json `world_effects`): what each is, the words that mark it, and what it does."""
     raw = world_pack.active().data("content").get("world_effects", {})
-    return {name: WorldEffect(name, e["help"], tuple(e.get("words", ())), _applier(e["does"], e["note"]), e.get("min_difficulty", 2))
+    return {name: WorldEffect(name, e["help"], tuple(e.get("words", ())), _applier(e["does"], e.get("note", "")), e.get("min_difficulty", 2),
+                              _request(e["does"]))
             for name, e in raw.items()}
 
 
@@ -58,13 +67,22 @@ def allowed(effect, project: dict) -> bool:
     return any(w in words for w in e.words)
 
 
-def apply(state, spec: dict) -> str | None:
+async def apply(state, spec: dict) -> str | None:
     """Carry out a finished project's world effect, once. If the world has no room, the capability is dropped so the
-    creation doesn't claim a change that didn't happen."""
+    creation doesn't claim a change that didn't happen. A module's change is asked of the module; its reply is the line."""
     effect = spec["capabilities"].get("world", {}).get("effect")
     if not effect:
         return None
-    note = registry()[effect].apply(state) if effect in registry() else None
+    e = registry().get(effect)
+    note = None
+    if e and e.request:
+        from . import modules
+        try:
+            note = await modules.ask_module(state, state.s, modules.runner_for(state.s), *e.request, {}, True) or None
+        except modules.Refused:
+            note = None
+    elif e:
+        note = e.apply(state)
     if note is None:
         spec["capabilities"].pop("world", None)
     return note

@@ -172,9 +172,10 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         rows = app.state.agent.state.happenings(min(limit, 100))
         return [happenings.public_row(h) for h in rows] if request.state.public else rows
 
-    @app.get("/garden")
-    def get_garden():
-        return app.state.agent.state.garden()
+    @app.get("/standing")
+    def get_standing():
+        """What live modules show the agent every time (the garden's plots, say): [{title, lines, ready, next_at?, module}]."""
+        return modules.standing(app.state.agent.state)
 
     @app.get("/projects")
     def get_projects(status: str | None = None):

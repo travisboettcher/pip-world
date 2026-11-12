@@ -1,13 +1,13 @@
 """Real weather and daylight (see DESIGN-weather.md).
 
-Pip is told the conditions outside and when the sun turns, and the weather nudges how long crops take to grow. Where the weather comes
-from is a *provider*: a small class registered by name (`@register("homeassistant")`) that turns some source into a `Weather`. This module
-is everything that does not care which source: the reading itself, how it is worded to Pip, the growing-time factors, keeping the last
-reading in the state's meta table (so the tick never waits on a network call), and the throttled refresh. Pick the provider with
+The agent is told the conditions outside and when the sun turns; modules read the weather too (the garden's growing time is its own).
+Where the weather comes from is a *provider*: a small class registered by name (`@register("homeassistant")`) that turns some source into a
+`Weather`. This module is everything that does not care which source: the reading itself, how it is worded, keeping the last reading in the
+state's meta table (so the tick never waits on a network call), and the throttled refresh. Pick the provider with
 `WEATHER_PROVIDER`; add one by writing a module that registers a class with `ready` and `async fetch(http)`, then importing it at the bottom.
 
 Providers must report one of the condition names in `CONDITIONS` (Home Assistant's vocabulary, which is a fair common denominator);
-anything else is shown in plain words and has no effect on the garden.
+anything else is shown in plain words.
 """
 import json
 from dataclasses import dataclass
@@ -19,15 +19,12 @@ from .httpclient import http_client  # noqa: F401  (providers use it; kept impor
 REFRESH_EVERY = 600        # seconds between requests to a provider
 STALE_AFTER = 3600         # a reading older than this is not shown or used
 
-# condition -> (how Pip hears it, growing-time multiplier). Rain helps, cold and snow hinder; the cap is +-15%.
+# condition -> how the agent hears it. What a condition does to the world (to a garden's growing, say) is a module's (it reads `weather`).
 CONDITIONS = {
-    "sunny": ("sunny", 0.95), "clear-night": ("clear", 1.0), "partlycloudy": ("partly cloudy", 1.0),
-    "cloudy": ("cloudy", 1.03), "rainy": ("rain", 0.85), "pouring": ("heavy rain", 0.85),
-    "lightning-rainy": ("thunder and rain", 0.85), "lightning": ("thunder", 1.0), "snowy": ("snow", 1.15),
-    "snowy-rainy": ("sleet", 1.1), "fog": ("fog", 1.05), "hail": ("hail", 1.1), "windy": ("windy", 1.0),
-    "windy-variant": ("windy", 1.0), "exceptional": ("unusual weather", 1.0),
+    "sunny": "sunny", "clear-night": "clear", "partlycloudy": "partly cloudy", "cloudy": "cloudy", "rainy": "rain", "pouring": "heavy rain",
+    "lightning-rainy": "thunder and rain", "lightning": "thunder", "snowy": "snow", "snowy-rainy": "sleet", "fog": "fog", "hail": "hail",
+    "windy": "windy", "windy-variant": "windy", "exceptional": "unusual weather",
 }
-GROW_FACTORS = {k: v[1] for k, v in CONDITIONS.items()}
 
 
 @dataclass(frozen=True)
@@ -39,12 +36,8 @@ class Weather:
     next_rising: float | None      # epoch seconds
     next_setting: float | None
 
-    @property
-    def grow_factor(self) -> float:
-        return GROW_FACTORS.get(self.condition, 1.0)
-
     def line(self) -> str:
-        words = CONDITIONS.get(self.condition, (self.condition.replace("-", " ").replace("_", " "), 1.0))[0]
+        words = CONDITIONS.get(self.condition, self.condition.replace("-", " ").replace("_", " "))
         head = f"Outside: {words}" + (f", {round(self.temp)} {self.unit}" if self.temp is not None else "")
         turn, at = ("sets", self.next_setting) if self.above_horizon else ("rises", self.next_rising)
         sun = f"; the sun {turn} at {datetime.fromtimestamp(at).strftime('%-I:%M %p')}" if at else ""
@@ -83,11 +76,6 @@ def current(state, now: float) -> Weather | None:
 def perception(state, settings, now: float) -> list[str]:
     w = current(state, now) if settings.weather else None
     return [w.line()] if w else []
-
-
-def grow_factor(state, settings, now: float) -> float:
-    w = current(state, now) if settings.weather else None
-    return w.grow_factor if w else 1.0
 
 
 async def refresh(state, settings, now: float, http=None) -> bool:

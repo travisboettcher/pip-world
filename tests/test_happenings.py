@@ -42,7 +42,7 @@ def food(name="tomatoes", qty=91):
 
 
 def w(**kw):
-    base = {"now": NOW, "coins": 78, "hunger": 0.2, "energy": 0.8, "low": False, "plots": [plot()], "foods": [food()],
+    base = {"now": NOW, "coins": 78, "hunger": 0.2, "energy": 0.8, "low": False, "known": ["tomatoes"], "answers": {}, "foods": [food()],
             "booths": [{"key": "Saltholm", "loot": [["brass wire", "material", 20, [1, 2], "wire", {}]]}], "period": "afternoon",
             "neighbors": ["Oriel Vantosh"], "creations": ["Gear Clock"],
             "stoppable": [{"id": 1, "name": "Gear Clock"}], "tools": ["needle file"], "diary_count": 9,

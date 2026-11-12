@@ -208,15 +208,15 @@ def test_events_since_is_strict_oldest_first_and_limited(tmp_path, clock):
 
 def test_log_marks_firsts_on_the_event_and_not_the_second_time(tmp_path, clock):
     st = mk(tmp_path)
-    e1 = st.log("tool", tool="plant", args={}, result="planted")
+    e1 = st.log("tool", tool="recall", args={}, result="planted")
     first = st.events(limit=1)[0]
-    assert [f["key"] for f in first["data"]["firsts"]] == ["tool:plant"]
-    assert first["data"]["tool"] == "plant" and "returns" not in first["data"]
+    assert [f["key"] for f in first["data"]["firsts"]] == ["tool:recall"]
+    assert first["data"]["tool"] == "recall" and "returns" not in first["data"]
     assert first["importance"] == 2                                  # base 1 + minor bonus 1
-    st.log("tool", tool="plant", args={}, result="planted")
+    st.log("tool", tool="recall", args={}, result="planted")
     second = st.events(limit=1)[0]
     assert "firsts" not in second["data"] and second["importance"] == 1 and second["id"] != e1
-    assert st.db.execute("SELECT count FROM facets WHERE key = 'tool:plant'").fetchone()["count"] == 2
+    assert st.db.execute("SELECT count FROM facets WHERE key = 'tool:recall'").fetchone()["count"] == 2
 
 
 def test_major_first_weighs_more(tmp_path, clock):
@@ -325,16 +325,16 @@ def test_backfill_not_rerun_when_current(tmp_path, clock):
 
 def test_recent_firsts_filters_orders_and_limits(tmp_path, clock):
     st = mk(tmp_path)
-    st.log("tool", tool="plant", args={}, result="ok")            # minor, oldest
+    st.log("tool", tool="recall", args={}, result="ok")            # minor, oldest
     clock[0] += 3600
     st.log("tool", tool="sleep", args={}, result="ok")            # major
     clock[0] += 3600
     st.log("tool", tool="eat", args={}, result="ok")              # minor, newest
     got = st.recent_firsts(max_age_hours=5, showings=1, limit=10)
-    assert [f["key"] for f in got] == ["tool:sleep", "tool:eat", "tool:plant"]
+    assert [f["key"] for f in got] == ["tool:sleep", "tool:eat", "tool:recall"]
     assert [f["key"] for f in st.recent_firsts(5, 1, 2)] == ["tool:sleep", "tool:eat"]
     assert [f["key"] for f in st.recent_firsts(1.5, 1, 10)] == ["tool:sleep", "tool:eat"]
-    assert [f["key"] for f in st.recent_firsts(2, 1, 10)] == ["tool:sleep", "tool:eat", "tool:plant"]  # boundary: first_ts >= cutoff
+    assert [f["key"] for f in st.recent_firsts(2, 1, 10)] == ["tool:sleep", "tool:eat", "tool:recall"]  # boundary: first_ts >= cutoff
     st.mark_firsts_shown(["tool:sleep"])
     assert "tool:sleep" not in [f["key"] for f in st.recent_firsts(5, 1, 10)]
     assert "tool:sleep" in [f["key"] for f in st.recent_firsts(5, 2, 10)]           # shown < showings
@@ -344,7 +344,7 @@ def test_recent_firsts_filters_orders_and_limits(tmp_path, clock):
 
 def test_recent_firsts_now_defaults_to_the_clock(tmp_path, clock):
     st = mk(tmp_path)
-    st.log("tool", tool="plant", args={}, result="ok")
+    st.log("tool", tool="recall", args={}, result="ok")
     clock[0] += 7200
     assert st.recent_firsts(1, 1, 10) == []
     assert len(st.recent_firsts(3, 1, 10)) == 1
@@ -352,24 +352,24 @@ def test_recent_firsts_now_defaults_to_the_clock(tmp_path, clock):
 
 def test_mark_firsts_shown_counts_each_key(tmp_path, clock):
     st = mk(tmp_path)
-    st.log("tool", tool="plant", args={}, result="ok")
+    st.log("tool", tool="recall", args={}, result="ok")
     st.log("tool", tool="eat", args={}, result="ok")
-    st.mark_firsts_shown(["tool:plant", "tool:plant", "tool:eat"])
-    assert facet(st, "tool:plant")["shown"] == 2 and facet(st, "tool:eat")["shown"] == 1
+    st.mark_firsts_shown(["tool:recall", "tool:recall", "tool:eat"])
+    assert facet(st, "tool:recall")["shown"] == 2 and facet(st, "tool:eat")["shown"] == 1
 
 
 def test_firsts_between_bounds_order_and_limit(tmp_path, clock):
     st = mk(tmp_path)
     t0 = clock[0]
-    st.log("tool", tool="plant", args={}, result="ok")            # at t0
+    st.log("tool", tool="recall", args={}, result="ok")            # at t0
     clock[0] += 10
     st.log("tool", tool="eat", args={}, result="ok")              # t0+10
     clock[0] += 10
     st.log("tool", tool="sleep", args={}, result="ok")            # t0+20 (major)
     keys = lambda a, b, **k: [f["key"] for f in st.firsts_between(a, b, **k)]
     assert keys(t0, t0 + 20) == ["tool:sleep", "tool:eat"]        # start exclusive, end inclusive, majors first
-    assert keys(t0 - 1, t0 + 20) == ["tool:sleep", "tool:plant", "tool:eat"]
-    assert keys(t0 - 1, t0 + 20, limit=2) == ["tool:sleep", "tool:plant"]
+    assert keys(t0 - 1, t0 + 20) == ["tool:sleep", "tool:recall", "tool:eat"]
+    assert keys(t0 - 1, t0 + 20, limit=2) == ["tool:sleep", "tool:recall"]
     assert keys(t0, t0 + 19) == ["tool:eat"]
     assert len(st.firsts_between(0, 1e12)) == 3
 

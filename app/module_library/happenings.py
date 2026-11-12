@@ -86,7 +86,7 @@ def _low(pip):
 
 def _plan(ctx, cat, tone, severity, rng):
     """What kind of thing changes ({effects, names}), or None if this category can't happen like this now."""
-    pip, garden = ctx["agent"], [g for g in ctx["garden"] if g["state"] == "growing"]
+    pip, garden = ctx["agent"], _growing(ctx)
     foods = sorted((i for i in ctx["items"] if i["kind"] == "food"), key=lambda i: -i["qty"])
     neighbors = [p["name"] for p in ctx["people"] if p["kind"] == "neighbor"]
     tools = [i["name"] for i in ctx["items"] if i["kind"] == "tool"]
@@ -96,11 +96,12 @@ def _plan(ctx, cat, tone, severity, rng):
         g = rng.choice(garden)
         if tone == "neutral":
             return {"names": [g["crop"]]}
+        crop = lambda how: {"effects": [{"kind": "request", "module": "garden", "what": "crop", "args": {"plot": g["plot"], "how": how}}]}  # noqa: E731
         if tone == "bad" and severity == "major" and rng.random() < 0.5:
-            return {"effects": [{"kind": "crop", "plot": g["plot"], "how": "ruin"}]}
+            return crop("ruin")
         if rng.random() < 0.5:
-            return {"effects": [{"kind": "crop", "plot": g["plot"], "how": "time"}]} if g["ready_in_min"] * SHIFT[severity] >= 1 else None
-        return {"effects": [{"kind": "crop", "plot": g["plot"], "how": "yield"}]} if tone == "good" else None
+            return crop("time") if (g["ready_at"] - ctx["now"]) / 60 * SHIFT[severity] >= 1 else None
+        return crop("yield") if tone == "good" else None
     if cat in ("creature", "pantry"):
         if tone == "neutral":
             return {}
@@ -142,8 +143,14 @@ def _plan(ctx, cat, tone, severity, rng):
     return {}                                                 # atmosphere
 
 
+def _growing(ctx):
+    """The garden module's plots with something growing (what it publishes; none without a garden)."""
+    plots = ((ctx.get("facts") or {}).get("garden") or {}).get("plots") or []
+    return [p for p in plots if p.get("ready_at", 0) > ctx["now"]]
+
+
 def _possible(ctx, cat):
-    garden = [g for g in ctx["garden"] if g["state"] == "growing"]
+    garden = _growing(ctx)
     return {"garden": bool(garden), "market": any(p["kind"] in ("shop", "market") for p in ctx["places"]),
             "mishap": any(c["tended"] and c["running"] for c in ctx["creations"]) or any(i["kind"] == "tool" for i in ctx["items"]),
             "neighbor": any(p["kind"] == "neighbor" for p in ctx["people"]), "kindness": any(p["kind"] == "neighbor" for p in ctx["people"]),

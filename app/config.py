@@ -52,11 +52,11 @@ class Settings:
     monitor_seconds: float = 30
 
     daily_token_budget: int = 5_000_000
-    garden_plots: int = 3
-    garden_plots_max: int = 8           # most plots Pip can ever have (it can clear more than it starts with)
+    garden_plots: int = 3               # the shipped garden module's params (module_library/garden.json): plots it starts with,
+    garden_plots_max: int = 8           # most it can ever have (it can clear more than it starts with)
     moment_window_minutes: float = 60  # how far back a notable moment can be offered for the diary
     moment_showings: int = 3           # how many ticks a moment is offered before it's dropped
-    garden_speed: float = 1.0  # >1 grows crops faster (testing / impatience)
+    garden_speed: float = 1.0  # >1 grows the garden module's crops faster (testing / impatience)
     work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
     max_active_projects: int = 3
     max_active_projects_cap: int = 5   # most projects at once, however much workshop Pip builds
@@ -247,7 +247,7 @@ class Settings:
             library_provider=(e("LIBRARY_PROVIDER") or "auto").strip().lower(),
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,plant,harvest,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,buy,sell,pay,feel").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,gather,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,buy,sell,pay,feel").split(",") if t.strip()],
             search_provider=(e("SEARCH_PROVIDER") or "tavily").strip().lower(),
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),

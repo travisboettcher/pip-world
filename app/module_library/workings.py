@@ -71,9 +71,13 @@ def on_time(ctx):
     return {"runtime": {"stop_logged": True}, "log": line, "perceive": line, "wake": True}
 
 
+def _plots(ctx):
+    return ((ctx.get("facts") or {}).get("garden") or {}).get("plots") or []
+
+
 def _condition(ctx, cond):
-    if cond == "crop_ripe":
-        return any(g["state"] == "ready" for g in ctx["garden"])
+    if cond == "crop_ripe":                                  # the garden module's published plots
+        return any("ready_at" in p and p["ready_at"] <= ctx["now"] for p in _plots(ctx))
     if cond == "visitor":
         return ctx["visitors"]["waiting"] > 0
     if cond == "dawn":
@@ -107,9 +111,9 @@ def on_tick(ctx):
             item = rng.choice(h["finds"])
             out["find"] = {"item": item, "qty": 1}
             said.append(f"{h['line']} (found: {item})")
-        elif h["effect"] == "hurry_crops":
-            if any(g["state"] == "growing" for g in ctx["garden"]):
-                out["garden"] = {"hurry": 0.1}
+        elif h["effect"] == "hurry_crops":                    # asked of the garden module, which answers `hurry`
+            if any(p.get("ready_at", 0) > now for p in _plots(ctx)):
+                out["request"] = {"module": "garden", "what": "hurry", "args": {"share": 0.1}}
                 said.append(h["line"])
         else:  # comfort
             out["affect"] = {"energy": 0.05}

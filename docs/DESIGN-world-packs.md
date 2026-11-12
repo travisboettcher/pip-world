@@ -3,7 +3,9 @@
 Status (2026-11-11): designed; **phase 1 built (0.31.0, 0.32.0)**: the pack loader, `WORLD_PACK`, Pip's world's persona, narrator, bible
 and guide in `worlds/pip/`; the agent's name and pronoun through every engine prompt; the `agent` read; and the test that keeps the
 engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack; **phase 3 built (0.34.0)**: the agent's stats and the world's tone
-are its pack's (`stats.json`, `tone.json`), over the engine's floor. Next: phase 4 (hooks for features as modules). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+are its pack's (`stats.json`, `tone.json`), over the engine's floor; **phase 4 built (0.35.0)**: the hooks a feature needs to be a
+module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module. Next:
+phase 5 (features move). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -194,6 +196,47 @@ What stays core: the loop, the mind (memory, journal, reflection, night pass, em
 `recall`), sleep and the day, stats and stakes, belongings and the purse, places, walking and the map, characters and conversation, the
 module system, happenings' checks, the world view's renderer, channels and visitors, the dashboard.
 
+## Phase 4 in detail
+The garden is the proof: nothing in the engine may know what a plot, a seed or a harvest is once it moves. What it needs, and the generic
+hook that gives it:
+
+| The garden needs | The hook (4a) |
+|---|---|
+| `plant` and `harvest`, at home | **tools**: the manifest's `tools` (`[{name, help, params, where}]`, `params` a small JSON schema, `where` one of `anywhere`, `home` or a place key). The engine offers them with its own tools where they apply, checks the arguments against the schema, logs each use as a `tool` event like its own, and runs the module's `on_action` with `{"tool": name, "args": {...}}`; the call's `reply` is the tool's result. A name may not shadow an engine tool or another live module's. |
+| its plots, kept between calls | **storage**: `store` (`{"plots": {"2": {...}, "3": null}}`): per-module collections of JSON values by key, merged on each call (`null` deletes), read back as `ctx["store"]`. Kept by the module's name, so a new version keeps them; 64 KB a module, 200 keys a collection. |
+| a seed taken, a harvest given | **belongings**: `take` (`[{item, qty}]`, only what the agent has) and `give` (`[{item, qty, kind, description?, attrs?}]`), each capped by the manifest's `belongings` (`{"takes": [kinds], "gives": [kinds], "most": n}`). The `items` read carries each item's `attrs`, so a module can read a seed's crop and growing time. A given item's `attrs` are plain values; `restores` may only name the world's stats. |
+| "Your garden: plot 2, peas, ripe in an hour" every time | **status**: `status` (`{title, lines, ready?, next_at?}`), replaced on each call and shown in its own section of the prompt every tick, on `/status`, and on the dashboard. `ready` says something waits for the agent now; `next_at` when something next will; the free-time line ("nothing needs you for about...") reads them, not the garden. |
+| to wake the agent and be remembered when a crop ripens | `schedule` and `wake`, as today, and **kinds for `log`**: `log` may be `{text, kind, feel?}`. The event is `module` with the module's name and the kind; a pack's `content.json` `module_firsts` (`{"garden:ripe": "had a crop ripen"}`) makes the first one a first, and `feel` moves the agent's emotions a little (at most 5 each). |
+| happenings that hurry, slow, shrink or ruin a crop; a helper that hurries them; a world effect that clears a plot | **requests**: one module asks another to change itself. A module lists what it `answers` (`{"hurry": "help growing crops along"}`) and gets `on_request` (`{"what", "args", "from", "tone"?, "severity"?, "apply"}`); its `reply` says what changed. Another module proposes `request` (`{module, what, args}`); a happening's effect may be `{"kind": "request", "module", "what", "args"}` (asked once to describe, `apply: false`, before the words are written, then once to apply); a world effect's `does` may be `request:<module>:<what>`. The engine checks the request is to a live module that answers it; the module answering is the authority on its own state, sized by the severity it is given. |
+| the scene's plots and the dashboard's garden | **published facts**, as today, and status: the world view carries the live modules' `facts` (`facts.garden.plots`), which the renderer's plots read; the dashboard shows each module's status. |
+| sessions | Not the garden's, but in the list: **sessions**. `on_action` may start one (`{"session": {"minutes", "label", "working"?}}`): the agent is busy with `label` until it ends, then the module's `on_time` runs with `{"session": {"label", "interrupted"}}`; resting or sleeping ends it early. Gathering is its first user (phase 5). |
+
+**4b, the move.** A shipped `garden` module: plots in its store (`GARDEN_PLOTS`, `GARDEN_PLOTS_MAX` and `GROW_SPEED` become its params,
+as `HAPPENINGS_*` did), `plant`/`harvest` as its tools, the weather's effect on growing as its own table, its status lines, and `answers`
+for `hurry`, `crop` (a happening's `time`, `yield`, `ruin`, sized by severity) and `add_plot`. The happenings module asks it for crop
+turns; a creation's `hurry_crops` helper asks it to hurry; the sensor `crop_ripe` reads its facts. On first install the engine moves an
+existing garden table into its store (a one-time migration, the only place the old table is named) and drops the table. Then `plant`,
+`harvest`, `state.garden()`, the `garden` read and proposal, the garden prompt lines, `/garden` and the dashboard's own garden panel are
+gone; `TOOLS` naming `plant` or `harvest` is fine (a tool name the engine doesn't have is skipped, with a warning).
+
+**As built (0.35.0), and what the move added.** All of the above, plus what the garden turned out to need, each generic:
+- a status line may say `{in:<time>}`, which the engine words as "45 min" or "3 hours" whenever it is shown, so "ready in about..." is
+  never stale between the module's calls;
+- `on_request` may `refuse` with a reason ("that crop is as good as ripe"), which is what the asker, a happening or a world effect hears;
+- a tool may have a `first` ("planted something"): its first use is a first, each use that changes something is a diary moment, and a
+  use that changes nothing (a harvest with nothing ripe) is a no-op, like the engine's own;
+- a module tool's use is a public event with its result (the engine's own world actions are);
+- a happening may mention any name a live module publishes in its facts' `names` (the garden's crops);
+- the world view carries every live module's facts (`facts.garden.plots`, which the scene's plots read) and `/standing` serves the status
+  sections (the dashboard's "Going on" card replaces its garden card);
+- the weather's effect on growing is the module's own table; `weather.py` only words the conditions;
+- the crop sizes left `tone.json` for the garden module; the happenings module asks it (`request` to `crop`), a creation's `hurry_crops`
+  helper asks it (`hurry`), the sensor `crop_ripe` reads its facts, and Pip's world's `garden_plot` effect is `request:garden:add_plot`;
+- the pack names the garden's first ripening (`module_firsts`: `garden:ripe`, the same first as before, so it isn't new again).
+
+Still the engine's, for phase 5: seeds as an item kind (their `crop`, growing time and yield attributes, and scooping seeds out of food
+with `use_item`), and the creation capabilities that name the garden (crafting moves last).
+
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of
    it/she/he/they, and kind; `api` 1), and the pack's `persona.md` (the default when `PERSONA_PATH` has no file; with none, "You are
@@ -224,7 +267,10 @@ module system, happenings' checks, the world view's renderer, channels and visit
 3. **Stats and tone.** *Built (0.34.0).* Hunger and energy are pack-declared stats in a `stats` table; `affect` and a happening's `stat`
    effect take any stat; `tone.json` replaces the hard-coded checks and sizes (with the engine's floor); `eat`/`rest`/`sleep` follow
    `restored_by`.
-4. **Tools, sessions, storage, belongings, status.** The hooks that let a feature be a module, proved on the **garden** (and the market).
+4. **Tools, sessions, storage, belongings, status.** The hooks that let a feature be a module, proved on the **garden**. In two steps
+   (see "Phase 4 in detail" below): *4a* the hooks, each tested with a small module; *4b* the garden moves into a shipped `garden`
+   module and the engine's garden (its table, tools, prompt lines, the `garden` read and proposal) is removed. *Built together (0.35.0).* The market, which the
+   first plan also named here, moves with the other features in phase 5: it needs `characters` for its stallholders too.
 5. **Features move.** Gathering, letters and neighbours (with characters), the library (with sources), weather and calendar, then
    crafting. Each keeps the engine's version as a fallback until it's live, then removes it.
 6. **Stakes and a second world.** Health and `at_zero`, `harm`; then a small **wasteland pack** as the test: a shelter, scavenging,

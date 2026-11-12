@@ -185,7 +185,7 @@ def test_the_dashboard_has_a_map_section_wired_to_the_endpoint(tmp_path):
     with TestClient(create_app(s, FakeBackend())) as c:
         page, js, css, mapjs = (c.get(f"/ui/{f}").text for f in ("index.html", "app.js", "style.css", "world/map.js"))
         fonts = [c.get(f"/ui/fonts/{f}") for f in ("IMFellEnglish-Regular.woff2", "IMFellEnglish-Italic.woff2", "IMFellEnglishSC-Regular.woff2", "OFL.txt")]
-    assert 'id="map"' in page and 'id="map-where"' in page and 'id="map-place"' in page and page.index('id="map"') < page.index('id="garden"')
+    assert 'id="map"' in page and 'id="map-where"' in page and 'id="map-place"' in page and page.index('id="map"') < page.index('id="standing"')
     assert "api('/world/map')" in js and "refreshMap" in js and "renderMap" in js and "import { WorldMap } from './world/map.js'" in js
     assert "e.kind === 'arrived'" in js and "name === 'world'" in js                      # refreshed on arrival and when the tab opens
     assert "export class WorldMap" in mapjs and ".wm-inner" in css and "fonts/IMFellEnglish-Regular.woff2" in css
@@ -256,7 +256,7 @@ async def test_the_offered_tools_are_described_for_the_place_and_a_closed_place_
     from app import places as P
     from app import tools as T
     s, st, gm, agent = make(tmp_path, sleep=True)
-    agent.tools = T.enabled_tools(Settings(tools=["gather", "say", "harvest"]))
+    agent.tools = T.enabled_tools(Settings(tools=["gather", "say", "tend"]))
     hour = datetime.now().hour
     s.bedtime_hour, s.wake_hour = (hour + 3) % 24, (hour + 8) % 24               # daytime
     st.update_agent(location="woods")
@@ -266,4 +266,4 @@ async def test_the_offered_tools_are_described_for_the_place_and_a_closed_place_
     s.bedtime_hour, s.wake_hour = hour, (hour + 8) % 24                           # night: the woods are closed
     assert {sp.name for sp in agent._specs()} == {"say"}
     st.update_agent(location="workshop")
-    assert {sp.name for sp in agent._specs()} == {"say", "harvest"}
+    assert {sp.name for sp in agent._specs()} == {"say", "tend"}

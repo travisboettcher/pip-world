@@ -244,15 +244,6 @@ def test_find_creation_ignores_a_leading_hash(tmp_path, clock):
     assert st.find_creation("  #red  ") == (k, "")
 
 
-def test_garden_ready_flips_only_when_the_time_has_come(tmp_path, clock):
-    st = mk(tmp_path)
-    st.plant(1, "s", "c", 1, 1, 0.1)
-    clock[0] += 59
-    assert st.garden()[0]["state"] == "growing" and st.garden()[0]["ready_in_min"] == 1
-    clock[0] += 1
-    assert st.garden()[0]["state"] == "ready" and st.garden()[0]["ready_in_min"] == 0
-
-
 def test_matching_wishes_looks_at_the_newest_fifty_wishes_only(tmp_path, clock):
     st = mk(tmp_path)
     st.add_memory("a brass telescope", "wishlist")
