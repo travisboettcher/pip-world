@@ -211,7 +211,7 @@ async def test_a_shop_haul_goes_on_account(tmp_path):
     from tests.test_invented_places import real_shop
     s, st, gm, agent = setup(tmp_path, [report(text="You pick through the drawers.")], where="Saltholm")
     real_shop(st)
-    st.update_place("Saltholm", on_account={"brass wire": 2})
+    st.update_place("Saltholm", on_account={"brass wire": 2}, hours=None)             # open whatever the hour the tests run at
     st.update_agent(location="Saltholm")
     assert (await gather(agent, minutes=15)).startswith("you set about rummaging in the ironmonger's drawer at Saltholm for 15 min.")
     await finish(agent, s)
