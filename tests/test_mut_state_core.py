@@ -48,8 +48,9 @@ def test_name_key_singular_rules():
 
 # --- stats decay -----------------------------------------------------------------
 def decay_state(tmp_path, clock, **kw):
-    st = mk(tmp_path, hunger_per_hour=0.1, energy_per_hour=0.1, recover_per_hour=0.2, sleep_recover_per_hour=0.15,
-            work_energy_per_hour=0.05, hunger_alert=0.5, energy_alert=0.25, **kw)
+    st = mk(tmp_path, stats={"hunger": {"per_hour": 0.1, "alert": {"above": 0.5}},
+                             "energy": {"per_hour": -0.1, "resting_per_hour": 0.2, "asleep_per_hour": 0.15, "working_per_hour": -0.05,
+                                        "alert": {"below": 0.25}}}, **kw)
     st.update_agent(hunger=0.0, energy=0.75, activity="idle", updated_at=clock[0], hunger_alerted=0, energy_alerted=0)
     return st
 

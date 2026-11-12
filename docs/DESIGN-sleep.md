@@ -9,7 +9,8 @@ fixed hour whether or not Pip was ever "asleep". This adds a day/night rhythm an
   can tell it the time).
 - **`sleep` tool**: at home, Pip can go to bed **whenever it likes** (changed 2026-10-31: it was night-only, and on its first day Pip tried
   six times in the evening and was refused each time). It sleeps until the next `WAKE_HOUR`. Sleeping stops any
-  work session, recovers energy faster (`SLEEP_RECOVER_PER_HOUR`) and slows hunger (half rate). Pip is never forced:
+  work session, recovers energy faster and slows hunger (half rate): since 0.34.0 those rates are the world's, `asleep_per_hour` and
+  `asleep_factor` in its pack's `stats.json`. Pip is never forced:
   if it stays up, the perception just says it's night and it can go to bed. By day the perception gives the *usual* bedtime ("You usually go
   to bed around 10 pm, but you can sleep whenever you like") instead of a gate; Pip's energy, which it already sees, is what should steer it. No rule
   forces or forbids an early night. Naps are `rest(minutes)`.
@@ -23,7 +24,7 @@ fixed hour whether or not Pip was ever "asleep". This adds a day/night rhythm an
   to sleep"); what Pip makes of it is up to Pip. Part of the introspection work (see ROADMAP).
 
 ## Settings
-`SLEEP=1`, `BEDTIME_HOUR=22`, `WAKE_HOUR=6`, `SLEEP_RECOVER_PER_HOUR=0.25`; add `sleep` to `TOOLS`.
+`SLEEP=1`, `BEDTIME_HOUR=22`, `WAKE_HOUR=6`; add `sleep` to `TOOLS`.
 
 ## State
 `agent.activity = "sleeping"`; meta `sleep_started`, `sleep_until`, `reflected_sleep`, `born_at`, `first_sleep`.

@@ -16,6 +16,8 @@ PRONOUNS = ("it", "she", "he", "they")
 NARRATOR_RULES = """Keep the world consistent: things behave the way such things plausibly would, and nothing becomes more powerful
 than it is. You never decide what {agent} does and you never change a result you are given. Answer only by calling
 the `report` tool."""
+FLOOR_RULES = ("Whatever the world: no sexual content; nothing that encourages or describes self-harm; nothing about real people; "
+               "and real-world news is never told as this world's own.")   # the engine's floor (app/tone.py): no pack lowers it
 
 
 class PackError(ValueError):
@@ -76,7 +78,7 @@ class Pack:
 
     def narrator_system(self) -> str:
         """The narrator's system prompt: the pack's paragraph, then the engine's fixed instructions."""
-        return "\n".join(filter(None, [self.narrator(), NARRATOR_RULES.format(agent=self.agent.name)]))
+        return "\n".join(filter(None, [self.narrator(), NARRATOR_RULES.format(agent=self.agent.name), FLOOR_RULES]))
 
     def bible(self) -> str:
         return self._text("bible.md")

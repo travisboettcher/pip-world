@@ -57,10 +57,13 @@ is picked over, dangerous and slowly being reclaimed by weeds. Tell things plain
 and so are small kindnesses. Nothing is magic; the monsters are animals the ash changed, and they behave like animals.
 ```
 
-**`stats.json`** (phase 3): what she needs. At least one stat; energy is the usual first, since sleep and rest restore it.
+**`stats.json`** (works today): what she needs. At least one stat; energy is the usual first, since sleep and rest restore it.
 ```json
-{"energy": {"start": 1.0, "decay_per_hour": 0.03, "low": 0.25, "restored_by": ["rest", "sleep"], "floor": 0.1}}
+{"energy": {"start": 1.0, "per_hour": -0.03, "asleep_per_hour": 0.25, "resting_per_hour": 0.3, "alert": {"below": 0.2}, "low_at": 0.25,
+            "restored_by": ["rest", "sleep"], "floor": 0.1, "tires": true, "tired_below": 0.3, "scale": "0=exhausted"}}
 ```
+`good` is `high` unless you say `low`; `low_at` is where the world starts sparing her; `tires` marks the stat work wears down.
+`worlds/pip/stats.json` has every field.
 
 **The home's layout**: a place module that lays out the shelter (works today; see DESIGN-modules.md, "Parts and layouts", and the
 shipped `home` layout in `app/module_library/` for a full example). At its smallest: a ground box, a building from the `cutaway` part,
@@ -72,15 +75,16 @@ Start it with `WORLD_PACK=worlds/ashfall` (works today). Check the dashboard: th
 An agent with nothing to do will mostly think, note and sleep. Add features, smallest first. Each is a module, from the standard library
 or your own.
 
-**Needs that matter** (phase 3): a stat that rises and something that lowers it. Hunger and food:
+**Needs that matter** (works today): a stat that rises and something that lowers it. Hunger and food:
 ```json
-"hunger": {"start": 0.0, "rise_per_hour": 0.04, "high": 0.8, "restored_by": ["eat"]}
+"hunger": {"start": 0.0, "per_hour": 0.04, "alert": {"above": 0.8}, "low_at": 0.8, "good": "low", "restored_by": ["eat"],
+           "plain_meal": 0.3, "scale": "1=starving"}
 ```
-and in **`items.json`** (works today; `restores` waits for phase 3, so food uses `food_value` for now), an item kind that restores it and
-something to start with:
+and in **`items.json`**, an item kind that restores it and something to start with (a food's `restores` says what it restores and by
+how much; one without restores `food_default` of whatever `eat` restores):
 ```json
-{"kinds": {"food": {"restores": {"hunger": 0.3}}, "scrap": {}, "tool": {}, "medicine": {}},
- "start": [{"name": "tinned beans", "kind": "food", "qty": 4, "description": "dented tins, still sealed", "restores": {"hunger": 0.5}}],
+{"kinds": ["food", "scrap", "tool", "medicine"], "food_default": 0.3,
+ "start": [{"name": "tinned beans", "kind": "food", "qty": 4, "description": "dented tins, still sealed", "attrs": {"restores": {"hunger": 0.5}}}],
  "finds": {"ruins": [["scrap metal", "scrap", 30, [1, 3], "bent sheet and rebar"], ["tinned beans", "food", 8, [1, 1], "a tin, still sealed"]]}}
 ```
 
@@ -106,12 +110,14 @@ The village's market and Wren's own stall then work as Pip's do.
 words; see `app/module_library/workings.py` (companions) for the pattern. With `std:letters`, they can also write.
 
 ## 3. Let things go wrong
-**Tone** (phase 3): `tone.json` says what the world's words and events may be. Ashfall allows more than Pip's world:
+**Tone** (works today): `tone.json` says what the world's words and events may be. Ashfall allows more than Pip's world:
 ```json
-{"refuse_words": ["gore", "torture"], "big_words_from": "medium", "bad_weight": 1.0,
- "caps": {"coins": {"major": [25, 0.35]}, "harm": {"minor": 0.05, "medium": 0.15, "major": 0.35}}}
+{"deny": ["gore", "torture\\w*"], "big_words": [], "text": {"max": 420},
+ "sizes": {"stat": {"minor": 0.05, "medium": 0.15, "major": 0.35}, "coin_caps": {"minor": [3, 0.1], "medium": [10, 0.2], "major": [25, 0.35]}}}
 ```
-The engine's floor still holds whatever this says: no sexual content, nothing encouraging self-harm, nothing about real people.
+Words are regular expressions, matched whole; a size table you give replaces the engine's, one you leave out keeps it. See
+`worlds/pip/tone.json` for every size. The engine's floor still holds whatever this says: no sexual content, nothing encouraging
+self-harm, nothing about real people.
 
 **Stakes** (phase 6): a stat that can run out, and what happens then.
 ```json
@@ -121,7 +127,7 @@ The engine's floor still holds whatever this says: no sexual content, nothing en
 `knocked_out` costs time and wakes her in the shelter with a happening saying what happened; nothing is permanent.
 
 **Happenings** (works today as `happen`; phase 2 moves the categories to data): include `std:happenings` with params, and give it the
-world's categories: `raid` (bad: `harm`, `food_loss`), `salvage` (good: `item`), `ashfall` (bad: `energy`, `radiation`), `kindness`
+world's categories: `raid` (bad: `harm`, `food_loss`), `salvage` (good: `item`), `ashfall` (bad: `energy`, `radiation`: any stat by its name), `kindness`
 (good: a gift from someone in the village). Each says its tones and what may change; the engine sizes every effect from `tone.json`.
 
 **Monsters**: a rule module with `happen` (an attack, sized by severity) and, if they should be met, `voices` (things that growl back) and
@@ -165,6 +171,6 @@ the first happening of each kind is called. See `worlds/pip/content.json`.
 - [ ] `items.json`: kinds, something to start with, what can be found
 - [ ] `places.json`: somewhere to go, and the kinds of place the world can grow (each with a layout)
 - [ ] Features: `std:` modules included and configured, or the pack's own
-- [ ] `tone.json`: what the world allows (or the engine's gentle defaults)
+- [ ] `tone.json`: what the world allows (without it, the engine's sizes and only its floor's words)
 - [ ] `bible.md` and `guide/*.md`
 - [ ] Run a day: the scene draws, the journal fills, nothing in the log says "refused" or "failed"

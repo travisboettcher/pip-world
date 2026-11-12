@@ -1,0 +1,48 @@
+{
+ "hunger": {
+  "label": "hunger",
+  "start": 0.2,
+  "per_hour": 0.08,
+  "asleep_factor": 0.5,
+  "alert": {
+   "above": 0.8
+  },
+  "low_at": 0.8,
+  "good": "low",
+  "restored_by": [
+   "eat"
+  ],
+  "plain_meal": 0.4,
+  "ceiling": 0.95,
+  "alert_feelings": {
+   "anger": 6,
+   "sadness": 2
+  },
+  "scale": "1=starving"
+ },
+ "energy": {
+  "label": "energy",
+  "start": 0.9,
+  "per_hour": -0.05,
+  "asleep_per_hour": 0.25,
+  "resting_per_hour": 0.3,
+  "working_per_hour": -0.05,
+  "alert": {
+   "below": 0.2
+  },
+  "low_at": 0.25,
+  "good": "high",
+  "restored_by": [
+   "rest",
+   "sleep"
+  ],
+  "floor": 0.1,
+  "tires": true,
+  "alert_feelings": {
+   "sadness": 5,
+   "anger": 2
+  },
+  "scale": "0=exhausted",
+  "tired_below": 0.3
+ }
+}

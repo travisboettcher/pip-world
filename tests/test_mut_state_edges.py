@@ -145,7 +145,7 @@ def test_names_ending_in_oes_drop_the_es_from_five_letters_up():
 
 # --- decay alert boundary -------------------------------------------------------------------------
 def test_hunger_alert_fires_at_exactly_the_threshold(tmp_path, clock):
-    st = mk(tmp_path, hunger_per_hour=0.1, energy_per_hour=0.0, hunger_alert=0.5, energy_alert=0.0)
+    st = mk(tmp_path, stats={"hunger": {"per_hour": 0.1, "alert": {"above": 0.5}}, "energy": {"per_hour": 0.0, "alert": {"below": 0.0}}})
     st.update_agent(hunger=0.0, energy=0.9, activity="idle", updated_at=clock[0], hunger_alerted=0, energy_alerted=0)
     assert st.apply_decay(now=clock[0] + 4 * 3600) == []
     assert st.apply_decay(now=clock[0] + 5 * 3600) == ["hunger"]

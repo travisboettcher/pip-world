@@ -17,6 +17,7 @@ from . import modules
 from . import places
 from . import weather
 from . import worldmap
+from . import stats as stats_mod
 from . import world_pack
 
 def coastal() -> re.Pattern:
@@ -140,7 +141,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                   "finds": [e[0] for e in gathering.loot_for(state, key) or []][:12]},
         "lives_here": lives_here,
         "pip": {"here": pip_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
-                "mood": a["mood"], "energy": round(a["energy"], 2), "hunger": round(a["hunger"], 2), "asleep": a["activity"] == "sleeping",
+                "mood": a["mood"], **{n: round(v, 2) for n, v in stats_mod.values(state).items()}, "asleep": a["activity"] == "sleeping",
                 "session": session},
         "present": present, "booths": booths,
         "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], "kind": r["kind"]} for r in state.stall_rows(key)],

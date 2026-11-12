@@ -13,6 +13,8 @@ from .memory import RECALL_EVENT_KINDS, event_importance, STOP_WORDS, recall_tex
 from .text import craft_name
 from . import world as world_content
 from .world import normalize_attrs
+from . import stats as stats_mod
+from . import world_pack
 
 log = logging.getLogger("state")
 
@@ -25,6 +27,9 @@ CREATE TABLE IF NOT EXISTS agent (
   hunger_alerted INTEGER NOT NULL DEFAULT 0,
   energy_alerted INTEGER NOT NULL DEFAULT 0,
   updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS stats (           -- the agent's stats, as its world declares them (stats.py)
+  name TEXT PRIMARY KEY, value REAL NOT NULL, alerted INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL,
@@ -199,7 +204,6 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 """
 
-STAT_FIELDS = ("hunger", "energy", "mood", "location", "activity")
 NOTE_IMPORTANCE = {"diary": 4, "learned": 4, "ambitions": 4}  # other notes: 3
 USES_KEPT = 20                                                  # uses of a memory kept for its activation (reminders.py)
 RECALL_INDEX_VERSION = "2"  # bump to rebuild the recall index from stored data on the next start
@@ -295,9 +299,15 @@ class State:
             if not self.db.execute("SELECT 1 FROM agent").fetchone():
                 self.db.execute(
                     "INSERT INTO agent (id, hunger, energy, mood, location, activity, updated_at) "
-                    "VALUES (1, 0.2, 0.9, 'curious', 'workshop', 'idle', ?)",
-                    (time.time(),),
+                    "VALUES (1, 0.2, 0.9, 'curious', ?, 'idle', ?)",
+                    (world_pack.load(self.s).data("places").get("home", {}).get("key", "home"), time.time()),
                 )
+            have = {r["name"] for r in self.db.execute("SELECT name FROM stats")}
+            row = dict(self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone())
+            for name, d in stats_mod.declared(self.s).items():   # a world's stats, once each; an older world's own values carried over
+                if name not in have:
+                    self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, ?)",
+                                    (name, row.get(name, d.get("start", 0.5)), row.get(f"{name}_alerted", 0)))
             self._normalize_crafts()
             self._seed_abilities()
             self._backfill_firsts()
@@ -315,44 +325,43 @@ class State:
 
     # --- agent stats -------------------------------------------------
     def agent(self) -> dict:
+        """The agent: where it is and what it's doing, with each of its stats by name (and `<name>_alerted`)."""
         with self.lock:
-            return dict(self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone())
+            a = dict(self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone())
+            for r in self.db.execute("SELECT name, value, alerted FROM stats"):
+                a[r["name"]], a[f"{r['name']}_alerted"] = r["value"], r["alerted"]
+        return a
 
     def update_agent(self, **fields) -> None:
         if not fields:
             return
-        cols = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
-            self.db.execute(f"UPDATE agent SET {cols} WHERE id = 1", tuple(fields.values()))
+            names = {r["name"] for r in self.db.execute("SELECT name FROM stats")}
+            for k in [k for k in fields if k in names or (k.endswith("_alerted") and k[:-8] in names)]:
+                stat, col = (k[:-8], "alerted") if k.endswith("_alerted") and k[:-8] in names else (k, "value")
+                self.db.execute(f"UPDATE stats SET {col} = ? WHERE name = ?", (fields.pop(k), stat))
+            if fields:
+                self.db.execute(f"UPDATE agent SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = 1", tuple(fields.values()))
             self.db.commit()
 
     def apply_decay(self, now: float | None = None) -> list[str]:
-        """Advance stats by elapsed time. Returns names of newly crossed alerts."""
+        """Advance every stat by the time elapsed, at its rate for what the agent is doing. Returns the stats whose alert just went off."""
         now = now or time.time()
         with self.lock:
             a = self.agent()
             hours = max(0.0, now - a["updated_at"]) / 3600
-            energy_rate = (
-                self.s.sleep_recover_per_hour if a["activity"] == "sleeping"
-                else self.s.recover_per_hour if a["activity"] == "resting" else -self.s.energy_per_hour
-            )
             sess = self.session()
-            if sess and sess["kind"] in ("work", "experiment", "gather"):
-                energy_rate -= self.s.work_energy_per_hour
-            hunger_rate = self.s.hunger_per_hour * (0.5 if a["activity"] == "sleeping" else 1)
-            hunger = clamp(a["hunger"] + hunger_rate * hours)
-            energy = clamp(a["energy"] + energy_rate * hours)
-            new = []
-            h_alert = hunger >= self.s.hunger_alert
-            e_alert = energy <= self.s.energy_alert
-            if h_alert and not a["hunger_alerted"]:
-                new.append("hunger")
-            if e_alert and not a["energy_alerted"]:
-                new.append("energy")
-            self.update_agent(
-                hunger=hunger, energy=energy, updated_at=now,
-                hunger_alerted=int(h_alert), energy_alerted=int(e_alert),
-            )
+            working = bool(sess and sess["kind"] in ("work", "experiment", "gather"))
+            new, fields = [], {"updated_at": now}
+            for name, d in stats_mod.declared(self.s).items():
+                if name not in a:
+                    continue
+                value = clamp(a[name] + stats_mod.rate(d, a["activity"], working) * hours)
+                alert = stats_mod.alerting(d, value)
+                if alert and not a[f"{name}_alerted"]:
+                    new.append(name)
+                fields.update({name: value, f"{name}_alerted": int(alert)})
+            self.update_agent(**fields)
             return new
 
     # --- events ------------------------------------------------------

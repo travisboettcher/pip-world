@@ -2,7 +2,8 @@
 
 Status (2026-11-11): designed; **phase 1 built (0.31.0, 0.32.0)**: the pack loader, `WORLD_PACK`, Pip's world's persona, narrator, bible
 and guide in `worlds/pip/`; the agent's name and pronoun through every engine prompt; the `agent` read; and the test that keeps the
-engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack. Next: phase 3 (stats and tone). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+engine from naming its world; **phase 2 built (0.33.0)**: the world's content is data in its pack; **phase 3 built (0.34.0)**: the agent's stats and the world's tone
+are its pack's (`stats.json`, `tone.json`), over the engine's floor. Next: phase 4 (hooks for features as modules). Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -94,19 +95,27 @@ engine's **standard library**: feature modules written once and shareable betwee
 trial, upgraded when the pack changes them, run without the runner.
 
 ### Stats: what the agent needs
-`stats.json` declares the agent's stats instead of the engine hard-coding hunger and energy:
+`stats.json` declares the agent's stats instead of the engine hard-coding hunger and energy (built, 0.34.0; `worlds/pip/stats.json` has
+Pip's two with every field):
 
 ```json
-{"energy":    {"start": 1.0, "decay_per_hour": 0.03, "low": 0.25, "restored_by": ["rest", "sleep"], "floor": 0.1},
- "hunger":    {"start": 0.0, "rise_per_hour": 0.04, "high": 0.8, "restored_by": ["eat"]},
- "radiation": {"start": 0.0, "rise_per_hour": 0, "high": 0.6, "shown": "radiation sickness", "restored_by": ["use:rad pills"]},
- "health":    {"start": 1.0, "low": 0.3, "at_zero": "knocked_out"}}
+{"energy":    {"start": 0.9, "per_hour": -0.05, "asleep_per_hour": 0.25, "resting_per_hour": 0.30, "working_per_hour": -0.05,
+               "alert": {"below": 0.2}, "low_at": 0.25, "good": "high", "restored_by": ["rest", "sleep"], "floor": 0.1, "tires": true,
+               "tired_below": 0.3, "scale": "0=exhausted"},
+ "hunger":    {"start": 0.2, "per_hour": 0.08, "asleep_factor": 0.5, "alert": {"above": 0.8}, "low_at": 0.8, "good": "low",
+               "restored_by": ["eat"], "plain_meal": 0.4, "ceiling": 0.95, "alert_feelings": {"anger": 6, "sadness": 2}, "scale": "1=starving"},
+ "radiation": {"label": "rads", "start": 0.0, "per_hour": 0.0, "alert": {"above": 0.6}, "low_at": 0.6, "good": "low"}}
 ```
 
-The engine keeps a stats table, applies decay, warns at thresholds (today's `apply_decay` alerts), shows them in the agent's prompt and on
-the dashboard, and lets modules move them through a generalised `affect` (`{"stat": "radiation", "delta": 0.1}`) within per-stat caps.
-`eat`, `rest` and `sleep` become what a stat's `restored_by` says: an item attribute (`food_value` becomes `restores: {hunger: 0.4}`),
-a rest, sleep. Sleep stays core (the circadian day is the mind's), but what it restores is the pack's.
+The engine keeps a `stats` table (an install from before 0.34.0 carries its hunger and energy over), changes each stat at its rate for
+what the agent is doing (asleep, resting, at work), raises an alert once when it crosses its `alert` (with its `alert_feelings`), shows
+the stats in the agent's prompt (`label` and `scale`), on `/status` and the dashboard, and lets modules move any of them through `affect`
+(`{"radiation": -0.1}`, at most 0.1 either way). `good` says which way is better; `low_at` is how far to the bad side counts as low, and
+the world spares a low agent its bad turns; `floor` and `ceiling` bound what the world (a happening) may push it to. `eat`, `rest` and
+`sleep` restore what names them in `restored_by`: food by its `restores` (`{"hunger": 0.4}`) or `food_value`, a plain meal by
+`plain_meal`, a rest at `resting_per_hour`. The stat marked `tires` is the one work wears down and the work dice read (`tired_below`).
+Sleep stays core (the circadian day is the mind's), but what it restores is the pack's. Settings no longer carry the rates
+(`SLEEP_RECOVER_PER_HOUR` is gone); `Settings.stats` overrides a stat's numbers in tests.
 
 ### Stakes: what can go wrong
 A world that can hurt needs a stat that can run out and an answer to what happens then. `at_zero` names an outcome the engine knows:
@@ -116,11 +125,18 @@ sized by severity) and become pack-extensible: an intent is a stat move, an item
 today, all sized by the pack's tables.
 
 ### Tone: what the world allows
-`tone.json` holds what is code today: words the happening checks refuse, which sizes may use big words, the caps on each effect by
-severity, how often bad things may come. Pip's pack carries today's values exactly. The engine keeps a **floor** a pack cannot lower:
-no sexual content, nothing that encourages self-harm, nothing aimed at real people, real-world news never presented as the world's.
-A wasteland can say "blood" and lose a fight; it still can't be cruel for its own sake (the narrator and the builder are told so in the
-engine's fixed instructions, not the pack's).
+`tone.json` holds what was code (built, 0.34.0; `app/tone.py`): `deny`, the words a happening may not use; `big_words`, the words too
+big for a minor or neutral turn; `text`, a happening's length (`min`, `max`, `title_max`); and `sizes`, every effect's size by severity
+(`stat`, `lens`, `crop_shift`, `crop_yield_good`/`_bad`, `price_units`, `coin_caps`, `found_coins`, `found_items`, `food_loss`,
+`mending_qty`). Words are regular expressions matched as whole words. Pip's pack carries the old values exactly; a pack without the file
+gets the engine's sizes and no words of its own. A happening's `stat` effect moves any declared stat (`{"kind": "radiation"}` or
+`{"kind": "stat", "stat": "radiation"}`), its way set by the tone and the stat's `good`.
+
+The engine keeps a **floor** a pack cannot lower: no sexual content, nothing that encourages self-harm, nothing about real people,
+real-world news never presented as the world's. It is in three places no pack touches: the narrator's fixed instructions
+(`world_pack.FLOOR_RULES`, after every pack's own), the words every happening is checked against (`tone.FLOOR_WORDS`, added to any pack's
+`deny`), and the name check that turns down any name the world didn't offer. A wasteland can say "blood" and lose a fight; it still
+can't be cruel for its own sake. How often bad things come stays with the happenings module's params.
 
 ### Places, items and scenes
 - `places.json`: the home (its key and label: `"shelter"`, `"workshop"`), the places a world starts with, and the place kinds it can grow
@@ -205,8 +221,9 @@ module system, happenings' checks, the world view's renderer, channels and visit
    list (`add_plot`, `add_project_slot`) until the garden and crafting are modules. Still in the engine: feature code and its words (the
    garden's tools, crafting), and the renderer's own vocabulary (textures, sprites). *Originally:* Place kinds, item kinds and tables, starting belongings, scene vocabulary, happenings' categories and tables,
    world effects and abilities move to the pack's JSON. Behaviour unchanged.
-3. **Stats and tone.** Hunger and energy become pack-declared stats; `affect` takes any stat; `tone.json` replaces the hard-coded checks
-   (with the engine's floor); `eat`/`rest` follow `restored_by`.
+3. **Stats and tone.** *Built (0.34.0).* Hunger and energy are pack-declared stats in a `stats` table; `affect` and a happening's `stat`
+   effect take any stat; `tone.json` replaces the hard-coded checks and sizes (with the engine's floor); `eat`/`rest`/`sleep` follow
+   `restored_by`.
 4. **Tools, sessions, storage, belongings, status.** The hooks that let a feature be a module, proved on the **garden** (and the market).
 5. **Features move.** Gathering, letters and neighbours (with characters), the library (with sources), weather and calendar, then
    crafting. Each keeps the engine's version as a fallback until it's live, then removes it.

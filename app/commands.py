@@ -12,6 +12,7 @@ from . import sleep as sleepmod
 from .state import SECTIONS
 from .text import span
 from . import world_pack
+from . import stats as stats_mod
 
 COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
@@ -44,7 +45,8 @@ def _status(state, settings, arg, now):
     a = state.agent()
     doing = a["activity"] + (f": {a['description']}" if a["description"] else "")
     lines = [f"{world_pack.active().agent.name} is {doing}",
-             f"Mood {a['mood']}; hunger {round(a['hunger'] * 100)}%, energy {round(a['energy'] * 100)}%; at the {a['location']}."]
+             f"Mood {a['mood']}; " + ", ".join(f"{d.get('label', n)} {round(a[n] * 100)}%" for n, d in stats_mod.declared(settings).items() if n in a)
+             + f"; at the {a['location']}."]
     lines.append(f"Day {sleepmod.day_number(state, now)}" + (f", {sleepmod.period(settings, now)}" if settings.sleep else "") + ".")
     return "Status\n" + "\n".join(lines)
 

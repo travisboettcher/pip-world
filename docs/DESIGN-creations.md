@@ -58,7 +58,7 @@ credit = minutes * {setback: 0, slow: 0.5, good: 1, breakthrough: 1.5}, capped a
   result. Practice makes Pip better (and makes the gifted needle file matter).
 - A **setback** leaves a mark: the GM's narration is stored as a `scar` on the project, and scars become the
   finished creation's quirks. Personality comes from history, not randomness at the end.
-- Working drains extra energy (`WORK_ENERGY_PER_HOUR`).
+- Working drains extra energy (the tiring stat's `working_per_hour` in the pack's `stats.json`).
 
 Then the GM **narrates** the result in 1-2 sentences, told the outcome, the stage, and the materials and tools Pip
 actually has (without them it invented knives and wood), and is not allowed to change the outcome. Fallback: a template ("Progress on the escape wheel was slow."). A `work` event is logged and Pip is woken.

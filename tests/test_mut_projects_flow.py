@@ -622,11 +622,11 @@ async def test_experiment_outcomes_and_their_plain_text_without_a_gm(world, valu
 @pytest.mark.parametrize("value,outcome", [(0.29, "nothing"), (0.30, "clue"), (0.59, "clue"), (0.60, "insight"),
                                            (0.89, "insight"), (0.90, "surprise")])
 def test_experiment_bands(value, outcome):
-    assert proj.roll_experiment(OneRoll(value), 0, 1, 0.9) == outcome
+    assert proj.roll_experiment(OneRoll(value), 0, 1, False) == outcome
 
 
 def test_experiment_modifiers():
-    r = lambda v, skill=0, diff=1, energy=0.9: proj.roll_experiment(OneRoll(v), skill, diff, energy)
+    r = lambda v, skill=0, diff=1, energy=0.9: proj.roll_experiment(OneRoll(v), skill, diff, energy < 0.3)
     assert r(0.24, skill=1) == "nothing" and r(0.26, skill=1) == "clue"
     assert r(0.19, skill=2) == "nothing" and r(0.21, skill=2) == "clue"
     assert r(0.22, skill=1.5) == "nothing" and r(0.24, skill=1.5) == "clue"

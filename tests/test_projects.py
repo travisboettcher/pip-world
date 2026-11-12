@@ -87,7 +87,8 @@ def test_verdicts_are_bounded_by_the_die():
 def test_roll_is_shaped_by_skill_tools_difficulty_fatigue():
     def r(v, **kw):
         args = {"skill_level": 0, "tools_owned": 0, "difficulty": 1, "energy": 1.0} | kw
-        return proj.roll(FixedRng(v), **args)
+        energy = args.pop("energy")
+        return proj.roll(FixedRng(v), **args, tired=energy < 0.3)
     assert [r(v) for v in (0.1, 0.3, 0.6, 0.95)] == ["setback", "slow", "good", "breakthrough"]
     assert r(0.1, skill_level=2) == "slow"           # practice helps
     assert r(0.86, tools_owned=1) == "breakthrough"  # so does the right tool

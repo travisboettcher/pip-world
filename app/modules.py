@@ -20,6 +20,7 @@ from pathlib import Path
 from . import public_view as pv
 from . import sandbox
 from . import world_pack
+from . import stats as stats_mod
 
 log = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         a = state.agent()
         from . import places
         me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
-                      "hunger": a["hunger"], "energy": a["energy"], "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
+                      **{n: a[n] for n in stats_mod.declared(settings) if n in a}, "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
                       "coins": state.coins()}
         ctx.update({k: me for k in ("agent", "pip") if k in reads})
     if "subject" in reads:
@@ -393,11 +394,13 @@ def _number(v, lo: float, hi: float) -> bool:
 
 
 def _affect(man, v) -> dict:
-    """How Pip feels: a little energy either way, a mood."""
-    if not isinstance(v, dict) or not v or set(v) - {"energy", "mood"}:
-        raise Refused("`affect` is {energy?, mood?}")
-    if "energy" in v and not _number(v["energy"], -AFFECT_ENERGY, AFFECT_ENERGY):
-        raise Refused(f"`affect.energy` is a number from -{AFFECT_ENERGY} to {AFFECT_ENERGY}")
+    """How the agent is: a little of any of its stats either way (the world's own: stats.py), a mood."""
+    names = list(stats_mod.declared())
+    if not isinstance(v, dict) or not v or set(v) - {*names, "mood"}:
+        raise Refused("`affect` is {" + ", ".join(f"{n}?" for n in [*names, "mood"]) + "}")
+    for k in names:
+        if k in v and not _number(v[k], -AFFECT_ENERGY, AFFECT_ENERGY):
+            raise Refused(f"`affect.{k}` is a number from -{AFFECT_ENERGY} to {AFFECT_ENERGY}")
     if "mood" in v and not (isinstance(v["mood"], str) and v["mood"].strip() and len(v["mood"]) <= 40):
         raise Refused("`affect.mood` is a word or two")
     return {k: (v[k].strip() if k == "mood" else float(v[k])) for k in v}
@@ -589,8 +592,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "affect":
             from .state import clamp
             a = state.agent()
-            state.update_agent(**({"energy": clamp(a["energy"] + val["energy"])} if "energy" in val else {}),
-                               **({"mood": val["mood"]} if "mood" in val else {}))
+            state.update_agent(**{k: (v if k == "mood" else clamp(a[k] + v)) for k, v in val.items() if k == "mood" or k in a})
             budget["affect"] += 1
         elif kind == "garden":
             state.hurry_garden(val["hurry"], now)

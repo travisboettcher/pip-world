@@ -54,8 +54,8 @@ def test_a_bad_turn_takes_and_the_engine_picks_how_much():
     assert yield_["delta"] == H.YIELD_GOOD["major"]
     price = decide({"category": "market", "tone": "bad", "severity": "minor", "effects": [{"kind": "price", "place": "Saltholm", "item": "Tomatoes"}]})
     assert price["effects"][0] == {"kind": "price", "place": "Saltholm", "item": "tomatoes", "units": -H.PRICE_UNITS["minor"]}
-    assert decide({"category": "body", "tone": "bad", "severity": "minor", "effects": [{"kind": "energy"}]})["effects"][0] == {"kind": "energy", "delta": -H.ENERGY["minor"]}
-    assert decide({"category": "body", "tone": "good", "severity": "minor", "effects": [{"kind": "hunger"}]})["effects"][0] == {"kind": "hunger", "delta": -H.ENERGY["minor"]}
+    assert decide({"category": "body", "tone": "bad", "severity": "minor", "effects": [{"kind": "energy"}]})["effects"][0] == {"kind": "stat", "stat": "energy", "delta": -H.ENERGY["minor"]}
+    assert decide({"category": "body", "tone": "good", "severity": "minor", "effects": [{"kind": "hunger"}]})["effects"][0] == {"kind": "stat", "stat": "hunger", "delta": -H.ENERGY["minor"]}
     assert decide({"category": "pantry", "tone": "bad", "severity": "medium", "effects": [{"kind": "food_loss"}]})["effects"][0]["name"] == "tomatoes"
     news = decide({"category": "neighbor", "tone": "good", "effects": [{"kind": "news", "name": "oriel vantosh"}]})
     assert news["effects"] == [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}]
@@ -219,8 +219,8 @@ def test_intents_word_for_word_at_their_limits():
         [{"kind": "coins", "delta": -H.coin_loss(10, "minor")}] and H.coin_loss(10, "minor") == 1          # one coin is something to lose
     assert decide({"category": "pantry", "tone": "bad", "severity": "minor", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=5)])["effects"][0]["name"] == "tomatoes"
     assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=4)]).startswith("there is nothing")
-    assert decide({"category": "body", "tone": "bad", "severity": "major", "effects": [{"kind": "hunger"}]})["effects"] == [{"kind": "hunger", "delta": H.ENERGY["major"]}]
-    assert decide({"category": "body", "tone": "good", "severity": "medium", "effects": [{"kind": "energy"}]})["effects"] == [{"kind": "energy", "delta": H.ENERGY["medium"]}]
+    assert decide({"category": "body", "tone": "bad", "severity": "major", "effects": [{"kind": "hunger"}]})["effects"] == [{"kind": "stat", "stat": "hunger", "delta": H.ENERGY["major"]}]
+    assert decide({"category": "body", "tone": "good", "severity": "medium", "effects": [{"kind": "energy"}]})["effects"] == [{"kind": "stat", "stat": "energy", "delta": H.ENERGY["medium"]}]
     assert refused({"category": "garden", "tone": "bad", "severity": "medium", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]}) == "only a major bad turn ruins a crop"
     ruin = decide({"category": "garden", "tone": "bad", "severity": "major", "effects": [{"kind": "crop", "plot": 1, "how": "ruin"}]})
     assert ruin["names"] == ["tomatoes"]
@@ -237,7 +237,7 @@ def test_intents_word_for_word_at_their_limits():
     assert decide({"category": "memory", "tone": "good", "effects": [{"kind": "memory"}]}, diary_count=H.MIN_DIARY)["effects"] == []
     assert refused({"category": "found", "tone": "bad", "effects": [{"kind": "item"}]}) == "a bad turn can't bring item"
     assert refused({"category": "found", "tone": "good", "effects": [{"kind": "food_loss"}]}) == "a good turn can't bring food loss"
-    assert refused({"category": "found", "tone": "good", "effects": [{"kind": "x"}]}) == "an effect's kind is one of " + ", ".join(H.INTENTS)
+    assert refused({"category": "found", "tone": "good", "effects": [{"kind": "x"}]}) == "an effect's kind is one of " + ", ".join(H.INTENTS) + " (or a stat's own name: hunger, energy)"
 
 
 @pytest.mark.asyncio

@@ -147,14 +147,8 @@ class Settings:
     public_hosts: list = field(default_factory=list)
     public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people Pip knows are hidden anyway)
 
-    # Stat dynamics, per hour
-    hunger_per_hour: float = 0.08
-    energy_per_hour: float = 0.05
-    recover_per_hour: float = 0.30
-    sleep_recover_per_hour: float = 0.25
-    work_energy_per_hour: float = 0.05  # extra drain during a work session
-    hunger_alert: float = 0.8
-    energy_alert: float = 0.2
+    # The agent's stats are its world's (the pack's stats.json); this overrides any of a stat's numbers: {"hunger": {"per_hour": 0.1}}
+    stats: dict | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -241,7 +235,6 @@ class Settings:
             emotion_settle_per_day=_int("EMOTION_SETTLE_PER_DAY", 3),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
-            sleep_recover_per_hour=_float("SLEEP_RECOVER_PER_HOUR", 0.25),
             reflect_max_chars=_int("REFLECT_MAX_CHARS", 12000),
             neighbor=(e("NEIGHBOR") or "1") not in ("0", "false", "no"),
             letter_delay_minutes=_float("LETTER_DELAY_MINUTES", 120),

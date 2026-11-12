@@ -58,8 +58,8 @@ def test_affect_garden_and_find_are_checked_capped_and_applied(tmp_path):
     assert (M._budget(m, now)["affect"], M._budget(m, now)["garden"], M._budget(m, now)["find"]) == (1, 1, 1)
     for bad, why in (({"affect": {"energy": 0.2}}, "`affect.energy` is a number from -0.1 to 0.1"),
                      ({"affect": {"mood": "x" * 41}}, "`affect.mood` is a word or two"),
-                     ({"affect": {}}, "`affect` is {energy?, mood?}"),
-                     ({"affect": 1}, "`affect` is {energy?, mood?}"),
+                     ({"affect": {}}, "`affect` is {hunger?, energy?, mood?}"),
+                     ({"affect": 1}, "`affect` is {hunger?, energy?, mood?}"),
                      ({"garden": {"hurry": 0.5}}, "`garden.hurry` is a number from 0.01 to 0.2"),
                      ({"garden": {}}, "`garden.hurry` is a number from 0.01 to 0.2"),
                      ({"find": {"item": "gold", "qty": 1}}, "it can only find: acorn, snail shell"),

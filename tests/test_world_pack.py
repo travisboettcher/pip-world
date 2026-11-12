@@ -100,7 +100,7 @@ def test_the_guide_the_narrator_and_the_bible_come_from_the_pack(tmp_path):
     assert "You act on your own" in guide.render(["say"], Settings(), False) and "visitor" in guide.render(["say"], Settings(), False)
     assert B.bible(s) == "Hardship is ordinary here."
     gm = GameMaster(None, None, system=W.load(s).narrator_system())
-    assert gm.system.startswith("A dead city under a grey sky.\nKeep the world consistent") and gm.system.endswith("the `report` tool.")
+    assert gm.system.startswith("A dead city under a grey sky.\nKeep the world consistent") and gm.system.endswith("the `report` tool.\n" + W.FLOOR_RULES)
     from app import gm as G
     assert G.SYSTEM == W.load(Settings()).narrator_system()                                        # Pip's world: word for word as before
     assert G.SYSTEM.startswith("You are the quiet narrator and game master of a small world where a curious creature named Pip lives,\n")

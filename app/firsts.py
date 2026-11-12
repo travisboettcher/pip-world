@@ -33,7 +33,11 @@ def __getattr__(name):            # the old constant name, from the active world
     raise AttributeError(name)
 
 
-ALERTS = {"hunger": "your hunger alert went off", "energy": "your energy alert went off"}
+def alert_first(stat: str) -> str | None:
+    """'your hunger alert went off', for a stat the world declares."""
+    from . import stats as stats_mod
+    d = stats_mod.declared().get(stat)
+    return f"your {d.get('label', stat)} alert went off" if d is not None else None
 
 
 def _ok(result) -> bool:
@@ -132,8 +136,8 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
     elif kind == "reflection":
         add("reflection", you("went over your day in your sleep"), MAJOR)
     elif kind == "alert":
-        if d.get("stat") in ALERTS:
-            add(f"alert:{d['stat']}", f"the first time {ALERTS[d['stat']]}", MAJOR)
+        if (said := alert_first(d.get("stat"))):
+            add(f"alert:{d['stat']}", f"the first time {said}", MAJOR)
     elif kind == "companion":
         if d.get("name"):
             add(f"companion:{d['name']}", you(f"heard {d['name']} speak"))

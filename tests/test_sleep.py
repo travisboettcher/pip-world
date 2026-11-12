@@ -59,7 +59,7 @@ def test_sleeping_recovers_faster_and_slows_hunger(tmp_path):
     st.update_agent(energy=0.2, hunger=0.2, activity="sleeping", updated_at=now - 3600)
     st.apply_decay(now)
     a = st.agent()
-    assert a["energy"] == pytest.approx(0.2 + s.sleep_recover_per_hour) and a["hunger"] == pytest.approx(0.2 + s.hunger_per_hour / 2)
+    assert a["energy"] == pytest.approx(0.2 + 0.25) and a["hunger"] == pytest.approx(0.2 + 0.08 / 2)        # Pip's world, asleep
 
 
 @pytest.mark.asyncio

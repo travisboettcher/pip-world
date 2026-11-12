@@ -32,7 +32,10 @@ WORK = {"breakthrough": {"joy": 10, "surprise": 6, "anticipation": 5}, "good": {
 EXPERIMENT = {"nothing": {"sadness": 3, "anger": 2}, "clue": {"anticipation": 3}, "insight": {"joy": 6, "anticipation": 4},
               "surprise": {"surprise": 12, "joy": 4}}
 SURPRISE = {"better": {"surprise": 6, "joy": 4}, "worse": {"surprise": 6, "fear": 3, "sadness": 3}}
-ALERT = {"hunger": {"anger": 6, "sadness": 2}, "energy": {"sadness": 5, "anger": 2}}
+def alert_feelings(stat: str) -> dict:
+    """How an alert on a stat moves the emotions (the stat's `alert_feelings` in the pack's stats.json)."""
+    from . import stats as stats_mod
+    return stats_mod.declared().get(stat, {}).get("alert_feelings", {})
 
 
 def decayed(value: float, baseline: float, half_life_min: float, minutes: float) -> float:
@@ -101,7 +104,7 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
     if kind == "garden":
         return {"joy": 3}, f"{data.get('crop', 'a crop')} ripened"
     if kind == "alert":
-        return dict(ALERT.get(data.get("stat"), {})), f"{data.get('stat')} needs attention"
+        return dict(alert_feelings(data.get("stat"))), f"{data.get('stat')} needs attention"
     if kind == "stall_sale":
         return {"joy": 2}, f"sold {data['item']} at your stall" if data.get("item") else "sold something at your stall"
     if kind == "happening":   # the startle lands at once; the meaning waits for Pip's reading (happenings.py)

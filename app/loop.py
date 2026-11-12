@@ -38,6 +38,7 @@ from .state import State, clean_sender
 from .text import clip, span
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, specs_for
+from . import stats as stats_mod
 
 log = logging.getLogger("agent")
 MAX_TOOL_CALLS = 4
@@ -705,7 +706,7 @@ class Agent:
         a = self.state.agent()
         lines = [
             f"Woke because: {reason}",
-            f"State: hunger {a['hunger']:.2f} (1=starving), energy {a['energy']:.2f} (0=exhausted), "
+            f"State: {stats_mod.prompt_line(self.state)}, "
             f"mood {a['mood']}, location {a['location']}, activity {a['activity']}"
             + (f" ({a['description']})" if a["description"] else ""),
             clock_line(time.time()),

@@ -231,7 +231,7 @@ class OneRoll(random.Random):
 
 
 def rolled(value, skill=0, tools=0, difficulty=1, energy=0.9):
-    return proj.roll(OneRoll(value), skill, tools, difficulty, energy)
+    return proj.roll(OneRoll(value), skill, tools, difficulty, energy < 0.3)          # tired: Pip's world's energy below 0.3
 
 
 @pytest.mark.parametrize("value,expected", [(0.0, "setback"), (0.149, "setback"), (0.15, "slow"), (0.399, "slow"),

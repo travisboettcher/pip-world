@@ -573,7 +573,7 @@ async def test_rest_default_is_until_recovered_and_capped(tmp_path):
     st.update_agent(energy=0.1)
     await agent.tick("test")
     mins = (float(st.meta("rest_until")) - time.time()) / 60
-    assert mins == pytest.approx(min(240, 0.9 / s.recover_per_hour * 60), abs=1)
+    assert mins == pytest.approx(min(240, 0.9 / 0.30 * 60), abs=1)                          # Pip's world rests at 0.30 an hour
 
 
 # --- a message Pip read but didn't answer gets one more look ----------------------------------------------

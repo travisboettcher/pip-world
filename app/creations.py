@@ -16,6 +16,7 @@ from .text import clip
 from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
 from . import world_pack
+from . import stats as stats_mod
 
 CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world", "provides")
 SENSOR_CONDITIONS = ("crop_ripe", "visitor", "dawn", "dusk", "hungry", "tired")
@@ -191,7 +192,7 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None, action
     if not running(c, now):
         return (f"your {c['name']} has stopped - {_needs(c)} first" if "upkeep" in caps else f"your {c['name']} has stopped"), None
     a = state.agent()
-    situation = f"{world_pack.active().agent.name} is {a['activity']}, mood {a['mood']}, hunger {a['hunger']:.1f}, energy {a['energy']:.1f}."
+    situation = f"{world_pack.active().agent.name} is {a['activity']}, mood {a['mood']}, {stats_mod.line(state)}."
     actions = [x for x in actions if isinstance(x, dict) and x.get("name")]
     out = await gm.use(describe(c, now), purpose, situation, actions) if gm else None
     if not out:
@@ -199,8 +200,9 @@ async def use(state, gm, c: dict, purpose: str, now: float | None = None, action
     fields = {}
     if out.get("mood"):
         fields["mood"] = _line(out["mood"], 40)
-    if out.get("energy") and now - rt.get("last_energy_use", 0) >= USE_ENERGY_COOLDOWN:
-        fields["energy"] = clamp(a["energy"] + _num(out["energy"], -0.1, 0.1, 0))
+    tiring = stats_mod.tiring(state.s)
+    if out.get("energy") and tiring and now - rt.get("last_energy_use", 0) >= USE_ENERGY_COOLDOWN:
+        fields[tiring] = clamp(a[tiring] + _num(out["energy"], -0.1, 0.1, 0))
         rt["last_energy_use"] = now
     if fields:
         state.update_agent(**fields)

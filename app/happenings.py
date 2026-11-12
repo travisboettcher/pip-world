@@ -18,10 +18,11 @@ from . import gathering, market
 from . import sleep as sleepmod
 from .state import name_key
 from .text import clip, span
+from . import stats as stats_mod
+from . import tone as tone_mod
 from . import world_pack
 
 SEVERITIES = ("minor", "medium", "major")
-LENS_AMOUNT = {"minor": 4, "medium": 9, "major": 16}
 NEUTRAL_AMOUNT = 2
 JOLT_SHARE = 0.3                  # the part of a happening that is a startle (surprise); the rest is meaning, which Pip reads
 TONES = ("good", "bad", "neutral")
@@ -30,31 +31,31 @@ LENS_USUAL = {"bad": ("sadness", "fear", "anger", "disgust"), "good": ("joy", "t
 LENS_CROSS = {"bad": ("joy", "anticipation", "trust"), "good": ("sadness", "fear"), "neutral": emo.NAMES}
 RESOLVE_AFTER_TICKS = 2           # a happening is shown, then Pip gets one more tick to read it
 RESOLVE_AFTER_MINUTES = 45        # or this long awake after it was first shown
-LOW_HUNGER, LOW_ENERGY = 0.8, 0.25
-ENERGY_FLOOR, HUNGER_CEILING = 0.1, 0.95
 FRESH_HOURS = 3                   # a resolved happening stays in Pip's prompt this long
 
-SHIFT = {"minor": 0.05, "medium": 0.15, "major": 0.30}                 # share of a crop's time left
-ENERGY = {"minor": 0.05, "medium": 0.12, "major": 0.25}
-PRICE_UNITS = {"minor": 1, "medium": 3, "major": 6}                    # one unit is 4% of a booth's price (market.PRICE_STEP)
-COIN_CAPS = {"minor": (3, 0.10), "medium": (10, 0.20), "major": (25, 0.35)}   # (coins, share of the purse) a loss may take
-FOUND_COINS = {"minor": (1, 3), "medium": (3, 10), "major": (8, 25)}
-FOUND_ITEMS = {"minor": (1, 1), "medium": (2, 4), "major": (4, 6)}
-YIELD_BAD = {"minor": 1, "medium": 2, "major": 3}
-YIELD_GOOD = {"minor": 1, "medium": 2, "major": 3}
 SEASONS = ("winter", "spring", "summer", "autumn")
 SEASON_OF_MONTH = ("winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter")   # January first
 # What a season makes likelier (a missing entry is 1): which categories come up, and the tone of a category (see DESIGN-happenings.md, "Seasons").
-MENDING_QTY = (1, 3)                                                    # units of a material a major mishap asks for
 OLD_NOTE_DAYS = 2                                                       # a note this old can come back to mind
 MIN_DIARY = 7
-LOSS_SHARE = {"medium": (0.10, 0.25, 10), "major": (0.25, 0.50, 25)}   # (low, high, most units) of a stack
+# The words a happening may not use, its length, and the size of every effect are the world's (its pack's tone.json, app/tone.py); the old
+# names still answer, from the active world.
+_OLD_SIZES = {"LENS_AMOUNT": "lens", "SHIFT": "crop_shift", "ENERGY": "stat", "PRICE_UNITS": "price_units", "COIN_CAPS": "coin_caps",
+              "FOUND_COINS": "found_coins", "FOUND_ITEMS": "found_items", "YIELD_BAD": "crop_yield_bad", "YIELD_GOOD": "crop_yield_good",
+              "MENDING_QTY": "mending_qty", "LOSS_SHARE": "food_loss"}
+_OLD_TEXT = {"MAX_TEXT": "max", "MIN_TEXT": "min", "TITLE_MAX": "title_max"}
 
-DENY = re.compile(r"\b(die|dies|died|dead|death|dying|kill|kills|killed|blood|bleed|bleeding|corpse|suicide|hospital)\b", re.I)
-BIG_WORDS = re.compile(r"\b(catastroph\w*|disaster\w*|devastat\w*|destroyed|ruined everything|apocalyp\w*)\b", re.I)
-MAX_TEXT = 420
-MIN_TEXT = 20
-TITLE_MAX = 60
+
+def __getattr__(name):
+    if name in _OLD_SIZES:
+        return tone_mod.size(_OLD_SIZES[name])
+    if name in _OLD_TEXT:
+        return tone_mod.text(_OLD_TEXT[name])
+    if name == "DENY":
+        return tone_mod.deny()
+    if name == "BIG_WORDS":
+        return tone_mod.big_words()
+    raise AttributeError(name)
 
 
 # --- the dice the engine still owns: a secret per install, the season, the lens, the amounts ----------------------------
@@ -79,7 +80,7 @@ def pick_lens(rng: random.Random, tone: str) -> str:
 
 
 def lens_amount(tone: str, severity: str) -> int:
-    return NEUTRAL_AMOUNT if tone == "neutral" else LENS_AMOUNT[severity]
+    return NEUTRAL_AMOUNT if tone == "neutral" else tone_mod.size("lens", severity)
 
 
 def split_amount(amount: int) -> tuple[int, int]:
@@ -90,7 +91,7 @@ def split_amount(amount: int) -> tuple[int, int]:
 
 # --- amounts (pure, so they can be tested exactly) --------------------------------------------------------------
 def coin_loss(purse: int, severity: str) -> int:
-    cap, share = COIN_CAPS[severity]
+    cap, share = tone_mod.size("coin_caps", severity)
     return min(cap, int(purse * share))
 
 
@@ -100,7 +101,7 @@ def food_loss(stack: int, severity: str, u: float) -> int:
         return 0
     if severity == "minor":
         return 1
-    low, high, most = LOSS_SHARE[severity]
+    low, high, most = tone_mod.size("food_loss", severity)
     return max(1, min(most, round(stack * (low + (high - low) * u))))      # a share of at most half, so one always stays
 
 
@@ -108,15 +109,14 @@ def food_loss(stack: int, severity: str, u: float) -> int:
 def world(state, settings, now: float) -> dict:
     """The facts the categories and the author may use."""
     from . import places  # places imports sleep, and this module is imported by the loop: keep the import local
-    agent = state.agent()
     plots = [g for g in state.garden(now) if g["state"] == "growing"]
     foods = sorted((i for i in state.items() if i["kind"] == "food"), key=lambda i: -i["qty"])
     booths = [r for r in state.place_rows() if r["status"] == "real" and "buy" in places.invented_place(r).verbs]
     creations = state.creations()
     diary = state.memories("diary", limit=500)
-    return {"now": now, "coins": state.coins(), "hunger": agent["hunger"], "energy": agent["energy"],
+    return {"now": now, "coins": state.coins(),
             "season": season_of(now, settings.hemisphere) if settings.happenings_seasons else None,
-            "low": agent["hunger"] >= LOW_HUNGER or agent["energy"] <= LOW_ENERGY,
+            "low": stats_mod.low(state),
             "plots": plots, "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
             "neighbors": [c["name"] for c in state.characters("neighbor")],
             "creations": [c["name"] for c in creations],
@@ -143,7 +143,7 @@ def _find_pool(kinds) -> list:
 
 def _found_item(rng, severity, kinds):
     entry = rng.choices(_find_pool(kinds), weights=[e[2] for e in _find_pool(kinds)])[0]
-    lo, hi = FOUND_ITEMS[severity]
+    lo, hi = tone_mod.size("found_items", severity)
     return {"kind": "item", "name": entry[0], "qty": rng.randint(lo, hi), "item_kind": entry[1], "description": entry[4], "attrs": entry[5]}
 
 
@@ -158,7 +158,7 @@ def _pest_loss(w, severity, rng, smallest):
 def _mending_part(rng):
     pool = [e for e in gathering.loot().get("junkyard", []) if e[1] == "material"]
     entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
-    return {"name": entry[0], "qty": rng.randint(*MENDING_QTY)}
+    return {"name": entry[0], "qty": rng.randint(*tone_mod.size("mending_qty"))}
 
 
 def _proper_nouns(text: str) -> list[str]:
@@ -204,8 +204,10 @@ def describe(e: dict) -> str:
         return f"Plot {e['plot']}'s {e['crop']} will give {abs(e['delta'])} {'more' if e['delta'] > 0 else 'less'}."
     if kind == "crop_ruin":
         return f"Plot {e['plot']}'s {e['crop']} is lost."
-    if kind in ("energy", "hunger"):
-        return f"Your {kind} {'rises' if e['delta'] > 0 else 'falls'} by {_percent(e['delta'])}%."
+    if kind in ("stat", "energy", "hunger"):                    # energy and hunger: effects stored before stats were the world's
+        name = e.get("stat", kind)
+        label = stats_mod.declared().get(name, {}).get("label", name)
+        return f"Your {label} {'rises' if e['delta'] > 0 else 'falls'} by {_percent(e['delta'])}%."
     if kind == "price":
         pct = round(abs((1 + market.PRICE_STEP) ** e["units"] - 1 if e["units"] > 0 else 1 - (1 - market.PRICE_STEP) ** -e["units"]) * 100)
         return f"{e['item'].capitalize()} fetches about {pct}% {'more' if e['units'] > 0 else 'less'} at {e['place']} for now."
@@ -234,10 +236,11 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
             state.add_plot_yield(e["plot"], e["delta"])
         elif kind == "crop_ruin":
             state.clear_plot(e["plot"])
-        elif kind == "energy":
-            state.update_agent(energy=max(ENERGY_FLOOR, min(1.0, state.agent()["energy"] + e["delta"])))
-        elif kind == "hunger":
-            state.update_agent(hunger=max(0.0, min(HUNGER_CEILING, state.agent()["hunger"] + e["delta"])))
+        elif kind in ("stat", "energy", "hunger"):
+            name = e.get("stat", kind)
+            d = stats_mod.declared(state.s).get(name)
+            if d is not None:
+                state.update_agent(**{name: stats_mod.bounded(d, state.agent()[name] + e["delta"])})
         elif kind == "price":
             market.nudge(state, e["place"], e["item"], e["units"], now)
         elif kind == "creation_stop":
@@ -273,23 +276,25 @@ def template(c: dict) -> tuple[str, str]:
 
 def trim(text: str) -> str:
     """A text a little over the limit is cut at the last sentence that fits, rather than thrown away."""
-    if len(text) <= MAX_TEXT:
+    most = tone_mod.text("max")
+    if len(text) <= most:
         return text
-    cut = text[:MAX_TEXT]
+    cut = text[:most]
     end = max(cut.rfind(mark) for mark in ".!?")
-    return cut[:end + 1].rstrip() if end + 1 >= MIN_TEXT else text
+    return cut[:end + 1].rstrip() if end + 1 >= tone_mod.text("min") else text
 
 
 def valid_text(text: str, line: str, names, severity: str, tone: str) -> tuple[bool, str]:
     """The checks a model-written text must pass; (ok, reason)."""
     text = " ".join(str(text or "").split())
-    if not MIN_TEXT <= len(text) <= MAX_TEXT:
+    if not tone_mod.text("min") <= len(text) <= tone_mod.text("max"):
         return False, "length"
-    if DENY.search(text):
+    if tone_mod.deny().search(text):
         return False, "a word that is not allowed"
-    if (severity == "minor" or tone == "neutral") and BIG_WORDS.search(text):
+    big = tone_mod.big_words()
+    if (severity == "minor" or tone == "neutral") and big and big.search(text):
         return False, "bigger than the event"
-    allowed = {name_key(word) for n in names for word in str(n).split()} | {"pip"}
+    allowed = {name_key(word) for n in names for word in str(n).split()} | {name_key(world_pack.active().agent.name)}
     for m in re.finditer(r"(?<![.!?]\s)(?<!^)\b[A-Z][a-z]+\b", text):
         if name_key(m.group(0)) not in allowed and m.group(0) != "You":
             return False, f"a name that was not offered: {m.group(0)}"
@@ -306,7 +311,7 @@ async def author(gm, c: dict, facts: dict, recent: list[str], log=None) -> tuple
         for attempt in (1, 2):
             out = await gm.write_happening(c["category"], c["tone"], c["severity"], c["lens"], c["line"], facts, recent)
             text = trim(" ".join(str((out or {}).get("text") or "").split()))
-            title = clip((out or {}).get("title"), TITLE_MAX).strip(" .")
+            title = clip((out or {}).get("title"), tone_mod.text("title_max")).strip(" .")
             names = c["names"] + facts.get("names", []) + ([facts["memory"]] if facts.get("memory") else [])
             ok, why = valid_text(text, c["line"] + " " + facts.get("memory", ""), names, c["severity"], c["tone"])
             if ok and title:
@@ -357,9 +362,13 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
 # day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
-INTENTS = ("coins", "item", "food_loss", "crop", "energy", "hunger", "price", "stop", "news", "memory")
+INTENTS = ("coins", "item", "food_loss", "crop", "stat", "price", "stop", "news", "memory")   # `stat` (or the stat's own name) is any declared stat
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
-GAINS, LOSSES = {"coins", "item", "crop", "energy", "hunger", "price", "news"}, {"coins", "food_loss", "crop", "energy", "hunger", "price", "stop", "news"}
+GAINS, LOSSES = {"coins", "item", "crop", "stat", "price", "news"}, {"coins", "food_loss", "crop", "stat", "price", "stop", "news"}
+
+
+def _kinds() -> str:
+    return f"an effect's kind is one of {', '.join(INTENTS)} (or a stat's own name: {', '.join(stats_mod.declared()) or 'this world has none'})"
 
 
 def world_names(w: dict) -> set:
@@ -371,8 +380,10 @@ def world_names(w: dict) -> set:
 def _intent(w, tone, severity, i: dict, rng) -> Plan:
     """One effect a module asked for, made real by the engine; raises ValueError saying why it can't be."""
     kind = i.get("kind")
+    if kind not in INTENTS and kind in stats_mod.declared():            # a stat by its own name: {"kind": "energy"}
+        i, kind = {**i, "stat": kind}, "stat"
     if kind not in INTENTS:
-        raise ValueError(f"an effect's kind is one of {', '.join(INTENTS)}")
+        raise ValueError(_kinds())
     if kind == "memory":
         if w["diary_count"] < MIN_DIARY or not w["old_notes"]:
             raise ValueError(f"{world_pack.active().agent.name} has no old thought to come back to {world_pack.active().agent.them}")
@@ -388,7 +399,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
             if loss < 1:
                 raise ValueError(f"{world_pack.active().agent.name} has no coins to lose")
             return Plan([{"kind": "coins", "delta": -loss}])
-        lo, hi = FOUND_COINS[severity]
+        lo, hi = tone_mod.size("found_coins", severity)
         return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), **({"gift": True} if i.get("gift") else {})}])
     if kind == "item":
         pool = {e[0]: e for e in gathering.loot().get("woods", []) + gathering.loot().get("junkyard", [])}
@@ -396,17 +407,20 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if name and name not in pool:
             raise ValueError(f"nothing called {name} is found in this world; leave the name out, or use one of: {', '.join(sorted(pool))}")
         item = _found_item(rng, severity, ("food", "seed", "material")) if not name else \
-            {"kind": "item", "name": name, "qty": rng.randint(*FOUND_ITEMS[severity]), "item_kind": pool[name][1], "description": pool[name][4], "attrs": pool[name][5]}
+            {"kind": "item", "name": name, "qty": rng.randint(*tone_mod.size("found_items", severity)), "item_kind": pool[name][1], "description": pool[name][4], "attrs": pool[name][5]}
         return Plan([{**item, **({"gift": True} if i.get("gift") else {})}], [item["name"]])
     if kind == "food_loss":
         plan = _pest_loss(w, severity, rng, 5)
         if plan is None:
             raise ValueError(f"there is nothing to lose from the pantry (or {world_pack.active().agent.name} is too low for it)")
         return plan
-    if kind in ("energy", "hunger"):
+    if kind == "stat":
+        name, declared = i.get("stat"), stats_mod.declared()
+        if name not in declared:
+            raise ValueError(f"`stat` is one of {', '.join(declared) or 'nothing (this world has no stats)'}")
         if tone == "bad" and w["low"]:
             raise ValueError(f"{world_pack.active().agent.name} is too low already")
-        return Plan([{"kind": kind, "delta": sign * ENERGY[severity] * (1 if kind == "energy" else -1)}])
+        return Plan([{"kind": "stat", "stat": name, "delta": sign * stats_mod.good_sign(declared[name]) * tone_mod.size("stat", severity)}])
     if kind == "crop":
         plot = next((p for p in w["plots"] if p["plot"] == i.get("plot")), None)
         if not plot:
@@ -417,14 +431,14 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
                 raise ValueError("only a major bad turn ruins a crop")
             return Plan([{"kind": "crop_ruin", "plot": plot["plot"], "crop": plot["crop"]}], [plot["crop"]])
         if how == "time":
-            shift = round(max(0.0, plot["ready_at"] - w["now"]) / 60 * SHIFT[severity])
+            shift = round(max(0.0, plot["ready_at"] - w["now"]) / 60 * tone_mod.size("crop_shift", severity))
             if shift < 1:
                 raise ValueError("that crop is as good as ripe")
-            return Plan([{"kind": "crop_time", "plot": plot["plot"], "crop": plot["crop"], "factor": 1 - sign * SHIFT[severity], "minutes": sign * shift}],
+            return Plan([{"kind": "crop_time", "plot": plot["plot"], "crop": plot["crop"], "factor": 1 - sign * tone_mod.size("crop_shift", severity), "minutes": sign * shift}],
                         [plot["crop"]])
         if how != "yield":
             raise ValueError("`how` is time, yield or ruin")
-        delta = YIELD_GOOD[severity] if tone == "good" else min(YIELD_BAD[severity], plot["yield"] - 1)
+        delta = tone_mod.size("crop_yield_good", severity) if tone == "good" else min(tone_mod.size("crop_yield_bad", severity), plot["yield"] - 1)
         if delta < 1:
             raise ValueError("that crop can't give any less")
         return Plan([{"kind": "crop_yield", "plot": plot["plot"], "crop": plot["crop"], "delta": sign * delta}], [plot["crop"]])
@@ -436,7 +450,7 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         item = str(i.get("item") or "").strip().lower() or (pool[rng.randrange(len(pool))] if pool else "")
         if not item or item not in {p.lower() for p in pool}:
             raise ValueError(f"`item` is something sold at {booth['key']} or that {world_pack.active().agent.name} has")
-        return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": sign * PRICE_UNITS[severity]}], [booth["key"], item])
+        return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": sign * tone_mod.size("price_units", severity)}], [booth["key"], item])
     if kind == "stop":
         c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
         if not c or severity == "minor":
@@ -459,8 +473,8 @@ def shape(p) -> None:
         raise ValueError(f"`effects` is a list of up to {INTENTS_MAX} {{kind, ...}}")
     if not isinstance(about, str) or len(about) > ABOUT_MAX or not isinstance(names, list) or not all(isinstance(n, str) for n in names):
         raise ValueError(f"`about` is a line of up to {ABOUT_MAX} characters, and `names` a list of names")
-    if any(e.get("kind") not in INTENTS for e in effects):
-        raise ValueError(f"an effect's kind is one of {', '.join(INTENTS)}")
+    if any(e.get("kind") not in INTENTS and e.get("kind") not in stats_mod.declared() for e in effects):
+        raise ValueError(_kinds())
 
 
 def decide(state, settings, p: dict, now: float, rng) -> dict:
@@ -512,7 +526,7 @@ async def from_module(state, settings, gm, name: str, p: dict, now: float) -> di
         return None
     w = world(state, settings, now)
     if isinstance(p.get("fallback"), dict) and p["fallback"].get("title") and p["fallback"].get("text"):
-        c["fallback"] = (clip(p["fallback"]["title"], TITLE_MAX), clip(p["fallback"]["text"], MAX_TEXT))
+        c["fallback"] = (clip(p["fallback"]["title"], tone_mod.text("title_max")), clip(p["fallback"]["text"], tone_mod.text("max")))
     return await record(state, settings, gm, c, w, now, f"module:{name}:{int(now)}", bool(p.get("night")), by=name)
 
 

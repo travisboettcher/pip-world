@@ -36,6 +36,7 @@ from .memory import STOP_WORDS
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip, span
 from . import world as world_content
+from . import stats as stats_mod
 from .world import seed_packet_for
 from . import world_pack
 
@@ -315,16 +316,18 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
 async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     a = ctx.state.agent()
     working = bool(ctx.state.session())  # a quick bite doesn't interrupt a work session
+    defs = stats_mod.declared(ctx.settings)
+    eaten = [n for n in stats_mod.restored_by("eat", ctx.settings) if n in a]   # what eating restores, in this world
     if not args.get("item"):
-        ctx.state.update_agent(hunger=clamp(a["hunger"] - 0.4),
+        ctx.state.update_agent(**{n: clamp(a[n] + stats_mod.good_sign(defs[n]) * defs[n].get("plain_meal", 0.4)) for n in eaten},
                                **({} if working else {"activity": "eating", "description": ""}))
         return ToolResult("ate a meal")
     item, err = ctx.state.find_item(args["item"], kind="food")
     if not item:
         return ToolResult(f"error: {err}", followup=True)
     ctx.state.take_item(item["id"])
-    value = float(item["attrs"].get("food_value", world_content.food_default()))
-    ctx.state.update_agent(hunger=clamp(a["hunger"] - value),
+    restores = item["attrs"].get("restores") or {n: float(item["attrs"].get("food_value", world_content.food_default())) for n in eaten}
+    ctx.state.update_agent(**{n: clamp(a[n] + stats_mod.good_sign(defs[n]) * float(v)) for n, v in restores.items() if n in a},
                            **({} if working else {"activity": "eating", "description": f"eating {item['name']}"}))
     return ToolResult(f"ate {item['name']}")
 
@@ -338,7 +341,9 @@ async def rest(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can rest once you get there")
     note = await stop_working(ctx)
     ctx.state.update_agent(activity="resting", description="")
-    full = (1 - ctx.state.agent()["energy"]) / ctx.settings.recover_per_hour * 60  # minutes until fully rested
+    rested = [(n, d) for n, d in stats_mod.declared(ctx.settings).items() if "rest" in d.get("restored_by", ()) and d.get("resting_per_hour")]
+    a = ctx.state.agent()
+    full = max([(1 - a[n] if stats_mod.good_sign(d) > 0 else a[n]) / abs(d["resting_per_hour"]) * 60 for n, d in rested if n in a] or [0])   # until rested
     try:
         minutes = int(args.get("minutes") or 0)
     except (TypeError, ValueError):

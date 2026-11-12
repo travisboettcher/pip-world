@@ -12,6 +12,7 @@ from . import expectations as exp
 from .state import name_key
 from .text import clip, craft_name
 from . import world_pack
+from . import stats as stats_mod
 
 STAGE_MINUTES = (15, 240)
 SESSION_MINUTES = (15, 120)
@@ -159,8 +160,8 @@ def grant_xp(state, project: dict, abilities: list[str], minutes: float) -> None
     state.add_ability_xp({a: minutes / len(abilities) for a in abilities})
 
 
-def roll(rng: random.Random, skill_level: int, tools_owned: int, difficulty: int, energy: float) -> str:
-    score = 0.05 * skill_level + 0.05 * min(3, tools_owned) - 0.05 * (difficulty - 1) - (0.15 if energy < 0.3 else 0)
+def roll(rng: random.Random, skill_level: int, tools_owned: int, difficulty: int, tired: bool) -> str:
+    score = 0.05 * skill_level + 0.05 * min(3, tools_owned) - 0.05 * (difficulty - 1) - (0.15 if tired else 0)
     r = rng.random() + score
     return "setback" if r < 0.15 else "slow" if r < 0.40 else "good" if r < 0.90 else "breakthrough"
 
@@ -248,7 +249,7 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
         result = "slow"  # cut short: half credit, no dice
     else:
         lvl = skill_for(state, project, stage_abilities(stage))
-        result = roll(rng, lvl, tools_owned(state, project), project["difficulty"], state.agent()["energy"])
+        result = roll(rng, lvl, tools_owned(state, project), project["difficulty"], stats_mod.tired(state))
     text = None
     if not interrupted:
         mats = list(stage["materials"]) + [i["name"] for i in state.items() if i["kind"] == "tool"]
@@ -263,7 +264,8 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
     remaining = stage["minutes"] - stage["progress"]
     if result == "blowup":
         stage["progress"] = max(0.0, stage["progress"] - BLOWUP_LOSS * stage["minutes"])
-        state.update_agent(energy=max(0.0, state.agent()["energy"] - BLOWUP_ENERGY))
+        if (t := stats_mod.tiring(state.s)):
+            state.update_agent(**{t: max(0.0, state.agent()[t] - BLOWUP_ENERGY)})
         owned = [state.find_item(n)[0] for n in stage["materials"]]
         owned = [i for i in owned if i and i["kind"] == "material"]
         if owned:
@@ -316,8 +318,8 @@ async def resolve_session(state, settings, gm, rng: random.Random, now: float | 
 EXPERIMENT_MINUTES = (20, 90)
 
 
-def roll_experiment(rng: random.Random, skill_level: float, difficulty: int, energy: float) -> str:
-    score = 0.05 * skill_level - 0.04 * (difficulty - 1) - (0.15 if energy < 0.3 else 0)
+def roll_experiment(rng: random.Random, skill_level: float, difficulty: int, tired: bool) -> str:
+    score = 0.05 * skill_level - 0.04 * (difficulty - 1) - (0.15 if tired else 0)
     r = rng.random() + score
     return "nothing" if r < 0.30 else "clue" if r < 0.60 else "insight" if r < 0.90 else "surprise"
 
@@ -398,7 +400,7 @@ async def resolve_experiment(state, settings, gm, rng: random.Random, now: float
     text = f"You stopped before the experiment ({hypothesis}) could show anything."
     if not interrupted:
         skill = skill_for(state, project, ["ingenuity", "knowledge"])
-        outcome = roll_experiment(rng, skill, project["difficulty"], state.agent()["energy"])
+        outcome = roll_experiment(rng, skill, project["difficulty"], stats_mod.tired(state))
         if project["dry"] >= DRY_LIMIT and outcome in ("nothing", "clue"):
             outcome = "insight"  # pity: a project can't be stuck forever
         found = [h for h in project["hidden"] if h["found"]]

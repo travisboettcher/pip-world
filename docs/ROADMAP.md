@@ -108,7 +108,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
         engine prompts written around them; a CI check that engine code names no world
   - [x] Phase 2 (0.33.0): data out of code: place kinds, items and find tables, starting belongings, scene vocabulary, happenings' categories,
         world effects and abilities move to the pack
-  - [ ] Phase 3: stats and tone: pack-declared needs (hunger and energy become two of them), `affect` on any stat, `tone.json` with the
+  - [x] Phase 3 (0.34.0): stats and tone: pack-declared needs (hunger and energy become two of them), `affect` on any stat, `tone.json` with the
         engine's floor
   - [ ] Phase 4: hooks for features as modules: tools, sessions, storage, belongings, status (proved on the garden and the market)
   - [ ] Phase 5: features move: gathering, letters and neighbours (characters), the library and weather (sources), crafting
