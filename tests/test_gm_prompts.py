@@ -390,15 +390,3 @@ async def test_using_a_creation_asks_which_of_its_own_actions_pip_did(tmp_path):
     assert "bulletin" not in task(b, 1) and "`tend`" not in task(b, 1) and "set_clock" not in task(b, 1)
 
 
-@pytest.mark.asyncio
-async def test_the_creation_design_schema_lets_the_gm_name_an_ability(tmp_path):
-    gm, b, _ = master(tmp_path, report(description="a radio", capabilities=[]))
-    project = {"name": "radio", "craft": "wireless", "goal": "hear the world", "history": []}
-    await gm.design(project, "sound", [], False)
-    cap = b.schemas[0]["properties"]["capabilities"]["items"]
-    assert cap["required"] == ["type"] and cap["properties"]["ability"] == {"type": "string"}
-    assert cap["properties"]["persona"] == {"type": "string"} and cap["properties"]["chatter_minutes"] == {"type": "number"}
-    assert cap["properties"]["hours"] == {"type": "number"} and cap["properties"]["finds"]["items"] == {"type": "string"}
-    assert "provides: ONLY if what Pip finished" in task(b) and "garden_plot" in task(b)
-
-

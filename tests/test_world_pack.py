@@ -211,10 +211,11 @@ def test_a_pack_with_no_content_gets_plain_defaults(tmp_path):
         W.set_active(W.load(Settings()))
 
 
-def test_registries_fill_in_what_an_entry_leaves_out(tmp_path):
+def test_registries_fill_in_what_an_entry_leaves_out(tmp_path, monkeypatch):
     from app import abilities, place_kinds, world_effects
+    monkeypatch.setitem(world_effects.DOES, "add_bench", lambda st: st.n)          # one the engine makes itself (none ships since 0.42.0)
     d = pack_dir(tmp_path)
-    (d / "content.json").write_text(json.dumps({"world_effects": {"wall": {"help": "a wall", "does": "add_project_slot", "note": "now {n} benches"}},
+    (d / "content.json").write_text(json.dumps({"world_effects": {"wall": {"help": "a wall", "does": "add_bench", "note": "now {n} benches"}},
                                                 "abilities": {"radio": {"help": "a receiver"}}}))
     (d / "places.json").write_text(json.dumps({"kinds": {"camp": {"help": "a camp", "shop_hours": True}}, "opens": [5, 6], "closes": [20, 21],
                                                "shop_default_hours": [8, 18]}))
@@ -224,8 +225,7 @@ def test_registries_fill_in_what_an_entry_leaves_out(tmp_path):
         assert (a.words, a.per_day, a.proposable, a.min_difficulty) == ((), 0, True, 2)
         e = world_effects.registry()["wall"]
         assert (e.words, e.min_difficulty) == ((), 2)
-        st = type("S", (), {"add_project_slot": lambda self: 3})()
-        assert e.apply(st) == "now 3 benches" and e.apply(type("S", (), {"add_project_slot": lambda self: None})()) is None
+        assert e.apply(type("S", (), {"n": 3})()) == "now 3 benches" and e.apply(type("S", (), {"n": None})()) is None and e.request is None
         k = place_kinds.registry()["camp"]
         assert (k.words, k.verbs, k.loot_kinds, k.max_tools, k.capacity, k.refill, k.session, k.trades, k.stalls) == ((), {}, (), 0, 120, 15, (15, 60), False, False)
         assert place_kinds.hours_for("camp") == (8, 18) and place_kinds.hours_for("camp", 1, 23) == (5, 21) and place_kinds.hours_for("camp", 6, 20) == (6, 20)

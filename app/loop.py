@@ -27,7 +27,6 @@ from . import wishes
 from . import worldmap
 from . import emotions as emo
 from . import sleep as sleepmod
-from . import projects as proj
 from .config import Settings
 from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
@@ -200,8 +199,8 @@ class Agent:
             await self.reflect()
 
     async def finish_work(self) -> bool:
-        """Resolve whatever Pip was busy with once its time is up: work (a finished project becomes a creation),
-        a walk (Pip arrives), or reading (Pip takes in what it read)."""
+        """Resolve whatever Pip was busy with once its time is up: a walk (Pip arrives), or a module's session (work, reading, gathering:
+        the module hears it)."""
         async with self._finishing:
             sess = self.state.session()
             if not sess or sess["ends_at"] > time.time():
@@ -210,17 +209,8 @@ class Agent:
                 return bool(await places.arrive(self.state, self.s, self.gm, self.library, self.rng))
             if sess["kind"] == "module":
                 return bool(await modules.end_session(self.state, self.s, self.ctx.runner))
-            if sess["kind"] == "experiment":
-                work = await proj.resolve_experiment(self.state, self.s, self.gm, self.rng)
-            elif sess["kind"] == "work":
-                work = await proj.resolve_session(self.state, self.s, self.gm, self.rng)
-            else:                                     # a kind nothing finishes any more (a gather from before 0.36.0): it just ends
-                self.state.end_session()
-                return False
-            if work and work["project_done"]:
-                p = self.state.project(work["project_id"])
-                await cr.make(self.state, self.gm, self.rng, p, proj.level(self.state.skills().get(p["craft"], 0)))
-            return bool(work)
+            self.state.end_session()                  # a kind nothing finishes any more (work, reading, a gather from before): it just ends
+            return False
 
     async def reflect(self) -> dict | None:
         """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
@@ -433,7 +423,7 @@ class Agent:
             lines.append("Your ambitions: " + "; ".join(f"#{m['id']} {clip(m['text'], 100)}" for m in aims))
         if wants:
             lines.append("Things you wish you could do: " + "; ".join(f"#{m['id']} {clip(m['text'], 100)}" for m in wants))
-        if "start_project" in self.tools and (aims or wants):
+        if "start_project" in self.tool_names() and (aims or wants):
             lines.append("start_project begins something new.")
         if "draw" in self.tools:
             lines.append("draw makes a picture; a small pixel one is quick.")
@@ -467,48 +457,8 @@ class Agent:
         return lines
 
     def _projects(self) -> list[str]:
-        if "work_on" not in self.tools:
-            return []
-        active = self.state.projects("active")
-        sess = self.state.session()
-        lines = ["Your projects:"]
-        for p in active:
-            i = proj.current_stage(p)
-            line = f"- #{p['id']} {p['name']} ({p['craft']}, difficulty {p['difficulty']}/5): {proj.percent(p)}% done"
-            if i is not None:
-                st = p["stages"][i]
-                line += f", now on stage {i + 1}/{len(p['stages'])} '{st['name']}'"
-                if st["materials"]:
-                    needs = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
-                    if st["started"]:
-                        line += f" (its {needs} are already in hand)"
-                    else:
-                        take, missing = proj.missing_materials(self.state, st)
-                        have = {t["name"] for t, _ in take}
-                        hints = [f"you found {n} at {places.label(f['place'])}" for n in st["materials"] if n not in have
-                                 for f in self.state.found_where(n)[:1]]
-                        line += f" (needs {needs}" + (f"; missing {', '.join(missing)}" if missing else "; you have them")
-                        line += (f" - {'; '.join(hints)}" if hints else "") + ")"
-                later = proj.upcoming_needs(p, i + 1)
-                if later:
-                    line += "; later stages need " + ", ".join(
-                        f"{q} {n} (you have {self.state.find_item(n)[0]['qty'] if self.state.find_item(n)[0] else 0})"
-                        for n, q in later.items())
-            elif proj.crossroads(p):
-                line += ", all you know to do is done - the way forward isn't clear yet"
-            if sess and sess["kind"] in ("work", "experiment") and sess["project_id"] == p["id"]:
-                line += f" - you're {'experimenting on' if sess['kind'] == 'experiment' else 'working on'} it now, about {max(1, round((sess['ends_at'] - time.time()) / 60))} min left"
-            lines.append(line)
-            if p["questions"]:
-                lines.append("  you don't know yet: " + "; ".join(p["questions"]))
-            if p["findings"]:
-                lines.append("  you've found out: " + "; ".join(p["findings"][-4:]))
-        if not active:
-            lines.append("- (none - start_project when you want to make something)")
-        held = self.state.projects("paused")
-        if held:
-            lines.append("On hold (resume_project to pick one back up): " + ", ".join(p["name"] for p in held))
-        lines += proj.feel(self.state)
+        """The things Pip has made (its projects are the crafting module's status)."""
+        lines: list[str] = []
         made = self.state.creations()
         if made:
             lines.append("Things you've made:")

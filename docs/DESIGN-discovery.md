@@ -1,5 +1,9 @@
 # Discovery and transferable abilities
 
+Note (2026-11-13): since 0.42.0 projects, experiments, plan revisions and craft skills are the shipped `crafting` module
+(`app/module_library/crafting.py`), which asks the narrator through the `narrator` source and proposes the finished thing as a
+`creation`; what is made, and everything about it once made, is still the engine's (DESIGN-world-packs.md, "5f built").
+
 Two linked changes to projects (see DESIGN-creations.md for the base design).
 
 Problem: the GM hands Pip a complete stage list up front, so a project is a checklist. Skills are per craft

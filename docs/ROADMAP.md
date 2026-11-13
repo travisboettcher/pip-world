@@ -131,7 +131,10 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 5f's hooks (0.41.0): the `narrator` source (a judgement as data within the call), sources asked three deep, tool arguments that
           are lists of small objects and maps, public events (`logs`, `event`: `work`, `experiment`, `plan_revised`, with the expectations
           they settle), `creation` (a module makes one, the engine checks it), and a module session's `about` and work pose
-    - [ ] 5f: crafting moved onto them
+    - [x] 5f (0.42.0): crafting: the shipped `crafting` module (projects on the agent's own plans, the die and the narrator's rulings,
+          materials, experiments, plan revisions, craft skills, the finished thing as a `creation`), published as `projects`, `skills`
+          and `project_limit`; the night pass asks it to pause and resume (the engine's projects, its six tools, its crafting prompts and
+          the `work`/`experiment` session kinds removed; an older install's projects, skills and workshop space move into the module's store)
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
   - [ ] Phase 7: remove the engine's fallbacks for every moved feature
 - [ ] Model escalation (Haiku -> bigger) for hard decisions

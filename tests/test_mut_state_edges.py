@@ -6,7 +6,6 @@ import time
 
 import pytest
 
-from app import state as state_mod
 from app.config import Settings
 from app.memory import event_importance
 from app.state import State, name_key
@@ -217,26 +216,6 @@ def test_add_item_refusals_say_what_is_wrong(tmp_path, clock):
         st.add_item("rope", 1, "bogus")
 
 
-def test_partial_matches_resolve_with_no_error_text(tmp_path, clock):
-    st = mk(tmp_path)
-    st.add_item("needle file", 1, "tool")
-    assert st.find_item("needle") == (st.items()[-1], "")
-    a = st.add_project("Brass Clock", "g", "c", 1, [], [])
-    assert st.find_project("brass") == (a, "")
-    k = st.add_creation("Red Kite", "", None, "ok", {}, {})
-    assert st.find_creation("red") == (k, "")
-
-
-def test_exact_names_beat_longer_names_that_contain_them(tmp_path, clock):
-    st = mk(tmp_path)
-    kite = st.add_project("Kite", "g", "c", 1, [], [])
-    st.add_project("Kite Tail", "g", "c", 1, [], [])
-    assert st.find_project("KITE") == (kite, "")
-    ckite = st.add_creation("Kite", "", None, "ok", {}, {})
-    st.add_creation("Kite Tail", "", None, "ok", {}, {})
-    assert st.find_creation("kite") == (ckite, "")
-
-
 def test_find_creation_ignores_a_leading_hash(tmp_path, clock):
     st = mk(tmp_path)
     k = st.add_creation("Red Kite", "", None, "ok", {}, {})
@@ -252,13 +231,6 @@ def test_matching_wishes_looks_at_the_newest_fifty_wishes_only(tmp_path, clock):
     assert st.matching_wishes("telescope") == []
     st.add_memory("another telescope", "wishlist")
     assert [m["text"] for m in st.matching_wishes("telescope")] == ["another telescope"]
-
-
-def test_capability_context_reads_the_five_hundred_newest_projects(tmp_path, clock):
-    st = mk(tmp_path)
-    for i in range(501):
-        st.add_project(f"P{i}", "", "c", 1, [], [])
-    assert len(st.capability_context()[0]) == 500
 
 
 def test_reflections_by_importance_beats_recency(tmp_path, clock):

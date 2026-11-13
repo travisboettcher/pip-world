@@ -149,15 +149,17 @@ async def test_a_scene_elsewhere_knows_who_is_there_and_where_pip_is(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_a_work_session_names_its_project_and_stage(tmp_path):
-    from tests.test_projects import PLAN
+async def test_a_work_session_names_its_project_and_what_is_being_done(tmp_path):
+    from tests.test_projects import PIP_STEPS, PLAN, crafting
     s, st, gm, agent = make(tmp_path, [report(**PLAN)])
     st.add_item("brass wire", 9, "material")
-    await call(agent, "start_project", name="Gear clock", description="a clock", craft="clockmaking")
-    await call(agent, "work_on", project=1)
+    crafting(st)
+    await call(agent, "start_project", name="Gear clock", goal="a clock", steps=PIP_STEPS)
+    await call(agent, "work_on", project="#1")
     sess = WV.scene_view(st, s, None)["pip"]["session"]
-    p = st.project(1)
-    assert sess["kind"] == "work" and sess["project"] == p["name"] and sess["stage"] == p["stages"][0]["name"] and sess["ends_at"] > sess["started_at"]
+    assert {k: sess[k] for k in ("kind", "target", "label", "working", "project")} == \
+        {"kind": "module", "target": "crafting", "label": "working on Gear clock: cut the wheels", "working": True, "project": "Gear clock"}
+    assert sess["ends_at"] > sess["started_at"]
 
 
 def test_a_market_scene_lists_its_booths_and_pips_stall(tmp_path):
@@ -217,14 +219,13 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     assert h["place"]["heard_only"] is True and h["place"]["open"] is False and h["place"]["kind"] == "wild" and h["place"]["hours"] is None
 
 
-def test_an_experiment_is_named_too_and_a_stage_past_the_plan_is_none(tmp_path):
+def test_a_module_session_about_nothing_names_no_project(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    pid = st.db.execute("INSERT INTO projects (name, craft, difficulty, stages, ts) VALUES ('Kite', 'kites', 1, ?, 0)", ('[{"name": "cut the frame"}]',)).lastrowid
-    st.start_session(pid, 0, 30, time.time() + 600, kind="experiment")
-    assert WV.scene_view(st, s, None)["pip"]["session"]["stage"] == "cut the frame"
-    st.start_session(pid, 1, 30, time.time() + 600, kind="experiment")
+    st.start_session(0, 0, 30, time.time() + 600, kind="module", target="reading", expect="reading A book")
     sess = WV.scene_view(st, s, None)["pip"]["session"]
-    assert sess["project"] == "Kite" and sess["stage"] is None
+    assert (sess["label"], sess["working"], "project" in sess) == ("reading A book", False, False)
+    st.start_session(0, 0, 10, time.time() + 600, kind="walk", target="woods")
+    assert set(WV.scene_view(st, s, None)["pip"]["session"]) == {"kind", "started_at", "ends_at", "target"}
 
 
 @pytest.mark.asyncio

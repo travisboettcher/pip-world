@@ -276,11 +276,13 @@ async def test_where_to_uses_the_directory_and_what_pip_has_found(tmp_path):
 
 async def test_a_missing_material_comes_with_where_it_was_found(tmp_path):
     s, st, gm, agent = setup(tmp_path, [report(**PLAN)], where="workshop")
-    from tests.test_projects import PIP_STEPS
-    agent.tools["start_project"] = T.REGISTRY["start_project"]
+    from tests.test_projects import PIP_STEPS, crafting
+    crafting(st)
     await call(agent, "start_project", name="gear clock", steps=PIP_STEPS)
     assert "missing 2 brass wire" in agent._perception("timer", []) and "you found brass wire" not in agent._perception("timer", [])
     st.add_find("junkyard", "brass wire", time.time())
+    from app import modules as M
+    await M.call(st, s, M.LocalRunner(), M.live_named(st, "crafting"), "on_install", time.time())   # the module's status, as it next says it
     assert "missing 2 brass wire (you have 0) - you found brass wire at the junkyard)" in agent._perception("timer", [])
 
 

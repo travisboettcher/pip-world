@@ -11,7 +11,7 @@ from app.config import Settings
 from app.llm.base import LLMResponse, ToolCall, Usage
 from app.llm.fake import FakeBackend
 from tests.test_neighbor import neighbor
-from tests.test_projects import FixedRng, call, make, report
+from tests.test_projects import FixedRng, call, crafting, make, report
 
 import app.neighbors as nb
 
@@ -207,6 +207,7 @@ def test_free_time_is_said_with_what_pip_wants_to_do(tmp_path):
     st.add_memory("To run my own stall.", "wishlist", "activity")
     st.add_memory("A spool of wire.", "wishlist", "thing")
     planted(st, s, 1, "tomatoes", 600)
+    crafting(st)
     got = agent._free_time(time.time())
     assert got[0] == "Nothing needs you for about 10 hours."
     assert got[1].startswith("Your ambitions: #") and "Build a self-winding clock." in got[1]
@@ -242,9 +243,8 @@ def test_a_clock_that_needs_winding_soon_is_not_free_time(tmp_path):
     assert agent._free_time(time.time()) == []
     st.set_runtime(c["id"], {**c["runtime"], "tended_until": time.time() + 5 * 3600})
     assert agent._free_time(time.time())[0] == "Nothing needs you for about 5 hours."
-    del agent.tools["start_project"]
     st.add_memory("Build a self-winding clock.", "ambitions")
-    assert "start_project begins something new." not in agent._free_time(time.time())
+    assert "start_project begins something new." not in agent._free_time(time.time())   # no crafting module, no start_project
 
 
 # --- letters --------------------------------------------------------------------------------------------------------------------
@@ -399,6 +399,7 @@ def test_free_time_lists_open_ambitions_and_wishes_to_do(tmp_path):
     w1 = st.add_memory("To be able to swim.", "wishlist", "ability")
     w2 = st.add_memory("A boat that rows itself.", "wishlist", "idea")
     st.add_todo = None
+    crafting(st)
     got = agent._free_time(time.time())
     aims = st.memories("ambitions", status="open", limit=2)
     assert got[1] == "Your ambitions: " + "; ".join(f"#{m['id']} {talk.clip(m['text'], 100)}" for m in aims) and len(aims) == 2
@@ -410,6 +411,7 @@ def test_free_time_lists_open_ambitions_and_wishes_to_do(tmp_path):
 def test_free_time_offers_a_project_for_wishes_alone(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.add_memory("To be able to swim.", "wishlist", "ability")
+    crafting(st)
     assert agent._free_time(time.time())[-1] == "start_project begins something new."
 
 

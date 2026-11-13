@@ -68,7 +68,7 @@ Everything is an environment variable, listed with comments in [`.env.example`](
 | `LLM_BACKEND`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_API_KEY` | the model: `anthropic`, or `openai_compat` (OpenAI, Ollama, vLLM...) |
 | `PACING` | `heartbeat_events` (wake on events and a slow heartbeat), `fixed_tick`, or `manual` |
 | `DAILY_TOKEN_BUDGET` | the daily cap on tokens |
-| `TOOLS` | which of the engine's tools Pip has (a module's tools, like the garden's `plant` and `harvest` trade's `buy`, `sell` and `pay`, or reading's `read`, come with the module; a name the engine doesn't have is skipped with a warning) |
+| `TOOLS` | which of the engine's tools Pip has (a module's tools, like the garden's `plant` and `harvest`, trade's `buy`, `sell` and `pay`, reading's `read`, or crafting's `start_project` and `work_on`, come with the module; a name the engine doesn't have is skipped with a warning) |
 | `HAPPENINGS` (`on`, `log`, `off`), `HAPPENINGS_CHANCE`, `HAPPENINGS_SLOT_HOURS`, `HAPPENINGS_SEVERITY`, `HAPPENINGS_MAX_PER_DAY`, `HAPPENINGS_SEASONS`, `HEMISPHERE` | small events from the world: each slot of awake time has a chance of one (default 10% per 3 hours), sized minor / medium / major (50, 45, 5); a night's sleep rolls too, and the season makes some kinds likelier; `log` writes them without changing anything ([design](docs/DESIGN-happenings.md)) |
 | `PLACE_SCENES` (`on`, `off`) | each place gets scene details (walls, roof, palette, setting, props), chosen once ([design](docs/DESIGN-world-view.md)) |
 | `CHARACTER_LOOKS` (`on`, `off`) | each neighbor or resident gets a look for the world view's scenes, chosen once ([design](docs/DESIGN-world-view.md)) |

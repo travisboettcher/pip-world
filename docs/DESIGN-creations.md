@@ -1,5 +1,9 @@
 # Design: projects, living creations, and companions
 
+Note (2026-11-13): since 0.42.0 projects, experiments, plan revisions and craft skills are the shipped `crafting` module
+(`app/module_library/crafting.py`), which asks the narrator through the `narrator` source and proposes the finished thing as a
+`creation`; what is made, and everything about it once made, is still the engine's (DESIGN-world-packs.md, "5f built").
+
 Status (2026-10-29): phases 1-3 implemented and tested (unit tests, plus each GM prompt run once against
 Haiku 5.5); not yet deployed. Phase 4 (neighbor letters) is designed only, see the bottom.
 

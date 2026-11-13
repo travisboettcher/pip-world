@@ -5,7 +5,7 @@ import pytest
 
 from app import commands
 from tests.test_outreach import setup
-from tests.test_projects import FixedRng, call, make, report
+from tests.test_projects import FixedRng, call, given, make, report
 
 
 def ask(st, s, text, now=None):
@@ -77,9 +77,7 @@ async def test_projects_shows_progress(tmp_path):
     assert "no projects" in ask(st, s, "/projects").lower()
     steps = [{"name": "cut the wheels", "minutes": 60}, {"name": "fit it", "minutes": 60}]
     await call(agent, "start_project", name="gear clock", steps=steps)
-    p = st.projects()[0]
-    p["stages"][0]["progress"] = 60
-    st.update_project(p["id"], stages=p["stages"])
+    await given(st, {"name": "gear clock", "stages": [{"name": "cut the wheels", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60}]})
     r = ask(st, s, "/projects")
     assert "gear clock" in r and "50%" in r and "fit it" in r
 

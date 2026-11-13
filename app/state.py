@@ -301,6 +301,7 @@ class State:
             self._move_garden()
             self._move_market()
             self._move_bookmarks()
+            self._move_crafting()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -342,7 +343,7 @@ class State:
             a = self.agent()
             hours = max(0.0, now - a["updated_at"]) / 3600
             sess = self.session()
-            working = bool(sess and (sess["kind"] in ("work", "experiment") or (sess["kind"] == "module" and sess["stage"])))
+            working = bool(sess and sess["kind"] == "module" and sess["stage"])           # a module's session that is work (crafting)
             new, fields = [], {"updated_at": now}
             for name, d in stats_mod.declared(self.s).items():
                 if name not in a:
@@ -750,6 +751,30 @@ class State:
             self.db.execute(f"DROP TABLE IF EXISTS {t}")
         self.db.commit()
 
+    # --- projects and crafts, before crafting was a module ---------------------
+    def _move_crafting(self) -> None:
+        """Once: an install from before 0.42.0 keeps its projects, crafts and workshop space. They move into the `crafting` module's store
+        (module_library/crafting.py), kept as it keeps them (a finished project small), and the old tables are emptied."""
+        rows = self.db.execute("SELECT * FROM projects ORDER BY id").fetchall()
+        crafts = self.db.execute("SELECT craft, xp FROM skills").fetchall()
+        extra = int(self.meta("extra_project_slots") or 0)
+        if not rows and not crafts and not extra:
+            return
+        projects = {}
+        for r in rows:
+            p = {k: json.loads(r[k]) if k in ("stages", "tools", "history", "questions", "hidden", "findings") else r[k] for k in r.keys()}
+            if p["status"] in ("done", "abandoned"):                # kept small, as the module keeps a finished one
+                p = {**p, "history": [{k: h.get(k) for k in ("ts", "stage", "result", "minutes", "text", "kind", "interrupted")} for h in p["history"][-4:]],
+                     "hidden": [], "findings": p["findings"][-2:], "stages": [{**st, "materials": {}} for st in p["stages"]]}
+            projects[str(p["id"])] = p
+        if not self.store("crafting"):
+            self.merge_store("crafting", {"projects": projects, "skills": {r["craft"]: r["xp"] for r in crafts},
+                                          "meta": {"all": {"next_id": max([int(k) for k in projects] + [0]) + 1, "extra_slots": extra}}})
+        self.db.execute("DELETE FROM projects")
+        self.db.execute("DELETE FROM skills")
+        self.db.execute("DELETE FROM meta WHERE key = 'extra_project_slots'")
+        self.db.commit()
+
     # --- bookmarks, before reading was a module ---------------------------
     def _move_bookmarks(self) -> None:
         """Once: an install from before 0.39.0 keeps where it is in each book. Its bookmarks move into the `reading` module's store
@@ -764,18 +789,6 @@ class State:
             self.merge_store("reading", {"marks": marks})
         self.db.execute("DROP TABLE bookmarks")
         self.db.commit()
-
-    # --- workshop space --------------------------------------------------
-    def project_limit(self) -> int:
-        """Projects Pip can keep going at once: the starting limit plus workshop it built, never above the cap."""
-        return min(self.s.max_active_projects_cap, self.s.max_active_projects + int(self.meta("extra_project_slots") or 0))
-
-    def add_project_slot(self) -> int | None:
-        with self.lock:
-            if self.project_limit() >= self.s.max_active_projects_cap:
-                return None
-            self.set_meta(extra_project_slots=int(self.meta("extra_project_slots") or 0) + 1)
-            return self.project_limit()
 
 
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
@@ -807,55 +820,6 @@ class State:
     # --- projects, work sessions, skills -------------------------------------
     PROJECT_JSON = ("stages", "tools", "history", "questions", "hidden", "findings")
 
-    def _project(self, row) -> dict:
-        return {**dict(row), **{k: json.loads(row[k]) for k in self.PROJECT_JSON}}
-
-    def add_project(self, name: str, goal: str, craft: str, difficulty: int, stages: list[dict],
-                    tools: list[str]) -> dict:
-        with self.lock:
-            cur = self.db.execute(
-                "INSERT INTO projects (name, goal, craft, difficulty, stages, tools, ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (name, goal, craft, difficulty, json.dumps(stages), json.dumps(tools), time.time()))
-            self.db.commit()
-            return self.project(cur.lastrowid)
-
-    def project(self, project_id: int) -> dict | None:
-        with self.lock:
-            row = self.db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
-        return self._project(row) if row else None
-
-    def projects(self, status: str | None = None, limit: int = 50) -> list[dict]:
-        q, args = "SELECT * FROM projects", []
-        if status:
-            q += " WHERE status = ?"
-            args.append(status)
-        with self.lock:
-            rows = self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
-        return [self._project(r) for r in reversed(rows)]
-
-    def update_project(self, project_id: int, **fields) -> None:
-        vals = {k: json.dumps(v) if k in self.PROJECT_JSON else v for k, v in fields.items()}
-        with self.lock:
-            self.db.execute(f"UPDATE projects SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?",
-                            (*vals.values(), project_id))
-            self.db.commit()
-
-    def find_project(self, query, status: str = "active") -> tuple[dict | None, str]:
-        """Resolve '#3', 3 or a loose name ('clock') to one project with the given status."""
-        rows = self.projects(status)
-        q = str(query).strip().lower().lstrip("#")
-        if q.isdigit():
-            hit = [p for p in rows if p["id"] == int(q)]
-            return (hit[0], "") if hit else (None, f"no {status} project #{q}")
-        exact = [p for p in rows if p["name"].lower() == q]
-        part = exact or [p for p in rows if q and (q in p["name"].lower() or p["name"].lower() in q)]
-        if len(part) == 1:
-            return part[0], ""
-        if not part:
-            names = ", ".join(f"#{p['id']} {p['name']}" for p in rows) or "none"
-            return None, f"no {status} project called {query!r} (yours: {names})"
-        return None, "which one? " + ", ".join(f"#{p['id']} {p['name']}" for p in part)
-
     def session(self) -> dict | None:
         with self.lock:
             row = self.db.execute("SELECT * FROM work_session WHERE id = 1").fetchone()
@@ -873,12 +837,6 @@ class State:
     def end_session(self) -> None:
         with self.lock:
             self.db.execute("DELETE FROM work_session")
-            self.db.commit()
-
-    def add_xp(self, craft: str, minutes: float) -> None:
-        with self.lock:
-            self.db.execute("INSERT INTO skills VALUES (?, ?) ON CONFLICT(craft) DO UPDATE SET xp = xp + excluded.xp",
-                            (craft, minutes))
             self.db.commit()
 
     def add_ability_xp(self, shares: dict[str, float]) -> None:
@@ -1177,9 +1135,9 @@ class State:
             return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
 
     def capability_context(self) -> tuple[dict, dict]:
-        """({project id: craft}, {(project id, stage name): abilities}) for events that predate those fields."""
+        """({project id: craft}, {(project id, stage name): abilities}) for events that predate those fields (the crafting module's projects)."""
         crafts, stages = {}, {}
-        for p in self.projects(limit=500):
+        for p in (self.store("crafting").get("projects") or {}).values():
             crafts[p["id"]] = p["craft"]
             for st in p["stages"]:
                 stages[(p["id"], st["name"])] = st.get("abilities") or []
@@ -1520,10 +1478,7 @@ class State:
         place = None if sess and sess["kind"] == "walk" else a["location"]
         people = self._people_in(source, data) + [c["name"] for c in places.company_at(self, place)]
         project = None
-        if sess and sess["kind"] in ("work", "experiment"):
-            r = self.db.execute("SELECT name FROM projects WHERE id = ?", (sess["project_id"],)).fetchone()
-            project = r["name"] if r else None
-        elif sess and sess["kind"] == "module" and sess["about"]:            # a module's session about something (a project)
+        if sess and sess["kind"] == "module" and sess["about"]:            # a module's session about something (a project)
             project = sess["about"]
         excess = {r["name"]: r["value"] - BASELINE[r["name"]] for r in self.db.execute("SELECT name, value FROM emotions")}
         feeling = max(excess, key=excess.get, default=None)

@@ -50,7 +50,7 @@ async def test_going_to_bed_stops_work(tmp_path):
     await call(agent, "start_project", name="gear clock")
     await call(agent, "work_on", project="gear clock", minutes=60)
     r = await call(agent, "sleep")
-    assert "stopped working on gear clock early" in r.text and not st.session()
+    assert "(you stopped working on gear clock: cut the wheels early)" in r.text and not st.session()
 
 
 def test_sleeping_recovers_faster_and_slows_hunger(tmp_path):

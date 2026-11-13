@@ -33,7 +33,7 @@
     "storage"
    ],
    "min_difficulty": 2,
-   "does": "add_project_slot",
+   "does": "request:crafting:add_slot",
    "note": "Your workshop is better set up now: you can keep {n} projects going at once."
   }
  },

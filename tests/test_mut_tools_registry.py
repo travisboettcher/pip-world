@@ -59,14 +59,6 @@ def test_the_shipped_tools_have_object_schemas_and_descriptions():
         assert set(spec.parameters["required"]) <= set(spec.parameters["properties"])
 
 
-# --- stages ----------------------------------------------------------------------------------------
-def test_describe_stage_summarises_a_step():
-    p = {"stages": [{"name": "cut", "minutes": 45, "materials": {"brass wire": 2, "glue": 1}, "started": False},
-                    {"name": "fit", "minutes": 30, "materials": {}, "started": False},
-                    {"name": "paint", "minutes": 20, "materials": {"paint": 1}, "started": True}]}
-    assert T.describe_stage(p, 0) == "stage 1/3 'cut' (about 45 min of work; uses 2 brass wire, 1 glue)"
-    assert T.describe_stage(p, 1) == "stage 2/3 'fit' (about 30 min of work)"
-    assert T.describe_stage(p, 2) == "stage 3/3 'paint' (about 20 min of work)"            # already paid for
 
 
 def test_picture_renders_the_drawing_at_the_look_width():

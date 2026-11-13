@@ -85,7 +85,7 @@ export function build(kit, art, data) {
   const words = (t) => String(t || "")
     .replace("$label", cap(latest.place.label)).replace("$description", latest.place.description || latest.place.blurb || "").replace("$blurb", latest.place.blurb || "")
     .replace("$belongings", (latest.items || []).map((i) => `${i.name} ×${i.qty}`).join(", ") + `; ${latest.coins ?? 0} coins.`)
-    .replace("$project", latest.pip.session?.project ? `Pip is working on ${latest.pip.session.project}${latest.pip.session.stage ? ` (${latest.pip.session.stage})` : ""}.` : "Where Pip works on its projects.")
+    .replace("$project", latest.pip.session?.project ? `Pip is ${latest.pip.session.label || `busy with ${latest.pip.session.project}`}.` : "Where Pip works on its projects.")
     .replace("$hours", latest.place.hours ? `Open ${latest.place.hours[0]}:00 to ${latest.place.hours[1]}:00.` : "Shut for now.")
     .replace("$note", `At my stall in ${latest.lives_here?.away_at ?? "the market"} today.`)
     .replace("$resident", latest.lives_here?.name || "Someone")

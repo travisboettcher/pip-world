@@ -247,7 +247,7 @@ class Settings:
             library_provider=(e("LIBRARY_PROVIDER") or "auto").strip().lower(),
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,feel").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,web_search,tend,recall,write_letter,go_to,browse,where_to,sleep,undo_decision,send_postcard,draw,write_piece,look,settle,feel").split(",") if t.strip()],
             search_provider=(e("SEARCH_PROVIDER") or "tavily").strip().lower(),
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),

@@ -43,7 +43,7 @@ def test_what_a_source_question_may_be():
     assert M._source(man, {"name": "books", "op": "search", "args": {"query": "x"}}) == {"name": "books", "op": "search", "args": {"query": "x"}}
     assert M._source(man, {"name": "books", "op": "wander"}) == {"name": "books", "op": "wander", "args": {}}
     for bad in ({"name": "weather", "op": "now"}, {"name": "books"}, {"name": "books", "op": "Search"}, {"name": "books", "op": "x", "args": []},
-                {"name": "books", "op": "x", "y": 1}, {"name": "books", "op": "x", "args": {"q": "x" * 3000}}, "books"):
+                {"name": "books", "op": "x", "y": 1}, {"name": "books", "op": "x", "args": {"q": "x" * 16_001}}, "books"):
         with pytest.raises(M.Refused) as e:
             M._source(man, bad)
         assert str(e.value) == "`source` is {name, op, args?}: name is one of its sources (books)", bad
@@ -206,8 +206,8 @@ def test_a_moment_may_be_longer_than_a_line_and_a_question_has_a_size():
         M._log({"text": "x" * 1201, "kind": "read"})
     assert str(e.value) == "`log.text` is at most 1200 characters"
     man = {"sources": ["books"]}
-    fits = {"q": "x" * (M.ARGS_MAX - len('{"q": ""}'))}
-    assert M._size(fits) == M.ARGS_MAX and M._source(man, {"name": "books", "op": "x", "args": fits})["args"] == fits
+    fits = {"q": "x" * (M.SOURCE_ARGS_MAX - len('{"q": ""}'))}
+    assert M._size(fits) == M.SOURCE_ARGS_MAX and M._source(man, {"name": "books", "op": "x", "args": fits})["args"] == fits
 
 
 async def test_what_comes_of_a_question_and_its_answer_together(tmp_path, shelf):
@@ -240,9 +240,8 @@ async def test_the_narrator_judges_within_the_call(tmp_path):
     task = gm.calls[0]["messages"][0]["content"]
     assert task.startswith("Judge the kite.") and "report" in str(gm.calls[0]["tools"])
     assert await sources.ask("narrator", "ask", {"prompt": "again", "schema": JUDGE}, s, 1) == {"data": None}      # didn't fit: none
-    agent.gm = None
-    assert not sources.available("narrator") and await sources.ask("narrator", "ask", {"prompt": "p", "schema": JUDGE}, s, 1) == \
-        {"error": "there is no narrator source here"}
+    agent.gm = None                                                   # no narrator: no answer, and the module's plain words stand
+    assert sources.available("narrator") and await sources.ask("narrator", "ask", {"prompt": "p", "schema": JUDGE}, s, 1) == {"data": None}
 
 
 async def test_what_the_narrator_can_be_asked(tmp_path):
@@ -282,4 +281,24 @@ def test_a_tool_may_take_a_list_of_steps_each_with_a_map_of_materials():
     assert not M._map_ok("Bad Name", words)
     with pytest.raises(M.Refused) as e:
         M._tools([{"name": "start", "help": "s", "params": {"type": "object", "properties": {"x": {"type": "object"}}}}], "world")
-    assert str(e.value).endswith("a list of small objects, or a map of names to values")
+    assert str(e.value).endswith("a list of small objects or of strings, or a map of names to values")
+
+
+def test_a_tool_may_take_a_list_of_short_strings():
+    drop = {"type": "array", "items": {"type": "string"}, "description": "names of steps to drop"}
+    t = M._tools([{"name": "revise", "help": "r", "params": {"type": "object", "properties": {"drop": drop}, "required": []}}], "world")[0]
+    got, why = M.check_args(t["params"], {"drop": ["  cut   the  wheels ", "", "   ", 3, None, "x" * 300] + [f"s{i}" for i in range(12)]})
+    assert why == "" and got["drop"] == ["cut the wheels", "x" * M.LIST_STRING_MAX] + [f"s{i}" for i in range(6)]       # twelve looked at
+    assert M.check_args(t["params"], {"drop": "cut"}) == ({}, "`drop` is a list")
+    assert M._strings_ok("drop", drop) and M._strings_ok("drop", {"type": "array", "items": {"type": "string"}})
+    assert M._strings_ok("drop", {**drop, "description": "d" * M.TEXT_MAX})
+    for bad in ({**drop, "description": "d" * (M.TEXT_MAX + 1)}, {**drop, "x": 1}, {**drop, "items": {"type": "integer"}},
+                {**drop, "items": {"type": "string", "x": 1}}, {**drop, "type": "object"}, {**drop, "description": 3}, "x", {"type": "array"}):
+        assert not M._strings_ok("drop", bad), bad
+    assert not M._strings_ok("Bad Name", drop)
+
+
+def test_a_question_whose_answer_has_an_answer_that_doesnt_fit_is_refused():
+    assert M._ask({"prompt": "p", "schema": {"properties": {"ids": {"type": "array", "items": {"type": "string"}}}, "required": ["ids"]}})["schema"]
+    with pytest.raises(M.Refused, match="`ask.schema` is"):
+        M._ask({"prompt": "p", "schema": {"properties": {"ok": {"type": "string"}, "bad": {"type": "date"}}, "required": ["ok"]}})

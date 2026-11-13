@@ -61,14 +61,14 @@ def _items(state, settings, arg, now):
 
 
 def _projects(state, settings, arg, now):
-    active = state.projects("active")
+    active = [p for p in proj.published(state)["projects"] if p["status"] == "active"]     # what the crafting module publishes
     if not active:
         return "Projects\nNo projects right now."
     lines = []
     for p in active:
-        i = proj.current_stage(p)
+        i = p["current_stage"]
         nxt = p["stages"][i]["name"] if i is not None else "all the planned steps are done"
-        lines.append(f"{p['name']}: {proj.percent(p)}%, next: {nxt}")
+        lines.append(f"{p['name']}: {p['percent']}%, next: {nxt}")
     return "Projects\n" + "\n".join(lines)
 
 

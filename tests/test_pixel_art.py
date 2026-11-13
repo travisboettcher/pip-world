@@ -110,11 +110,11 @@ async def test_the_nudges_are_facts_and_only_where_draw_is_a_tool(tmp_path):
 @pytest.mark.asyncio
 async def test_starting_a_project_mentions_sketching_it_when_draw_is_on(tmp_path):
     s, st, agent = await drawer(tmp_path)
-    r = await call(agent, "start_project", name="Kite", goal="fly", steps=["frame", "cover"])
-    assert "sketch it first with draw" not in r.text
+    r = await call(agent, "start_project", name="Kite", goal="fly", steps=[{"name": "frame"}, {"name": "cover"}])
+    assert r.text.startswith("started project #1 Kite") and "sketch it first with draw" not in r.text
     s.tools = ["draw"]
-    r = await call(agent, "start_project", name="Boat", goal="float", steps=["hull", "sail"])
-    assert r.text.endswith("You could sketch it first with draw.")
+    r = await call(agent, "start_project", name="Boat", goal="float", steps=[{"name": "hull"}, {"name": "sail"}])
+    assert r.text.startswith("started project #2 Boat") and r.text.endswith("You could sketch it first with draw.")
 
 
 # --- in the world: the gallery-wall and stall-pictures modules (docs/DESIGN-modules.md, step 2) --------------------------------

@@ -1,8 +1,6 @@
 """Tools: the remaining edges of busy-handling, note checks, tool offers and the tool list."""
-import pytest
 
 from app import tools as T
-from test_mut_projects_flow import add as add_project, begin
 from test_mut_tools_core import make, clock  # noqa: F401
 from test_mut_tools_registry import settings
 

@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 
 from . import memory as mem
+from . import modules
 from . import places
 from . import projects as proj
 from . import tools as tools_mod
@@ -37,7 +38,18 @@ def _ref(raw) -> tuple[str, int] | None:
 
 # --- the facts the pass is given --------------------------------------------------------------
 def _last_worked(p: dict) -> float:
-    return max([h["ts"] for h in p["history"]] + [p["ts"]])
+    return p.get("last_worked") or 0.0
+
+
+def _projects(state) -> dict:
+    """The agent's projects as the crafting module publishes them, by id."""
+    return {p["id"]: p for p in proj.published(state)["projects"]}
+
+
+def _limit(state) -> int:
+    from .modules import published
+    n = published(state, "project_limit")
+    return n if isinstance(n, int) else 0
 
 
 def facts(state, settings, now: float, tool_names=()) -> dict:
@@ -49,13 +61,14 @@ def facts(state, settings, now: float, tool_names=()) -> dict:
             edited = f", edited {mem.ago(m['edited_at'], now)}" if m["edited_at"] else ""
             lines.append(f"[n{m['id']}] ({section}, written {mem.ago(m['ts'], now)}{edited}) {clip(m['text'], 170)}")
     projects, plines = {}, []
+    everything = _projects(state)
     for status in ("active", "paused"):
-        for p in state.projects(status):
+        for p in (q for q in everything.values() if q["status"] == status):
             projects[p["id"]] = p
-            plines.append(f"[p{p['id']}] {p['name']} ({status}): {proj.percent(p)}% done, last worked "
+            plines.append(f"[p{p['id']}] {p['name']} ({status}): {p['percent']}% done, last worked "
                           f"{mem.ago(_last_worked(p), now)}")
     quiet = []
-    for p in state.projects("active"):
+    for p in (q for q in everything.values() if q["status"] == "active"):
         days = (now - _last_worked(p)) / 86400
         if days >= IDLE_PROJECT_DAYS:
             quiet.append(f"you haven't worked on {p['name']} for {round(days)} days")
@@ -87,8 +100,8 @@ def review_focus(state, now: float) -> tuple[list[dict], int]:
             m = state.memory(f["ref_id"])
             kept = bool(m and m["status"] == "done")
         elif f["ref_kind"] == "project" and f["ref_id"]:
-            p = state.project(f["ref_id"])
-            kept = bool(p and (p["status"] == "done" or any(h["ts"] > f["decided_at"] for h in p["history"])))
+            p = _projects(state).get(f["ref_id"])
+            kept = bool(p and (p["status"] == "done" or _last_worked(p) > f["decided_at"]))
         if kept:
             state.close_focus(f["id"], "kept", "the log shows it moved")
             kept_n += 1
@@ -180,7 +193,7 @@ def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tupl
             p = projects.get(raw.get("id"))
             if not p or p["status"] != "paused":
                 reject("no such project on hold")
-            elif active >= state.project_limit():
+            elif active >= _limit(state):
                 reject("too many projects going")
             else:
                 ok.append({"op": op, "target_kind": "project", "target_id": p["id"], "args": {}, "reason": reason,
@@ -221,12 +234,9 @@ def apply(state, settings, op: dict, applied: bool = True) -> int:
             state.edit_memory(first, args["text"])
             for i in rest:
                 state.set_memory_status(i, "archived")
-        elif kind == "pause_project":
-            before = {"status": "active"}
-            state.update_project(tid, status="paused")
-        elif kind == "resume_project":
-            before = {"status": "paused"}
-            state.update_project(tid, status="active")
+        elif kind in ("pause_project", "resume_project"):            # the crafting module's to do, on its next step
+            before = {"status": "active" if kind == "pause_project" else "paused"}
+            modules.queue_request(state, "crafting", "pause" if kind == "pause_project" else "resume", {"project": f"#{tid}"}, by="night pass")
         elif kind == "adopt":
             new_id = state.add_memory(args["text"], args["section"])
             before = {"memory_id": new_id}
@@ -249,11 +259,11 @@ def undo(state, settings, decision_id: int) -> str:
         for i in before["archived"]:
             state.set_memory_status(i, "open")
     elif op == "pause_project":
-        if len(state.projects("active")) >= state.project_limit():
+        if sum(1 for p in _projects(state).values() if p["status"] == "active") >= _limit(state):
             return "you already have as many projects going as you can; finish or pause one first"
-        state.update_project(tid, status="active")
+        modules.queue_request(state, "crafting", "resume", {"project": f"#{tid}"}, by="night pass")
     elif op == "resume_project":
-        state.update_project(tid, status="paused")
+        modules.queue_request(state, "crafting", "pause", {"project": f"#{tid}"}, by="night pass")
     elif op == "adopt":
         state.set_memory_status(before["memory_id"], "archived")
     state.mark_decision_undone(decision_id)

@@ -13,7 +13,6 @@ import time
 from . import abilities
 from . import world_effects
 from .text import clip
-from .projects import quality as project_quality, scars as project_scars
 from .state import clamp
 from . import world_pack
 from . import stats as stats_mod
@@ -91,6 +90,30 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
     return name, description, {"capabilities": caps, "quirks": quirks, "scars": [_line(s, 200) for s in scars[:3]]}
 
 
+def menu(allow_companion: bool) -> list[str]:
+    """What a made thing can do, as the narrator is told when it designs one: the capabilities `sanitize_spec` keeps, worded."""
+    a = world_pack.active().agent
+    caps = [
+        "timekeeper: it tells the time",
+        f"upkeep: it only keeps going if {a.name} tends it regularly; give `verb` (a word or two for how it's tended, "
+        "whatever fits this thing) and `hours` (4-72) it lasts between tendings",
+        "periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences "
+        "describing it, in this thing's own manner) and `every_minutes` (20-720)",
+        f"sensor: it notices something and reacts; `condition` is one of crop_ripe (a crop in {a.possessive} garden is ripe), "
+        f"visitor (someone comes to talk to {a.name}), dawn, dusk, hungry ({a.name} is hungry), tired ({a.name} is tired); "
+        "`alert` is a short line describing how it reacts",
+        "helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden "
+        "do better - guarding, watering, warming it - so crops ripen sooner), find "
+        f"(it turns up small useful things; give `finds`: 2-4 kinds of thing it would find), or comfort ({a.name} feels "
+        "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
+        world_effects.gm_lines(), abilities.gm_lines(),
+    ]
+    if allow_companion:
+        caps.append("companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: "
+                    "who it is, how it expresses itself) and `chatter_minutes` (60-720) for how often it speaks up")
+    return caps
+
+
 def initial_runtime(spec: dict, now: float) -> dict:
     rt = {"made_at": now, "last": {}, "sensor_on": False}
     if "upkeep" in spec["capabilities"]:
@@ -166,14 +189,6 @@ def describe(c: dict, now: float | None = None) -> str:
     if quirks:
         parts.append("quirks: " + "; ".join(quirks))
     return head + " - " + "; ".join(parts)
-
-
-async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -> dict:
-    """Turn a finished project into a creation (one GM design call, then the engine takes over)."""
-    q, marks = project_quality(project, skill_level), project_scars(project)
-    allow = project["difficulty"] >= COMPANION_MIN_DIFFICULTY
-    raw = await gm.design(project, q, marks, allow) if gm else None
-    return await made(state, raw, project, q, marks, rng)
 
 
 async def made(state, raw: dict | None, project: dict, q: str, marks: list[str], rng: random.Random) -> dict:

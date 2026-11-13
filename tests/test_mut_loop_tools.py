@@ -132,43 +132,9 @@ def test_the_world_check_alerts_drifts_and_maps(tmp_path, monkeypatch):
 
 
 # --- what a finished or interrupted session is handed ------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("kind,where,fn", [("walk", "places", "arrive"), ("module", "modules", "end_session"),
-                                           ("experiment", "proj", "resolve_experiment"), ("work", "proj", "resolve_session")])
-async def test_a_finished_session_is_handed_the_settings(tmp_path, monkeypatch, kind, where, fn):
-    import app.loop as L
-    s, st, gm, agent = make(tmp_path)
-    got = {}
-
-    async def fake(state, settings, *rest, **kw):
-        got.update(state=state, settings=settings)
-        return None
-    monkeypatch.setattr(getattr(L, where), fn, fake)
-    st.start_session(0, 0, 1, time.time() - 1, kind=kind, target="woods")
-    await agent.finish_work()
-    assert got == {"state": st, "settings": s}
-
-
-async def test_a_finished_project_is_made_at_its_crafts_level(tmp_path, monkeypatch):
-    import app.loop as L
-    s, st, gm, agent = make(tmp_path)
-    st.add_xp("clockmaking", 60 * 4 + 1)                                       # level 2
-    p = st.add_project("Clock", "tell time", "clockmaking", 3, [{"name": "gears"}], [])
-    made = {}
-
-    async def fake_session(*a, **kw):
-        return {"project_done": True, "project_id": p["id"]}
-
-    async def fake_make(state, gm_, rng, project, level):
-        made["level"] = level
-    monkeypatch.setattr(L.proj, "resolve_session", fake_session)
-    monkeypatch.setattr(L.cr, "make", fake_make)
-    st.start_session(p["id"], 0, 1, time.time() - 1)
-    assert await agent.finish_work() is True and made["level"] == 2
 
 
 @pytest.mark.parametrize("kind,where,fn,result,note", [
-    ("experiment", "proj", "resolve_experiment", {"project": "Clock"}, " (you cut the experiment on Clock short)"),
-    ("work", "proj", "resolve_session", {"project": "Clock"}, " (you stopped working on Clock early)"),
     ("module", "modules", "end_session", {"label": "tidying"}, " (you stopped tidying early)"),
 ])
 async def test_stopping_early_hands_on_everything_and_says_so(tmp_path, monkeypatch, kind, where, fn, result, note):
@@ -262,9 +228,9 @@ def test_world_effects_details(tmp_path, monkeypatch):
     assert "garden_plot (clearing and preparing new ground so the garden has another plot); workbench (" in W.gm_lines()
     bench = {"name": "Make a thing", "goal": "a new workbench", "difficulty": 2, "stages": [{"name": "saw"}]}
     assert W.allowed("workbench", bench) and not W.allowed("workbench", {**bench, "goal": None})
-    raw = {"wall": {"help": "a wall", "does": "add_project_slot"}}
+    raw = {"wall": {"help": "a wall", "does": "add_project_slot"}}                   # nothing the engine does itself any more: a module's
     monkeypatch.setattr(world_pack.Pack, "data", lambda self, name: {"world_effects": raw} if name == "content" else {})
-    assert W.registry()["wall"].apply(SimpleNamespace(add_project_slot=lambda: 3)) == ""
+    assert W.registry()["wall"].apply(SimpleNamespace()) is None and W.DOES == {}
 
 
 async def test_a_world_effect_asks_the_module_with_no_arguments(tmp_path, monkeypatch):
@@ -307,5 +273,8 @@ def test_a_working_module_session_tires_by_the_work_rate(tmp_path):
 
 async def test_a_session_of_a_kind_nothing_finishes_just_ends(tmp_path):
     s, st, gm, agent = make(tmp_path)
+    assert await agent.finish_work() is False                                       # nothing to finish
+    st.start_session(0, 0, 1, time.time() + 600, kind="gather", target="woods")
+    assert await agent.finish_work() is False and st.session()                      # not yet
     st.start_session(0, 0, 1, time.time() - 1, kind="gather", target="woods")       # from before gathering was a module
     assert await agent.finish_work() is False and st.session() is None

@@ -415,7 +415,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] in ("spring", "summer", "autumn", "winter") and 0 <= full["time"]["hour"] < 24
     assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
-                            "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden"} and full["weather"] is None
+                            "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
     assert {"name": "oil", "qty": 2, "kind": "material", "description": "", "attrs": {}} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
 

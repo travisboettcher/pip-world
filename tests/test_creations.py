@@ -4,7 +4,6 @@ import time
 import pytest
 
 from app import creations as cr
-from app import tools as tools_mod
 from app.llm.base import LLMResponse
 from tests.test_projects import FixedRng, call, make, report
 
@@ -80,24 +79,21 @@ def test_timekeeper_drifts_stops_without_upkeep_and_restarts_behind(tmp_path):
     assert cr.clock_face(st.creation(c["id"]), t0 + 3 * DAY) == cr.clock_face(st.creation(c["id"]), t0 + DAY)   # halted: frozen too
 
 
-@pytest.mark.asyncio
 async def test_finished_project_is_designed_into_a_creation(tmp_path):
+    from app import modules as M
+    from tests.test_crafting import end, moment_for, world
     design = report(name="Sandy", description="a small glass hourglass", quirks=["the sand sticks a little"],
                     capabilities=[{"type": "timekeeper"}, {"type": "upkeep", "verb": "turn", "hours": 24}])
-    s, st, gm, agent = make(tmp_path, [LLMResponse("..."), *[report(text="Work.")] * 3, design],
-                            rng=FixedRng(0.6), work_speed=1e6)
-    await call(agent, "start_project", name="hourglass", steps=[  # the GM review fails -> Pip's steps stand
-        {"name": "blow the glass", "minutes": 45}, {"name": "fill it", "minutes": 60}, {"name": "seal it", "minutes": 45}])
-    for _ in range(3):
-        await call(agent, "work_on", project="hourglass", minutes=60)
-        time.sleep(0.01)
-        await agent.resolve_world()
+    s, st, gm, agent = world(tmp_path, [LLMResponse("..."), report(text="Work."), design])
+    await call(agent, "start_project", name="hourglass", steps=[{"name": "blow the glass", "minutes": 15}])   # the review fails -> Pip's steps stand
+    await call(agent, "work_on", project="hourglass", minutes=60)
+    await end(agent, moment_for("good", 0, 0, 2, pid=M.live_named(st, "crafting")["id"]))
     (c,) = st.creations()
-    assert c["name"] == "Sandy" and c["quality"] == "sound" and list(c["spec"]["capabilities"]) == ["timekeeper", "upkeep"]
-    assert "Finished quality: sound" in gm.calls[-1]["messages"][0]["content"]
+    assert c["name"] == "Sandy" and c["quality"] in __import__("app.projects", fromlist=["x"]).QUALITIES and list(c["spec"]["capabilities"]) == ["timekeeper", "upkeep"]
+    assert f"Finished quality: {c['quality']}" in gm.calls[-1]["messages"][0]["content"]
     p = agent._perception("event", [])
-    assert "Things you've made:" in p and "- Sandy (sound): a small glass hourglass - going; needs tending (turn)" in p
-    assert "it shows" in p and "quirks: the sand sticks a little" in p
+    assert "Things you've made:" in p and f"- Sandy ({c['quality']}): a small glass hourglass - going; needs tending (turn)" in p
+    assert "quirks: the sand sticks a little" in p
     assert "Your hourglass became Sandy: a small glass hourglass" in p  # a diary moment
 
 
@@ -120,18 +116,13 @@ def test_the_world_capability_needs_a_land_project_and_enough_difficulty():
     assert C.sanitize_spec({"capabilities": [{"type": "world", "effect": "moon_base"}]}, _project(), "sound", [], rng)[2]["capabilities"] == {}
 
 
-@pytest.mark.asyncio
 async def test_finishing_a_bed_adds_a_plot_up_to_the_cap(tmp_path):
     from tests.test_garden import garden
     s, st, gm, agent = make(tmp_path, [])
     garden(st, plots=3, plots_max=4)
-    from app import creations as C
+    bed = {"name": "New bed", "description": "a freshly turned bed", "quirks": [], "capabilities": [{"type": "world", "effect": "garden_plot"}]}
     for expected in (1, 1):  # the second would exceed the cap: no plot, and the creation doesn't claim one
-        p = st.add_project("Clear a new bed", "more room to plant", "gardening", 3,
-                           [{"name": "dig out the roots", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
-        gm.script[:] = [report(name="New bed", description="a freshly turned bed", quirks=[],
-                               capabilities=[{"type": "world", "effect": "garden_plot"}])]
-        c = await C.make(st, agent.gm, agent.rng, p, 0)
+        c = await cr.made(st, dict(bed), _project(goal="more room to plant"), "sound", [], random.Random(1))
         assert st.store("garden")["meta"] == {"extra_plots": expected}
     assert "world" not in c["spec"]["capabilities"]
     events = [e for e in st.events(20) if e["kind"] == "world_changed"]
@@ -140,29 +131,21 @@ async def test_finishing_a_bed_adds_a_plot_up_to_the_cap(tmp_path):
 
 
 # --- the world-effect registry is generic: a new kind of change is one entry ------------------------------
-@pytest.mark.asyncio
 async def test_a_workbench_raises_the_number_of_projects_pip_can_keep_going(tmp_path):
-    from app import creations as C
+    from app import projects as proj
+    from tests.test_projects import given
     s, st, gm, agent = make(tmp_path, [], max_active_projects=1, max_active_projects_cap=2)
-    agent.tools.update({n: tools_mod.REGISTRY[n] for n in ("start_project",)})
-    st.add_project("kite", "g", "kitemaking", 2, [], [])
+    await given(st, {"name": "kite", "craft": "kitemaking", "stages": [{"name": "frame", "minutes": 60}]})
     steps = [{"name": "first step"}]
     assert "projects going" in (await call(agent, "start_project", name="boat", steps=steps)).text         # at the limit of 1
-    p = st.add_project("Build a proper workbench", "a bench and shelves so I can keep more going", "carpentry", 3,
-                       [{"name": "frame the bench", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
-    gm.script[:] = [report(name="Workbench", description="a sturdy bench with shelves", quirks=[],
-                           capabilities=[{"type": "world", "effect": "workbench"}])]
-    st.update_project(p["id"], status="done")                                                              # a finished project
-    c = await C.make(st, agent.gm, agent.rng, p, 0)
-    assert c["spec"]["capabilities"] == {"world": {"effect": "workbench"}} and st.project_limit() == 2
+    bench = _project(name="Build a proper workbench", goal="a bench and shelves so I can keep more going", stages=("frame the bench",))
+    c = await cr.made(st, {"name": "Workbench", "description": "a sturdy bench with shelves", "quirks": [],
+                           "capabilities": [{"type": "world", "effect": "workbench"}]}, bench, "sound", [], random.Random(1))
+    assert c["spec"]["capabilities"] == {"world": {"effect": "workbench"}} and proj.published(st)["projects"] and st.store("crafting")["meta"]["all"]["extra_slots"] == 1
+    gm.script[:] = [LLMResponse("...")]                                                                     # the review fails: the steps stand
     assert "started project" in (await call(agent, "start_project", name="boat", steps=steps)).text         # room for a second
     ev = [e for e in st.events(20) if e["kind"] == "world_changed"][0]["data"]
     assert ev["effect"] == "workbench" and "2 projects going at once" in ev["text"]
-    p2 = st.add_project("Another bench", "more shelves for the bench", "carpentry", 3,
-                        [{"name": "more shelves", "minutes": 60, "materials": {}, "progress": 60, "started": True}], [])
-    gm.script[:] = [report(name="Shelves", description="more shelves", quirks=[], capabilities=[{"type": "world", "effect": "workbench"}])]
-    c2 = await C.make(st, agent.gm, agent.rng, p2, 0)
-    assert st.project_limit() == 2 and "world" not in c2["spec"]["capabilities"]                          # capped: no claim, no change
 
 
 async def test_the_registry_drives_the_gm_prompt_and_the_checks():
@@ -267,3 +250,28 @@ async def test_using_a_thing_keeps_to_its_limits(tmp_path):
     gm2 = Told({"text": "Hm.", "energy": "lots"})
     await cr.use(st, gm2, c, "x", time.time() + cr.USE_ENERGY_COOLDOWN + 1)
     assert st.agent()["energy"] == pytest.approx(0.4)                                               # not a number: no change
+
+
+def test_the_menu_a_design_is_told_names_every_behaviour_the_world_can_run():
+    text = "\n".join(cr.menu(True))
+    for words in ("timekeeper: it tells the time", "whatever fits this thing) and `hours` (4-72) it lasts between tendings",
+                  "periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences ",
+                  "describing it, in this thing's own manner) and `every_minutes` (20-720)", "`alert` is a short line describing how it reacts",
+                  "helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden ",
+                  "do better - guarding, watering, warming it - so crops ripen sooner), find ",
+                  "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
+                  "companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: ",
+                  "who it is, how it expresses itself) and `chatter_minutes` (60-720) for how often it speaks up"):
+        assert words in text, words
+    assert cr.menu(False) == cr.menu(True)[:-1]
+    m = cr.menu(True)
+    assert m[0] == "timekeeper: it tells the time" and m[1].startswith("upkeep: it only keeps going if Pip tends it regularly; give `verb`")
+    assert m[1].endswith("(a word or two for how it's tended, whatever fits this thing) and `hours` (4-72) it lasts between tendings")
+    assert m[2] == ("periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences describing it, in this "
+                    "thing's own manner) and `every_minutes` (20-720)")
+    assert m[3].startswith("sensor: it notices something and reacts;") and m[3].endswith(" is tired); `alert` is a short line describing how it reacts")
+    assert m[4] == ("helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden do better - guarding, "
+                    "watering, warming it - so crops ripen sooner), find (it turns up small useful things; give `finds`: 2-4 kinds of thing it "
+                    "would find), or comfort (Pip feels a little restored); give `line` (one sentence describing what it does) and `every_minutes`")
+    assert m[-1] == ("companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: who it is, how it expresses "
+                     "itself) and `chatter_minutes` (60-720) for how often it speaks up")

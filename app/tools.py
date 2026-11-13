@@ -10,7 +10,6 @@ from typing import Any, Awaitable, Callable
 
 from . import art
 from . import companions as comp
-from . import expectations as exp
 from . import conversation as conv
 from . import finds
 from . import happenings
@@ -23,7 +22,6 @@ from . import neighbors as nb
 from . import places
 from . import search
 from . import wishes
-from . import projects as proj
 from . import emotions as emo
 from . import sleep as sleepmod
 from .toolnames import ALIASES, canonical
@@ -54,21 +52,16 @@ class ToolContext:
 
 
 async def stop_working(ctx: "ToolContext") -> str:
-    """Cut work or reading short (when Pip rests instead). Returns a note for the result."""
+    """Cut a module's session short (when Pip rests instead): work, reading, gathering. Returns a note for the result."""
     sess = ctx.state.session()
     if not sess:
         return ""
-    if sess["kind"] == "read":                                 # a reading session from before reading was a module (0.39.0): it just ends
-        ctx.state.end_session()
-        return ""
-    if sess["kind"] == "experiment":
-        e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
-        return f" (you cut the experiment on {e['project']} short)" if e else ""
     if sess["kind"] == "module":
         done = await modules.end_session(ctx.state, ctx.settings, ctx.runner, interrupted=True)
         return f" (you stopped {done['label']} early)" if done else ""
-    w = await proj.resolve_session(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
-    return f" (you stopped working on {w['project']} early)" if w else ""
+    if sess["kind"] != "walk":                                 # a session from before its feature was a module (reading, work): it just ends
+        ctx.state.end_session()
+    return ""
 
 
 MAX_REST_MINUTES = 240
@@ -76,20 +69,7 @@ MAX_REST_MINUTES = 240
 
 def busy(ctx: "ToolContext") -> str:
     """Why Pip can't start something new right now, or '' if it can."""
-    sess = ctx.state.session()
-    if not sess:
-        return ""
-    left = max(1, round((sess["ends_at"] - time.time()) / 60))
-    if sess["kind"] == "walk":
-        return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
-    if sess["kind"] == "read":
-        return f"you're reading {sess['target']} (about {left} min left); rest stops early"
-    if sess["kind"] == "module":
-        return f"you're {modules.busy_with(sess)} (about {left} min left); rest stops early"
-    cur = ctx.state.project(sess["project_id"])
-    if sess["kind"] == "experiment":
-        return f"you're in the middle of an experiment on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
-    return f"you're in the middle of working on {cur['name'] if cur else 'something'} (about {left} min left); rest stops early"
+    return modules.busy_line(ctx.state, time.time())
 
 
 @dataclass
@@ -543,192 +523,6 @@ async def web_search(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(found or "nothing came back for that search", followup=True)
 
 
-# --- projects ---------------------------------------------------------------------
-def describe_stage(project: dict, i: int) -> str:
-    st = project["stages"][i]
-    mats = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
-    return (f"stage {i + 1}/{len(project['stages'])} '{st['name']}' (about {st['minutes']} min of work"
-            + (f"; uses {mats}" if mats and not st["started"] else "") + ")")
-
-
-STEP_SCHEMA = {"type": "array", "description": "your steps, in order", "items": {"type": "object", "properties": {
-    "name": {"type": "string"}, "minutes": {"type": "integer", "description": "your guess, 15-240"},
-    "materials": {"type": "object", "additionalProperties": {"type": "integer"},
-                  "description": "things you expect this step to use up, e.g. {\"brass wire\": 2}"}},
-    "required": ["name"]}}
-
-
-@tool("start_project",
-      "Start making something - anything you'd like to exist. The plan is yours: give the steps you think it "
-      "takes (you can start with just the first few; you'll learn more as you go). The world checks your plan "
-      "and tells you what you can't know yet. Then work_on it. Some things you make will work or act on their "
-      "own; many are simply themselves, and that's just as good.",
-      _obj({"name": {"type": "string", "description": "short name"},
-            "goal": {"type": "string", "description": "what it should be, look like or do, one sentence"},
-            "steps": STEP_SCHEMA}, ["name", "steps"]))
-async def start_project(ctx: ToolContext, args: dict) -> ToolResult:
-    name = str(args["name"]).strip()[:60]
-    goal = str(args.get("goal") or "").strip()[:300]
-    if not name:
-        return ToolResult("error: a project needs a name", followup=True)
-    steps = proj.sanitize_stages(args.get("steps"), proj.MAX_STAGES)
-    if not steps:
-        return ToolResult("error: sketch at least the first step or two of how you'd do it. If you don't know how "
-                          "to begin, look it up (web_search, the library) or ask a visitor, then start", followup=True)
-    active = ctx.state.projects("active")
-    if any(p["name"].lower() == name.lower() for p in active):
-        return ToolResult(f"you're already working on {name!r}; use work_on", followup=True)
-    if len(active) >= ctx.state.project_limit():
-        return ToolResult(f"you already have {len(active)} projects going ({', '.join(p['name'] for p in active)}); "
-                          "finish or abandon_project one first", followup=True)
-    belongings = [f"{i['name']} x{i['qty']} ({i['kind']})" for i in ctx.state.items()]
-    review = await ctx.gm.review_start(name, goal, steps, belongings, proj.feel(ctx.state)) if ctx.gm else None
-    plan = proj.build_plan(steps, review)
-    p = ctx.state.add_project(name, goal, plan["craft"], plan["difficulty"], proj.new_stages(plan), plan["tools"])
-    ctx.state.update_project(p["id"], questions=plan["questions"], hidden=plan["hidden"])
-    listing = "; ".join(f"{i + 1}. {s['name']} (~{s['minutes']} min"
-                        + (", needs " + ", ".join(f"{q} {n}" for n, q in s["materials"].items()) if s["materials"] else "")
-                        + ")" for i, s in enumerate(plan["stages"]))
-    tools = f" Helpful tools: {', '.join(plan['tools'])}." if plan["tools"] else ""
-    concern = f" A thought on your plan: {clip((review or {}).get('concerns'), 200)}" if (review or {}).get("concerns") else ""
-    unknown = (" What you don't know yet: " + "; ".join(plan["questions"])
-               + ". Work out what you can, then experiment or look things up, and revise_plan as you learn."
-               if plan["questions"] else "")
-    sketch = " You could sketch it first with draw." if "draw" in ctx.settings.tools else ""
-    return ToolResult(f"started project #{p['id']} {p['name']} ({plan['craft']}, difficulty {plan['difficulty']}/5). "
-                      f"Your plan: {listing}.{tools}{concern}{unknown}{sketch}", followup=True)
-
-
-@tool("work_on",
-      "Spend a block of focused time (15-120 minutes) on one of your projects. You'll find out how it went when "
-      "the time is up - you don't need to do anything meanwhile (or set_activity). Resting stops early.",
-      _obj({"project": {"type": "string", "description": "name or #id"},
-            "minutes": {"type": "integer", "description": "15-120, default 60"},
-            "approach": {"type": "string", "description": "how you'll go about it this time - the world judges what "
-                                                          "you actually try, so a thoughtful approach counts"},
-            "expect": {"type": "string", "enum": ["well", "slowly", "badly"],
-                       "description": "optional: how you expect this session to go; you'll see how close you were"}},
-           ["project"]), where="home")
-async def work_on(ctx: ToolContext, args: dict) -> ToolResult:
-    st = ctx.state
-    p, err = st.find_project(args["project"])
-    if not p:
-        return ToolResult(f"error: {err}", followup=True)
-    sess = st.session()
-    if sess and sess["kind"] == "work" and sess["project_id"] == p["id"]:
-        left = max(1, round((sess["ends_at"] - time.time()) / 60))
-        return ToolResult(f"you're already working on {p['name']}; about {left} min to go")
-    if why := busy(ctx):
-        return ToolResult(why, followup=True)
-    i = proj.current_stage(p)
-    if i is None:
-        if p["questions"]:
-            return ToolResult(f"you've done everything you know to do on {p['name']}. Still open: "
-                              + "; ".join(p["questions"]) + ". Try an experiment, or learn more and revise_plan.",
-                              followup=True)
-        return ToolResult(f"{p['name']} is already finished", followup=True)
-    stage = p["stages"][i]
-    used_up = ""
-    if not stage["started"]:
-        take, missing = proj.missing_materials(st, stage)
-        if missing:
-            return ToolResult(f"can't start {describe_stage(p, i)} yet: it needs {', '.join(missing)}", followup=True)
-        built_in = proj.mentioned_materials(st, stage)
-        for item, qty in take:
-            if item["kind"] == "material":
-                st.take_item(item["id"], qty)
-        for item in built_in:
-            st.take_item(item["id"])
-        stage["started"] = True
-        st.update_project(p["id"], stages=p["stages"])
-        if built_in:
-            used_up = f" You used up your {', '.join(i['name'] for i in built_in)} on it."
-    minutes = proj.clamp_int(args.get("minutes"), *proj.SESSION_MINUTES, 60)
-    approach = str(args.get("approach") or "").strip()[:240]
-    expect = str(args.get("expect") or "").strip().lower()
-    st.start_session(p["id"], i, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, target=approach,
-                     expect=expect if expect in exp.SESSION_EXPECT else "")
-    st.update_agent(activity="working", description=f"{p['name']}: {stage['name']}")
-    real = max(1, round(minutes / ctx.settings.work_speed))
-    return ToolResult(f"you settle in to work on {p['name']}, {describe_stage(p, i)}, for {minutes} min. "
-                      f"You'll hear how it went in about {real} min.{used_up}")
-
-
-@tool("experiment",
-      "Try something to find out how it works: test an idea about one of your projects (a hypothesis) for 20-90 "
-      "minutes. What you learn is decided by the world, not you; a good guess teaches more. It can open up new "
-      "steps, answer what you didn't know, or surprise you. You'll hear how it went when the time is up.",
-      _obj({"project": {"type": "string", "description": "name or #id"},
-            "hypothesis": {"type": "string", "description": "what you think might be true or work, and how you'll test it"},
-            "minutes": {"type": "integer", "description": "20-90, default 45"},
-            "expect": {"type": "string", "enum": ["works", "partly", "fails"],
-                       "description": "optional: how you expect it to turn out; you'll see how close you were"}},
-           ["project", "hypothesis"]), where="home")
-async def experiment(ctx: ToolContext, args: dict) -> ToolResult:
-    st = ctx.state
-    p, err = st.find_project(args["project"])
-    if not p:
-        return ToolResult(f"error: {err}", followup=True)
-    hypothesis = str(args.get("hypothesis") or "").strip()[:240]
-    if len(hypothesis) < 8:
-        return ToolResult("error: say what you think might be true or work, and how you'll test it", followup=True)
-    if why := busy(ctx):
-        return ToolResult(why, followup=True)
-    minutes = proj.clamp_int(args.get("minutes"), *proj.EXPERIMENT_MINUTES, 45)
-    expect = str(args.get("expect") or "").strip().lower()
-    st.start_session(p["id"], -1, minutes, time.time() + minutes * 60 / ctx.settings.work_speed, kind="experiment",
-                     target=hypothesis, expect=expect if expect in exp.EXPERIMENT_EXPECT else "")
-    st.update_agent(activity="working", description=f"experiment on {p['name']}: {hypothesis[:80]}")
-    real = max(1, round(minutes / ctx.settings.work_speed))
-    return ToolResult(f"you set up an experiment on {p['name']} ({hypothesis}) for {minutes} min. "
-                      f"You'll see what happens in about {real} min.")
-
-
-@tool("revise_plan",
-      "Change a project's plan: add steps (they come after the ones you have), or drop steps you haven't begun. "
-      "It's your plan, so this is up to you. If you learned something elsewhere (a search, a book, a visitor) that "
-      "might settle something you didn't know, say what in `because` - the world decides whether it does, and only "
-      "after you've worked or experimented again since the last time.",
-      _obj({"project": {"type": "string", "description": "name or #id"}, "steps": STEP_SCHEMA,
-            "drop": {"type": "array", "items": {"type": "string"}, "description": "names of steps to drop"},
-            "because": {"type": "string", "description": "what you learned, and from where"}}, ["project"]))
-async def revise_plan(ctx: ToolContext, args: dict) -> ToolResult:
-    p, err = ctx.state.find_project(args["project"])
-    if not p:
-        return ToolResult(f"error: {err}", followup=True)
-    steps = proj.sanitize_stages(args.get("steps"), proj.MAX_STAGES_REVISED)
-    drop = args.get("drop") if isinstance(args.get("drop"), list) else []
-    because = str(args.get("because") or "").strip()[:400]
-    if not (steps or drop or because):
-        return ToolResult("error: give steps to add, steps to drop, or what you learned", followup=True)
-    changes, msg = await proj.revise(ctx.state, ctx.gm, p, steps, drop, because)
-    bits = []
-    if changes["added"]:
-        bits.append("added: " + ", ".join(changes["added"]))
-    if changes["dropped"]:
-        bits.append("dropped: " + ", ".join(changes["dropped"]))
-    if changes["finding"]:
-        bits.append(f"you now know: {changes['finding']}")
-    if changes["answered"]:
-        bits.append(f"settled: {changes['answered']}")
-    return ToolResult(" ".join(x for x in (msg, "; ".join(bits) or "the plan stays as it is") if x), followup=True)
-
-
-@tool("abandon_project", "Give up on one of your projects (materials already used are gone).",
-      _obj({"project": {"type": "string"}, "reason": {"type": "string"}}, ["project"]))
-async def abandon_project(ctx: ToolContext, args: dict) -> ToolResult:
-    p, err = ctx.state.find_project(args["project"])
-    if not p:
-        return ToolResult(f"error: {err}", followup=True)
-    sess = ctx.state.session()
-    if sess and sess["kind"] in ("work", "experiment") and sess["project_id"] == p["id"]:
-        ctx.state.end_session()
-        ctx.state.update_agent(activity="idle", description="")
-    ctx.state.update_project(p["id"], status="abandoned", outcome=str(args.get("reason") or "")[:300],
-                             finished_at=time.time())
-    return ToolResult(f"abandoned {p['name']}")
-
-
 @tool("tend", "Tend something you made that needs regular care to keep going (however that thing is tended).",
       _obj({"creation": {"type": "string"}}, ["creation"]), where="home")
 async def tend(ctx: ToolContext, args: dict) -> ToolResult:
@@ -883,19 +677,6 @@ async def feel(ctx: ToolContext, args: dict) -> ToolResult:
 async def undo_decision(ctx: ToolContext, args: dict) -> ToolResult:
     from . import nightpass  # imported here: nightpass uses this module's note checks
     return ToolResult(nightpass.undo(ctx.state, ctx.settings, int(args["id"])), followup=True)
-
-
-@tool("resume_project", "Pick a project that is on hold back up.",
-      _obj({"project": {"type": "string", "description": "name or #id"}}, ["project"]))
-async def resume_project(ctx: ToolContext, args: dict) -> ToolResult:
-    p, err = ctx.state.find_project(args["project"], status="paused")
-    if not p:
-        return ToolResult(f"error: {err}", followup=True)
-    if len(ctx.state.projects("active")) >= ctx.state.project_limit():
-        return ToolResult("you already have as many projects going as you can; finish or abandon_project one first",
-                          followup=True)
-    ctx.state.update_project(p["id"], status="active")
-    return ToolResult(f"{p['name']} is active again", followup=True)
 
 
 @tool("where_to", "Ask yourself where you could find or do something: it checks the places you know and what you've "

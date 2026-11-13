@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import guide as G
+from app import modules as M
 from app import world_pack as W
 from app import tools as T
 from app.config import Settings
@@ -27,7 +28,8 @@ SPLIT = "If a visitor left a message, answer them with the say tool (it is the o
 SPLIT_GUIDE_HALF = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you)."
 SPLIT_CHARACTER_HALF = "Answer visitors in character."
 
-ALL = Settings.from_env().tools                       # the default tool list: every tool the world has
+ALL = Settings.from_env().tools + [t["name"] for m in M.RULES for t in M.library(m)[0].get("tools", [])]   # every tool the world has:
+#                                                     the engine's (the default list) and its shipped modules' (offered as they're live)
 EVERYTHING = Settings(tools=ALL, neighbor=True, sleep=True, emotions="on", night_pass="apply", reflect_hour=3)
 
 
@@ -77,7 +79,7 @@ def test_the_deployments_persona_file_holds_exactly_what_was_taken_out():
 
 # --- built from what is enabled -------------------------------------------------------------------------------------------
 def test_the_default_tool_list_is_the_whole_world():
-    assert len(ALL) > 25 and {"say", "write_letter", "browse", "settle", "sleep", "web_search"} <= set(ALL)
+    assert len(ALL) > 25 and {"start_project", "work_on", "plant", "read"} <= set(ALL) and {"say", "write_letter", "browse", "settle", "sleep", "web_search"} <= set(ALL)
 
 
 def test_the_basics_are_always_there_and_the_rest_follows_the_tools():

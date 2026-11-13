@@ -113,9 +113,6 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         session = {k: sess[k] for k in ("kind", "started_at", "ends_at", "target")}
         if sess["kind"] == "module":
             session.update(label=sess["expect"], working=bool(sess["stage"]), **({"project": sess["about"]} if sess["about"] else {}))
-        if sess["kind"] in ("work", "experiment"):
-            pr = state.project(sess["project_id"])
-            session.update(project=pr["name"], stage=pr["stages"][sess["stage"]]["name"] if 0 <= sess["stage"] < len(pr["stages"]) else None)
     from . import looks
     look = lambda c: c.get("look") or looks.fallback(c["name"], c["persona"])           # not chosen yet: drawn from the persona for now
     present = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "look": look(c)} for c in places.company_at(state, key)]

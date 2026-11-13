@@ -12,7 +12,7 @@ from app import tools as T
 from app.config import Settings
 from app.state import State
 from tests.test_neighbor import neighbor
-from tests.test_projects import FixedRng, call, make, report
+from tests.test_projects import PIP_STEPS, FixedRng, call, crafting, make, report
 
 import app.neighbors as nb
 
@@ -85,10 +85,11 @@ async def test_at_a_neighbors_home_she_is_part_of_every_memory_and_a_walk_has_no
 async def test_a_memory_made_while_working_keeps_the_project(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(**__import__("tests.test_projects", fromlist=["PLAN"]).PLAN)])
     st.add_item("brass wire", 9, "material")
-    await call(agent, "start_project", name="Gear clock", description="a clock", craft="clockmaking")
-    await call(agent, "work_on", project=1)
+    crafting(st)
+    await call(agent, "start_project", name="Gear clock", goal="a clock", steps=PIP_STEPS)
+    await call(agent, "work_on", project="#1")
     c = st.memory_context(*old_note(st, "The escapement is fiddly.", "diary"))
-    assert c["project"] == st.project(1)["name"]
+    assert c["project"] == "Gear clock"
 
 
 def test_people_notes_reflections_and_works_have_their_importance(tmp_path):
@@ -205,14 +206,14 @@ async def test_the_cue_is_who_where_what_and_the_newest_words(tmp_path):
     st.log("gift", sender="Travis", item="brass wire", qty=1, item_kind="material")
     st.add_item("brass wire", 9, "material")
     inbox = [{"sender": "Travis", "text": "How is the clock?", "gift": False}, {"sender": "Travis", "text": "Travis gave you wire", "gift": True}]
-    await call(agent, "start_project", name="Gear clock", description="a clock", craft="clockmaking")
-    await call(agent, "work_on", project=1)
+    crafting(st)
+    await call(agent, "start_project", name="Gear clock", goal="a clock", steps=PIP_STEPS)
+    await call(agent, "work_on", project="#1")
     c = R.cue(st, inbox, time.time())
-    p = st.project(1)
-    assert c.people == ["Travis"] and c.place is None and c.project == p["name"]
-    assert c.words == f"How is the clock? Travis gave you wire {p['stages'][0]['name']} A hedgehog in the shed brass wire"
-    assert c.context() == ["Travis", p["name"]]
-    assert R.cue(st, inbox, time.time() + 7 * 3600).words.endswith(p["stages"][0]["name"])       # old happenings and gifts drop out
+    assert c.people == ["Travis"] and c.place is None and c.project == "Gear clock"
+    assert c.words == "How is the clock? Travis gave you wire working on Gear clock: cut the wheels A hedgehog in the shed brass wire"
+    assert c.context() == ["Travis", "Gear clock"]
+    assert R.cue(st, inbox, time.time() + 7 * 3600).words.endswith("cut the wheels")       # old happenings and gifts drop out
 
 
 @pytest.mark.asyncio
@@ -562,16 +563,20 @@ def test_the_strongest_feeling_wins_and_ten_over_is_enough(tmp_path):
     assert st.memory_context(*old_note(st, "b", "diary"))["feeling"] == "trust"
 
 
-@pytest.mark.asyncio
-async def test_an_experiment_is_a_project_too(tmp_path):
+def test_a_module_session_about_something_is_its_project(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    pid = st.db.execute("INSERT INTO projects (name, craft, difficulty, stages, ts) VALUES ('Kite', 'kites', 1, '[]', 0)").lastrowid
-    st.start_session(pid, 0, 30, time.time() + 600, kind="experiment")
+    st.start_session(0, 0, 30, time.time() + 600, kind="module", target="crafting", expect="experimenting on Kite", about="Kite")
     assert st.memory_context(*old_note(st, "c", "diary"))["project"] == "Kite"
-    assert R.cue(st, [], time.time()).project == "Kite"                             # no stages: nothing more to add
+    c = R.cue(st, [], time.time())
+    assert (c.project, c.words) == ("Kite", "experimenting on Kite")
     st.end_session()
-    st.start_session(pid, 0, 30, time.time() + 600, kind="read", target="A book")
-    assert st.memory_context(*old_note(st, "d", "diary"))["project"] is None and R.cue(st, [], time.time()).project is None
+    st.start_session(0, 0, 30, time.time() + 600, kind="module", target="reading", expect="reading A book")
+    c = R.cue(st, [], time.time())
+    assert st.memory_context(*old_note(st, "d", "diary"))["project"] is None and (c.project, c.words) == (None, "reading A book")
+    st.end_session()
+    st.start_session(0, 0, 30, time.time() + 600, kind="walk", target="woods")
+    c = R.cue(st, [], time.time())
+    assert st.memory_context(*old_note(st, "e", "diary"))["project"] is None and (c.project, c.words) == (None, "")
 
 
 def test_the_cue_leaves_out_gift_givers(tmp_path):
@@ -594,14 +599,6 @@ async def test_the_cue_takes_only_her_latest_line_of_this_visit(tmp_path):
     assert R.cue(st, [], time.time(), ch).words == ""
 
 
-def test_a_stage_past_the_plan_adds_nothing(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    pid = st.db.execute("INSERT INTO projects (name, craft, difficulty, stages, ts) VALUES ('Kite', 'kites', 1, ?, 0)",
-                        (json.dumps([{"name": "cut the frame"}]),)).lastrowid
-    st.start_session(pid, 1, 30, time.time() + 600)
-    assert R.cue(st, [], time.time()).words == ""
-    st.start_session(pid, 0, 30, time.time() + 600)
-    assert R.cue(st, [], time.time()).words == "cut the frame"
 
 
 def test_the_place_and_project_bonus_needs_a_real_match(tmp_path):

@@ -102,8 +102,8 @@ class Narrator:
     def __init__(self, library, gm, settings):
         self.gm, self.s = gm, settings
 
-    def available(self) -> bool:
-        return self.gm is not None
+    def available(self) -> bool:                                # without a narrator its answer is none, and the module's plain words stand
+        return True
 
     async def ask(self, args: dict, seed: int) -> dict:
         from . import modules
@@ -116,6 +116,8 @@ class Narrator:
             a = modules._ask({"prompt": "the task", "schema": args["schema"]})
         except modules.Refused as e:
             return {"error": str(e)}
+        if self.gm is None:
+            return {"data": None}
         got = await modules._answered(_wired["agent"].state, self.s, self.gm, {**a, "prompt": prompt.strip()})
         return {"data": got["data"]}
 

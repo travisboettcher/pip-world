@@ -1,5 +1,8 @@
 # Design: expectations and surprise
 
+Note (2026-11-13): since 0.42.0 the expectations a work session or an experiment settles are logged by the shipped `crafting`
+module (an `event`'s `expect`); the comparison, calibration and surprise are the engine's (DESIGN-world-packs.md, "5f built").
+
 Status: **built** (all four phases, 2026-10-30). Decisions: three-word vocabulary kept (a 1-5 scale can come later); calibration
 block after 5 predictions; surprises only create a diary prompt through the first-of-each-kind firsts. Step-duration
 comparisons are recorded whether or not they are surprising (only surprising ones are flagged). Sources: [RESEARCH-self.md](RESEARCH-self.md), mechanism 4 (Metacognitive Loop

@@ -165,7 +165,7 @@ def test_what_a_module_logs_and_shows(tmp_path):
     assert M._log({"text": "x", "kind": "a"}) == {"text": "x", "kind": "a"} and M._log("plain") == "plain"
     assert M._status({}) == {} and M._status(None) == {}
     assert M._status({"title": "T", "lines": ["a"], "ready": True, "next_at": 5}) == {"title": "T", "lines": ["a"], "ready": True, "next_at": 5.0}
-    for v in ({"title": "T"}, {"title": "T", "lines": ["a"] * 9}, {"title": "T", "lines": [], "ready": "yes"}, {"title": "T", "lines": [], "x": 1},
+    for v in ({"title": "T"}, {"title": "T", "lines": ["a"] * (M.STATUS_LINES + 1)}, {"title": "T", "lines": [], "ready": "yes"}, {"title": "T", "lines": [], "x": 1},
               {"title": "T", "lines": [], "next_at": "soon"}, []):
         with pytest.raises(M.Refused, match="`status` is"):
             M._status(v)

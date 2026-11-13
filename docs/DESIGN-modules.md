@@ -554,7 +554,9 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   it's about, a project's name: reminders and the memory's context name it) and a working session's work pose.
 - The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
   the neighbourhood the third: `module_library/neighborhood.py`; trade the fourth: `module_library/trade.py`; reading the fifth:
-  `module_library/reading.py`; the sky the sixth: `module_library/sky.py`. The `garden` read and proposal are gone (read its `facts`;
+  `module_library/reading.py`; the sky the sixth: `module_library/sky.py`; crafting the seventh (0.42.0): `module_library/crafting.py`,
+  which publishes `projects`, `skills` and `project_limit` and answers `pause`, `resume` and `add_slot`. The agent read also carries
+  `busy` (what it is busy with), `tired`, `tiring`, its pronouns and `tools` (the engine's tools it has). The `garden` read and proposal are gone (read its `facts`;
   ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
 - **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
   ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a

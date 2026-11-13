@@ -10,7 +10,8 @@ invents the neighbour and asks them to write first; **5c built (0.38.0)**: trade
 customers, accounts, the neighbours' wares and market days) is the shipped `trade` module; **5d built (0.39.0)**: reading is the
 shipped `reading` module, on the engine's first source (`books`); **5e built (0.40.0)**: the shipped `sky` module publishes the world's
 weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
-map tool arguments, public events, `creation`, and a module's work session. Next: 5f, crafting moved onto them. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+map tool arguments, public events, `creation`, and a module's work session; **5f built (0.42.0)**: crafting is the shipped `crafting`
+module. Next: phase 6, stakes and a second pack. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -349,6 +350,21 @@ Then the `crafting` module: the six tools, the dice and the narrator's rulings, 
 expectations, the projects published for the dashboard and shown as status; the engine's projects.py, its tools, its narrator prompts for
 crafting, the project and skill tables and the `work`/`experiment` session kinds removed; an older install's projects and skills moved
 into the module's store once. About 3,000 lines of tests read or drive crafting directly and move with it.
+
+**5f built (0.42.0).** `module_library/crafting.py` is all of it: `start_project` (the narrator reviews the plan through the `narrator`
+source: craft, difficulty, helpful tools, each step's abilities, what can't be known yet and the hidden facts that answer it),
+`work_on` (the stage's materials taken when it is first worked; a `working` session `about` the project), `experiment`, `revise_plan`,
+`abandon_project` and `resume_project`. A session's end is the die (skill, tools owned, difficulty, tiredness), then the narrator's ruling
+on the approach (one step either way at most), then the telling; a project's last stage has the narrator design what it became, and the
+module proposes it as a `creation`. It logs `work`, `experiment` and `plan_revised` with the expectations they settle, practises the
+stage's abilities, keeps craft skills in its store, and shows "Your projects" as its status. It publishes `projects`, `skills` and
+`project_limit`, which the dashboard (`/projects`), `/projects` in chat and the night pass read; the night pass asks it (`pause`,
+`resume`) and undoes by asking the other; a workbench's world effect asks it to `add_slot` (content.json `request:crafting:add_slot`).
+A finished project is kept small in the store (four sessions, two findings, no materials) and the oldest of more than 30 are let go.
+The engine keeps the qualities, the abilities' names (the pack's `crafting` in content.json) and `level`. The agent read gained
+`busy`, `tired`, `tiring`, pronouns and `tools` (the engine's tools it has: the module offers "sketch it first with draw" only when it
+can), and `craft_name` now keeps letters, digits and spaces as the module keys a craft. On the first start of 0.42.0 an older
+install's projects (finished ones compacted), skills and extra project slots move into the store and the old tables are emptied.
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of

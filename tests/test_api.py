@@ -9,6 +9,7 @@ from app.config import Settings
 from app.llm.base import LLMResponse, ToolCall, Usage
 from app.llm.fake import FakeBackend
 from app.main import create_app
+from tests.test_projects import given
 
 
 def test_api_roundtrip(tmp_path):
@@ -133,10 +134,9 @@ def test_projects_and_creations_endpoints(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
-        p = st.add_project("kite", "fly", "sewing", 2, [{"name": "cut", "minutes": 30, "materials": {},
-                                                        "progress": 15.0, "started": True}], [])
-        st.start_session(p["id"], 0, 30, 9e9)
-        st.add_xp("sewing", 120)
+        asyncio.run(given(st, {"name": "kite", "goal": "fly", "craft": "sewing", "stages": [{"name": "cut", "minutes": 30, "progress": 15.0,
+                                                                                            "started": True}]}, skills={"sewing": 120}))
+        st.start_session(0, 0, 30, 9e9, kind="module", target="crafting", about="kite")
         _, _, spec = cr.sanitize_spec({"description": "a clock", "capabilities": [{"type": "timekeeper"}]},
                                       {"name": "clock", "difficulty": 1}, "fine", [], random.Random(1))
         st.add_creation("clock", "a clock", None, "fine", spec, cr.initial_runtime(spec, time.time()))

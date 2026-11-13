@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from app import commands
-from tests.test_projects import make
+from tests.test_projects import given, make
 
 
 def at(hour):
@@ -58,17 +58,13 @@ def test_items_text(tmp_path):
     assert commands.answer(st, s, "/items") == "Items\nbrass wire x3 (material)\nneedle file x1 (tool)"
 
 
-def test_projects_text(tmp_path):
+async def test_projects_text(tmp_path):
     s, st, *_ = make(tmp_path)
     assert commands.answer(st, s, "/projects") == "Projects\nNo projects right now."
-    done = st.add_project("old clock", "g", "clockmaking", 2, [{"name": "a", "minutes": 30, "progress": 30, "materials": {}}], [])
-    st.add_project("gear clock", "g", "clockmaking", 2, [{"name": "cut", "minutes": 60, "progress": 60, "materials": {}},
-                                                       {"name": "fit it", "minutes": 60, "progress": 0, "materials": {}}], [])
-    st.update_project(done["id"], status="done")                              # finished ones aren't listed
+    old = {"name": "old clock", "status": "done", "stages": [{"name": "a", "minutes": 30, "progress": 30}]}   # finished ones aren't listed
+    await given(st, old, {"name": "gear clock", "stages": [{"name": "cut", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60}]})
     assert commands.answer(st, s, "/projects") == "Projects\ngear clock: 50%, next: fit it"
-    p = st.projects("active")[0]
-    p["stages"][1]["progress"] = 60
-    st.update_project(p["id"], stages=p["stages"])
+    await given(st, old, {"name": "gear clock", "stages": [{"name": "cut", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60, "progress": 60}]})
     assert commands.answer(st, s, "/projects") == "Projects\ngear clock: 100%, next: all the planned steps are done"
 
 
@@ -116,10 +112,9 @@ def test_arguments_are_ignored_by_commands_that_take_none(tmp_path):
     assert commands.answer(st, s, "/items\nand more") == commands.answer(st, s, "/items")
 
 
-def test_lists_put_each_entry_on_its_own_line(tmp_path):
+async def test_lists_put_each_entry_on_its_own_line(tmp_path):
     s, st, *_ = make(tmp_path, daily_token_budget=5000)
-    st.add_project("clock", "g", "clockmaking", 2, [{"name": "cut", "minutes": 60, "progress": 0, "materials": {}}], [])
-    st.add_project("walker", "g", "clockmaking", 2, [{"name": "bend", "minutes": 60, "progress": 30, "materials": {}}], [])
+    await given(st, {"name": "clock", "stages": [{"name": "cut", "minutes": 60}]}, {"name": "walker", "stages": [{"name": "bend", "minutes": 60, "progress": 30}]})
     assert commands.answer(st, s, "/projects") == "Projects\nclock: 0%, next: cut\nwalker: 50%, next: bend"
     st.add_creation("Gear Clock", "keeps even time", None, "sound", {}, {})
     st.add_creation("Lamp", "glows at dusk", None, "fine", {}, {})

@@ -1,5 +1,4 @@
 """State: garden, projects, sessions, xp, creations, characters, bookmarks, letters and the smaller stores."""
-import json
 import time
 from datetime import date
 
@@ -22,96 +21,11 @@ def mk(tmp_path, **kw):
 
 
 # --- project slots and garden -----------------------------------------------------------
-def test_project_limit_grows_to_the_cap_and_then_refuses(tmp_path, clock):
-    st = mk(tmp_path, max_active_projects=3, max_active_projects_cap=5)
-    assert st.project_limit() == 3
-    assert st.add_project_slot() == 4
-    assert st.add_project_slot() == 5
-    assert st.add_project_slot() is None
-    assert st.project_limit() == 5 and st.meta("extra_project_slots") == "2"
-
-
-def test_project_limit_is_capped_even_if_meta_is_larger(tmp_path, clock):
-    st = mk(tmp_path, max_active_projects=3, max_active_projects_cap=4)
-    st.set_meta(extra_project_slots=10)
-    assert st.project_limit() == 4
 
 
 def make_project(st, name="Clock", craft="clockmaking", **kw):
     return st.add_project(name, kw.get("goal", "tell time"), craft, kw.get("difficulty", 3),
                           kw.get("stages", [{"name": "gears"}]), kw.get("tools", ["file"]))
-
-
-def test_add_project_roundtrips_json_fields_and_defaults(tmp_path, clock):
-    st = mk(tmp_path)
-    p = make_project(st)
-    assert p["name"] == "Clock" and p["goal"] == "tell time" and p["craft"] == "clockmaking" and p["difficulty"] == 3
-    assert p["stages"] == [{"name": "gears"}] and p["tools"] == ["file"]
-    assert p["history"] == [] and p["questions"] == [] and p["hidden"] == [] and p["findings"] == []
-    assert p["status"] == "active" and p["outcome"] == "" and p["finished_at"] is None
-    assert p["ts"] == clock[0] and p["dry"] == 0 and p["revised_at"] == 0
-    assert st.project(p["id"]) == p and st.project(999) is None
-
-
-def test_update_project_encodes_json_fields_only(tmp_path, clock):
-    st = mk(tmp_path)
-    p = make_project(st)
-    st.update_project(p["id"], history=[{"x": 1}], findings=["a"], status="done", outcome="ok", dry=2)
-    q = st.project(p["id"])
-    assert q["history"] == [{"x": 1}] and q["findings"] == ["a"] and q["status"] == "done"
-    assert q["outcome"] == "ok" and q["dry"] == 2
-    other = make_project(st, "Other")
-    assert st.project(other["id"])["status"] == "active"
-    st.update_project(other["id"], questions=["why?"], hidden=[{"fact": "f"}], stages=[{"name": "z"}], tools=["t"])
-    o = st.project(other["id"])
-    assert o["questions"] == ["why?"] and o["hidden"] == [{"fact": "f"}] and o["stages"] == [{"name": "z"}] and o["tools"] == ["t"]
-
-
-def test_projects_list_filters_limits_and_orders_oldest_first(tmp_path, clock):
-    st = mk(tmp_path)
-    ids = [make_project(st, f"P{i}")["id"] for i in range(4)]
-    st.update_project(ids[1], status="done")
-    assert [p["id"] for p in st.projects()] == ids
-    assert [p["id"] for p in st.projects("done")] == [ids[1]]
-    assert [p["id"] for p in st.projects("active")] == [ids[0], ids[2], ids[3]]
-    assert [p["id"] for p in st.projects(limit=2)] == ids[2:]
-    assert len(st.projects(limit=50)) == 4
-
-
-def test_projects_default_limit_is_fifty(tmp_path, clock):
-    st = mk(tmp_path)
-    for i in range(52):
-        make_project(st, f"P{i}")
-    got = st.projects()
-    assert len(got) == 50 and got[-1]["name"] == "P51"
-
-
-def test_find_project_by_number_name_and_partial(tmp_path, clock):
-    st = mk(tmp_path)
-    a = make_project(st, "Brass Clock")
-    b = make_project(st, "Wooden Kite")
-    c = make_project(st, "Kite Tail")
-    done = make_project(st, "Old Boat")
-    st.update_project(done["id"], status="done")
-    assert st.find_project(f"#{a['id']}") == (a, "")
-    assert st.find_project(a["id"])[0]["name"] == "Brass Clock"
-    assert st.find_project(" 99 ")[1] == "no active project #99"
-    assert st.find_project(done["id"])[1] == f"no active project #{done['id']}"
-    assert st.find_project(done["id"], status="done")[0]["name"] == "Old Boat"
-    assert st.find_project("brass clock")[0]["id"] == a["id"]
-    assert st.find_project("clock")[0]["id"] == a["id"]
-    assert st.find_project("the brass clock thing")[0]["id"] == a["id"]
-    assert st.find_project("Kite Tail")[0]["id"] == c["id"]                       # exact beats partial
-    item, err = st.find_project("kite")
-    assert item is None and err == f"which one? #{b['id']} Wooden Kite, #{c['id']} Kite Tail"
-    item, err = st.find_project("zeppelin")
-    assert item is None and err == f"no active project called 'zeppelin' (yours: #{a['id']} {a['name']}, #{b['id']} Wooden Kite, #{c['id']} Kite Tail)"
-    assert st.find_project("")[1].startswith("no active project called ''")
-
-
-def test_find_project_with_no_projects_says_none(tmp_path, clock):
-    st = mk(tmp_path)
-    assert st.find_project("anything") == (None, "no active project called 'anything' (yours: none)")
 
 
 # --- sessions and xp ----------------------------------------------------------------------
@@ -127,15 +41,6 @@ def test_session_lifecycle(tmp_path, clock):
     assert s["project_id"] == 5 and s["kind"] == "work" and s["target"] == "" and s["expect"] == ""
     st.end_session()
     assert st.session() is None
-
-
-def test_xp_accumulates_per_craft_case_insensitively(tmp_path, clock):
-    st = mk(tmp_path)
-    st.add_xp("clockmaking", 10)
-    st.add_xp("Clockmaking", 5)
-    st.add_xp("kites", 2)
-    assert st.skills() == {"clockmaking": 15, "kites": 2}
-    assert list(st.skills()) == ["clockmaking", "kites"]                          # biggest first
 
 
 def test_ability_xp_accumulates_and_orders(tmp_path, clock):
@@ -163,19 +68,6 @@ def test_old_craft_xp_seeds_abilities_once(tmp_path, clock):
 def test_fresh_world_seeds_no_abilities_but_marks_seeded(tmp_path, clock):
     st = mk(tmp_path)
     assert st.abilities() == {} and st.meta("abilities_seeded") == "1"
-
-
-def test_long_craft_names_are_folded_on_start(tmp_path, clock):
-    st = mk(tmp_path)
-    p = make_project(st, craft="clockmaking")
-    st.db.execute("UPDATE projects SET craft = 'Clockmaking (gear train, escapement)' WHERE id = ?", (p["id"],))
-    st.db.execute("INSERT INTO skills VALUES ('Clockmaking (gears)', 7)")
-    st.db.execute("INSERT INTO skills VALUES ('clockmaking', 3)")
-    st.db.execute("INSERT INTO skills VALUES ('kites', 1)")
-    st.db.commit()
-    st._normalize_crafts()
-    assert st.project(p["id"])["craft"] == "clockmaking"
-    assert st.skills() == {"clockmaking": 10, "kites": 1}
 
 
 # --- creations ---------------------------------------------------------------------------
@@ -387,19 +279,6 @@ def test_expectations_default_limit_is_fifty(tmp_path, clock):
 
 
 # --- capabilities ------------------------------------------------------------------------------
-def test_capability_context_maps_projects_and_stage_abilities(tmp_path, clock):
-    st = mk(tmp_path)
-    p = make_project(st, craft="kites", stages=[{"name": "frame", "abilities": ["precision"]}, {"name": "tail"}])
-    crafts, stages = st.capability_context()
-    assert crafts == {p["id"]: "kites"}
-    assert stages == {(p["id"], "frame"): ["precision"], (p["id"], "tail"): []}
-
-
-def test_capability_context_sees_more_than_fifty_projects(tmp_path, clock):
-    st = mk(tmp_path)
-    for i in range(60):
-        make_project(st, f"P{i}")
-    assert len(st.capability_context()[0]) == 60
 
 
 def test_capability_snapshots_newest_first_with_limit(tmp_path, clock):

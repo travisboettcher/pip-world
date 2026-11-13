@@ -443,7 +443,7 @@ def test_a_wish_to_do_something_is_shown_where_it_can_be_done(tmp_path):
 
 def test_the_prompt_shows_a_doing_wish_with_its_hint(tmp_path):
     s, st, agent = world(tmp_path)
-    agent.tools.update({n: __import__("app.tools", fromlist=["x"]).REGISTRY[n] for n in ("start_project",)})            # sell is trade's
+    __import__("tests.test_projects", fromlist=["x"]).crafting(st)                     # start_project is crafting's, sell is trade's
     st.add_memory("I'd love to sit at a real market stall in Brygdon.", "wishlist", "activity")
     line = [l for l in agent._journal() if "market stall" in l][0]
     assert line.endswith("  [you could try: at Brygdon: sell something you have to a booth here, or set out a stall of your own (sell with an ask)]")

@@ -1,7 +1,6 @@
 """Quantities: what stacks together, what a work stage uses up, and what it leaves alone."""
 import pytest
 
-from app import projects as proj
 from app import tools as tools_mod
 from app.state import name_key
 from tests.test_projects import call, make, report
@@ -55,18 +54,6 @@ async def test_eating_one_leaves_the_rest(tmp_path):
 
 def stage(**kw):
     return {"name": "build the escapement and pendulum", "minutes": 60, "materials": {}, "started": False, **kw}
-
-
-def test_mentioned_materials_are_those_the_stage_names_but_does_not_list(tmp_path):
-    s, st, *_ = make(tmp_path)
-    st.add_item("pendulum", 1, "material")
-    st.add_item("brass wire", 2, "material")
-    st.add_item("pendulum bob", 1, "tool")                        # a tool is never used up
-    names = [i["name"] for i in proj.mentioned_materials(st, stage(materials={"brass wire": 1}))]
-    assert names == ["pendulum"]                                   # wire is already listed; the tool is kept
-    assert proj.mentioned_materials(st, stage(name="polish the case")) == []
-    assert [i["name"] for i in proj.mentioned_materials(st, stage(name="hang the Pendulums"))] == ["pendulum"]
-    assert proj.mentioned_materials(st, stage(name="a pendulumless design")) == []   # whole words only
 
 
 @pytest.mark.asyncio

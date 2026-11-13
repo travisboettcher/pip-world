@@ -24,12 +24,13 @@ def brief(gist, text, limit: int = 200) -> str:
 
 
 def craft_name(raw) -> str:
-    """'Clockmaking (gear train, escapement)' -> 'clockmaking': the core skill, so xp carries across projects."""
+    """'Clockmaking (gear train, escapement)' -> 'clockmaking': the core skill, so xp carries across projects. Letters, digits and spaces, as
+    the crafting module keys a craft in its store (module_library/crafting.py's craft_name, which this mirrors for the move into it)."""
     text = " ".join(str(raw or "").lower().split())
     for sep in ("(", ",", ";", "/", " - ", ":"):
         text = text.split(sep)[0]
-    words = text.strip(" .").split()[:3]
-    while words and words[-1] in ("and", "or", "of", "with", "the", "for", "&"):
+    words = "".join(c if c.isalnum() and c.isascii() else " " for c in text).split()[:3]
+    while words and words[-1] in ("and", "or", "of", "with", "the", "for"):
         words.pop()
     return " ".join(words)[:30] or "tinkering"
 

@@ -113,6 +113,11 @@ version might be a still for clean water, or a salvage bench. See DESIGN-modules
 `finds` are what its booth sells; the village's market and Wren's own stall then work as Pip's do. Its prices, tills and stall live in
 the module's store, so a world that trades differently (barter, ration chits) copies `app/module_library/trade.py` and changes it.
 
+**Making things** (works today; the shipped `crafting` module): projects on the agent's own plans, judged by the die and the narrator,
+with experiments, plan revisions and craft skills; a finished project becomes one of its creations. The abilities a stage exercises
+are the pack's (`content.json` `crafting`); a world that makes things differently (scavenged repairs, rationed parts) copies
+`app/module_library/crafting.py` and changes it.
+
 **Books** (works today; the shipped `reading` module on the engine's `books` source): with a library mounted (`LIBRARY_PATH`), the
 agent reads the owner's real books at the `library` place. Ashfall's version of it (a ruined archive) is a module of its own that asks
 the same source (`"sources": ["books"]`) and words it as salvaged pages, or ships a list of its own and asks nothing.

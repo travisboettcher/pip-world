@@ -28,7 +28,7 @@ API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
 READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
-         "answers")
+         "answers", "making", "found")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
             "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
             "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
@@ -44,11 +44,12 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "crafting", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
-MAP_MOST = 12                                         # names in a map argument (materials)
-SOURCE_DEPTH = 3
+QUALITIES_MADE = ("rough", "sound", "fine", "masterwork")
+MAP_MOST, LIST_STRING_MAX = 12, 240                  # names in a map argument (materials); a string in a list of them
+SOURCE_DEPTH, SOURCE_ARGS_MAX = 3, 16_000           # sources asked in one go: judged, narrated, designed; a question's size (a narrator's task)
 # public events a module may log as the engine logs them, with the fields their readers use (memory, firsts, emotions, day stats, the
 # turning-point detector, capabilities, the feed): crafting's, until those readers are the pack's (phase 7)
 LOGGABLE = {
@@ -58,8 +59,8 @@ LOGGABLE = {
                    "interrupted", "project_done", "percent", "crossroads", "expected", "expectation", "error", "surprise"),
     "plan_revised": ("project", "project_id", "because", "finding", "answered", "added", "dropped"),
 }
-EXPECT_KINDS, EVENT_MAX = ("session", "step", "experiment"), 4_000                                      # sources asked in one go: judged, narrated, designed
-REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)                                     # what a tool says back: a shop's shelves, say
+EXPECT_KINDS, EVENT_MAX = ("session", "step", "experiment"), 4_000  # the expectations an event may settle; an event's size
+REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)
 PER_DAY = {"calls": 600, "source": 60, "event": 24, "creation": 2, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
            "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
 SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "event": 200, "creation": 6, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
@@ -68,7 +69,8 @@ SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "event": 200, "creat
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
 STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
 COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
-STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 8, 8, 5, 8
+STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 12, 40, 8, 8, 5, 8
+STATUS_LINE_MAX = 400                                 # a project's line: its stage, what it needs, and where that was found
 PRACTICE_MOST, DEPLETE_MOST, COINS_MOST = 240, 240, 500
 SESSION_MINUTES, KIND_WORD, ARGS_MAX, SCHEMA_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000, 12
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
@@ -237,9 +239,9 @@ def _tools(tools, author: str) -> list:
         params = t.get("params") or {"type": "object", "properties": {}}
         props, required = params.get("properties") if isinstance(params, dict) else None, (params or {}).get("required", []) if isinstance(params, dict) else None
         if not isinstance(props, dict) or params.get("type") != "object" or len(props) > TOOL_PARAMS_MAX or not isinstance(required, list) \
-                or any(r not in props for r in required) or not all(_param_ok(k, v) or _list_ok(k, v) or _map_ok(k, v) for k, v in props.items()):
+                or any(r not in props for r in required) or not all(_param_ok(k, v) or _list_ok(k, v) or _map_ok(k, v) or _strings_ok(k, v) for k, v in props.items()):
             raise Refused(f"`{name}`'s `params` is {{type: object, properties, required?}}: up to {TOOL_PARAMS_MAX} arguments, each "
-                          f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}, a list of small objects, or a map of names to values")
+                          f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}, a list of small objects or of strings, or a map of names to values")
         where = t.get("where", "anywhere")
         wheres = where if isinstance(where, list) else [where]
         if not 1 <= len(wheres) <= 4 or not all(isinstance(w, str) and w.strip() and len(w) <= 60 for w in wheres):
@@ -254,6 +256,12 @@ def _tools(tools, author: str) -> list:
                     "where": [w.strip() for w in wheres] if isinstance(where, list) else where.strip(), **({"kinds": kinds} if kinds else {}),
                     "params": {"type": "object", "properties": props, "required": list(required)}, **({"first": first.strip()} if first else {})})
     return out
+
+
+def _strings_ok(name, p) -> bool:
+    """An argument or answer that is a list of short strings (steps to drop, open questions): `{type: array, items: {type: string}}`."""
+    return (KIND_WORD.match(str(name)) is not None and isinstance(p, dict) and p.get("type") == "array" and set(p) <= {"type", "description", "items"}
+            and p.get("items") == {"type": "string"} and isinstance(p.get("description", ""), str) and len(p.get("description", "")) <= TEXT_MAX)
 
 
 def _map_ok(name, p) -> bool:
@@ -280,7 +288,7 @@ def _list_ok(name, p) -> bool:
     return (KIND_WORD.match(str(name)) is not None and p.get("type") == "array" and set(p) <= {"type", "description", "items"}
             and isinstance(p.get("description", ""), str) and len(p.get("description", "")) <= TEXT_MAX
             and items.get("type") == "object" and set(items) <= {"type", "properties", "required"} and isinstance(props, dict)
-            and 1 <= len(props) <= TOOL_PARAMS_MAX and all(_param_ok(k, q) or _map_ok(k, q) for k, q in props.items())
+            and 1 <= len(props) <= TOOL_PARAMS_MAX and all(_param_ok(k, q) or _map_ok(k, q) or _strings_ok(k, q) for k, q in props.items())
             and isinstance(items.get("required", []), list) and all(r in props for r in items.get("required", [])))
 
 
@@ -364,7 +372,10 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import places
         me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
                       **{n: a[n] for n in stats_mod.declared(settings) if n in a}, "mood": a["mood"], "walking": (state.session() or {}).get("kind") == "walk",
-                      "coins": state.coins(), "name": world_pack.active().agent.name, "lives": world_pack.active().agent.lives}
+                      "coins": state.coins(), "name": world_pack.active().agent.name, "lives": world_pack.active().agent.lives,
+                      "tired": stats_mod.tired(state), "tiring": stats_mod.tiring(settings), "busy": busy_line(state, now),
+                      "tools": sorted(set(settings.tools)),           # the engine's tools the agent has (TOOLS), for a hint that names one
+                      **{k: getattr(world_pack.active().agent, k) for k in ("they", "them", "their", "possessive")}}
         ctx.update({k: me for k in ("agent", "pip") if k in reads})
     if "subject" in reads:
         c = _creation(state, man["subject"])
@@ -392,6 +403,14 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import creations as cr
         ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"], "quality": c["quality"],
                              "description": c["description"]} for c in state.creations()]
+    if "found" in reads:                                    # where things have turned up for the agent, most often first
+        from . import places
+        ctx["found"] = [{"item": r["item"], "place": r["place"], "label": places.label(r["place"])}
+                        for r in state.db.execute("SELECT item, place FROM place_finds ORDER BY times DESC, last_ts DESC LIMIT 60")]
+    if "making" in reads:                                   # what a made thing can do: the engine's menu, as it checks a `creation`
+        from . import creations as cr
+        ctx["making"] = {"capabilities": cr.menu(False), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
+                         "qualities": list(QUALITIES_MADE)}
     if "answers" in reads:                                  # what each live module can be asked to do (a `request` to one that can't is refused)
         ctx["answers"] = {x["name"]: sorted(x["manifest"].get("answers") or {}) for x in state.modules("live") if x["manifest"].get("answers")}
     if "made" in reads:                                     # the agent's works: what it drew and wrote
@@ -663,7 +682,7 @@ def _status(v) -> dict:
     title = _text(v.get("title"), "status.title")
     if len(title) > STATUS_TITLE:
         raise Refused(f"`status.title` is at most {STATUS_TITLE} characters")
-    return {"title": title, "lines": [_text(x, "status line") for x in v["lines"]], "ready": v.get("ready", False),
+    return {"title": title, "lines": [_text(x, "status line", STATUS_LINE_MAX) for x in v["lines"]], "ready": v.get("ready", False),
             **({"next_at": float(v["next_at"])} if v.get("next_at") is not None else {})}
 
 
@@ -917,7 +936,7 @@ def _event(man: dict, v) -> dict:
 def _source(man: dict, v) -> dict:
     """One question to a source the manifest names: {name, op, args?}. The engine asks it and hands the answer to on_source."""
     if not isinstance(v, dict) or set(v) - {"name", "op", "args"} or v.get("name") not in man.get("sources", []) or not isinstance(v.get("op"), str) \
-            or not KIND_WORD.match(v["op"]) or not isinstance(v.get("args", {}), dict) or _size(v.get("args", {})) > ARGS_MAX:
+            or not KIND_WORD.match(v["op"]) or not isinstance(v.get("args", {}), dict) or _size(v.get("args", {})) > SOURCE_ARGS_MAX:
         raise Refused(f"`source` is {{name, op, args?}}: name is one of its sources ({', '.join(man.get('sources', [])) or 'none'})")
     return {"name": v["name"], "op": v["op"], "args": dict(v.get("args", {}))}
 
@@ -933,6 +952,15 @@ def _notes(state, v) -> dict:
 def whereabouts(state, name: str) -> dict | None:
     """Where a live module says a character is just now ({at, doing?}), or None."""
     return next((m["whereabouts"][name] for m in state.modules("live") if name in (m.get("whereabouts") or {})), None)
+
+
+def queue_request(state, name: str, what: str, args: dict, by: str = "engine") -> bool:
+    """Ask a live module, on its next step, to do something it answers (the night pass pausing a project). False if none answers it."""
+    target = live_named(state, name)
+    if not target or what not in (target["manifest"].get("answers") or {}):
+        return False
+    state.update_module(target["id"], requests=(target.get("requests") or [])[-9:] + [{"what": what, "args": args, "from": by, "ts": time.time()}])
+    return True
 
 
 def published(state, key: str, default=None):
@@ -1021,7 +1049,7 @@ def _ask(v) -> dict:
         props = schema.get("properties") if isinstance(schema, dict) else None
         if not isinstance(props, dict) or not 1 <= len(props) <= SCHEMA_MAX or set(schema) - {"properties", "required"} \
                 or not isinstance(schema.get("required", []), list) or any(r not in props for r in schema.get("required", [])) \
-                or not all(_param_ok(k, p) or _list_ok(k, p) for k, p in props.items()):
+                or not all(_param_ok(k, p) or _list_ok(k, p) or _strings_ok(k, p) for k, p in props.items()):
             raise Refused(f"`ask.schema` is {{properties, required?}}: up to {SCHEMA_MAX} answers, each {{type ({', '.join(PARAM_TYPES)}), "
                           "description?, enum?}, or a list of up to 12 objects ({type: array, items: {type: object, properties, required?}})")
         out["schema"] = {"type": "object", "properties": props, "required": list(schema.get("required", []))}
@@ -1355,6 +1383,9 @@ def check_args(params: dict, args) -> tuple[dict, str]:
         if kind == "array":                                     # a list of small objects: each checked, those that don't fit left out
             if not isinstance(v, list):
                 return {}, f"`{k}` is a list"
+            if props[k]["items"] == {"type": "string"}:         # a list of strings: the strings, trimmed
+                out[k] = [" ".join(x.split())[:LIST_STRING_MAX] for x in v[:12] if isinstance(x, str) and x.strip()]
+                continue
             out[k] = [got for got, why in (check_args({"required": [], **props[k]["items"]}, x) for x in v[:12]) if not why]
             continue
         if kind == "object":                                    # a map of names to values: the names that fit, with values that fit
@@ -1403,6 +1434,20 @@ async def use_tool(state, settings, runner, m: dict, tool: dict, args, now: floa
 
 def busy_with(sess: dict) -> str:
     return sess["expect"] or "something"
+
+
+def busy_line(state, now: float) -> str:
+    """What the agent is in the middle of, as the engine's tools say it ('' when nothing): a walk, or a module's session."""
+    from . import places
+    sess = state.session()
+    if not sess:
+        return ""
+    left = max(1, round((sess["ends_at"] - now) / 60))
+    if sess["kind"] == "walk":
+        return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
+    if sess["kind"] == "module":
+        return f"you're {busy_with(sess)} (about {left} min left); rest stops early"
+    return f"you're in the middle of something (about {left} min left); rest stops early"
 
 
 async def end_session(state, settings, runner, interrupted: bool = False, now: float | None = None) -> dict | None:
@@ -1901,7 +1946,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "sky": {"hemisphere": "hemisphere"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "crafting": {"speed": "work_speed", "most": "max_active_projects", "cap": "max_active_projects_cap"}, "sky": {"hemisphere": "hemisphere"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 

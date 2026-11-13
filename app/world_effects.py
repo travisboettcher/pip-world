@@ -21,7 +21,7 @@ class WorldEffect:
     request: tuple[str, str] | None = None         # (module, what): a live module makes the change (`does`: "request:<module>:<what>")
 
 
-DOES = {"add_project_slot": lambda state: state.add_project_slot()}   # what an effect can do itself (or a module does it: "request:<module>:<what>")
+DOES: dict[str, Callable] = {}   # what an effect can do itself (none since 0.42.0: a module does it, "request:<module>:<what>")
 
 
 def _applier(does: str, note: str) -> Callable:

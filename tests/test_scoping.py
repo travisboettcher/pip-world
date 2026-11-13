@@ -3,9 +3,9 @@ import pytest
 from app import places
 from app import tools as T
 from app.llm.base import LLMResponse, ToolCall, Usage
-from tests.test_projects import call, make
+from tests.test_projects import call, crafting, make
 
-HOME_ONLY = {"program", "work_on", "experiment", "tend", "sleep"}
+HOME_ONLY = {"program", "tend", "sleep"}
 YARD_ONLY = {"browse"}
 
 
@@ -19,7 +19,7 @@ def test_every_tool_has_a_scope_and_the_table_matches_the_design():
     assert {n for n, sc in T.SCOPES.items() if sc == ("library",)} == set()                        # reading is the reading module's
     assert T.SCOPES["browse"] == ("junkyard",) and not {"gather", "buy", "read"} & set(T.SCOPES)    # the gathering, trade and reading modules'
     assert T.SCOPES["where_to"] == ("anywhere",)
-    assert all(T.SCOPES[n] == ("anywhere",) for n in ("say", "eat", "rest", "recall", "go_to", "start_project", "write_letter"))
+    assert all(T.SCOPES[n] == ("anywhere",) for n in ("say", "eat", "rest", "recall", "go_to", "write_letter"))
 
 
 def test_the_tool_list_depends_on_where_pip_is():
@@ -52,14 +52,15 @@ async def test_using_a_tool_from_the_wrong_place_is_refused_the_same_way_everywh
 async def test_a_tick_offers_only_what_belongs_where_pip_is(tmp_path):
     s, st, gm, agent = make(tmp_path)
     agent.tools.update({n: T.REGISTRY[n] for n in HOME_ONLY})
+    crafting(st)                                                                    # its work_on is where "home", as a module says it
     agent.backend.script[:] = [LLMResponse("", [], Usage(1, 1)), LLMResponse("", [], Usage(1, 1))]
     st.update_agent(location="library")
     await agent.tick("test")
     at_library = agent.backend.calls[-1]["tools"]
-    assert not HOME_ONLY & set(at_library) and "note_to_self" in at_library
+    assert not (HOME_ONLY | {"work_on"}) & set(at_library) and {"note_to_self", "start_project"} <= set(at_library)
     st.update_agent(location=places.HOME)
     await agent.tick("test")
-    assert HOME_ONLY & set(agent.backend.calls[-1]["tools"]) >= {"tend", "work_on"}
+    assert (HOME_ONLY | {"work_on"}) <= set(agent.backend.calls[-1]["tools"])
 
 
 class FakeLibrary:

@@ -2,12 +2,13 @@
 import time
 from datetime import datetime
 
+import random
+
 import pytest
 
 from app import tools as T
 from app.config import Settings
 from app.state import State
-from test_mut_projects_flow import OneRoll, StubGM, add as add_project, begin  # noqa: F401
 
 
 NOON = datetime(2026, 3, 4, 12, 0).timestamp()
@@ -25,7 +26,7 @@ def make(tmp_path, **kw):
     kw.setdefault("sleep", False)
     s = Settings(db_path=str(tmp_path / "t.db"), **kw)
     st = State(s)
-    return T.ToolContext(st, s, rng=OneRoll(0.5)), st
+    return T.ToolContext(st, s, rng=random.Random(7)), st
 
 
 async def run(ctx, name, **args):
@@ -36,7 +37,7 @@ async def run(ctx, name, **args):
 def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
     assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
-    assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
+    assert T.SCOPES["tend"] == ("home",) and not {"start_project", "work_on", "experiment"} & set(T.SCOPES)      # crafting is a module's (0.42.0)
     assert T.SCOPES["browse"] == ("junkyard",) and "read" not in T.SCOPES                     # reading is a module's (0.39.0)
     assert not {"buy", "sell", "pay"} & set(T.SCOPES)                               # trade is a module's (0.38.0)
     assert "gather" not in T.SCOPES                                                 # gathering is a module's (0.36.0)
@@ -113,34 +114,23 @@ def test_busy_says_what_pip_is_in_the_middle_of(tmp_path, clock):
     assert T.busy(ctx) == "you're on your way to the library (about 1 min to go)"
     st.start_session(0, 0, 10, clock[0] + 90, kind="walk", target="library")
     assert "about 2 min to go" in T.busy(ctx)
-    st.start_session(5, 0, 30, clock[0] + 1800, kind="read", target="Moby Dick")
-    assert T.busy(ctx) == "you're reading Moby Dick (about 30 min left); rest stops early"
     st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="gathering", expect="out foraging at the woods")
     assert T.busy(ctx) == "you're out foraging at the woods (about 30 min left); rest stops early"
-    p = add_project(st)
-    st.start_session(p["id"], 0, 30, clock[0] + 1800, kind="experiment", target="h")
-    assert T.busy(ctx) == "you're in the middle of an experiment on Clock (about 30 min left); rest stops early"
-    st.start_session(999, 0, 30, clock[0] + 1800, kind="experiment", target="h")
-    assert "an experiment on something (about" in T.busy(ctx)
-    st.start_session(p["id"], 0, 30, clock[0] + 1800, kind="work")
-    assert T.busy(ctx) == "you're in the middle of working on Clock (about 30 min left); rest stops early"
-    st.start_session(999, 0, 30, clock[0] + 1800, kind="work")
-    assert "working on something (about" in T.busy(ctx)
+    st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="crafting")
+    assert T.busy(ctx) == "you're something (about 30 min left); rest stops early"
+    st.start_session(5, 0, 30, clock[0] + 1800, kind="work")                     # a kind from before its feature was a module
+    assert T.busy(ctx) == "you're in the middle of something (about 30 min left); rest stops early"
 
 
 async def test_stop_working_reports_what_was_cut_short(tmp_path, clock):
     ctx, st = make(tmp_path)
     assert await T.stop_working(ctx) == ""
-    p = add_project(st)
-    begin(st, p, minutes=30, started_at=clock[0])
-    assert await T.stop_working(ctx) == " (you stopped working on Clock early)"
-    assert st.session() is None
-    begin(st, p, kind="experiment", target="soak it", minutes=30, started_at=clock[0])
-    assert await T.stop_working(ctx) == " (you cut the experiment on Clock short)"
+    st.start_session(5, 0, 30, clock[0] + 1800, kind="work")                     # from before crafting was a module: it just ends
+    assert await T.stop_working(ctx) == "" and st.session() is None
     st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="gone", expect="out foraging at the woods")
     assert await T.stop_working(ctx) == " (you stopped out foraging at the woods early)"
     st.start_session(0, 0, 30, clock[0] + 1800, kind="walk", target="library")
-    assert await T.stop_working(ctx) == ""
+    assert await T.stop_working(ctx) == "" and st.session()["kind"] == "walk"           # a walk goes on
     st.start_session(77, 0, 30, clock[0] + 1800, kind="read", target="Moby")     # from before reading was a module: it just ends
     assert await T.stop_working(ctx) == "" and st.session() is None
 

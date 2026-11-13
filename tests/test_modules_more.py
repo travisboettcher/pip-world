@@ -88,7 +88,7 @@ def test_the_context_word_for_word(tmp_path):
                            "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
     assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
-                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden"}
+                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"}
     assert ctx["facts"] == {"says": {"weather": {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True, "next_rising": None, "next_setting": None}}}
     c = st.creations()[0]
     assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": []}

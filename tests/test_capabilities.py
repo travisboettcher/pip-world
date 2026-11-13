@@ -1,9 +1,7 @@
-import time
-
 import pytest
 
 from app import capabilities as C
-from tests.test_projects import PIP_STEPS, PLAN, FixedRng, call, make, report
+from tests.test_projects import PIP_STEPS, PLAN, call, report
 
 
 def ev(kind, **d):
@@ -53,14 +51,13 @@ def test_the_prompt_block_is_counts_with_the_change_since_last_time():
 
 @pytest.mark.asyncio
 async def test_work_events_record_craft_and_abilities_and_the_reflection_sees_the_counts(tmp_path):
-    s, st, gm, agent = make(tmp_path, [report(**PLAN)], work_speed=10**6, verify_insights=False)
+    from tests.test_crafting import end, world
+    s, st, gm, agent = world(tmp_path, [report(**PLAN)] + [report(text="A stretch of work.")] * 3, verify_insights=False)
     st.add_item("brass wire", 4, "material")
     await call(agent, "start_project", name="gear clock", steps=PIP_STEPS)
     for _ in range(3):
-        agent.rng = FixedRng(0.1)
         await call(agent, "work_on", project="gear clock", minutes=15)
-        time.sleep(0.05)
-        await agent.resolve_world()
+        await end(agent)
     w = [e for e in st.events(30) if e["kind"] == "work"][0]["data"]
     assert w["craft"] == "clockmaking" and w["abilities"] == ["handiness"]
     gm.queue(report(summary="A hard stretch.", people=[], insights=[], **{"self": "Pip."}))

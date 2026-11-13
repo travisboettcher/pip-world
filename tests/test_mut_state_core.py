@@ -79,10 +79,10 @@ def test_resting_restores_energy_at_rest_rate(tmp_path, clock):
     assert a["energy"] == pytest.approx(0.45) and a["hunger"] == pytest.approx(0.2)
 
 
-@pytest.mark.parametrize("kind,extra", [("work", 0.05), ("experiment", 0.05), ("walk", 0.0), ("read", 0.0)])
-def test_busy_session_drains_extra_energy(tmp_path, clock, kind, extra):
+@pytest.mark.parametrize("kind,stage,extra", [("module", 1, 0.05), ("module", 0, 0.0), ("walk", 0, 0.0), ("work", 0, 0.0)])
+def test_busy_session_drains_extra_energy(tmp_path, clock, kind, stage, extra):
     st = decay_state(tmp_path, clock)
-    st.start_session(1, 0, 30, clock[0] + 1800, kind=kind)
+    st.start_session(1, stage, 30, clock[0] + 1800, kind=kind)                   # a module's working session (crafting) tires
     st.apply_decay(now=clock[0] + 3600)
     assert st.agent()["energy"] == pytest.approx(0.65 - extra)
 
@@ -90,7 +90,7 @@ def test_busy_session_drains_extra_energy(tmp_path, clock, kind, extra):
 def test_busy_session_also_drains_while_resting(tmp_path, clock):
     st = decay_state(tmp_path, clock)
     st.update_agent(activity="resting", energy=0.5)
-    st.start_session(1, 0, 30, clock[0] + 1800, kind="work")
+    st.start_session(1, 1, 30, clock[0] + 1800, kind="module")
     st.apply_decay(now=clock[0] + 3600)
     assert st.agent()["energy"] == pytest.approx(0.65)
 
