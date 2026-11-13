@@ -6,7 +6,6 @@ import time
 import pytest
 
 from app import happenings as H
-from app import market
 from app import modules as M
 from app.config import Settings
 from tests.test_happen import Writer
@@ -37,11 +36,10 @@ def test_each_effect_is_applied(tmp_path):
     assert st.find_item("pears")[0]["qty"] == 1
 
 
-def test_a_price_turn_moves_the_booths_price(tmp_path):
+def test_a_price_turn_is_no_longer_the_engines(tmp_path):
     s, st, agent = make(tmp_path)
-    H.apply_effects(st, [{"kind": "price", "place": "Saltholm", "item": "Tomatoes", "units": -3}], NOW)
-    assert market.local(st, "Saltholm", "tomatoes", NOW) == pytest.approx((1 - market.PRICE_STEP) ** 3)
-    assert market.local(st, "Brygdon", "tomatoes", NOW) == 1.0
+    H.apply_effects(st, [{"kind": "price", "place": "Saltholm", "item": "Tomatoes", "units": -3}], NOW)          # an old effect: nothing to do (trade's now)
+    assert "price" not in H.INTENTS and st.store("trade") == {}
 
 
 def test_a_creation_stops_only_if_it_needs_tending(tmp_path):
@@ -81,10 +79,6 @@ def test_news_of_a_neighbor_goes_into_their_life(tmp_path):
     ({"kind": "creation_stop", "name": "Gear Clock", "part": None}, "Your Gear Clock stops; it needs tending."),
     ({"kind": "news", "name": "Oriel"}, "You hear news of Oriel."),
     ({"kind": "food_loss", "name": "plums", "qty": 3}, "You lose 3 plums."),
-    ({"kind": "price", "item": "tomatoes", "place": "Saltholm", "units": 6}, "Tomatoes fetches about 27% more at Saltholm for now."),
-    ({"kind": "price", "item": "tomatoes", "place": "Saltholm", "units": 1}, "Tomatoes fetches about 4% more at Saltholm for now."),
-    ({"kind": "price", "item": "tomatoes", "place": "Saltholm", "units": -6}, "Tomatoes fetches about 22% less at Saltholm for now."),
-    ({"kind": "price", "item": "tomatoes", "place": "Saltholm", "units": -1}, "Tomatoes fetches about 4% less at Saltholm for now."),
     ({"kind": "request", "module": "garden"}, ""),
 ])
 def test_each_effect_in_words(e, text):
@@ -115,7 +109,7 @@ def test_the_world_as_the_dice_see_it(tmp_path):
     st.update_module(b["id"], facts={"names": ["moles"]}, status="disabled")
     w = H.world(st, s, now)
     assert [f["name"] for f in w["foods"]][:2] == ["figs", "plums"] and all(f["kind"] == "food" for f in w["foods"])
-    assert [b["key"] for b in w["booths"]] == ["Saltholm"] and w["neighbors"] == ["Oriel"] and "needle file" in w["tools"]
+    assert "booths" not in w and w["neighbors"] == ["Oriel"] and "needle file" in w["tools"]
     assert "Saltholm" in w["places"] and "Hollin" not in w["places"] and all(isinstance(p, str) for p in w["places"])
     assert w["known"] == ["beans"] and w["answers"] == {"pots": ["grow"]} and w["season"] is None and w["now"] == now
     assert {"beans", "saltholm", "figs", "oriel", "needle file"} <= H.world_names(w)
@@ -124,7 +118,7 @@ def test_the_world_as_the_dice_see_it(tmp_path):
 
 
 def test_world_names_without_the_optional_parts():
-    w = {"neighbors": ["Ann"], "creations": [], "foods": [], "tools": [], "booths": []}
+    w = {"neighbors": ["Ann"], "creations": [], "foods": [], "tools": []}
     assert H.world_names(w) == {"ann"}
 
 
@@ -221,5 +215,5 @@ async def test_a_request_line_is_kept_short_and_ends_a_sentence(tmp_path):
 
 
 def test_world_names_include_the_real_places():
-    w = {"neighbors": [], "creations": [], "foods": [], "tools": [], "booths": [], "places": ["the Old Mill"]}
+    w = {"neighbors": [], "creations": [], "foods": [], "tools": [], "places": ["the Old Mill"]}
     assert H.world_names(w) == {"the old mill"}

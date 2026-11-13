@@ -22,7 +22,6 @@ from . import places
 from . import conversation as conv
 from . import happenings
 from . import reminders, talk
-from . import market
 from . import weather
 from . import wishes
 from . import worldmap
@@ -34,7 +33,7 @@ from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
 from .state import State, clean_sender
-from .text import clip, span
+from .text import clip, coins_text, span
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, module_specs, module_tool, specs_for
 from . import stats as stats_mod
@@ -175,7 +174,6 @@ class Agent:
             self.state.log("alert", stat=alert)
             self.request_wake()
         emo.drift(self.state, self.s)
-        market.prune(self.state)                              # a creation that has gone elsewhere comes off Pip's stall
         worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
 
     async def resolve_world(self) -> None:
@@ -339,7 +337,7 @@ class Agent:
         entry = self.tools.get(canonical(call.name))
         if index >= MAX_TOOL_CALLS:
             out.update(content="skipped: too many tool calls this turn", is_error=True)
-        elif not entry and (mod := await module_tool(self.ctx, call.name, call.arguments)) is not None:
+        elif (mod := await module_tool(self.ctx, call.name, call.arguments, engine_has=bool(entry))) is not None:
             self.state.log("tool", tool=call.name, args=call.arguments, result=mod.text, module=mod.module, **({"first": mod.first} if mod.first else {}),
                            **({"noop": True} if mod.noop else {}))
             out.update(content=mod.text, followup=mod.followup)
@@ -370,7 +368,7 @@ class Agent:
 
     def _system_prompt(self) -> str:
         """The persona followed by how the world works (the guide, built from what is enabled)."""
-        return self._persona() + "\n\n" + guide.render(self.tools, self.s, self.library is not None)
+        return self._persona() + "\n\n" + guide.render(self.tool_names(), self.s, self.library is not None)
 
     async def _converse(self, ch: dict) -> str:
         """A talk with someone Pip is with in person, as its own scene (see talk.py). Returns how it ended."""
@@ -456,6 +454,10 @@ class Agent:
                 lines += [f"Your conversation with {sender} so far (oldest first):"] + [f"  {l}" for l in said]
         return lines
 
+    def tool_names(self) -> set[str]:
+        """Every tool the agent may have: the engine's it was given, and those live modules offer (trade's `buy`, the garden's `plant`)."""
+        return {*self.tools, *(t["name"] for _, t in modules.tools_offered(self.state))}
+
     def _belongings(self) -> list[str]:
         lines: list[str] = []
         if "use_item" in self.tools:
@@ -463,12 +465,7 @@ class Agent:
             lines.append("Your belongings:")
             lines += [f"- {i['name']} x{i['qty']} ({i['kind']})" + (f": {i['description']}" if i["description"] else "")
                       for i in items] or ["- (nothing)"]
-        if any(t in self.tools for t in ("buy", "sell", "pay")):
-            lines.append(f"Coins: {self.state.coins()}")
-            lines += market.stall_lines(self.state, self.state.agent()["location"], time.time())
-            if places.present_at(self.state):
-                lines += [market.wares_line(self.state, k, who + (" (at a stall here today)" if k.endswith(market.STALL_SUFFIX) else ""), t, time.time())
-                          for k, who, t in market.booths(self.state, self.state.agent()["location"], time.time()) if who]
+        lines.append(f"Coins: {self.state.coins()}")
         return lines
 
     def _projects(self) -> list[str]:
@@ -650,7 +647,7 @@ class Agent:
             if m.get("kind") in ("", "thing"):
                 where = wishes.sources(self.state, m["text"], time.time())
             else:
-                where = wishes.doings(self.state, self.s, self.library, m["text"], self.tools)
+                where = wishes.doings(self.state, self.s, self.library, m["text"], self.tool_names())
             if where:
                 note += f"  [you could try: {'; '.join(where)}]"
             return fmt(m) + note
@@ -690,10 +687,15 @@ class Agent:
     def _specs(self) -> list:
         """The tools to offer now: what can be done here, described for here. Mid-walk Pip is nowhere yet, so only what works anywhere."""
         if places.present_at(self.state) is None:
-            return specs_for(self.tools, "") + module_specs(self.state, "")
-        here = places.here(self.state, self.s, self.library)
-        open_ = places.open_now(here, self.s)
-        return specs_for(self.tools, here.key, here, open_) + module_specs(self.state, here.key, here, open_)
+            mods = module_specs(self.state, "")
+            engine = specs_for(self.tools, "")
+        else:
+            here = places.here(self.state, self.s, self.library)
+            open_ = places.open_now(here, self.s)
+            mods = module_specs(self.state, here.key, here, open_)
+            engine = specs_for(self.tools, here.key, here, open_)
+        names = {t.name for t in mods}                                  # where a module's tool applies, it stands for the engine's of that name
+        return [t for t in engine if t.name not in names] + mods
 
     def _perception(self, reason: str, inbox: list[dict]) -> str:
         a = self.state.agent()
@@ -773,9 +775,9 @@ class Agent:
                                     "module_rejected": "wasn't taken up" + (f": {d['note']}" if d.get("note") else ""),
                                     "module_disabled": "was switched off" + (f": {d['why']}" if d.get("why") else "")}[e["kind"]])
                 elif e["kind"] == "sold_creation":
-                    lines.append(f"- you sold {d['name']} at {places.label(d['place'])} for {market.coins_text(d['coins'])}")
+                    lines.append(f"- you sold {d['name']} at {places.label(d['place'])} for {coins_text(d['coins'])}")
                 elif e["kind"] == "stall_sale":
-                    lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {market.coins_text(d['coins'])}")
+                    lines.append(f"- at your stall you sold {d['qty']} {d['item']} for {coins_text(d['coins'])}")
                 elif e["kind"] == "heard_of_place":
                     lines.append(f"- {d['by']} told you about {places.label(d['place'])}"
                                  + (f": {d['there']}" if d["there"] else ""))

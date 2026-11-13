@@ -694,9 +694,12 @@ async def test_gathering_at_an_invented_wild_place_draws_from_its_own_table(tmp_
 
 
 async def test_rummaging_at_a_shop_is_short_slow_to_restock_and_on_account(tmp_path):
+    from app import modules as M
+    from tests.test_trade import account, module as trade
     s, st, gm, agent = setup(tmp_path, where="Saltholm")
     real_shop(st)
     st.update_place("Saltholm", hours=None)
+    trade(st)
     r = await call_gather(agent, minutes=60)
     assert r.text.startswith("you set about rummaging in the ironmonger's drawer at Saltholm for 30 min.")  # 15-30 at a shop
     assert T.busy(agent.ctx).startswith("you're out rummaging in the ironmonger's drawer at Saltholm")
@@ -704,25 +707,28 @@ async def test_rummaging_at_a_shop_is_short_slow_to_restock_and_on_account(tmp_p
     got = haul(st)
     assert G.stock(st, "Saltholm") == pytest.approx(10, abs=0.5)               # a shop holds 40, not 120
     found = {i["name"]: i["qty"] for i in got["items"]}
-    assert found and st.place_row("Saltholm")["on_account"] == found
+    await M.step(st, s, agent.runner)                                             # trade puts it on account
+    assert found and account(st, "Saltholm") == found
     assert got["text"].endswith("It's on account at Saltholm: they're happy for you to settle up later.")
     assert G.stock(st, "Saltholm", time.time() + 3600) == pytest.approx(12, abs=0.1)     # 2 an hour back
     assert G.full_yield_at(st, "Saltholm") == 20 and G.full_yield_at(st, "woods") == G.FULL_YIELD_AT
 
 
 async def test_browsing_a_shop_shows_whats_in_stock_and_whats_on_account(tmp_path):
+    from tests.test_trade import module as trade, run, slot
     s, st, gm, agent = setup(tmp_path, where="Saltholm")
     real_shop(st)
-    st.update_place("Saltholm", hours=None, on_account={"brass wire": 2})
-    r = await call(agent, "browse")
-    stock = r.text.split("\n")[0]
+    st.update_place("Saltholm", hours=None)
+    trade(st)
+    st.merge_store("trade", {"accounts": {slot("Saltholm"): {"place": "Saltholm", "items": {"brass wire": 2}}}})
+    text = await run(agent, "browse")
+    stock = text.split("\n")[0]
     assert stock.startswith("In stock at Saltholm today: ") and stock.endswith("gather to pick through the drawers on account.")
     shown = stock.removeprefix("In stock at Saltholm today: ").split(". You have")[0].split("), ")
     assert len(shown) == 4 and all("coins" in x for x in shown) and "You have 10 coins." in stock
-    assert r.text.split("\n")[1].startswith("On account here: 2 brass wire (") and "coins at today's prices; pay settles it)." in r.text
+    assert text.split("\n")[1].startswith("On account here: 2 brass wire (") and "coins at today's prices; pay settles it)." in text
     st.set_meta(**{"stock:Saltholm": 0, "stock_at:Saltholm": time.time()})
-    r = await call(agent, "browse")
-    assert r.text.startswith("The shelves at Saltholm are bare today; they restock slowly, so come back in a day or so.")
+    assert (await run(agent, "browse")).startswith("The shelves at Saltholm are bare today; they restock slowly, so come back in a day or so.")
 
 
 async def test_browsing_an_invented_yard_is_a_look_around(tmp_path):
@@ -1314,11 +1320,14 @@ def test_patch_says_why_it_refuses(tmp_path, changes, message):
 
 
 async def test_a_half_stocked_shop_shows_half_as_much_and_lists_each_thing_on_account(tmp_path):
+    from tests.test_trade import module as trade, run, slot
     s, st, gm, agent = setup(tmp_path, where="Saltholm")
     real_shop(st)
-    st.update_place("Saltholm", hours=None, on_account={"brass wire": 2, "awl": 1})
+    st.update_place("Saltholm", hours=None)
+    trade(st)
+    st.merge_store("trade", {"accounts": {slot("Saltholm"): {"place": "Saltholm", "items": {"brass wire": 2, "awl": 1}}}})
     st.set_meta(**{"stock:Saltholm": 10, "stock_at:Saltholm": time.time()})          # half of the 20 for a full haul
-    lines = (await call(agent, "browse")).text.split("\n")
+    lines = (await run(agent, "browse")).split("\n")
     shown = lines[0].removeprefix("In stock at Saltholm today: ").split(". You have")[0].split("), ")
     assert len(shown) == 2 and all(n.split(" (")[0] in [e[0] for e in st.place_row("Saltholm")["loot"]] for n in shown)
     assert lines[1].startswith("On account here: 2 brass wire, 1 awl (") and "coins at today's prices; pay settles it)." in lines[1]

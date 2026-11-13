@@ -27,10 +27,11 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request")
-READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "stalls", "places", "visitors", "people", "creations", "happenings", "here", "abilities")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "sell", "voices",
-            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing", "owe",
-            "character", "letter")
+READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
+         "answers")
+PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
+            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
+            "character", "letter", "coins", "part_with", "whereabouts", "notes")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -43,10 +44,11 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "stall-customers", "garden", "gathering", "neighborhood", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
-STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 4_000, 200, 4, 5
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "sell": 200, "ask": 12, "speak": 24, "happen": 2,
+STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
+REPLY_MAX = 1_500                                     # what a tool says back: a shop's shelves, say
+PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
            "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
 SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
                    "request": 200, "character": 2, "letter": 6}
@@ -55,7 +57,7 @@ TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1
 STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
 COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
 STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 8, 40, 8, 8, 5, 8
-PRACTICE_MOST, DEPLETE_MOST, OWE_LINES = 240, 240, 8
+PRACTICE_MOST, DEPLETE_MOST, COINS_MOST = 240, 240, 500
 SESSION_MINUTES, KIND_WORD, ARGS_MAX, SCHEMA_MAX = (1, 240), re.compile(r"^[a-z][a-z_]{0,23}$"), 2_000, 12
 VOICES_MAX, ASKS_WAITING, ASK_PROMPT_MAX, ASK_MOST, SPEAK_MAX = 4, 3, 2000, 600, 400   # the engine's own: a creation ticking every minute
 AFFECT_ENERGY, FINDS_MAX = 0.1, 8
@@ -177,7 +179,7 @@ def check_manifest(m, author: str, state=None) -> dict:
     if out.get("tools") and "on_action" not in out["hooks"]:
         raise Refused("a module's `tools` are used through on_action: add it to `hooks`")
     belongings = m.get("belongings")
-    if bool(belongings) != bool({"take", "give"} & set(out["proposes"])):
+    if bool(belongings) != bool({"take", "give", "coins"} & set(out["proposes"])):
         raise Refused("`take`/`give` and `belongings` go together: say which kinds of thing it may take and give, and how many at most")
     if belongings:
         out["belongings"] = _belongings(belongings)
@@ -196,7 +198,6 @@ def check_manifest(m, author: str, state=None) -> dict:
 
 def _tools(tools, author: str) -> list:
     """Tools a module offers the agent: each a name, a line of help, the arguments it takes (a small JSON schema) and where it works."""
-    from .tools import REGISTRY
     if author == "pip" or not isinstance(tools, list) or not 1 <= len(tools) <= TOOLS_MAX:
         raise Refused(f"`tools` is a list of up to {TOOLS_MAX} {{name, help, params?, where?}} (and not for {world_pack.active().agent.name}'s programs)")
     out = []
@@ -204,7 +205,7 @@ def _tools(tools, author: str) -> list:
         if not isinstance(t, dict) or not TOOL_NAME.match(str(t.get("name") or "")):
             raise Refused("a tool's `name` is 2 to 24 lowercase letters and underscores")
         name = t["name"]
-        if name in REGISTRY or name in (x["name"] for x in out):
+        if name in (x["name"] for x in out):                 # an engine tool's name is fine: where this one applies, it answers
             raise Refused(f"there is already a tool called {name}")
         params = t.get("params") or {"type": "object", "properties": {}}
         props, required = params.get("properties") if isinstance(params, dict) else None, (params or {}).get("required", []) if isinstance(params, dict) else None
@@ -213,12 +214,17 @@ def _tools(tools, author: str) -> list:
             raise Refused(f"`{name}`'s `params` is {{type: object, properties, required?}}: up to {TOOL_PARAMS_MAX} arguments, each "
                           f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}")
         where = t.get("where", "anywhere")
-        if not isinstance(where, str) or not where.strip() or len(where) > 60:
-            raise Refused(f"`{name}`'s `where` is anywhere, home, or a place's key")
+        wheres = where if isinstance(where, list) else [where]
+        if not 1 <= len(wheres) <= 4 or not all(isinstance(w, str) and w.strip() and len(w) <= 60 for w in wheres):
+            raise Refused(f"`{name}`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)")
+        kinds = t.get("kinds")
+        if kinds is not None and (not isinstance(kinds, list) or not 1 <= len(kinds) <= 8 or not all(isinstance(k, str) and KIND_WORD.match(k) for k in kinds)):
+            raise Refused(f"`{name}`'s `kinds` is a list of the kinds of place it works at")
         first = t.get("first")
         if first is not None and (not isinstance(first, str) or not first.strip() or len(first) > 60):
             raise Refused(f"`{name}`'s `first` is a few words for the first time it's used (\"planted something\")")
-        out.append({"name": name, "help": _text(t.get("help"), f"{name}.help"), "where": where.strip(),
+        out.append({"name": name, "help": _text(t.get("help"), f"{name}.help"),
+                    "where": [w.strip() for w in wheres] if isinstance(where, list) else where.strip(), **({"kinds": kinds} if kinds else {}),
                     "params": {"type": "object", "properties": props, "required": list(required)}, **({"first": first.strip()} if first else {})})
     return out
 
@@ -229,13 +235,28 @@ def _param_ok(name, p) -> bool:
             and (p.get("enum") is None or (isinstance(p["enum"], list) and 0 < len(p["enum"]) <= 12)))
 
 
+def _list_ok(name, p) -> bool:
+    """An answer that is a list of small objects (a neighbour's wares): `{type: array, items: {type: object, properties, required?}}`."""
+    items = p.get("items") if isinstance(p, dict) else None
+    if not isinstance(items, dict):
+        return False
+    props = items.get("properties")
+    return (KIND_WORD.match(str(name)) is not None and p.get("type") == "array" and set(p) <= {"type", "description", "items"}
+            and isinstance(p.get("description", ""), str) and len(p.get("description", "")) <= TEXT_MAX
+            and items.get("type") == "object" and set(items) <= {"type", "properties", "required"} and isinstance(props, dict)
+            and 1 <= len(props) <= TOOL_PARAMS_MAX and all(_param_ok(k, q) for k, q in props.items())
+            and isinstance(items.get("required", []), list) and all(r in props for r in items.get("required", [])))
+
+
 def _belongings(b) -> dict:
     from . import world as world_content
     kinds = set(world_content.kinds())
-    if not isinstance(b, dict) or set(b) - {"takes", "gives", "most"} or not _number(b.get("most"), 1, 20) \
+    if not isinstance(b, dict) or set(b) - {"takes", "gives", "most", "coins"} or not _number(b.get("most"), 1, 20) \
+            or not _number(b.get("coins", 0), 0, COINS_MOST) \
             or not all(isinstance(b.get(k, []), list) and all(isinstance(x, str) and x in kinds for x in b.get(k, [])) for k in ("takes", "gives")):
-        raise Refused(f"`belongings` is {{takes?, gives?, most}}: kinds of thing ({', '.join(sorted(kinds)) or 'this world has none'}), and at most 1 to 20 at a time")
-    return {"takes": list(b.get("takes", [])), "gives": list(b.get("gives", [])), "most": int(b["most"])}
+        raise Refused(f"`belongings` is {{takes?, gives?, most, coins?}}: kinds of thing ({', '.join(sorted(kinds)) or 'this world has none'}), at most 1 to 20 "
+                      f"at a time, and coins (at most {COINS_MOST} a call)")
+    return {"takes": list(b.get("takes", [])), "gives": list(b.get("gives", [])), "most": int(b["most"]), **({"coins": int(b["coins"])} if b.get("coins") else {})}
 
 
 def _creation(state, name: str) -> dict | None:
@@ -298,7 +319,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "time" in reads:
         from .happenings import season_of
         t = datetime.fromtimestamp(now)
-        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(now, settings.hemisphere)}
+        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(now, settings.hemisphere),
+                       "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     if "weather" in reads:
         from . import weather
         w = weather.current(state, now)
@@ -315,25 +337,31 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
                                               "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": c["spec"]["quirks"]}
     if "items" in reads:
-        ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"], "attrs": i["attrs"]} for i in state.items()]
+        ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"], "description": i["description"], "attrs": i["attrs"]} for i in state.items()]
     if "works" in reads:
         ctx["works"] = state.pictures(WORKS_SHOWN)
-    if "stalls" in reads:
-        from . import market
-        selling = market.selling_at(state, settings, now)
-        ctx["stalls"] = [{"place": r["place"], "item": r["name"], "kind": r["kind"], "qty": r["qty"], **({"work": r["attrs"]["work"]} if r["attrs"].get("work") else {}),
-                          "ask": r["ask"], "fair": market.fair_price(state, r["place"], r["name"], r["kind"], r["attrs"], now),
-                          "sold_today": market.sold_today(r, now), "selling": r["place"] == selling}
-                         for r in state.stall_rows()]
     if "places" in reads:
-        from . import worldmap
-        ctx["places"] = [{"key": p["key"], "label": p["label"], "kind": p["kind"]}
+        from . import finds, worldmap
+        from . import place_kinds as kinds
+        rows = {r["key"]: r for r in state.place_rows()}
+        ctx["places"] = [{"key": p["key"], "label": p["label"], "kind": p["kind"], "trades": bool(kinds.KINDS.get(p["kind"]) and kinds.KINDS[p["kind"]].trades),
+                          "stalls": bool(kinds.KINDS.get(p["kind"]) and kinds.KINDS[p["kind"]].stalls),
+                          "hours": (rows.get(p["key"]) or {}).get("hours"),
+                          "goods": [{"name": e[0], "kind": e[1], "weight": e[2], "span": list(e[3]), "attrs": e[5]} for e in finds.goods(state, p["key"])]
+                          if kinds.KINDS.get(p["kind"]) and kinds.KINDS[p["kind"]].trades else []}
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
     if "people" in reads:                                   # who lives in Pip's world (not what they're like)
-        ctx["people"] = [{"name": c["name"], "kind": c["kind"]} for c in state.characters() if c["kind"] != "creation"]
+        from . import places
+        ctx["people"] = [{"name": c["name"], "kind": c["kind"], "about": c["about"], **({"home": places.home_of(c)} if c["kind"] == "neighbor" else {})}
+                         for c in state.characters() if c["kind"] != "creation"]
     if "creations" in reads:
         from . import creations as cr
-        ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"]} for c in state.creations()]
+        ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"], "quality": c["quality"],
+                             "description": c["description"]} for c in state.creations()]
+    if "answers" in reads:                                  # what each live module can be asked to do (a `request` to one that can't is refused)
+        ctx["answers"] = {x["name"]: sorted(x["manifest"].get("answers") or {}) for x in state.modules("live") if x["manifest"].get("answers")}
+    if "made" in reads:                                     # the agent's works: what it drew and wrote
+        ctx["made"] = [{"title": w["title"], "kind": w["kind"]} for w in state.works(limit=500)]
     if "happenings" in reads:
         from . import happenings as hp
         recent = state.happenings(30)
@@ -354,11 +382,11 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
 
 
 # --- the referee -----------------------------------------------------------------------------------------------------------------
-def _text(v, what: str) -> str:
+def _text(v, what: str, most: int = TEXT_MAX) -> str:
     if not isinstance(v, str) or not v.strip():
         raise Refused(f"`{what}` is a line of text")
-    if len(v) > TEXT_MAX:
-        raise Refused(f"`{what}` is at most {TEXT_MAX} characters")
+    if len(v) > most:
+        raise Refused(f"`{what}` is at most {most} characters")
     return v.strip()
 
 
@@ -422,8 +450,14 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("deplete", _deplete(state, result["deplete"])))
     if "doing" in result:
         changes.append(("doing", _doing(result["doing"])))
-    if "owe" in result:
-        changes.append(("owe", _owe(state, result["owe"])))
+    if "coins" in result:
+        changes.append(("coins", _coins(state, man, result["coins"])))
+    if "part_with" in result:
+        changes.append(("part_with", _part_with(state, result["part_with"])))
+    if "whereabouts" in result:
+        changes.append(("whereabouts", _whereabouts(state, result["whereabouts"])))
+    if "notes" in result:
+        changes.append(("notes", _notes(state, result["notes"])))
     for key in ("character", "letter"):
         if key in result:
             if budget[key] >= cap[key]:
@@ -482,17 +516,13 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
             raise Refused(str(e)) from None
         p = result["happen"]
         changes.append(("happen", {k: p[k] for k in ("category", "tone", "severity", "effects", "about", "names", "fallback", "night") if k in p}))
-    if "sell" in result:
-        if budget["sell"] >= cap["sell"]:
-            raise Refused(f"it has used today's {cap['sell']} `sell`")
-        changes.append(("sell", _sell(state, settings, result["sell"], now)))
     for key in ("affect", "find"):
         if key in result:
             if budget[key] >= cap[key]:
                 raise Refused(f"it has used today's {cap[key]} `{key}`")
             changes.append((key, EFFECTS[key](man, result[key])))
     if "reply" in result:
-        changes.append(("reply", _text(result["reply"], "reply")))
+        changes.append(("reply", _text(result["reply"], "reply", REPLY_MAX)))
     return changes
 
 
@@ -637,6 +667,16 @@ def _give(state, man: dict, v) -> list:
     return out
 
 
+def _as_known(g: dict) -> dict:
+    """A given thing's attributes: what it was given with, or (none) the world's own for a thing it knows by that name and kind (a find
+    table's carrot seeds plant like the ones the agent could find), and the world's defaults for its kind."""
+    from . import finds
+    from .state import name_key
+    from .world import normalize_attrs
+    known = next((e for table in finds.loot().values() for e in table if name_key(e[0]) == name_key(g["item"]) and e[1] == g["kind"]), None)
+    return normalize_attrs(g["item"], g["kind"], g["attrs"] or (dict(known[5]) if known else {}))
+
+
 def _attrs(a) -> dict:
     """A given thing's attributes: plain values, and `restores` only naming the world's stats."""
     plain = (int, float, str, bool)
@@ -673,20 +713,24 @@ def answering(state, name, what) -> dict:
 def here_read(state, settings, now: float) -> dict | None:
     """The place the agent is at, as a module may know it (None on the way somewhere): what it is, what it holds, how picked over."""
     from . import finds, places
+    from .state import name_key
     key = places.present_at(state)
     if key is None:
         return None
     p = places.here(state, settings, None)
-    kind = finds.kind_of(state, key)
+    from . import place_kinds
+    kind = place_kinds.KINDS.get(places.kind_of(state, key))                # what kind of place it is (a shop, a market) for what it allows
     lo, hi = finds.session_for(state, key)
     most, refill = finds.capacity(state, key)
     from . import worldmap
     kinds_ = {q["key"]: q["kind"] for q in worldmap.snapshot(state, settings, None, now)["places"]}
     return {"key": key, "label": places.label(key), "kind": kinds_.get(key, ""),
             "open": places.open_now(p, settings), "verbs": {v: list(x) for v, x in p.verbs.items()},
-            "finds": [list(e[:3]) + [list(e[3]), e[4], e[5]] for e in finds.loot_for(state, key) or []],
+            "finds": [list(e[:3]) + [list(e[3]), e[4], e[5]] for e in finds.goods(state, key)],
+            "weights": {name_key(e[0]): e[2] for table in finds.loot().values() for e in table},
             "stock": round(finds.stock(state, key, now), 2), "full_at": finds.full_yield_at(state, key),
-            "gerund": finds.verb_for(state, key), "session": [lo, hi], "capacity": most, "refill": refill, "shop_hours": bool(kind and kind.shop_hours), "trades": bool(kind and kind.trades)}
+            "gerund": finds.verb_for(state, key), "session": [lo, hi], "capacity": most, "refill": refill, "shop_hours": bool(kind and kind.shop_hours), "trades": bool(kind and kind.trades),
+            "stalls": bool(kind and kind.stalls)}
 
 
 def _practice(v) -> dict:
@@ -749,16 +793,63 @@ def _letter(state, v) -> dict:
     return {"from": ch["name"]}
 
 
-def _owe(state, v) -> dict:
-    """Things taken on account at a place that trades (until the market is a module: docs/DESIGN-world-packs.md, phase 5c)."""
-    from . import place_kinds as kinds
-    if not isinstance(v, dict) or set(v) - {"place", "items"} or not isinstance(v.get("items"), dict) or not 1 <= len(v["items"]) <= OWE_LINES \
-            or not all(isinstance(k, str) and k.strip() and isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 50 for k, n in v["items"].items()):
-        raise Refused(f"`owe` is {{place, items: {{name: qty}}}}: up to {OWE_LINES} things")
-    row = state.place_row(str(v.get("place") or ""))
-    if not row or not kinds.KINDS.get(row["kind"]) or not kinds.KINDS[row["kind"]].trades:
-        raise Refused("`owe.place` is a place that trades")
-    return {"place": row["key"], "items": dict(v["items"])}
+def _coins(state, man: dict, v) -> int:
+    """Coins to the agent (more than 0) or from it (less): at most the manifest's `belongings.coins` a call, and never more than it has."""
+    most = (man.get("belongings") or {}).get("coins", 0)
+    if not isinstance(v, int) or isinstance(v, bool) or v == 0 or abs(v) > most:
+        raise Refused(f"`coins` is a whole number of coins to the agent (or less than 0, from it), at most {most} either way")
+    if v < 0 and state.coins() < -v:
+        raise Refused(f"{world_pack.active().agent.name} has only {state.coins()} coins")
+    return v
+
+
+def _part_with(state, v) -> dict:
+    """One of the agent's creations goes to someone else (sold, given): it is theirs after that."""
+    if not isinstance(v, dict) or set(v) != {"creation", "to"} or not isinstance(v["creation"], str):
+        raise Refused("`part_with` is {creation, to}")
+    c = _creation(state, v["creation"])
+    if not c:
+        raise Refused(f"{world_pack.active().agent.name} has no creation called {v['creation']!r}")
+    return {"creation": c["name"], "to": _text(v["to"], "part_with.to")}
+
+
+def _whereabouts(state, v) -> dict:
+    """Where the characters it speaks for are just now, if not where they live (a neighbour at a market stall): {name: {at, doing}}."""
+    names = {c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident")}
+    if not isinstance(v, dict) or len(v) > 8 or not all(
+            k in names and isinstance(x, dict) and set(x) <= {"at", "doing"} and isinstance(x.get("at"), str) and x["at"].strip()
+            and isinstance(x.get("doing", ""), str) and len(x.get("doing", "")) <= TEXT_MAX for k, x in v.items()):
+        raise Refused("`whereabouts` maps people in the world to {at: a place's key, doing?}; {} when they are all at home")
+    return {k: {"at": x["at"].strip(), **({"doing": x["doing"].strip()} if x.get("doing", "").strip() else {})} for k, x in v.items()}
+
+
+def _notes(state, v) -> dict:
+    """A line about each of some people, which the agent sees beside their name and which they may bring up when they write or talk."""
+    names = {c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident")}
+    if not isinstance(v, dict) or len(v) > 8 or not all(k in names and isinstance(x, str) and x.strip() and len(x) <= 300 for k, x in v.items()):
+        raise Refused("`notes` maps people in the world to a line (at most 300 characters); {} clears them")
+    return {k: " ".join(x.split()) for k, x in v.items()}
+
+
+def whereabouts(state, name: str) -> dict | None:
+    """Where a live module says a character is just now ({at, doing?}), or None."""
+    return next((m["whereabouts"][name] for m in state.modules("live") if name in (m.get("whereabouts") or {})), None)
+
+
+def for_sale(state) -> list[tuple]:
+    """What live modules say is for sale, by the `for_sale` fact: (place, item, price, whose: '' for the place's own)."""
+    out = []
+    for m in state.modules("live"):
+        rows = (m.get("facts") or {}).get("for_sale")
+        for r in rows if isinstance(rows, list) else []:
+            if isinstance(r, list) and len(r) >= 3 and isinstance(r[0], str) and isinstance(r[1], str) and isinstance(r[2], int):
+                out.append((r[0], r[1], r[2], r[3] if len(r) > 3 and isinstance(r[3], str) else ""))
+    return out
+
+
+def notes_on(state, name: str) -> list[str]:
+    """What live modules say about a character."""
+    return [m["notes"][name] for m in state.modules("live") if name in (m.get("notes") or {})]
 
 
 def _session(state, v) -> dict:
@@ -815,37 +906,13 @@ def _ask(v) -> dict:
         props = schema.get("properties") if isinstance(schema, dict) else None
         if not isinstance(props, dict) or not 1 <= len(props) <= SCHEMA_MAX or set(schema) - {"properties", "required"} \
                 or not isinstance(schema.get("required", []), list) or any(r not in props for r in schema.get("required", [])) \
-                or not all(_param_ok(k, p) for k, p in props.items()):
+                or not all(_param_ok(k, p) or _list_ok(k, p) for k, p in props.items()):
             raise Refused(f"`ask.schema` is {{properties, required?}}: up to {SCHEMA_MAX} answers, each {{type ({', '.join(PARAM_TYPES)}), "
-                          "description?, enum?}")
+                          "description?, enum?}, or a list of up to 12 objects ({type: array, items: {type: object, properties, required?}})")
         out["schema"] = {"type": "object", "properties": props, "required": list(schema.get("required", []))}
     if v.get("mentions"):
         out["mentions"] = True
     return out
-SELL_LINES = 3
-
-
-def _sell(state, settings, v, now: float) -> list:
-    """Customers buying from Pip's stall: only lines on it, where Pip is selling right now, at Pip's ask, within what the market takes today."""
-    from . import market
-    from .state import name_key
-    if not isinstance(v, list) or not 1 <= len(v) <= SELL_LINES or not all(isinstance(x, dict) and {"place", "item", "qty"} <= set(x) for x in v):
-        raise Refused("`sell` is a list of {place, item, qty}")
-    out = []
-    for x in v:
-        place = str(x["place"])
-        if settings is None or market.selling_at(state, settings, now) != place:
-            raise Refused(f"{world_pack.active().agent.name} isn't selling at {place} right now")
-        row = next((r for r in state.stall_rows(place) if r["item"] == name_key(str(x["item"]))), None)
-        if not row:
-            raise Refused(f"there is no {x['item']} on {world_pack.active().agent.possessive} stall at {place}")
-        most = min(row["qty"], market.STALL_DAILY_UNITS - market.sold_today(row, now))
-        if not isinstance(x["qty"], int) or isinstance(x["qty"], bool) or not 1 <= x["qty"] <= most:
-            raise Refused(f"`sell` qty is 1 to {most} (what is on the stall, and what the market takes today)")
-        out.append((place, row["item"], x["qty"]))
-    return out
-
-
 def _show(objs) -> list:
     """Things to draw in scenes: pixel pictures, each asking for an anchor (anchors.py)."""
     from . import anchors, art
@@ -944,7 +1011,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             budget["take"] += 1
         elif kind == "give":
             for g in val:
-                state.add_item(g["item"], g["qty"], g["kind"], g["description"], g["attrs"])
+                state.add_item(g["item"], g["qty"], g["kind"], g["description"], _as_known(g))
                 if g.get("at"):
                     state.add_find(g["at"], g["item"], now)
             budget["give"] += 1
@@ -968,9 +1035,13 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             ch = next(c for c in state.characters("neighbor") if c["name"] == val["from"])
             state.update_character(ch["id"], next_chatter_at=now)            # written on the engine's next step, as letters are answered
             budget["letter"] += 1
-        elif kind == "owe":
-            owed = state.place_row(val["place"])["on_account"]
-            state.update_place(val["place"], on_account={**owed, **{n: owed.get(n, 0) + q for n, q in val["items"].items()}})
+        elif kind == "coins":
+            state.add_coins("pip", val)
+        elif kind == "part_with":
+            c = _creation(state, val["creation"])
+            state.give_creation(c["id"], val["to"])
+        elif kind in ("whereabouts", "notes"):
+            fields[kind] = val
         elif kind == "session":
             state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"])
         elif kind == "wake":
@@ -1007,13 +1078,6 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             asks = fields.get("asks", m.get("asks") or [])
             fields["asks"] = asks + [{**val, "id": max([a["id"] for a in asks] + [0]) + 1, "ts": now}]
             budget["ask"] += 1
-        elif kind == "sell":
-            from . import market
-            for place, item, qty in val:
-                row = next((r for r in state.stall_rows(place) if r["item"] == item), None)
-                if row:
-                    market.sell_units(state, place, row, min(qty, row["qty"]), now)
-            budget["sell"] += 1
         elif kind == "reply":
             out["reply"] = val
     if "due" not in fields and m.get("due") and m["due"] <= now:
@@ -1146,6 +1210,11 @@ def check_args(params: dict, args) -> tuple[dict, str]:
         if v is None or v == "":
             continue
         kind = props[k]["type"]
+        if kind == "array":                                     # a list of small objects: each checked, those that don't fit left out
+            if not isinstance(v, list):
+                return {}, f"`{k}` is a list"
+            out[k] = [got for got, why in (check_args({"required": [], **props[k]["items"]}, x) for x in v[:12]) if not why]
+            continue
         if kind in ("integer", "number") and isinstance(v, str):
             try:
                 v = int(v) if kind == "integer" else float(v)
@@ -1679,7 +1748,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 
@@ -1730,6 +1799,9 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
         return []
     runner = runner or LocalRunner()
     made = []
+    for m in state.modules("live"):                        # one the engine shipped and ships no more (it became part of another) steps aside
+        if m["author"] == SHIPPED and m["kind"] != "thing" and m["name"] not in RULES:
+            disable(state, m["id"], "the engine no longer ships it", now)
     for name in RULES:                                        # the world's own rules, once each, and again when the engine changes one
         man, source = library(name)
         reason = man.pop("reason", "")

@@ -44,7 +44,7 @@ def test_people_and_happenings_as_a_module_reads_them(tmp_path):
         st.add_happening(ts=ts, slot=str(ts), category="fog", tone="neutral", severity="minor", lens="joy", seed="s", context={}, effects=[],
                          effects_line="", meaning={}, text="t", title="T", author="template", status="resolved")
     ctx = M.context(st, s, m, now)
-    assert ctx["people"] == [{"name": "Oriel", "kind": "neighbor"}] and ctx["happenings"]["today"] == 1
+    assert ctx["people"] == [{"name": "Oriel", "kind": "neighbor", "about": "", "home": "Oriel's home"}] and ctx["happenings"]["today"] == 1
     assert ctx["happenings"]["can_remember"] is False
     for i in range(hp.MIN_DIARY):
         st.add_memory(f"note {i}", "diary")

@@ -27,7 +27,7 @@ class PlaceKind:
     refill: float = 15                          # ...and how many come back per hour
     shop_hours: bool = False                    # bounded opening hours (else: open in daylight)
     session: tuple[int, int] = DEFAULT_SESSION  # how long a gather there may be
-    trades: bool = False                        # has booths: buy, sell and pay work here (see market.py)
+    trades: bool = False                        # has booths: the trade module's buy, sell and pay work here
     stalls: bool = False                        # Pip may set out a stall of its own here, and customers stop while it is there
 
 

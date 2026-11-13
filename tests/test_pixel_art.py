@@ -153,7 +153,7 @@ async def test_the_gallery_wall_hangs_the_latest_pictures_and_creations_wear_the
 
 @pytest.mark.asyncio
 async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tmp_path):
-    from tests.test_stall import LOOT
+    from tests.test_trade import LOOT, module as trade, slot
     from tests.test_modules import shipped_layouts
     from app import modules as M
     s, st, agent = await drawer(tmp_path, works_min_gap_minutes=0, modules="on", module_runner="local")
@@ -164,14 +164,15 @@ async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tm
     st.add_work("drawing", "Svg one", "<svg/>")
     st.add_work("writing", "A poem", "words words")
     await call(agent, "draw", title="A poem", pixels=ROWS, palette=PAL)                           # a picture with the same title as the poem
-    st.set_stall("Brygdon", "The Marsh", name="The Marsh", kind="work", qty=3, ask=4, attrs={"work": "drawing"})
-    st.set_stall("Brygdon", "Svg one", name="Svg one", kind="work", qty=1, ask=4, attrs={"work": "drawing"})
-    st.set_stall("Brygdon", "A poem", name="A poem", kind="work", qty=1, ask=3, attrs={"work": "writing"})
-    st.set_stall("Brygdon", "carrots", name="carrots", kind="food", qty=2, ask=1, attrs={})
     clock(st)
     await call(agent, "draw", title="Clock face", pixels=["kkkk"] * 4, palette=PAL, of="Gear Clock")
-    st.set_stall("Brygdon", "Gear Clock", name="Gear Clock", kind="creation", qty=1, ask=9, attrs={})
-    st.set_stall("Brygdon", "Moon Lamp", name="Moon Lamp", kind="creation", qty=1, ask=9, attrs={})
+    trade(st)
+    st.merge_store("trade", {"stall": {slot("Brygdon", name): {"place": "Brygdon", "item": name.lower(), "name": name, "kind": kind, "description": "",
+                                                               "attrs": attrs, "qty": qty, "ask": ask, "sold": 0, "earned": 0, "sold_today": 0, "day": ""}
+                                       for name, kind, qty, ask, attrs in (("The Marsh", "work", 3, 4, {"work": "drawing"}), ("Svg one", "work", 1, 4, {"work": "drawing"}),
+                                                                           ("A poem", "work", 1, 3, {"work": "writing"}), ("carrots", "food", 2, 1, {}),
+                                                                           ("Gear Clock", "creation", 1, 9, {}), ("Moon Lamp", "creation", 1, 9, {}))}})
+    await M.step(st, s, agent.runner)                                                              # trade publishes the stall
     now = time.time()
     m = await rule_live(st, s, agent, "stall-pictures", now)
     assert m["due"] == now + 600
@@ -181,7 +182,6 @@ async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tm
     assert objs["The Marsh"]["rows"] == ROWS and objs["The Marsh"]["tip"]["text"] == "3 on Pip's stall." and objs["Gear Clock"]["rows"] == ["kkkk"] * 4
     assert all(not o["upright"] and o["pos"][2] == -1.7 for o in d["objects"])                  # standing on Pip's stall
     assert {r["item"]: r for r in d["stall"]}["carrots"] == {"item": "carrots", "qty": 2, "ask": 1, "kind": "food"}
-    st.db.execute("DELETE FROM stalls WHERE item = 'The Marsh'")
-    st.db.commit()
+    st.merge_store("trade", {"stall": {slot("Brygdon", "The Marsh"): None}})
     await M.step(st, s, agent.runner, now + 601)                                                   # it looks again
     assert [o["tip"]["title"] for o in WV.scene_view(st, s, None, "Brygdon")["objects"]] == ["Gear Clock"]

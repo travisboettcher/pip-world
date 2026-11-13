@@ -300,7 +300,7 @@ class GameMaster:
     # --- phase 3: companions ------------------------------------------------
     async def structured(self, prompt: str, schema: dict, mentions: bool = False) -> dict | None:
         """An answer as data, for a module's ask with a schema (modules.py): the engine checks it against the schema."""
-        props = {k: {kk: vv for kk, vv in p.items() if kk in ("type", "description", "enum")} for k, p in schema["properties"].items()}
+        props = {k: {kk: vv for kk, vv in p.items() if kk in ("type", "description", "enum", "items")} for k, p in schema["properties"].items()}
         return await self.ask(prompt, {**props, **self._mentions("x" if mentions else "")}, schema["required"], "module_structured")
 
     async def words(self, prompt: str, most: int) -> str | None:
@@ -409,23 +409,6 @@ class GameMaster:
         task = (f"{name} lives near {self.agent.name}. Who {name} is: {persona}\n{about}\n\nPick how {name} looks, for a small pixel-art picture, "
                 "choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in LOOK.items()))
         return await self.ask(task, {f: {"type": "string", "enum": list(v)} for f, v in LOOK.items()}, list(LOOK), "invent_look")
-
-    async def invent_wares(self, name: str, persona: str, life: list[str], told: list[str]) -> dict | None:
-        task = (
-            f"{name} is {self.agent.possessive} neighbor. Who {name} is: {persona}\n"
-            + (f"Lately: {' '.join(life[-3:])}\n" if life else "")
-            + (f"Things {name} has told {self.agent.name}: {'; '.join(told[-8:])}\n" if told else "")
-            + f"\n{name} has a few things to spare and sells them, at home and from a stall at the market one day a week. "
-            "List 2-5 plain, physical things that fit their life and work (what they find, grow, make or keep), as `wares`, each with:\n"
-            "- `name`: a few words, as you'd write it on a label (\"cork floats\", \"carrot seeds\")\n"
-            "- `kind`: material, food, seed or tool (at most one tool)\n"
-            "- `description`: one short line\n"
-            "- `per_day`: how many they can spare in a day, 1-3\n"
-            "No services, nothing alive, nothing magical or rare beyond what this small world has."
-        )
-        ware = {"type": "object", "properties": {"name": {"type": "string"}, "kind": {"type": "string"}, "description": {"type": "string"},
-                                                  "per_day": {"type": "integer"}}, "required": ["name", "kind"]}
-        return await self.ask(task, {"wares": {"type": "array", "items": ware}}, ["wares"], "invent_wares")
 
     async def recall_told(self, name: str, persona: str, said: list[str]) -> list[str] | None:
         task = (

@@ -16,7 +16,7 @@ IMPORTS = ("math", "random", "itertools", "functools", "collections", "dataclass
 FORBIDDEN_NAMES = frozenset({"eval", "exec", "compile", "open", "globals", "locals", "vars", "getattr", "setattr", "delattr", "input",
                              "breakpoint", "memoryview", "help", "exit", "quit", "__import__", "type", "super", "object"})
 FORBIDDEN_ATTRS = frozenset({"format", "format_map"})        # str.format can reach attributes the checks below forbid
-SOURCE_MAX = 20_000
+SOURCE_MAX = 40_000                                         # room for a feature as big as trade
 CPU_SECONDS, MEMORY_MB, WALL_SECONDS, OUTPUT_MAX = 1, 512, 3.0, 64_000
 
 

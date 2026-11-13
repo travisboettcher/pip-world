@@ -154,16 +154,6 @@ CREATE TABLE IF NOT EXISTS reflection_cites (
 );
 CREATE INDEX IF NOT EXISTS reflection_cites_by_reflection ON reflection_cites (reflection_id);
 CREATE TABLE IF NOT EXISTS purses (party TEXT PRIMARY KEY, coins INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS market_prices (   -- how far one booth's price for one item has drifted (see market.py)
-  place TEXT NOT NULL, item TEXT NOT NULL, local REAL NOT NULL, local_at REAL NOT NULL, day TEXT NOT NULL DEFAULT '',
-  sold_today INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (place, item)
-);
-CREATE TABLE IF NOT EXISTS stalls (   -- the agent's own stall at a market (see market.py)
-  place TEXT NOT NULL, item TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', attrs TEXT NOT NULL DEFAULT '{}',
-  qty INTEGER NOT NULL, ask INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, earned INTEGER NOT NULL DEFAULT 0,
-  sold_today INTEGER NOT NULL DEFAULT 0, day TEXT NOT NULL DEFAULT '', PRIMARY KEY (place, item)
-);
-CREATE TABLE IF NOT EXISTS tills (place TEXT PRIMARY KEY, coins INTEGER NOT NULL, day TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS happenings (     -- small events from the world (see happenings.py)
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, slot TEXT NOT NULL, category TEXT NOT NULL, tone TEXT NOT NULL,
   severity TEXT NOT NULL, lens TEXT NOT NULL, seed TEXT NOT NULL, context TEXT NOT NULL DEFAULT '{}', effects TEXT NOT NULL DEFAULT '[]',
@@ -281,7 +271,6 @@ class State:
                 ("characters", "upcoming", "TEXT NOT NULL DEFAULT '[]'"),  # a neighbor's plans: [{what, due_at}]
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
                 ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
-                ("characters", "wares", "TEXT NOT NULL DEFAULT '[]'"),
                 ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),
                 ("works", "pixels", "TEXT NOT NULL DEFAULT ''"),          # a pixel picture: {"rows": [...], "palette": {...}} (art.py)
                 ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks
@@ -293,6 +282,8 @@ class State:
                 ("modules", "happen", "TEXT NOT NULL DEFAULT '[]'"),      # a happening it proposed, waiting to be written (happenings.py)
                 ("modules", "standing", "TEXT NOT NULL DEFAULT '{}'"),    # its status lines for the agent: {title, lines, ready, next_at}
                 ("modules", "requests", "TEXT NOT NULL DEFAULT '[]'"),    # what other modules asked of it, waiting for on_request
+                ("modules", "whereabouts", "TEXT NOT NULL DEFAULT '{}'"), # where it says its people are just now: {name: {at, doing}}
+                ("modules", "notes", "TEXT NOT NULL DEFAULT '{}'"),       # what it says about its people: {name: line}
                 ("modules", "built", "TEXT NOT NULL DEFAULT '{}'"),       # a place module's built layout (layouts.py)      # how they are drawn in the world view (looks.py)     # what they sell: [{name, kind, description, per_day, weight, attrs}]
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
@@ -312,6 +303,7 @@ class State:
             self._normalize_crafts()
             self._seed_abilities()
             self._move_garden()
+            self._move_market()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -654,7 +646,7 @@ class State:
             self.db.execute("DELETE FROM items WHERE id = ? AND qty <= 0", (item_id,))
             self.db.commit()
 
-    # --- coins and markets (see market.py) ------------------------------
+    # --- coins (trade: module_library/trade.py) ----------------------------
     START_COINS = 10
 
     def coins(self, party: str = "pip") -> int:
@@ -672,52 +664,6 @@ class State:
                             (party, total))
             self.db.commit()
         return total
-
-    def price_row(self, place: str, item: str) -> dict | None:
-        with self.lock:
-            row = self.db.execute("SELECT * FROM market_prices WHERE place = ? AND item = ?", (place, item)).fetchone()
-        return dict(row) if row else None
-
-    def set_price_row(self, place: str, item: str, local: float, local_at: float, day: str, sold_today: int) -> None:
-        with self.lock:
-            self.db.execute("INSERT INTO market_prices (place, item, local, local_at, day, sold_today) VALUES (?, ?, ?, ?, ?, ?) "
-                            "ON CONFLICT(place, item) DO UPDATE SET local = excluded.local, local_at = excluded.local_at, "
-                            "day = excluded.day, sold_today = excluded.sold_today",
-                            (place, item, local, local_at, day, sold_today))
-            self.db.commit()
-
-    def stall_rows(self, place: str | None = None) -> list[dict]:
-        """Pip's stall lines at a place (or at every place, by place)."""
-        with self.lock:
-            rows = self.db.execute("SELECT * FROM stalls WHERE place = ? ORDER BY item", (place,)).fetchall() if place is not None else \
-                self.db.execute("SELECT * FROM stalls ORDER BY place, item").fetchall()
-        return [{**dict(r), "attrs": json.loads(r["attrs"])} for r in rows]
-
-    def set_stall(self, place: str, item: str, **fields) -> None:
-        """Create or change one line of a stall (`item` is the name key); a new line needs name, kind, qty and ask."""
-        vals = {k: json.dumps(v) if k == "attrs" else v for k, v in fields.items()}
-        with self.lock:
-            if self.db.execute("SELECT 1 FROM stalls WHERE place = ? AND item = ?", (place, item)).fetchone():
-                self.db.execute(f"UPDATE stalls SET {', '.join(f'{k} = ?' for k in vals)} WHERE place = ? AND item = ?", (*vals.values(), place, item))
-            else:
-                self.db.execute(f"INSERT INTO stalls (place, item, {', '.join(vals)}) VALUES (?, ?, {', '.join('?' for _ in vals)})", (place, item, *vals.values()))
-            self.db.commit()
-
-    def delete_stall(self, place: str, item: str) -> None:
-        with self.lock:
-            self.db.execute("DELETE FROM stalls WHERE place = ? AND item = ?", (place, item))
-            self.db.commit()
-
-    def till_row(self, place: str) -> dict | None:
-        with self.lock:
-            row = self.db.execute("SELECT * FROM tills WHERE place = ?", (place,)).fetchone()
-        return dict(row) if row else None
-
-    def set_till(self, place: str, coins: int, day: str) -> None:
-        with self.lock:
-            self.db.execute("INSERT INTO tills (place, coins, day) VALUES (?, ?, ?) "
-                            "ON CONFLICT(place) DO UPDATE SET coins = excluded.coins, day = excluded.day", (place, int(coins), day))
-            self.db.commit()
 
     # --- happenings (see happenings.py) ---------------------------------
     HAPPENING_JSON = ("context", "effects", "meaning")
@@ -771,6 +717,40 @@ class State:
         if not self.store("garden"):
             self.merge_store("garden", {"plots": plots, **({"meta": {"extra_plots": extra}} if extra else {})})
         self.db.execute("DROP TABLE garden")
+        self.db.commit()
+
+    # --- the market, before it was a module ------------------------------
+    def _move_market(self) -> None:
+        """Once: an install from before 0.38.0 keeps its trade. Prices, tills, the agent's stall, what's on account and the neighbours' wares
+        move into the `trade` module's store (module_library/trade.py), keyed as it keys them, and the old tables go."""
+        import zlib
+
+        def slot(*parts):
+            return "%08x" % zlib.crc32("|".join(parts).encode())
+        tables = {r["name"] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "market_prices" not in tables:
+            return
+        moved: dict = {"prices": {}, "tills": {}, "stall": {}, "accounts": {}, "wares": {}}
+        for r in self.db.execute("SELECT * FROM market_prices"):
+            moved["prices"][slot(r["place"], r["item"])] = {"booth": r["place"], "item": r["item"], "local": r["local"], "at": r["local_at"],
+                                                            "day": r["day"], "sold": r["sold_today"]}
+        for r in self.db.execute("SELECT * FROM tills"):
+            moved["tills"][slot(r["place"])] = {"booth": r["place"], "day": r["day"], "coins": r["coins"]}
+        for r in self.db.execute("SELECT * FROM stalls"):
+            moved["stall"][slot(r["place"], r["item"])] = {**{k: r[k] for k in ("place", "item", "name", "kind", "description", "qty", "ask", "sold",
+                                                                                 "earned", "sold_today", "day")}, "attrs": json.loads(r["attrs"])}
+        for r in self.db.execute("SELECT key, on_account FROM places"):
+            if json.loads(r["on_account"] or "{}"):
+                moved["accounts"][slot(r["key"])] = {"place": r["key"], "items": json.loads(r["on_account"])}
+        if "wares" in {c["name"] for c in self.db.execute("PRAGMA table_info(characters)")}:
+            for r in self.db.execute("SELECT name, wares FROM characters WHERE kind = 'neighbor'"):
+                if json.loads(r["wares"] or "[]"):
+                    moved["wares"][slot(r["name"])] = {"name": r["name"], "wares": json.loads(r["wares"])}
+        if not self.store("trade"):
+            self.merge_store("trade", {k: v for k, v in moved.items() if v})
+        self.db.execute("UPDATE places SET on_account = '{}'")
+        for t in ("market_prices", "stalls", "tills"):
+            self.db.execute(f"DROP TABLE IF EXISTS {t}")
         self.db.commit()
 
     # --- workshop space --------------------------------------------------
@@ -963,7 +943,7 @@ class State:
         return None, "which one? " + ", ".join(c["name"] for c in part)
 
     # --- characters (companions, neighbors, residents of invented places) ----------------------------
-    _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming", "wares", "look")
+    _CHARACTER_JSON = ("heard", "replies", "life", "told", "upcoming", "look")
 
     @classmethod
     def _character(cls, row) -> dict:
@@ -985,7 +965,7 @@ class State:
         return [self._character(r) for r in rows if kind is None or r["kind"] == kind]
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
-    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen", "standing", "requests")
+    _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen", "standing", "requests", "whereabouts", "notes")
 
     def _module(self, row) -> dict:
         return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}

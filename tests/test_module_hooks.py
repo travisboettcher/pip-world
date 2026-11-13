@@ -64,13 +64,12 @@ async def use(agent, name, **args):
 
 # --- manifests -----------------------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("extra,why", [
-    ({"tools": [{"name": "say", "help": "x"}]}, "there is already a tool called say"),
     ({"tools": [{"name": "Bad Name", "help": "x"}]}, "a tool's `name` is 2 to 24 lowercase letters and underscores"),
     ({"tools": [{"name": "dig", "help": "x"}, {"name": "dig", "help": "y"}]}, "there is already a tool called dig"),
     ({"tools": []}, "`tools` is a list of up to 6"),
     ({"tools": [{"name": "dig", "help": "x", "params": {"type": "object", "properties": {"n": {"type": "list"}}}}]}, "`dig`'s `params` is"),
     ({"tools": [{"name": "dig", "help": "x", "params": {"type": "object", "properties": {}, "required": ["n"]}}]}, "`dig`'s `params` is"),
-    ({"tools": [{"name": "dig", "help": "x", "where": ""}]}, "`dig`'s `where` is anywhere, home, or a place's key"),
+    ({"tools": [{"name": "dig", "help": "x", "where": ""}]}, "`dig`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)"),
     ({"tools": [{"name": "dig"}]}, "`dig.help` is a line of text"),
 ])
 def test_a_modules_tools_are_checked(extra, why):
@@ -84,7 +83,7 @@ def test_what_goes_together_in_a_manifest():
         M.check_manifest(rule(name="digger", tools=[{"name": "dig", "help": "x"}]), "world")
     with pytest.raises(M.Refused, match="`take`/`give` and `belongings` go together"):
         M.check_manifest(rule(name="digger", proposes=["take"]), "world")
-    with pytest.raises(M.Refused, match=r"`belongings` is \{takes\?, gives\?, most\}"):
+    with pytest.raises(M.Refused, match=r"`belongings` is \{takes\?, gives\?, most, coins\?\}"):
         M.check_manifest(rule(name="digger", proposes=["take"], belongings={"takes": ["gold"], "most": 1}), "world")
     with pytest.raises(M.Refused, match="`on_request` and `answers` go together"):
         M.check_manifest(rule(name="digger", hooks=["on_request"]), "world")

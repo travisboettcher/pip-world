@@ -124,7 +124,7 @@ def _plan(ctx, cat, tone, severity, rng):
         booth = rng.choice(booths)
         if tone == "neutral":
             return {"names": [booth]}
-        return {"effects": [{"kind": "price", "place": booth, **({"item": foods[0]["name"]} if foods else {})}]}
+        return {"effects": [{"kind": "request", "module": "trade", "what": "price", "args": {"place": booth, **({"item": foods[0]["name"]} if foods else {})}}]}
     if cat == "mishap":
         if tone == "neutral":
             return {"names": tools[:1]}

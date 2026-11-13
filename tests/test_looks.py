@@ -5,7 +5,6 @@ import time
 
 import pytest
 
-import app.neighbors as nb
 from app import looks as L
 from app import world_view as WV
 from app.config import Settings
@@ -60,30 +59,31 @@ async def test_each_character_gets_a_look_once_from_the_gm_or_after_two_failures
     assert st.characters("neighbor")[0]["look"] == {}
 
 
-def test_a_scene_shows_who_lives_at_a_home_even_when_they_are_out(tmp_path, monkeypatch):
-    from app import market as M
-    from tests.test_stall import LOOT
-    s, st, gm, agent = make(tmp_path)
-    ch = neighbor(st, s)
-    st.update_character(ch["id"], persona="A tall, white-haired badger.", wares=nb.clean_wares([{"name": "honey", "kind": "food"}, {"name": "beeswax", "kind": "material"}]))
+def test_a_scene_shows_who_lives_at_a_home_even_when_they_are_out(tmp_path):
+    import asyncio
+    from app import modules as M
+    from tests.test_trade import G, her_day, marigold, slot, world
+    s, st, agent = world(tmp_path)
+    ch = marigold(st, s, wares=[{"name": "honey", "kind": "food", "description": "", "per_day": 1}, {"name": "beeswax", "kind": "material", "description": "", "per_day": 1}])
+    st.update_character(ch["id"], persona="A tall, white-haired badger.")
     ch = st.characters("neighbor")[0]
-    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0, walk_minutes=10.0, loot=LOOT, verbs={})
-    wday = time.localtime().tm_wday
-    monkeypatch.setattr(M, "market_day", lambda c: (wday + 2) % 7)
+    day = G["WEEKDAYS"][G["crc32"]("Marigold") % 7]
+    asyncio.run(M.step(st, s, None, her_day(hers=False)))
     d = WV.scene_view(st, s, None, "Marigold's home")
     lh = d["lives_here"]
-    assert lh["name"] == "Marigold" and lh["wares"] == ["honey", "beeswax"] and lh["market_day"] == M.WEEKDAYS[(wday + 2) % 7] and lh["away_at"] is None
+    assert lh["name"] == "Marigold" and lh["wares"] == ["honey", "beeswax"] and lh["market_day"] == day and lh["away_at"] is None
     assert lh["look"] == L.fallback("Marigold", ch["persona"]) and lh["look"]["height"] == "tall" and lh["look"]["hair"] == "white"   # not chosen yet: from the persona
     assert d["present"][0]["look"] == lh["look"]
     assert "beehives" in d["place"]["props"]
-    monkeypatch.setattr(M, "market_day", lambda c: wday)
+    asyncio.run(M.step(st, s, None, her_day()))
     d = WV.scene_view(st, s, None, "Marigold's home")
     assert d["lives_here"]["away_at"] == "Brygdon" and d["present"] == []
     m = WV.scene_view(st, s, None, "Brygdon")
     assert [b["whose"] for b in m["booths"]] == ["", "Marigold"] and m["booths"][1]["look"] == lh["look"] and "look" not in m["booths"][0]
     st.update_character(ch["id"], look={"height": "tall", "hair": "grey", "skin": "pale", "top": "red", "bottom": "black", "accessory": "hat"})
     assert WV.scene_view(st, s, None, "Brygdon")["present"][0]["look"]["accessory"] == "hat"
-    st.update_character(ch["id"], wares=[])
+    st.merge_store("trade", {"wares": {slot("Marigold"): None}})
+    asyncio.run(M.step(st, s, None, her_day()))
     assert WV.scene_view(st, s, None, "Marigold's home")["lives_here"]["market_day"] is None
     assert WV.scene_view(st, s, None)["lives_here"] is None
 
@@ -104,12 +104,19 @@ def test_the_setting():
 
 
 def test_a_homes_props_come_from_any_of_its_keepers_words(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    ch = neighbor(st, s)
+    import asyncio
+    from app import modules as M
+    from tests.test_trade import marigold, world
+    s, st, agent = world(tmp_path)
+    ch = marigold(st, s, wares=None)
     for field, value, prop in [("about", "keeps a loom", "loom"), ("persona", "fires a kiln", "kiln"), ("told", ["the anvil rang"], "anvil")]:
-        st.update_character(ch["id"], **{"about": "", "persona": "", "told": [], "wares": [], field: value})
+        st.update_character(ch["id"], **{"about": "", "persona": "", "told": [], field: value})
         assert WV.scene_view(st, s, None, "Marigold's home")["place"]["props"] == [prop]
-    st.update_character(ch["id"], about="", persona="", told=[], wares=nb.clean_wares([{"name": "dried herbs", "kind": "food"}, {"name": "jam", "kind": "food"}]))
+    st.update_character(ch["id"], about="", persona="", told=[])
+    marigold_wares = [{"name": "dried herbs", "kind": "food", "description": "", "per_day": 1}, {"name": "jam", "kind": "food", "description": "", "per_day": 1}]
+    from tests.test_trade import slot
+    st.merge_store("trade", {"wares": {slot("Marigold"): {"name": "Marigold", "wares": [{**w, "weight": None, "attrs": {}} for w in marigold_wares]}}})
+    asyncio.run(M.step(st, s, None))                                                  # what trade notes of her
     assert WV.scene_view(st, s, None, "Marigold's home")["place"]["props"] == ["herbs"]
     assert WV.scene_view(st, s, None, "Marigold's home")["lives_here"]["about"] == ""
     st.update_character(ch["id"], about="Bakes bread.")
@@ -178,14 +185,16 @@ async def test_two_failures_keep_the_fallback(tmp_path):
 
 
 def test_what_is_known_of_a_place(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    ch = neighbor(st, s)
-    st.update_character(ch["id"], told=["the hives are quiet"], wares=nb.clean_wares([{"name": "honey", "kind": "food"}, {"name": "wax", "kind": "material"}]))
+    import asyncio
+    from app import modules as M
+    from tests.test_trade import marigold, world
+    s, st, agent = world(tmp_path)
+    ch = marigold(st, s, wares=[{"name": "honey", "kind": "food", "description": "", "per_day": 1}, {"name": "wax", "kind": "material", "description": "", "per_day": 1}])
+    st.update_character(ch["id"], told=["the hives are quiet"])
+    asyncio.run(M.step(st, s, None))
     text = L.place_text(st, "Marigold's home")
-    assert ch["about"] in text and ch["persona"] in text and "the hives are quiet" in text and "honey wax" in text
-    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[9, 17], daylight_only=0, walk_minutes=10.0,
-                 loot=[], verbs={}, description="A square.", blurb="stalls")
-    st.update_place("Brygdon", mentions=[{"by": "Jo", "there": "by the river", "items": [], "ts": 0}])
+    assert ch["about"] in text and ch["persona"] in text and "the hives are quiet" in text and "sells honey, wax at home" in text      # what trade notes
+    st.update_place("Brygdon", description="A square.", blurb="stalls", mentions=[{"by": "Jo", "there": "by the river", "items": [], "ts": 0}])
     assert L.place_text(st, "Brygdon") == "A square. stalls by the river"
     assert L.place_text(st, "library") == "a library of tall shelves" and L.place_text(st, "workshop") == "a workshop with a small garden" and L.place_text(st, "Nowhere") == ""
 

@@ -151,23 +151,14 @@ async def test_what_a_module_shows_lands_on_the_right_place_or_nowhere(tmp_path)
     assert [o["key"] for o in WV.scene_view(st, s, None)["objects"]] == ["clock-face:c"]
 
 
-def test_the_new_reads_works_and_stalls(tmp_path):
+def test_the_works_read(tmp_path):
     s, st, agent = modular(tmp_path)
     for i in range(M.WORKS_SHOWN + 2):
         st.add_work("drawing", f"P{i}", "<svg/>", pixels={"rows": ["kkkk"] * 4, "palette": {"k": "#000"}}, subject="Gear Clock" if i == 0 else "")
     st.add_work("drawing", "svg only", "<svg/>")
-    st.set_stall("Brygdon", "P1", name="P1", kind="work", qty=3, ask=4, attrs={"work": "drawing"})
-    st.set_stall("Brygdon", "carrots", name="carrots", kind="food", qty=2, ask=1, attrs={})
-    st.set_stall("Saltholm", "Gear Clock", name="Gear Clock", kind="creation", qty=1, ask=9, attrs={})
-    ctx = M.context(st, s, live(st, rule(reads=["works", "stalls"]), "x"), NOW)
+    ctx = M.context(st, s, live(st, rule(reads=["works"]), "x"), NOW)
     assert len(ctx["works"]) == M.WORKS_SHOWN and ctx["works"][0]["title"] == f"P{M.WORKS_SHOWN + 1}"
-    assert set(ctx["works"][0]) == {"id", "title", "subject", "rows", "palette"}
-    short = [{k: r[k] for k in ("place", "item", "kind", "qty", "work") if k in r} for r in ctx["stalls"]]
-    assert short == [{"place": "Brygdon", "item": "P1", "kind": "work", "qty": 3, "work": "drawing"},
-                     {"place": "Brygdon", "item": "carrots", "kind": "food", "qty": 2},
-                     {"place": "Saltholm", "item": "Gear Clock", "kind": "creation", "qty": 1}]
-    assert all(r["selling"] is False and r["sold_today"] == 0 and r["ask"] > 0 and r["fair"] > 0 for r in ctx["stalls"])
-    assert [r["item"] for r in st.stall_rows()] == ["P1", "carrots", "Gear Clock"] and [r["item"] for r in st.stall_rows("Saltholm")] == ["Gear Clock"]
+    assert set(ctx["works"][0]) == {"id", "title", "subject", "rows", "palette"} and "stalls" not in M.READS
 
 
 @pytest.mark.asyncio

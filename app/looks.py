@@ -128,12 +128,13 @@ async def ensure_scenes(state, settings, gm, library, now: float) -> None:
 def place_text(state, key: str) -> str:
     """Everything known about a place, for picking its look: its record, or whoever lives there."""
     from . import places
+    from .modules import notes_on
     rec = state.place_row(key)
     if rec:
         return " ".join([rec.get("description") or "", rec.get("blurb") or "", *[m.get("there", "") for m in rec.get("mentions") or []]])
     ch = places.neighbor_at(state, key)
     if ch:
-        return " ".join([ch["about"], ch["persona"], " ".join(ch["told"]), " ".join(w["name"] for w in ch.get("wares") or [])])
+        return " ".join([ch["about"], ch["persona"], " ".join(ch["told"]), " ".join(notes_on(state, ch["name"]))])
     d = world_pack.active().data("places")
     built_in = {p["key"]: p.get("about", "") for p in [d.get("home", {}), d.get("library", {}), *d.get("start", [])] if p.get("key")}
     return built_in.get(key, "")

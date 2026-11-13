@@ -154,7 +154,7 @@ def test_rules_can_read_the_places(tmp_path):
     m = live(st, rule(reads=["places"]), "x")
     places = M.context(st, s, m, NOW)["places"]
     assert next(p for p in places if p["key"] == "workshop")["kind"] == "home"
-    assert all(set(p) == {"key", "label", "kind"} for p in places)
+    assert all(set(p) == {"key", "label", "kind", "trades", "stalls", "hours", "goods"} for p in places)
 
 
 @pytest.mark.asyncio

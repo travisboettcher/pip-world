@@ -133,7 +133,7 @@ class Settings:
     dashboard_url: str = ""                 # the owner's dashboard address, for links in notices (e.g. https://pip.example.internal)
     place_scenes: str = "off"               # on: each place gets scene details (walls, roof, palette, setting, props), chosen once (looks.py); off here for tests
     character_looks: str = "off"            # on: each neighbor or resident gets a look for the world view, chosen once (looks.py); off here for tests
-    character_booths: str = "off"           # on: neighbors sell their own wares at home and at a market one day a week (market.py); off here for tests
+    character_booths: str = "off"           # on: neighbors sell their own wares at home and at a market one day a week (the trade module's `wares`); off here for tests
     reminders: str = "off"                  # on: old memories come to mind by themselves (reminders.py); log: chosen and logged, not shown; off here for tests
     reminders_shown: int = 2                # slots in a world turn (a conversation scene has one)
     remind_cooldown_hours: float = 12       # a memory brought to mind stays out of mind this long, unless someone or somewhere new cues it
@@ -247,7 +247,7 @@ class Settings:
             library_provider=(e("LIBRARY_PROVIDER") or "auto").strip().lower(),
             walk_minutes=_float("WALK_MINUTES", 10),
             read_chars_per_minute=_int("READ_CHARS_PER_MINUTE", 700),
-            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,buy,sell,pay,feel").split(",") if t.strip()],
+            tools=[t.strip() for t in (e("TOOLS") or "say,set_activity,eat,rest,note_to_self,edit_note,resolve_note,use_item,web_search,start_project,work_on,abandon_project,tend,recall,write_letter,go_to,browse,read,where_to,experiment,revise_plan,sleep,undo_decision,resume_project,send_postcard,draw,write_piece,look,settle,feel").split(",") if t.strip()],
             search_provider=(e("SEARCH_PROVIDER") or "tavily").strip().lower(),
             tavily_api_key=e("TAVILY_API_KEY", ""),
             matrix_homeserver=e("MATRIX_HOMESERVER", ""),

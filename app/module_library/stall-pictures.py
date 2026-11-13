@@ -7,7 +7,7 @@ def _pictures(ctx):
     by_title = {w["title"].lower(): w for w in reversed(ctx["works"])}          # the newest drawing with a title wins
     by_subject = {w["subject"].lower(): w for w in reversed(ctx["works"]) if w["subject"]}
     show = []
-    for line in ctx["stalls"]:
+    for line in ((ctx.get("facts") or {}).get("trade") or {}).get("stall") or []:          # what trade publishes
         copy = line["kind"] == "work" and line.get("work") == "drawing"
         w = by_title.get(line["item"].lower()) if copy else by_subject.get(line["item"].lower()) if line["kind"] == "creation" else None
         if not w:

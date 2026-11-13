@@ -118,18 +118,17 @@ def test_free_time_at_its_edges(tmp_path):
 
 
 # --- the world check -------------------------------------------------------------------------------------------------------------------------
-def test_the_world_check_alerts_drifts_prunes_and_maps(tmp_path, monkeypatch):
-    from app import emotions, market, worldmap
+def test_the_world_check_alerts_drifts_and_maps(tmp_path, monkeypatch):
+    from app import emotions, worldmap
     s, st, gm, agent = make(tmp_path)
     seen = []
     monkeypatch.setattr(emotions, "drift", lambda state, settings: seen.append(("drift", state, settings)))
-    monkeypatch.setattr(market, "prune", lambda state: seen.append(("prune", state)))
     monkeypatch.setattr(worldmap, "sync", lambda state, settings, library: seen.append(("sync", state, settings, library)))
     agent.library = "lib"
     st.update_agent(hunger=0.79, updated_at=time.time() - 3600)
     agent.check_world()
     assert st.events(1)[0]["kind"] == "alert" and st.events(1)[0]["data"]["stat"] == "hunger" and agent._wake.is_set()
-    assert seen == [("drift", st, s), ("prune", st), ("sync", st, s, "lib")]
+    assert seen == [("drift", st, s), ("sync", st, s, "lib")]
 
 
 # --- what a finished or interrupted session is handed ------------------------------------------------------------------------------------------

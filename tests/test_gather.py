@@ -207,19 +207,35 @@ async def test_gathering_needs_a_place_that_offers_it_and_daylight(tmp_path):
     assert (await gather(agent)).startswith("you set about foraging at the woods")
 
 
-async def test_a_shop_haul_goes_on_account(tmp_path):
+async def test_a_shop_haul_goes_on_account_with_trade(tmp_path):
     from tests.test_invented_places import real_shop
+    from tests.test_trade import account, module as trade, slot
     s, st, gm, agent = setup(tmp_path, [report(text="You pick through the drawers.")], where="Saltholm")
     real_shop(st)
-    st.update_place("Saltholm", on_account={"brass wire": 2}, hours=None)             # open whatever the hour the tests run at
+    st.update_place("Saltholm", hours=None)                                       # open whatever the hour the tests run at
     st.update_agent(location="Saltholm")
+    t = trade(st)
+    st.merge_store("trade", {"accounts": {slot("Saltholm"): {"place": "Saltholm", "items": {"brass wire": 2}}}})
     assert (await gather(agent, minutes=15)).startswith("you set about rummaging in the ironmonger's drawer at Saltholm for 15 min.")
     await finish(agent, s)
     ev = haul(st)
-    owed = st.place_row("Saltholm")["on_account"]
-    assert sum(owed.values()) == 2 + sum(i["qty"] for i in ev["items"])
+    assert st.module(t["id"])["requests"][0]["what"] == "owe"
+    st.update_module(t["id"], due=time.time())
+    await M.step(st, s, agent.runner)                                             # trade takes the request on its next turn
+    assert sum(account(st, "Saltholm").values()) == 2 + sum(i["qty"] for i in ev["items"])
     assert ev["text"] == "You pick through the drawers. It's on account at Saltholm: they're happy for you to settle up later."
     assert st.agent()["description"] == "just back from rummaging in the ironmonger's drawer at Saltholm"
+
+
+async def test_without_trade_a_shop_haul_is_simply_had(tmp_path):
+    from tests.test_invented_places import real_shop
+    s, st, gm, agent = setup(tmp_path, [report(text="You pick through the drawers.")], where="Saltholm")
+    real_shop(st)
+    st.update_place("Saltholm", hours=None)
+    st.update_agent(location="Saltholm")
+    await gather(agent, minutes=15)
+    await finish(agent, s)
+    assert haul(st)["text"] == "You pick through the drawers." and haul(st)["items"]
 
 
 async def test_practice_makes_rare_finds_likelier(tmp_path, monkeypatch):

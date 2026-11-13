@@ -109,8 +109,9 @@ some of the starting places out.
 logged moment that wakes the agent (a crop ripening), and what other modules may ask of it (`hurry`, `crop`, `add_plot`). Ashfall's
 version might be a still for clean water, or a salvage bench. See DESIGN-modules.md, "What a feature needs", for every hook.
 
-**Trade** (phase 5): include `std:market` with params (the currency's name, how prices move), and give a place kind `trades: true`.
-The village's market and Wren's own stall then work as Pip's do.
+**Trade** (works today; the shipped `trade` module): give a place kind `trades: true` (and `stalls: true` for a market) and its
+`finds` are what its booth sells; the village's market and Wren's own stall then work as Pip's do. Its prices, tills and stall live in
+the module's store, so a world that trades differently (barter, ration chits) copies `app/module_library/trade.py` and changes it.
 
 **People** (works today for voices; phase 5 for characters with letters and visits): a village of survivors starts as a module with
 `voices`: the quartermaster, the medic, a child who follows Wren around. Each `on_message` keeps its own memory and `ask`s for its

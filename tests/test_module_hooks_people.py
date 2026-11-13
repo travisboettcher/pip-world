@@ -24,7 +24,8 @@ def test_an_ask_may_want_its_answer_as_data():
     assert got == {"prompt": "p", "purpose": "", "most": 300, "schema": {"type": "object", "properties": PROPS, "required": ["name"]}, "mentions": True}
     assert "schema" not in M._ask({"prompt": "p"}) and "mentions" not in M._ask({"prompt": "p", "mentions": False})
     assert M._ask({"prompt": "p", "schema": {"properties": {f"a{c}": {"type": "string"} for c in "abcdefghijkl"}}})["schema"]["required"] == []
-    shape = "`ask.schema` is {properties, required?}: up to 12 answers, each {type (string, integer, number, boolean), description?, enum?}"
+    shape = ("`ask.schema` is {properties, required?}: up to 12 answers, each {type (string, integer, number, boolean), description?, enum?}, or a list of up "
+             "to 12 objects ({type: array, items: {type: object, properties, required?}})")
     for bad in ({"properties": {}}, {"properties": {f"a{c}": {"type": "string"} for c in "abcdefghijklm"}}, {"properties": PROPS, "required": ["x"]},
                 {"properties": {"n": {"type": "list"}}}, {"properties": PROPS, "x": 1}, {"properties": PROPS, "required": "name"}, []):
         assert refused(M._ask, {"prompt": "p", "schema": bad}) == shape
@@ -157,11 +158,10 @@ async def test_the_neighbours_step_hands_on_what_it_has(tmp_path, monkeypatch):
 
     async def rec(name, *args):
         seen.append((name, args))
-    monkeypatch.setattr(nb, "ensure_wares", lambda *a: rec("wares", *a))
     monkeypatch.setattr(looks, "ensure", lambda *a: rec("looks", *a))
     monkeypatch.setattr(looks, "ensure_scenes", lambda *a: rec("scenes", *a))
     await nb.step(st, s, "gm", __import__("random").Random(1), 1000.0, library="lib")
-    assert seen == [("wares", (st, s, "gm", 1000.0)), ("looks", (st, s, "gm", 1000.0)), ("scenes", (st, s, "gm", "lib", 1000.0))]
+    assert seen == [("looks", (st, s, "gm", 1000.0)), ("scenes", (st, s, "gm", "lib", 1000.0))] and not hasattr(nb, "ensure_wares")
     ch = st.add_character("Ann", "resident", None, "x", 60, 0)
     st.update_character(ch["id"], upcoming=[{"what": "a fair", "due_at": 0}])
     await nb.step(st, s, "gm", __import__("random").Random(1), 1000.0 + 4 * 86400)

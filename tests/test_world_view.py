@@ -161,11 +161,16 @@ async def test_a_work_session_names_its_project_and_stage(tmp_path):
 
 
 def test_a_market_scene_lists_its_booths_and_pips_stall(tmp_path):
-    from tests.test_stall import LOOT
-    s, st, gm, agent = make(tmp_path)
+    import asyncio
+    from app import modules as M
+    from tests.test_trade import LOOT, module as trade, slot
+    s, st, gm, agent = make(tmp_path, modules="on", module_runner="local")
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={"browse": ["see", None]}, description="A market by the quay.")
-    st.set_stall("Brygdon", "carrots", name="carrots", kind="food", description="", attrs={}, qty=6, ask=4)
+    trade(st)
+    st.merge_store("trade", {"stall": {slot("Brygdon", "carrot"): {"place": "Brygdon", "item": "carrot", "name": "carrots", "kind": "food", "description": "",
+                                                                    "attrs": {}, "qty": 6, "ask": 4, "sold": 0, "earned": 0, "sold_today": 0, "day": ""}}})
+    asyncio.run(M.step(st, s, None))                                     # what trade publishes is what the scene shows
     d = WV.scene_view(st, s, None, "Brygdon")
     assert d["place"]["kind"] == "market" and d["place"]["hours"] == [0, 24] and d["place"]["open"] and d["place"]["coastal"]
     assert d["place"]["description"] == "A market by the quay."
@@ -186,12 +191,16 @@ def test_the_scene_endpoint_is_public_and_says_when_a_place_is_unknown(tmp_path)
 
 
 def test_the_scene_carries_exactly_these_facts(tmp_path):
+    import asyncio
     import json
-    from tests.test_stall import LOOT
-    s, st, gm, agent = make(tmp_path, weather=True)
+    from app import modules as M
+    from tests.test_trade import LOOT, module as trade
+    s, st, gm, agent = make(tmp_path, weather=True, modules="on", module_runner="local")
     st.set_meta(weather=json.dumps({"condition": "rainy", "temp": 9.0, "unit": "°C", "above_horizon": True, "next_rising": None, "next_setting": None}), weather_at=time.time())
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={}, blurb="the square")
+    trade(st)
+    asyncio.run(M.step(st, s, None))
     d = WV.scene_view(st, s, None, "Brygdon")
     assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props", "scene", "finds"}
     assert d["place"]["label"] == "Brygdon" and d["place"]["blurb"] == "the square" and d["place"]["description"] == "" and d["place"]["heard_only"] is False

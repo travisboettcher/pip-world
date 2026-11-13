@@ -50,8 +50,8 @@ def place_of(state, ch: dict) -> str | None:
     """Where a character can be met in person: a neighbor at home, a resident at their place while it's in the world.
     None for a companion, or for a resident whose place the owner removed (they're kept, but out of reach)."""
     if ch["kind"] == "neighbor":
-        from .market import away_at          # on their market day a neighbor with wares keeps a stall there, not at home
-        return away_at(state, ch, time.time()) or home_of(ch)
+        from .modules import whereabouts     # somewhere else just now, if a live module says so (trade: a stall on market day)
+        return (whereabouts(state, ch["name"]) or {}).get("at") or home_of(ch)
     rec = state.place_row(ch["place"]) if ch["kind"] == "resident" else None
     return rec["key"] if rec and rec["status"] == "real" else None
 
@@ -65,6 +65,18 @@ def present_at(state) -> str | None:
     """Where Pip is in company: its location, or None while it's walking (it has left, and hasn't arrived)."""
     sess = state.session()
     return None if sess and sess["kind"] == "walk" else state.agent()["location"]
+
+
+def kind_of(state, key: str) -> str:
+    """What kind of place a key is: "home", "neighbor" (someone's home), a built-in place's kind from the pack, or an invented place's."""
+    if key == home_key():
+        return "home"
+    if key.endswith(HOME_SUFFIX):
+        return "neighbor"
+    row = state.place_row(key)
+    if row:
+        return row["kind"]
+    return next((p.get("kind", "") for p in _data().get("start", []) if p["key"] == key), "")
 
 
 def scope_of(location: str) -> str:

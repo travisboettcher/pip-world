@@ -119,7 +119,10 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           them, and `owe` (until the market moves)
     - [x] 5b (0.37.0): neighbours: the shipped `neighborhood` module invents the neighbour and asks them to write first; structured asks,
           the `character` and `letter` hooks (letters stay the engine's, as conversation at a distance)
-    - [ ] 5c: the market
+    - [x] 5c (0.38.0): trade: the shipped `trade` module (booths, prices, tills, the agent's stall and its customers, accounts, the
+          neighbours' wares and market days); `coins`, `part_with`, `whereabouts` and `notes`; module tools that take over an engine
+          tool's name where they apply; the `scene` and `for_sale` conventions (the engine's market removed; an older install's moves
+          into the module's store)
     - [ ] 5d: the library (sources)
     - [ ] 5e: weather and calendar (sources)
     - [ ] 5f: crafting

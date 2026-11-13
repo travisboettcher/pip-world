@@ -33,7 +33,7 @@ def test_tools_at_their_limits():
     for bad in (params(9), {"type": "array", "properties": {}}, {"type": "object", "properties": {}, "required": "a"}, [1], {"properties": {}}):
         assert refused(M._tools, [tool(params=bad)], "world") == why
     assert M._tools([tool(where="x" * 60)], "world")[0]["where"] == "x" * 60
-    assert refused(M._tools, [tool(where="x" * 61)], "world") == "`dig`'s `where` is anywhere, home, or a place's key"
+    assert refused(M._tools, [tool(where="x" * 61)], "world") == "`dig`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)"
     assert M._tools([tool(first=" x" * 30)], "world")[0]["first"] == ("x " * 30).strip()
     first = "`dig`'s `first` is a few words for the first time it's used (\"planted something\")"
     for bad in ("x" * 61, " ", 3):
@@ -54,7 +54,8 @@ def test_a_tools_arguments_at_their_limits():
 def test_belongings_at_their_limits():
     assert M._belongings({"most": 1}) == {"takes": [], "gives": [], "most": 1}
     assert M._belongings({"gives": ["food"], "most": 20})["gives"] == ["food"]
-    why = ("`belongings` is {takes?, gives?, most}: kinds of thing (food, material, seed, tool), and at most 1 to 20 at a time")
+    why = ("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (food, material, seed, tool), at most 1 to 20 at a time, and coins (at "
+           "most 500 a call)")
     for bad in ({"most": 0}, {"most": 21}, {"most": 2, "x": 1}, [], {"gives": ["gold"], "most": 1}, {"takes": "seed", "most": 1}):
         assert refused(M._belongings, bad) == why
 
@@ -65,7 +66,7 @@ def test_belongings_in_a_world_with_no_kinds(tmp_path):
     from tests.test_world_pack import pack_dir
     try:
         W.set_active(W.load(Settings(world_pack=str(pack_dir(tmp_path)))))
-        assert refused(M._belongings, {"takes": ["seed"], "most": 1}).startswith("`belongings` is {takes?, gives?, most}: kinds of thing (this world has none)")
+        assert refused(M._belongings, {"takes": ["seed"], "most": 1}).startswith("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (this world has none)")
     finally:
         W.set_active(W.load(Settings()))
 

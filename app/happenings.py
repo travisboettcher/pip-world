@@ -14,10 +14,10 @@ from datetime import datetime
 
 from . import emotions as emo
 from . import creations as cr
-from . import finds, market
+from . import finds
 from . import sleep as sleepmod
 from .state import name_key
-from .text import clip
+from .text import clip, coins_text
 from . import stats as stats_mod
 from . import tone as tone_mod
 from . import world_pack
@@ -40,7 +40,7 @@ OLD_NOTE_DAYS = 2                                                       # a note
 MIN_DIARY = 7
 # The words a happening may not use, its length, and the size of every effect are the world's (its pack's tone.json, app/tone.py); the old
 # names still answer, from the active world.
-_OLD_SIZES = {"LENS_AMOUNT": "lens", "ENERGY": "stat", "PRICE_UNITS": "price_units", "COIN_CAPS": "coin_caps",
+_OLD_SIZES = {"LENS_AMOUNT": "lens", "ENERGY": "stat", "COIN_CAPS": "coin_caps",
               "FOUND_COINS": "found_coins", "FOUND_ITEMS": "found_items",
               "MENDING_QTY": "mending_qty", "LOSS_SHARE": "food_loss"}
 _OLD_TEXT = {"MAX_TEXT": "max", "MIN_TEXT": "min", "TITLE_MAX": "title_max"}
@@ -110,7 +110,6 @@ def world(state, settings, now: float) -> dict:
     """The facts the categories and the author may use."""
     from . import places  # places imports sleep, and this module is imported by the loop: keep the import local
     foods = sorted((i for i in state.items() if i["kind"] == "food"), key=lambda i: -i["qty"])
-    booths = [r for r in state.place_rows() if r["status"] == "real" and "buy" in places.invented_place(r).verbs]
     creations = state.creations()
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(),
@@ -118,7 +117,7 @@ def world(state, settings, now: float) -> dict:
             "low": stats_mod.low(state),
             "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
             "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],
-            "foods": foods, "booths": booths, "period": sleepmod.period(settings, now),
+            "foods": foods, "period": sleepmod.period(settings, now),
             "neighbors": [c["name"] for c in state.characters("neighbor")],
             "creations": [c["name"] for c in creations],
             "stoppable": [{"id": c["id"], "name": c["name"]} for c in creations if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now)],
@@ -189,7 +188,7 @@ def _count(qty: int, name: str) -> str:
 def describe(e: dict) -> str:
     kind = e["kind"]
     if kind == "coins":
-        return f"You {('are given' if e.get('gift') else 'find') if e['delta'] > 0 else 'lose'} {market.coins_text(abs(e['delta']))}."
+        return f"You {('are given' if e.get('gift') else 'find') if e['delta'] > 0 else 'lose'} {coins_text(abs(e['delta']))}."
     if kind == "item":
         return f"You {'are given' if e.get('gift') else 'find'} {_count(e['qty'], e['name'])}."
     if kind == "creation_stop":
@@ -205,9 +204,6 @@ def describe(e: dict) -> str:
         name = e.get("stat", kind)
         label = stats_mod.declared().get(name, {}).get("label", name)
         return f"Your {label} {'rises' if e['delta'] > 0 else 'falls'} by {_percent(e['delta'])}%."
-    if kind == "price":
-        pct = round(abs((1 + market.PRICE_STEP) ** e["units"] - 1 if e["units"] > 0 else 1 - (1 - market.PRICE_STEP) ** -e["units"]) * 100)
-        return f"{e['item'].capitalize()} fetches about {pct}% {'more' if e['units'] > 0 else 'less'} at {e['place']} for now."
     raise ValueError(f"unknown effect {kind!r}")
 
 
@@ -232,8 +228,6 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
             d = stats_mod.declared(state.s).get(name)
             if d is not None:
                 state.update_agent(**{name: stats_mod.bounded(d, state.agent()[name] + e["delta"])})
-        elif kind == "price":
-            market.nudge(state, e["place"], e["item"], e["units"], now)
         elif kind == "creation_stop":
             c = next((c for c in state.creations() if c["id"] == e["id"]), None)
             if c and "upkeep" in c["spec"]["capabilities"]:
@@ -356,9 +350,9 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
 # day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
-INTENTS = ("coins", "item", "food_loss", "stat", "price", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat
+INTENTS = ("coins", "item", "food_loss", "stat", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
-GAINS, LOSSES = {"coins", "item", "stat", "price", "news", "request"}, {"coins", "food_loss", "stat", "price", "stop", "news", "request"}
+GAINS, LOSSES = {"coins", "item", "stat", "news", "request"}, {"coins", "food_loss", "stat", "stop", "news", "request"}
 
 
 def _kinds() -> str:
@@ -368,7 +362,7 @@ def _kinds() -> str:
 def world_names(w: dict) -> set:
     """Every name a happening may mention: neighbors, creations, belongings, tools, places, and what live modules publish as `names`."""
     return {n.lower() for n in [*w["neighbors"], *w["creations"], *w.get("known", []), *(f["name"] for f in w["foods"]), *w["tools"],
-                                *(b["key"] for b in w["booths"]), *w.get("places", [])]}
+                                *w.get("places", [])]}
 
 
 def _intent(w, tone, severity, i: dict, rng) -> Plan:
@@ -424,15 +418,6 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if tone == "bad" and w["low"]:
             raise ValueError(f"{world_pack.active().agent.name} is too low already")
         return Plan([{"kind": "stat", "stat": name, "delta": sign * stats_mod.good_sign(declared[name]) * tone_mod.size("stat", severity)}])
-    if kind == "price":
-        booth = next((b for b in w["booths"] if b["key"] == i.get("place")), None)
-        if not booth:
-            raise ValueError("`place` is the key of a place that sells")
-        pool = [f["name"] for f in w["foods"]] + [e[0] for e in booth["loot"] or []]
-        item = str(i.get("item") or "").strip().lower() or (pool[rng.randrange(len(pool))] if pool else "")
-        if not item or item not in {p.lower() for p in pool}:
-            raise ValueError(f"`item` is something sold at {booth['key']} or that {world_pack.active().agent.name} has")
-        return Plan([{"kind": "price", "place": booth["key"], "item": item, "units": sign * tone_mod.size("price_units", severity)}], [booth["key"], item])
     if kind == "stop":
         c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
         if not c or severity == "minor":

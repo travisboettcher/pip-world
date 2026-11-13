@@ -1,7 +1,7 @@
 # Gathering (docs/DESIGN-world-packs.md, phase 5a): the `gather` tool wherever a place lists it, a session of real time, and when it
 # ends a haul drawn from the place's find table (the engine's place data: `here`), smaller the more picked over the place is and a
 # little kinder to rare things the better the agent's practice. What is found is given (and remembered where), the place is drawn
-# down, the practice counts, a shop's haul goes on account, and the model is asked for the words.
+# down, the practice counts, a shop's haul goes on account (trade keeps it), and the model is asked for the words.
 import random
 
 RARE_WEIGHT = 6          # things at or below this weight are rare: practice helps find them
@@ -78,11 +78,11 @@ def on_time(ctx):
         out["practice"] = {a: minutes / len(practice) for a in practice}
     if found:
         out["give"] = [{"item": f[0], "qty": min(MOST, f[2]), "kind": f[1], "description": f[3], "attrs": f[4], "at": here["key"]} for f in found]
-        if here["shop_hours"] and here["trades"]:
-            out["owe"] = {"place": here["key"], "items": {f[0]: min(MOST, f[2]) for f in found}}
+        if here["shop_hours"] and here["trades"] and "owe" in ctx["answers"].get("trade", []):     # on account, kept by trade
+            out["request"] = {"module": "trade", "what": "owe", "args": {"place": here["key"], "items": {f[0]: min(MOST, f[2]) for f in found}}}
     if ctx["agent"]["activity"] == "gathering":
         out["doing"] = {"activity": "idle", "description": "just back from " + here["gerund"] + " at " + here["label"]}
-    account = (" It's on account at " + here["label"] + ": they're happy for you to settle up later.") if out.get("owe") else ""
+    account = (" It's on account at " + here["label"] + ": they're happy for you to settle up later.") if out.get("request") else ""
     text = words(here["label"], round(minutes), found, depleted) + account
     items = [{"name": f[0], "qty": min(MOST, f[2])} for f in found]
     if s["interrupted"]:                                     # cut short: told plainly, at once

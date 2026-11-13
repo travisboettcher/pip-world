@@ -46,8 +46,7 @@ def test_a_bad_turn_takes_and_the_engine_picks_how_much():
     assert stop["effects"][0]["name"] == "Gear Clock" and stop["effects"][0]["part"]["qty"] >= 1 and "Gear Clock" in stop["names"]
     medium = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock", "mend": True}]})
     assert medium["effects"][0]["part"] is None                                                   # only a major one needs mending
-    price = decide({"category": "market", "tone": "bad", "severity": "minor", "effects": [{"kind": "price", "place": "Saltholm", "item": "Tomatoes"}]})
-    assert price["effects"][0] == {"kind": "price", "place": "Saltholm", "item": "tomatoes", "units": -H.PRICE_UNITS["minor"]}
+    assert refused({"category": "market", "tone": "bad", "effects": [{"kind": "price", "place": "Saltholm"}]}).startswith("an effect's kind is one of")  # trade's (0.38.0)
     assert decide({"category": "body", "tone": "bad", "severity": "minor", "effects": [{"kind": "energy"}]})["effects"][0] == {"kind": "stat", "stat": "energy", "delta": -H.ENERGY["minor"]}
     assert decide({"category": "body", "tone": "good", "severity": "minor", "effects": [{"kind": "hunger"}]})["effects"][0] == {"kind": "stat", "stat": "hunger", "delta": -H.ENERGY["minor"]}
     assert decide({"category": "pantry", "tone": "bad", "severity": "medium", "effects": [{"kind": "food_loss"}]})["effects"][0]["name"] == "tomatoes"
@@ -79,8 +78,6 @@ def test_a_neutral_moment_changes_nothing_but_may_bring_back_a_memory():
     ({"category": "found", "tone": "bad", "effects": [{"kind": "item"}]}, "a bad turn can't bring item"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "item", "name": "a diamond"}]}, "nothing called a diamond is found in this world"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "coins"}, {"kind": "coins"}]}, "one effect of each kind"),
-    ({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Atlantis"}]}, "`place` is the key of a place that sells"),
-    ({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Saltholm", "item": "gold"}]}, "`item` is something sold at Saltholm"),
     ({"category": "mishap", "tone": "bad", "severity": "minor", "effects": [{"kind": "stop", "creation": "Gear Clock"}]}, "`creation` is one of Pip's running"),
     ({"category": "mishap", "tone": "bad", "severity": "major", "effects": [{"kind": "stop", "creation": "Vase"}]}, "`creation` is one of Pip's running"),
     ({"category": "neighbor", "tone": "good", "effects": [{"kind": "news", "name": "Nobody"}]}, "`name` is one of Pip's neighbors"),
@@ -94,8 +91,6 @@ def test_the_world_as_it_is_limits_what_can_happen():
     assert refused({"category": "body", "tone": "bad", "effects": [{"kind": "energy"}]}, low=True) == "Pip is too low already"
     assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[]).startswith("there is nothing to lose")
     assert refused({"category": "memory", "tone": "good", "effects": [{"kind": "memory"}]}, diary_count=2) == "Pip has no old thought to come back to it"
-    assert refused({"category": "market", "tone": "good", "effects": [{"kind": "price", "place": "Saltholm"}]}, foods=[],
-                   booths=[{"key": "Saltholm", "loot": []}]).startswith("`item` is something sold")
 
 
 # --- through a module ------------------------------------------------------------------------------------------------------------
@@ -184,8 +179,8 @@ def test_the_reads_a_happenings_module_needs(tmp_path):
     clock(st)
     m = live(st, rule(reads=["people", "creations", "happenings", "pip"], params={"chance": 0.1, "severity": [50, 45, 5]}), "x")
     ctx = M.context(st, s, m, time.time())
-    assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor"}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
-    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True}] and ctx["pip"]["coins"] == st.coins()
+    assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor", "about": "", "home": "Oriel Vantosh's home"}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
+    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock"}] and ctx["pip"]["coins"] == st.coins()
     assert ctx["happenings"] == {"recent": [], "today": 0, "room": "", "can_remember": False}
     with pytest.raises(M.Refused):
         M.check_manifest(rule(params={"a": [[1]]}), "world")
@@ -210,8 +205,6 @@ def test_intents_word_for_word_at_their_limits():
     assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=4)]).startswith("there is nothing")
     assert decide({"category": "body", "tone": "bad", "severity": "major", "effects": [{"kind": "hunger"}]})["effects"] == [{"kind": "stat", "stat": "hunger", "delta": H.ENERGY["major"]}]
     assert decide({"category": "body", "tone": "good", "severity": "medium", "effects": [{"kind": "energy"}]})["effects"] == [{"kind": "stat", "stat": "energy", "delta": H.ENERGY["medium"]}]
-    price = decide({"category": "market", "tone": "good", "severity": "medium", "effects": [{"kind": "price", "place": "Saltholm"}]}, foods=[])
-    assert price["effects"] == [{"kind": "price", "place": "Saltholm", "item": "brass wire", "units": H.PRICE_UNITS["medium"]}] and price["names"] == ["Saltholm", "brass wire"]
     stop = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock"}]})
     assert stop["effects"] == [{"kind": "creation_stop", "id": 1, "name": "Gear Clock", "part": None}] and stop["names"] == ["Gear Clock"]
     assert decide({"category": "neighbor", "tone": "bad", "effects": [{"kind": "news", "name": "Oriel Vantosh"}]})["names"] == ["Oriel Vantosh"]

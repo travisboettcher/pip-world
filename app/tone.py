@@ -22,7 +22,6 @@ DEFAULTS = {
     "sizes": {
         "lens": {"minor": 4, "medium": 9, "major": 16},                 # how strongly a happening is felt
         "stat": {"minor": 0.05, "medium": 0.12, "major": 0.25},          # a stat's change
-        "price_units": {"minor": 1, "medium": 3, "major": 6},           # one unit is 4% of a booth's price (market.PRICE_STEP)
         "coin_caps": {"minor": [3, 0.10], "medium": [10, 0.20], "major": [25, 0.35]},   # (coins, share of the purse) a loss may take
         "found_coins": {"minor": [1, 3], "medium": [3, 10], "major": [8, 25]},
         "found_items": {"minor": [1, 1], "medium": [2, 4], "major": [4, 6]},

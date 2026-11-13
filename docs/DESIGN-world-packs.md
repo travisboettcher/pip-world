@@ -6,7 +6,8 @@ engine from naming its world; **phase 2 built (0.33.0)**: the world's content is
 are its pack's (`stats.json`, `tone.json`), over the engine's floor; **phase 4 built (0.35.0)**: the hooks a feature needs to be a
 module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module;
 **phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data; **5b built (0.37.0)**: the neighbourhood module
-invents the neighbour and asks them to write first. Next: 5c, the market. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+invents the neighbour and asks them to write first; **5c built (0.38.0)**: trade (booths, prices, tills, the agent's stall and its
+customers, accounts, the neighbours' wares and market days) is the shipped `trade` module. Next: 5d, the library. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -253,7 +254,8 @@ moves into a shipped `gathering` module: the `gather` tool, the session, the hau
   own way (the woods' "Forage in the woods for 15-60 minutes...");
 - **a moment's `items` and `tool`** in `log`: what came of it (a first for each thing found; the agent's sense of what its tools are
   good for reads it), and a moment is shown among recent events and can be recalled;
-- **`owe`** (`{place, items}`), until the market moves (5c): what was taken at a shop goes on account there.
+- **`owe`** (`{place, items}`), until the market moved (5c): what was taken at a shop went on account there. Since 0.38.0 gathering
+  asks `trade` to put it on account (a `request` for `owe`, only when the `answers` read says trade is live to answer it).
 A session's label now reads as what the agent is doing ("you're out foraging at the woods (about 20 min left)").
 
 **5b, neighbours.** Characters and conversation stay the engine's, and so do letters: a letter is conversation at a distance, and a
@@ -267,7 +269,34 @@ write first. Into a shipped `neighborhood` module, on two generic hooks:
   a name already in it, or the agent's); their first letter is on its way. `letter` (`{from}`) asks a neighbour to write to the agent
   (the engine writes it, as it answers letters, when none of theirs is already on the way).
 The engine no longer invents a neighbour or keeps their writing schedule; `NEIGHBOR` and `NEIGHBOR_WRITES_EVERY_HOURS` become the
-module's params. A neighbour's wares wait for the market (5c).
+module's params. A neighbour's wares waited for the market (5c).
+
+**5c, trade.** What stays the engine's: the purse (coins), belongings, the agent's creations and works (who owns them), places and what
+they hold (`finds.goods`: a place's find table, or a trading place's own stock), characters and where they live. Everything that is
+trade moves into a shipped `trade` module (`module_library/trade.py`, `trade.json`): `browse`, `buy`, `sell` and `pay` at shops,
+markets and neighbours' homes; prices (a base from the thing, a local factor that moves 4% a unit traded and drifts back 10% a day, a
+daily mood); a booth's daily till and stock; the agent's stall and its customers (the old `stall-customers` rule is folded in); what's
+on account; a neighbour's wares (asked for once, as a structured ask) and their market day, when they keep a stall at the market
+instead of being at home; and a happening's turn in a price. Its store keeps `prices`, `tills`, `stall`, `accounts` and `wares`, each
+keyed by a short hash of the names (`slot`). The generic hooks it proved:
+- **`coins`** (a signed whole number, at most 500 a call, never more than the agent has), with the manifest's `belongings.coins`;
+- **`part_with`** (`{creation, to}`): one of the agent's creations is someone else's now (sold to a keeper, or off the stall);
+- **`whereabouts`** (`{name: {at, doing?}}`): where a character is just now, if not at home (`places.place_of` reads it, so the agent
+  meets a neighbour at their stall); **`notes`** (`{name: line}`): what the module says about a character, read where the engine
+  describes them (the neighbours' list, their letters, the look of their home);
+- **tools that share an engine tool's name**: where the module's tool applies, it is the one the agent sees and uses (`browse` at a
+  shop is trade's; at the library it is still the engine's); `where` may be a list, and `kinds` limits a tool to kinds of place;
+- **reads**: `answers` (what each live module answers), `made` (the agent's works), a person's `about` and a neighbour's `home`, an
+  item's `description`, a creation's `quality` and `description`, a place's `trades`, `stalls`, `hours` and `goods`, `here`'s `stalls`
+  and its `weights` (what the world's finds weigh), and `time`'s `utc_offset` (the sandbox can't read the local clock);
+- **structured asks** may want a list of objects (`{type: array, items: {type: object, properties}}`);
+- **two published conventions** the engine reads: `scene` (`{place: {booths, stall, lives_here}}`, merged into a place's scene) and
+  `for_sale` (`[[place, item, price, whose]]`: where a wished-for thing can be had, and what a neighbour's letter may offer);
+- a given thing the world knows by its name and kind gets the world's attributes (carrot seeds bought from a neighbour plant like the
+  ones Pip could find); a tool's reply may run to 1,500 characters; a module's source to 40,000; what it publishes to 8,000 bytes.
+The engine's `market.py`, the `buy`, `sell` and `pay` tools, the `stalls` read and the `sell` and `owe` proposals, the happenings' `price`
+intent and the tone's `price_units` are gone. `CHARACTER_BOOTHS` is the module's `wares` param. An older install's prices, tills, stall,
+accounts and wares move into trade's store once, and the old tables go.
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of

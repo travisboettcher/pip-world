@@ -1,1 +1,0 @@
-{"name": "stall-customers", "kind": "rule", "api": 1, "hooks": ["on_tick"], "reads": ["agent", "stalls"], "proposes": ["state", "sell"], "reason": "Customers at Pip's stall: while Pip is at an open market, people stop now and then and buy at Pip's ask, fewer the dearer it is. Replaces the engine's own stall customers."}

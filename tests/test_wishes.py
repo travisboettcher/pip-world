@@ -83,17 +83,32 @@ def test_the_guide_says_what_a_wishlist_is_for_and_that_it_is_shared():
 
 # --- where a thing could be had ------------------------------------------------------------------------------------------
 def world(tmp_path):
-    s, st, gm, agent = make(tmp_path)
+    from tests.test_trade import module as trade
+    s, st, gm, agent = make(tmp_path, modules="on", module_runner="local")
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=NOW, heard_at=NOW, hours=[0, 24], daylight_only=0, walk_minutes=10.0,
                  loot=[["needle file", "tool", 3, [1, 1], "a slim needle file", {}], ["sticks", "material", 30, [2, 5], "sticks", {}]], verbs={"browse": ["see", None]})
     st.add_place("Fen", "fen", kind="market", status="heard", created_at=NOW, heard_at=NOW, loot=[["needle file", "tool", 3, [1, 1], "x", {}]])
+    trade(st)
+    publish(st, s)
     return s, st, agent
+
+
+def publish(st, s, now=NOW):
+    """Trade says what is for sale where (as it does each turn)."""
+    import asyncio
+    from app import modules as M
+    asyncio.run(M.step(st, s, None, now))
+
+
+def market_price(st, s, place, name, now=NOW):
+    from tests.test_trade import G, view
+    return view(st, s, now).sell_price(place, G["entry_of"](st.place_row(place)["loot"], name))
 
 
 def test_a_wish_for_a_thing_says_where_it_is_sold_and_for_how_much(tmp_path):
     s, st, agent = world(tmp_path)
     got = W.sources(st, "A finer set of needle files for the gears", NOW)
-    price = W.market_price(st, "Brygdon", "needle file", NOW)
+    price = market_price(st, s, "Brygdon", "needle file", NOW)
     assert got == [f"Brygdon sells needle file ({price} coins)"] and price >= 1
     assert W.sources(st, "A set of fine brass gears", NOW) == []                                          # nothing sells that
     assert W.sources(st, "to see the sea", NOW) == []
@@ -101,12 +116,12 @@ def test_a_wish_for_a_thing_says_where_it_is_sold_and_for_how_much(tmp_path):
 
 def test_it_names_places_pip_has_been_that_have_it_and_not_ones_it_has_not(tmp_path):
     s, st, agent = world(tmp_path)
-    assert W.sources(st, "a needle file", NOW) == [f"Brygdon sells needle file ({W.market_price(st, 'Brygdon', 'needle file', NOW)} coins)"]
+    assert W.sources(st, "a needle file", NOW) == [f"Brygdon sells needle file ({market_price(st, s, 'Brygdon', 'needle file', NOW)} coins)"]
     st.log("arrived", place="junkyard", label="the junkyard", first_time=True, description="")
     got = W.sources(st, "a needle file", NOW)
     assert got[1:] == ["the junkyard has turned up needle file"]
     assert W.sources(st, "tweezers", NOW) == ["the junkyard has turned up tweezers"]                      # the junkyard's table lists them
-    assert W.sources(st, "sticks and string", NOW)[0] == f"Brygdon sells sticks ({W.market_price(st, 'Brygdon', 'sticks', NOW)} coins)"
+    assert W.sources(st, "sticks and string", NOW)[0] == f"Brygdon sells sticks ({market_price(st, s, 'Brygdon', 'sticks', NOW)} coins)"
 
 
 def test_no_more_than_two_places_are_named(tmp_path):
@@ -115,6 +130,7 @@ def test_no_more_than_two_places_are_named(tmp_path):
                  loot=[["needle file", "tool", 3, [1, 1], "x", {}]], verbs={"browse": ["see", None]})
     st.add_place("Saltholm", "saltholm", kind="shop", status="real", created_at=NOW, heard_at=NOW, hours=[0, 24], daylight_only=0, walk_minutes=10.0,
                  loot=[["needle file", "tool", 3, [1, 1], "x", {}]], verbs={"browse": ["see", None]})
+    publish(st, s)
     st.log("arrived", place="junkyard", label="the junkyard", first_time=True, description="")
     got = W.sources(st, "a needle file", NOW)
     assert len(got) == W.MAX_SOURCES == 2 and all("sells" in g for g in got)                              # markets and shops come before a place that merely turned something up
@@ -126,7 +142,8 @@ def test_a_wish_in_the_prompt_carries_the_hint_only_for_things(tmp_path):
     st.add_memory("To understand why the needle files I have chatter.", "wishlist", "idea")
     st.add_memory("To work the lathe like a master.", "wishlist", "ability")
     lines = [l for l in agent._journal() if l.startswith("- #")]
-    price = W.market_price(st, "Brygdon", "needle file", time.time())
+    publish(st, s, time.time())
+    price = market_price(st, s, "Brygdon", "needle file", time.time())
     assert lines[0].endswith(f"  [you could try: Brygdon sells needle file ({price} coins)]")
     assert "you could try" not in lines[1] and "you could try" not in lines[2]
     st.add_memory("Some needle file stock.", "wishlist")                                                  # an older note with no kind is a thing
@@ -339,11 +356,12 @@ def test_the_notes_carry_their_kind_to_the_owner_and_the_public(tmp_path):
 # --- details found by the mutation run ----------------------------------------------------------------------------------------
 def test_a_priced_hint_uses_the_things_own_attributes_and_the_time_given(tmp_path):
     s, st, agent = world(tmp_path)
+    from tests.test_trade import priced, slot
     st.update_place("Brygdon", loot=[["cake", "food", 5, [1, 2], "a cake", {"food_value": 0.9}]])
-    st.set_price_row("Brygdon", "cake", 1.4, NOW - 86400, "x", 0)
-    from tests.test_market import priced
-    want = priced(9, "Brygdon", "cake", local=1 + 0.4 * 0.9)                                               # a day of drift from the time given
-    assert W.sources(st, "a lovely cake", NOW) == [f"Brygdon sells cake ({want} coins)"] and W.market_price(st, "Brygdon", "cake", NOW) == want
+    st.merge_store("trade", {"prices": {slot("Brygdon", "cake"): {"booth": "Brygdon", "item": "cake", "local": 1.4, "at": NOW - 86400, "day": "x", "sold": 0}}})
+    publish(st, s)
+    want = priced(9, "Brygdon", "cake", local=1 + 0.4 * 0.9)                                               # a day of drift
+    assert W.sources(st, "a lovely cake", NOW) == [f"Brygdon sells cake ({want} coins)"] and market_price(st, s, "Brygdon", "cake", NOW) == want
 
 
 def test_the_clock_and_the_day_a_postcard_goes_by(tmp_path):
@@ -425,7 +443,7 @@ def test_a_wish_to_do_something_is_shown_where_it_can_be_done(tmp_path):
 
 def test_the_prompt_shows_a_doing_wish_with_its_hint(tmp_path):
     s, st, agent = world(tmp_path)
-    agent.tools.update({n: __import__("app.tools", fromlist=["x"]).REGISTRY[n] for n in ("sell", "start_project")})
+    agent.tools.update({n: __import__("app.tools", fromlist=["x"]).REGISTRY[n] for n in ("start_project",)})            # sell is trade's
     st.add_memory("I'd love to sit at a real market stall in Brygdon.", "wishlist", "activity")
     line = [l for l in agent._journal() if "market stall" in l][0]
     assert line.endswith("  [you could try: at Brygdon: sell something you have to a booth here, or set out a stall of your own (sell with an ask)]")

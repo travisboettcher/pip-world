@@ -153,7 +153,7 @@ def test_creatures_pantry_and_finds():
 def test_the_body_a_market_and_a_mishap():
     assert {p["effects"][0]["kind"] for p in plans("body", "good", "minor")} == {"energy", "hunger"}
     assert plans("body", "bad", "minor", ctx(agent={"energy": 0.2})) == []
-    assert plans("market", "good", "minor")[0] == {"effects": [{"kind": "price", "place": "Saltholm", "item": "tomatoes"}]}
+    assert plans("market", "good", "minor")[0] == {"effects": [{"kind": "request", "module": "trade", "what": "price", "args": {"place": "Saltholm", "item": "tomatoes"}}]}
     assert plans("market", "neutral", "minor")[0] == {"names": ["Saltholm"]}
     assert plans("mishap", "neutral", "minor")[0] == {"names": ["needle file"]}
     assert plans("mishap", "bad", "minor")[0] == {"effects": [{"kind": "energy"}], "names": ["needle file"]}

@@ -37,7 +37,8 @@ def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
     assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
     assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
-    assert T.SCOPES["browse"] == ("library", "junkyard", "neighbor") and T.SCOPES["buy"] == T.SCOPES["sell"] == ("market", "neighbor") and T.SCOPES["read"] == ("library",)
+    assert T.SCOPES["browse"] == ("library", "junkyard") and T.SCOPES["read"] == ("library",)
+    assert not {"buy", "sell", "pay"} & set(T.SCOPES)                               # trade is a module's (0.38.0)
     assert "gather" not in T.SCOPES                                                 # gathering is a module's (0.36.0)
 
 

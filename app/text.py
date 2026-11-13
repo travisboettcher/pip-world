@@ -32,3 +32,7 @@ def craft_name(raw) -> str:
     while words and words[-1] in ("and", "or", "of", "with", "the", "for", "&"):
         words.pop()
     return " ".join(words)[:30] or "tinkering"
+
+
+def coins_text(n: int) -> str:
+    return f"{n} coin{'s' if n != 1 else ''}"

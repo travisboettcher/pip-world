@@ -41,6 +41,17 @@ def loot_for(state, place: str) -> list | None:
     return [(n, k, w, tuple(q), d, a) for n, k, w, q, d, a in rec["loot"]] if rec else None
 
 
+def goods(state, place: str) -> list:
+    """What a place holds: its find table, or (a market, which has nothing to gather) a trading place's own stock."""
+    table = loot_for(state, place)
+    if table:
+        return table
+    rec = state.place_row(place)
+    if rec and rec["status"] == "real" and kinds.KINDS.get(rec["kind"]) and kinds.KINDS[rec["kind"]].trades:
+        return [(n, k, w, tuple(q), d, a) for n, k, w, q, d, a in rec["loot"]]
+    return []
+
+
 def verb_for(state, place: str) -> str:
     """What gathering is called here: 'foraging', 'scavenging', or the invented place's own ('rummaging')."""
     rec = _invented(state, place)

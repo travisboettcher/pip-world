@@ -9,8 +9,7 @@ import json
 import re
 import time
 
-from . import finds, market
-from . import place_kinds as kinds
+from . import finds
 from . import places
 from . import sleep as sleepmod
 from .state import State
@@ -28,20 +27,15 @@ RETRY_SECONDS = 3600             # after a postcard that did not go out
 SHARED_KEPT = 200
 
 
-def market_price(state, place: str, name: str, now: float) -> int:
-    entry = next(e for e in market.stock_table(state, place) if e[0] == name)
-    return market.fair_price(state, place, name, entry[1], entry[5], now)
-
-
 def sources(state, text: str, now: float) -> list[str]:
-    """Where a wished-for thing could be had: shops and markets that sell something like it (with today's price), then places Pip has been that have turned it up."""
-    sold, found = [], []
-    for rec in state.place_rows():
-        if rec["status"] != "real" or not kinds.KINDS[rec["kind"]].trades:
-            continue
-        entry = next((e for e in market.stock_table(state, rec["key"]) if State.related(e[0], text)), None)
-        if entry:
-            sold.append(f"{places.label(rec['key'])} sells {entry[0]} ({market.fair_price(state, rec['key'], entry[0], entry[1], entry[5], now)} coins)")
+    """Where a wished-for thing could be had: places selling something like it, with today's price (what live modules say is `for_sale`),
+    then places Pip has been that have turned it up."""
+    from .modules import for_sale
+    sold, found, seen = [], [], set()
+    for place, item, price, whose in for_sale(state):
+        if place not in seen and State.related(item, text):
+            seen.add(place)
+            sold.append(f"{whose or places.label(place)} sells {item} ({price} coins)" + (f" at {places.label(place)}" if whose else ""))
     for key, table in finds.loot().items():
         if state.last_arrived(key) is None:
             continue

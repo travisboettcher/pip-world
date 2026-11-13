@@ -15,14 +15,12 @@ from . import conversation as conv
 from . import finds
 from . import happenings
 from . import invented_places as invented
-from . import market
 from . import creations as cr
 from . import memory as mem
 from . import modules
 from . import reminders
 from . import library as lib
 from . import neighbors as nb
-from . import place_kinds as kinds
 from . import places
 from . import search
 from . import wishes
@@ -173,30 +171,55 @@ def offered_here(ctx, name: str) -> str:
     return ""
 
 
+def _scopes(t: dict) -> list:
+    return t["where"] if isinstance(t["where"], list) else [t["where"]]
+
+
+def _module_tool_here(state, t: dict, location: str, place, open_: bool) -> str | None:
+    """A module's tool's description where `location` is (None if it doesn't apply there): wherever its scopes reach, of the kinds of
+    place it names (none: any), and not at a closed place unless it works anywhere. Offered where a place lists it, it is worded the
+    place's own way."""
+    scopes = _scopes(t)
+    if ANYWHERE in scopes:
+        return t["help"]
+    if not location or not open_ or (t.get("kinds") and places.kind_of(state, location) not in t["kinds"]):
+        return None
+    if "offered" in scopes and place is not None and t["name"] in place.verbs:
+        return place.verbs[t["name"]][1] or t["help"]
+    others = tuple(w for w in scopes if w != "offered")
+    return t["help"] if others and is_here(others, location) else None
+
+
 def module_specs(state, location: str, place=None, open_: bool = True) -> list[ToolSpec]:
     """The tools live modules offer, where they apply (modules.py): listed with the engine's own."""
-    out = []
+    out, seen = [], set()
     for _, t in modules.tools_offered(state):
-        if t["where"] == "offered":                      # wherever the place lists it, worded its own way (the woods' foraging)
-            if place and location and t["name"] in place.verbs and open_:
-                out.append(ToolSpec(t["name"], place.verbs[t["name"]][1] or t["help"], t["params"]))
-            continue
-        scope = (t["where"],)
-        if not open_ and place and ANYWHERE not in scope and place.scope in scope:
-            continue
-        if is_here(scope, location):
-            out.append(ToolSpec(t["name"], t["help"], t["params"]))
+        if t["name"] not in seen and (text := _module_tool_here(state, t, location, place, open_)) is not None:
+            out.append(ToolSpec(t["name"], text, t["params"]))
+            seen.add(t["name"])
     return out
 
 
-async def module_tool(ctx, name: str, args: dict) -> ToolResult | None:
-    """Use a live module's tool by name (None if no live module offers one by that name)."""
-    found = next(((m, t) for m, t in modules.tools_offered(ctx.state) if t["name"] == name), None)
-    if not found:
+async def module_tool(ctx, name: str, args: dict, engine_has: bool = False) -> ToolResult | None:
+    """Use a live module's tool by name. None if no live module offers one by that name, or (`engine_has`) none applies here, so the
+    engine's own tool of that name is used."""
+    offered = [(m, t) for m, t in modules.tools_offered(ctx.state) if t["name"] == name]
+    if not offered:
         return None
+    here = places.present_at(ctx.state)                     # None on the way somewhere: then only what works anywhere
+    place = places.here(ctx.state, ctx.settings, ctx.library) if here else None
+    open_ = bool(place) and places.open_now(place, ctx.settings)
+    found = next(((m, t) for m, t in offered if _module_tool_here(ctx.state, t, here or "", place, open_) is not None), None)
+    if not found:
+        if engine_has:
+            return None
+        m, t = offered[0]
+        scopes = _scopes(t)
+        why = offered_here(ctx, name) if "offered" in scopes else out_of_place(ctx, name, tuple(scopes))
+        if not why and t.get("kinds"):
+            why = f"there's nothing to {name.replace('_', ' ')} at {places.label(ctx.state.agent()['location'])}"
+        return ToolResult(why or f"there's nothing to {name.replace('_', ' ')} here", followup=True)
     m, t = found
-    if why := (offered_here(ctx, name) if t["where"] == "offered" else out_of_place(ctx, name, (t["where"],))):
-        return ToolResult(why, followup=True)
     text, changed = await modules.use_tool(ctx.state, ctx.settings, ctx.runner, m, t, args)
     return ToolResult(text, followup=text.startswith("error"), noop=not changed and not text.startswith("error"), first=t.get("first", "") if changed else "",
                       module=m["name"])
@@ -801,23 +824,10 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
 
 @tool("browse", "Look through what is on offer where you are. At the library: look for books - give a query (a subject, "
       "title or author), or leave it out to wander the shelves and see what's there.",
-      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard", "neighbor"))
+      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
-    theirs = [b for b in market.booths(ctx.state, here, time.time()) if b[1]]
-    if places.scope_of(here) == "neighbor":                      # at a neighbor's: what they have for sale, if anything
-        if not theirs:
-            ch = places.neighbor_at(ctx.state, here)
-            away = market.away_at(ctx.state, ch, time.time()) if ch else None
-            return ToolResult(f"{ch['name']} is at a stall in {places.label(away)} today, with their wares" if away
-                              else f"there's nothing for sale at {places.label(here)}", followup=True)
-        return ToolResult(market.wares_line(ctx.state, theirs[0][0], theirs[0][1], theirs[0][2], time.time())
-                          + f" You have {ctx.state.coins()} coins. buy what you want, or sell them some of yours.", followup=True)
-    table = market.stock_table(ctx.state, here) or finds.loot_for(ctx.state, here)
-    rec = ctx.state.place_row(here) if table and here not in finds.loot() else None
-    if rec and kinds.KINDS[rec["kind"]].trades:
-        return ToolResult("\n".join([shop_stock(ctx, here, table, rec)] + [market.wares_line(ctx.state, k, f"{who}, at a stall here today,", t, time.time())
-                                                                            for k, who, t in theirs]), followup=True)
+    table = finds.loot_for(ctx.state, here)
     if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
         seen = finds.glimpse(ctx.rng, here, table=table)
         return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
@@ -831,79 +841,6 @@ async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     if not books:
         return ToolResult(f"nothing on the shelves matches {q!r}", followup=True)
     return ToolResult(f"{where}:\n" + "\n".join(f"- {lib.line(b, ctx.state)}" for b in books), followup=True)
-
-
-def shop_stock(ctx, here: str, table: list, rec: dict) -> str:
-    """At a shop, browse shows what's in today with its price (fewer things as the stock runs down) and what's on account."""
-    level = finds.stock(ctx.state, here)
-    n = round(finds.GLIMPSE * min(1.0, level / finds.full_yield_at(ctx.state, here)))
-    now = time.time()
-    seen = [e for e in table if e[0] in finds.glimpse(ctx.rng, here, n, table) and market.stock_left(ctx.state, here, e, now)]
-    lines = [f"In stock at {places.label(here)} today: "
-             + ", ".join(f"{e[0]} ({market.sell_price(ctx.state, here, e, now)} coins)" for e in seen)
-             + f". You have {ctx.state.coins()} coins. buy what you need; "
-             + ("sell what you have, or set out a stall with an ask." if kinds.KINDS[rec["kind"]].stalls else "gather to pick through the drawers on account.") if seen else
-             f"The shelves at {places.label(here)} are bare today; they restock slowly, so come back in a day or so."]
-    lines += market.stall_lines(ctx.state, here, now)
-    if rec["on_account"]:
-        owed = market.owed(ctx.state, here, now)
-        lines.append("On account here: " + ", ".join(f"{q} {name}" for name, q in rec["on_account"].items())
-                     + f" ({owed} coins at today's prices; pay settles it).")
-    return "\n".join(lines)
-
-
-def _qty(args: dict) -> int | None:
-    try:
-        q = int(args.get("quantity", 1))
-    except (TypeError, ValueError):
-        return None
-    return q if q >= 1 else None
-
-
-_TRADE_ITEM = {"item": {"type": "string"}, "quantity": {"type": "integer", "description": "optional; default 1"}}
-
-
-@tool("buy", "Buy something from a booth here with your coins. Prices change a little every day and as things are bought.",
-      _obj(_TRADE_ITEM, ["item"]), where=("market", "neighbor"))
-async def buy(ctx: ToolContext, args: dict) -> ToolResult:
-    qty = _qty(args)
-    if qty is None:
-        return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
-    ok, text = market.buy(ctx.state, ctx.state.agent()["location"], str(args.get("item") or ""), qty, time.time())
-    return ToolResult(text if ok else f"error: {text}", followup=True)
-
-
-@tool("sell", "Sell something you have to a booth here: it pays less than it charges, and only has so many coins a day. At a market you can instead set out "
-      "a stall: give `ask` (coins each) and customers stop while you are here, paying your price; an ask of 0 takes it back off the stall. "
-      "A creation of yours can be sold too (it is theirs after that), and copies of a drawing or writing can be set out on a stall (`item` is its title).",
-      _obj({**_TRADE_ITEM, "ask": {"type": "integer", "description": "optional, at a market: your price in coins each, to set out a stall (0: take it back)"}}, ["item"]),
-      where=("market", "neighbor"))
-async def sell(ctx: ToolContext, args: dict) -> ToolResult:
-    here = ctx.state.agent()["location"]
-    if args.get("ask") is not None:
-        ask = args["ask"]
-        if isinstance(ask, bool) or not isinstance(ask, int):
-            return ToolResult("error: an ask is a whole number of coins", followup=True)
-        if ask == 0:
-            ok, text = market.take_back(ctx.state, here, str(args.get("item") or ""))
-        else:
-            have, _ = ctx.state.find_item(str(args.get("item") or ""))
-            qty = _qty(args) if "quantity" in args else (have["qty"] if have else 1)
-            if qty is None:
-                return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
-            ok, text = market.list_on_stall(ctx.state, here, str(args.get("item") or ""), qty, ask, time.time())
-        return ToolResult(text if ok else f"error: {text}", followup=True)
-    qty = _qty(args)
-    if qty is None:
-        return ToolResult("error: quantity must be a whole number, at least 1", followup=True)
-    ok, text = market.sell(ctx.state, here, str(args.get("item") or ""), qty, time.time())
-    return ToolResult(text if ok else f"error: {text}", followup=True)
-
-
-@tool("pay", "Pay what you owe a booth here for things you took on account.", _obj({}, []), where=("market",))
-async def pay(ctx: ToolContext, args: dict) -> ToolResult:
-    ok, text = market.pay(ctx.state, ctx.state.agent()["location"], time.time())
-    return ToolResult(text if ok else f"error: {text}", followup=True)
 
 
 @tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "
@@ -1008,7 +945,7 @@ async def where_to(ctx: ToolContext, args: dict) -> ToolResult:
         if key == places.HOME:
             continue
         found = [f for f in ctx.state.finds_at(key) if words & content_words(f["item"])]
-        stocked = [e[0] for e in market.stock_table(ctx.state, key) or finds.loot_for(ctx.state, key) or ()] if p.invented else []
+        stocked = [e[0] for e in finds.goods(ctx.state, key)] if p.invented else []
         knows = bool(words & (content_words(p.blurb) | content_words(" ".join(h for h, _ in p.verbs.values()))
                               | content_words(" ".join(m["there"] for m in p.mentions)) | content_words(" ".join(stocked))))
         if not (found or knows):

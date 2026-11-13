@@ -52,8 +52,7 @@ def test_here_at_a_shop(tmp_path):
 
 
 # --- proposals -----------------------------------------------------------------------------------------------------------------------------
-def test_practice_deplete_doing_and_owe_at_their_edges(tmp_path):
-    from tests.test_invented_places import real_shop
+def test_practice_deplete_and_doing_at_their_edges(tmp_path):
     s, st, agent = modular(tmp_path)
     assert M._practice({"handiness": 120, "patience": 120}) == {"handiness": 120.0, "patience": 120.0}
     for bad in ({"handiness": 121, "patience": 120}, {"juggling": 1}, {"handiness": -1}, {}, []):
@@ -69,28 +68,17 @@ def test_practice_deplete_doing_and_owe_at_their_edges(tmp_path):
     for bad in ({"activity": "Bad", "description": "x"}, {"activity": "a", "description": "x", "y": 1}, []):
         assert refused(M._doing, bad) == "`doing` is {activity (a word), description}"
     assert refused(M._doing, {"activity": "a"}) == "`doing.description` is a line of text"
-    real_shop(st)
-    assert M._owe(st, {"place": "Saltholm", "items": {"wire": 2}}) == {"place": "Saltholm", "items": {"wire": 2}}
-    shape = "`owe` is {place, items: {name: qty}}: up to 8 things"
-    for bad in ({"place": "Saltholm", "items": {}}, {"place": "Saltholm", "items": {f"t{i}": 1 for i in range(9)}}, {"place": "Saltholm", "items": {"w": 0}},
-                {"place": "Saltholm", "items": {"w": 51}}, {"place": "Saltholm", "items": {"w": True}}, {"place": "Saltholm", "items": {" ": 1}},
-                {"place": "Saltholm", "items": {"w": 1}, "x": 1}, []):
-        assert refused(M._owe, st, bad) == shape
-    assert refused(M._owe, st, {"place": "woods", "items": {"w": 1}}) == "`owe.place` is a place that trades"
+    assert "owe" not in M.PROPOSES                                          # on account is trade's (0.38.0)
 
 
 def test_the_proposals_land(tmp_path):
-    from tests.test_invented_places import real_shop
     s, st, agent = modular(tmp_path)
-    real_shop(st)
-    st.update_place("Saltholm", on_account={"wire": 1})
     st.update_agent(location="woods")
-    m = live(st, rule(name="hands", proposes=["practice", "deplete", "doing", "owe"]), "x")
-    M.apply(st, m, M.plan(st, m, {"practice": {"handiness": 30}, "deplete": {"amount": 20}, "doing": {"activity": "digging", "description": "in the woods"},
-                                  "owe": {"place": "Saltholm", "items": {"wire": 2, "nails": 1}}}, NOW, "on_tick"), NOW)
+    m = live(st, rule(name="hands", proposes=["practice", "deplete", "doing"]), "x")
+    M.apply(st, m, M.plan(st, m, {"practice": {"handiness": 30}, "deplete": {"amount": 20}, "doing": {"activity": "digging", "description": "in the woods"}},
+                          NOW, "on_tick"), NOW)
     assert st.abilities()["handiness"] == 30 and F.stock(st, "woods", NOW) == 100
     assert (st.agent()["activity"], st.agent()["description"]) == ("digging", "in the woods")
-    assert st.place_row("Saltholm")["on_account"] == {"wire": 3, "nails": 1}
 
 
 def test_a_moment_says_what_came_of_it(tmp_path):
@@ -159,13 +147,9 @@ def test_what_the_agent_has_been_able_to_do_counted_exactly():
 
 
 def test_the_reads_and_proposals_at_their_last_edges(tmp_path):
-    from tests.test_invented_places import real_shop
     s, st, agent = modular(tmp_path)
     assert M._practice({"handiness": 0}) == {"handiness": 0.0}
     assert refused(M._practice, {"x": 1}) == "`practice` maps abilities (precision, patience, ingenuity, knowledge, handiness) to minutes, 240 in all at most"
-    real_shop(st)
-    assert len(M._owe(st, {"place": "Saltholm", "items": {f"t{c}": 50 for c in "abcdefgh"}})["items"]) == 8
-    assert refused(M._owe, st, {"items": {"w": 1}}) == "`owe.place` is a place that trades"
     st.update_agent(location="woods")
     now = time.time()
     st.set_meta(**{"stock:woods": 50.123456, "stock_at:woods": now - 3600})

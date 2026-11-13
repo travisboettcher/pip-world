@@ -99,7 +99,6 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     """Everything a scene draws from, for one place (where Pip is, by default): the place, who is there, what is for sale, Pip if it is
     there, and the place's own things (at home: the garden, the creations, the belongings). None if there is no such place."""
     from . import creations as cr
-    from . import market
     now = now or time.time()
     reg = places.registry(state, settings, library)
     sess = state.session()
@@ -122,18 +121,19 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     from . import looks
     look = lambda c: c.get("look") or looks.fallback(c["name"], c["persona"])           # not chosen yet: drawn from the persona for now
     present = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "look": look(c)} for c in places.company_at(state, key)]
+    trade = {}                                          # what live modules add to this place's scene (`scene` facts: booths, a stall, wares)
+    for m in state.modules("live"):
+        mine = ((m["facts"] or {}).get("scene") or {}).get(key) if isinstance((m["facts"] or {}).get("scene"), dict) else None
+        trade.update(mine if isinstance(mine, dict) else {})
     owner = places.neighbor_at(state, key)
     lives_here = None
     if owner:
-        away = market.away_at(state, owner, now)
-        lives_here = {"name": owner["name"], "about": owner["about"], "look": look(owner), "wares": [w["name"] for w in owner.get("wares") or []],
-                      "market_day": market.WEEKDAYS[market.market_day(owner)] if owner.get("wares") and market.the_market(state) else None,
-                      "away_at": away}
+        lives_here = {"name": owner["name"], "about": owner["about"], "look": look(owner), "wares": [], "market_day": None, "away_at": None,
+                      **(trade.get("lives_here") if isinstance(trade.get("lives_here"), dict) else {})}
     by_name = {c["name"]: c for c in state.characters()}
     known = looks.place_text(state, key)
     scene = looks.place_scene(state, key, kind, known)
-    booths = [{"booth": b, "whose": who, **({"look": look(by_name[who])} if who in by_name else {}), "items": [{"name": e[0], "kind": e[1], "price": market.sell_price(state, b, e, now), "left": market.stock_left(state, b, e, now)}
-                                                   for e in table]} for b, who, table in market.booths(state, key, now)]
+    booths = [{**b, **({"look": look(by_name[b.get("whose")])} if b.get("whose") in by_name else {})} for b in trade.get("booths") or [] if isinstance(b, dict)]
     out = {
         "place": {"key": key, "label": p.label, "kind": kind, "blurb": p.blurb, "description": (rows.get(key) or {}).get("description") or "",
                   "hours": list(p.hours) if p.hours else None, "open": places.open_now(p, settings, now) if not p.heard else False,
@@ -146,7 +146,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                 "mood": a["mood"], **{n: round(v, 2) for n, v in stats_mod.values(state).items()}, "asleep": a["activity"] == "sleeping",
                 "session": session},
         "present": present, "booths": booths,
-        "stall": [{"item": r["name"], "qty": r["qty"], "ask": r["ask"], "kind": r["kind"]} for r in state.stall_rows(key)],
+        "stall": trade.get("stall") or [],
         "objects": modules.scene_objects(state, key, kind),     # what live modules show here, already placed on anchors
         "layout": layouts.for_scene(state, key, kind),           # a place built from parts by a module, or None (its hand-written scene)
         "facts": {m["name"]: m["facts"] for m in state.modules("live") if m["facts"]},   # what live modules publish (the garden's plots)
