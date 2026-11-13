@@ -138,7 +138,7 @@ def test_parts_and_places_are_the_worlds_and_only_build(tmp_path):
     assert refused(part_man(params={"a": [1]})) == "`params` maps up to 16 names to plain default values"
     assert refused(part_man(params={str(i): 1 for i in range(17)})) == "`params` maps up to 16 names to plain default values"
     assert refused(place_man(place=" ")) == "a place module names the place it lays out: `place` (or describes a new one: `new`, or covers `kinds`)"
-    assert refused({**rule_like(), "hooks": ["on_build"]}) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer, on_request"
+    assert refused({**rule_like(), "hooks": ["on_build"]}) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer, on_request, on_source"
 
 
 def rule_like():

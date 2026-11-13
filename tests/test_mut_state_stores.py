@@ -230,25 +230,10 @@ def test_characters_roundtrip_filter_update_and_find(tmp_path, clock):
 
 
 # --- bookmarks ----------------------------------------------------------------------------
-def test_bookmarks(tmp_path, clock):
+def test_bookmarks_are_the_reading_modules_now(tmp_path, clock):
     st = mk(tmp_path)
-    assert st.bookmark(1) is None
-    st.set_bookmark(1, "Moby")
-    b = st.bookmark(1)
-    assert b == {"book_id": 1, "title": "Moby", "section": 0, "offset": 0, "percent": 0, "sessions": 0,
-                 "finished": 0, "unreadable": 0, "last_read": None}
-    st.set_bookmark(1, "Other title", section=3, percent=40, last_read=10.0)
-    b = st.bookmark(1)
-    assert b["title"] == "Moby" and b["section"] == 3 and b["percent"] == 40 and b["last_read"] == 10.0
-    st.set_bookmark(2, "Emma", finished=1, last_read=20.0)
-    st.set_bookmark(3, "Bad", unreadable=1, last_read=5.0)
-    st.set_bookmark(4, "Fresh", last_read=30.0)
-    assert [x["book_id"] for x in st.bookmarks()] == [4, 2, 1, 3]
-    assert [x["book_id"] for x in st.bookmarks(include_finished=False)] == [4, 1]
-    assert [x["book_id"] for x in st.bookmarks(False)] == [4, 1]
+    assert not hasattr(st, "bookmark") and not st.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'bookmarks'").fetchone()
 
-
-# --- letters --------------------------------------------------------------------------------
 def test_letters_roundtrip_filters_and_counts(tmp_path, clock):
     st = mk(tmp_path)
     one = st.add_letter("Pip", "Mabel", "hello", clock[0] + 60)

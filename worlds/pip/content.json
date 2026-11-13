@@ -88,6 +88,7 @@
   "atmosphere": "noticed something in the air"
  },
  "module_firsts": {
-  "garden:ripe": "had a crop ripen"
+  "garden:ripe": "had a crop ripen",
+  "reading:finished_book": {"as": "book_finished", "said": "finished a book"}
  }
 }

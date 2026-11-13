@@ -19,7 +19,6 @@ from . import creations as cr
 from . import memory as mem
 from . import modules
 from . import reminders
-from . import library as lib
 from . import neighbors as nb
 from . import places
 from . import search
@@ -59,9 +58,9 @@ async def stop_working(ctx: "ToolContext") -> str:
     sess = ctx.state.session()
     if not sess:
         return ""
-    if sess["kind"] == "read":
-        r = await lib.finish_reading(ctx.state, ctx.settings, ctx.gm, ctx.library, interrupted=True)
-        return f" (you put {r['title']} down early)" if r else ""
+    if sess["kind"] == "read":                                 # a reading session from before reading was a module (0.39.0): it just ends
+        ctx.state.end_session()
+        return ""
     if sess["kind"] == "experiment":
         e = await proj.resolve_experiment(ctx.state, ctx.settings, ctx.gm, ctx.rng, interrupted=True)
         return f" (you cut the experiment on {e['project']} short)" if e else ""
@@ -822,46 +821,15 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min.{closed}")
 
 
-@tool("browse", "Look through what is on offer where you are. At the library: look for books - give a query (a subject, "
-      "title or author), or leave it out to wander the shelves and see what's there.",
-      _obj({"query": {"type": "string", "description": "optional"}}, []), where=("library", "junkyard"))
+@tool("browse", "Look over what is lying about where you are, to see what's worth digging for (nothing is taken).",
+      _obj({}, []), where=("junkyard",))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
     table = finds.loot_for(ctx.state, here)
-    if table:  # a look around somewhere you can gather: what's worth digging for (nothing is taken)
-        seen = finds.glimpse(ctx.rng, here, table=table)
-        return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen)
-                          + ". gather to dig for what you need.", followup=True)
-    q = str(args.get("query") or "").strip()
-    if q:
-        books, where = ctx.library.search(q), f"Looking for {q!r}, you find"
-    else:
-        shelf, books = ctx.library.wander(ctx.rng)
-        where = f"Wandering along {shelf}, you see"
-    if not books:
-        return ToolResult(f"nothing on the shelves matches {q!r}", followup=True)
-    return ToolResult(f"{where}:\n" + "\n".join(f"- {lib.line(b, ctx.state)}" for b in books), followup=True)
-
-
-@tool("read", "At the library: settle in and read a book (by #id or title) for a while. You'll take in what you "
-      "read when the time is up, and next time you pick up where you left off.",
-      _obj({"book": {"type": "string"}, "minutes": {"type": "integer", "description": "15-90, default 45"}},
-           ["book"]), where="library")
-async def read(ctx: ToolContext, args: dict) -> ToolResult:
-    if why := busy(ctx):
-        return ToolResult(why, followup=True)
-    b, err = ctx.library.find(args["book"])
-    if not b:
-        return ToolResult(f"error: {err}", followup=True)
-    if not b["format"]:
-        return ToolResult(f"{b['title']} is bound in a way you can't open ({', '.join(b['formats'])})", followup=True)
-    mark = ctx.state.bookmark(b["id"])
-    if mark and mark["finished"]:
-        return ToolResult(f"you've already finished {b['title']}", followup=True)
-    if mark and mark["unreadable"]:
-        return ToolResult(f"{b['title']} is almost all pictures; there's nothing more to read", followup=True)
-    minutes = proj.clamp_int(args.get("minutes"), *lib.READ_MINUTES, 45)
-    return ToolResult(lib.start_reading(ctx.state, ctx.settings, b, minutes))
+    if not table:
+        return ToolResult(f"there's nothing lying about at {places.label(here)} to look over", followup=True)
+    seen = finds.glimpse(ctx.rng, here, table=table)
+    return ToolResult(f"Looking over {places.label(here)}, you can make out: " + ", ".join(seen) + ". gather to dig for what you need.", followup=True)
 
 
 def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
@@ -883,8 +851,6 @@ def enabled_tools(settings: Settings) -> dict[str, tuple[ToolSpec, Handler]]:
             continue
         if name == "send_postcard" and (settings.outreach == "off" or not settings.outreach_channels):
             continue  # no way out configured
-        if name in ("browse", "read") and not lib.open_library(settings):
-            continue  # no library mounted
         out[name] = REGISTRY[name]
     return out
 

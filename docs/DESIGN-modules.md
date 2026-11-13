@@ -532,8 +532,20 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   persona, about, letter?, mentions_place?}`, once a day) brings someone new into the world, their first letter on its way; `letter`
   (`{from}`) asks a neighbour to write to the agent, which the engine writes as it answers letters, when none of theirs is on the way.
   The agent read carries `lives`.
+- **Trade (0.38.0, phase 5c)**: `coins` (a signed whole number, at most the manifest's `belongings.coins`, never more than the agent
+  has), `part_with` (`{creation, to}`), `whereabouts` (`{name: {at, doing?}}`: where someone is just now) and `notes` (`{name: line}`);
+  tools with a list of `where`s and `kinds` of place, and a module tool that shares an engine tool's name answers where it applies; an
+  ask's schema may want a list of objects; the `answers` and `made` reads; published `scene` and `for_sale` facts the engine reads.
+- **Sources (0.39.0, phase 5d)**: `sources` in the manifest names the engine's sources a module asks (`books`); a hook proposes
+  `source` (`{name, op, args?}`) and the engine runs it and calls `on_source` straight away, within the same call, with
+  `ctx["source"]` = `{name, op, args, answer}`. `on_source` has the rights of the hook that asked (from `on_action` it may `reply` and
+  start a `session`) and may not ask again; 60 questions a day (600 for a shipped module). A module whose sources aren't here offers no
+  tools. `books` does `search` (`{query}`), `wander`, `find` (`{book}`) and `read` (`{id, section, offset, minutes}`: the next stretch,
+  condensed by the narrator: `{summary, quotes, percent, done, pictures, section, offset, failed}`). A `log`'s text may run to 1,200
+  characters; `module_firsts` may name the first a moment stood for before (`{"as": "book_finished", "said": ...}`).
 - The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
-  the neighbourhood the third: `module_library/neighborhood.py`. The `garden` read and proposal are gone (read its `facts`;
+  the neighbourhood the third: `module_library/neighborhood.py`; trade the fourth: `module_library/trade.py`; reading the fifth:
+  `module_library/reading.py`. The `garden` read and proposal are gone (read its `facts`;
   ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
 - **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
   ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a

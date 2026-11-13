@@ -15,6 +15,7 @@ from . import memory as mem
 from . import builder
 from . import layouts
 from . import modules
+from . import sources
 from . import neighbors as nb
 from . import nightpass as np
 from .outreach import Outreach
@@ -68,6 +69,7 @@ class Agent:
         world_pack.set_active(self.pack)                     # one engine runs one world: what has no settings at hand asks world_pack.active()
         self.gm = GameMaster(gm_backend or backend, state, system=self.pack.narrator_system(), agent=self.pack.agent)
         self.library = lib.open_library(settings)
+        sources.wire(self)                                     # the books and the like modules may ask (sources.py)
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
         invented.backfill(state)
@@ -208,8 +210,6 @@ class Agent:
                 return False
             if sess["kind"] == "walk":
                 return bool(await places.arrive(self.state, self.s, self.gm, self.library, self.rng))
-            if sess["kind"] == "read":
-                return bool(await lib.finish_reading(self.state, self.s, self.gm, self.library))
             if sess["kind"] == "module":
                 return bool(await modules.end_session(self.state, self.s, self.ctx.runner))
             if sess["kind"] == "experiment":
@@ -728,7 +728,6 @@ class Agent:
         lines += modules.status_lines(self.state)
         lines += self._projects()
         lines += nb.perception(self.state)
-        lines += lib.perception(self.state, self.library)
         lines += self._journal()
         events = [e for e in reversed(self.state.events(EVENT_CONTEXT * 2)) if e["kind"] not in HIDDEN_EVENT_KINDS]
         if events:

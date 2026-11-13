@@ -87,7 +87,7 @@ def test_enabled_tools_resolves_names_and_drops_what_cannot_work(tmp_path):
     s = settings(tmp_path, tools=["say", "eat", "say", "browse_library", "web_search", "sleep", "send_postcard", "read"],
                  sleep=False, tavily_api_key="", outreach="on", outreach_channels=[])
     out = T.enabled_tools(s)
-    assert list(out) == ["say", "eat"]                         # no library mounted, no key, no sleep, no way out
+    assert list(out) == ["say", "eat", "browse"]               # no key, no sleep, no way out; read is the reading module's
     assert out["say"] is T.REGISTRY["say"]
 
 
@@ -96,7 +96,7 @@ def test_enabled_tools_includes_optional_ones_when_their_condition_holds(tmp_pat
     (tmp_path / "lib" / "metadata.db").write_text("")
     s = settings(tmp_path, tools=["web_search", "sleep", "send_postcard", "browse_library", "read"], sleep=True,
                  tavily_api_key="k", outreach="on", outreach_channels=["matrix"], library_path=str(tmp_path / "lib"))
-    assert list(T.enabled_tools(s)) == ["web_search", "sleep", "send_postcard", "browse", "read"]
+    assert list(T.enabled_tools(s)) == ["web_search", "sleep", "send_postcard", "browse"]
 
 
 @pytest.mark.parametrize("kw", [dict(outreach="off", outreach_channels=["matrix"]), dict(outreach="on", outreach_channels=[]),

@@ -7,7 +7,8 @@ are its pack's (`stats.json`, `tone.json`), over the engine's floor; **phase 4 b
 module (tools, storage, belongings, status, logged moments, requests, sessions), proved by moving the garden into a shipped module;
 **phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data; **5b built (0.37.0)**: the neighbourhood module
 invents the neighbour and asks them to write first; **5c built (0.38.0)**: trade (booths, prices, tills, the agent's stall and its
-customers, accounts, the neighbours' wares and market days) is the shipped `trade` module. Next: 5d, the library. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+customers, accounts, the neighbours' wares and market days) is the shipped `trade` module; **5d built (0.39.0)**: reading is the
+shipped `reading` module, on the engine's first source (`books`). Next: 5e, weather and calendar. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -297,6 +298,18 @@ keyed by a short hash of the names (`slot`). The generic hooks it proved:
 The engine's `market.py`, the `buy`, `sell` and `pay` tools, the `stalls` read and the `sell` and `owe` proposals, the happenings' `price`
 intent and the tone's `price_units` are gone. `CHARACTER_BOOTHS` is the module's `wares` param. An older install's prices, tills, stall,
 accounts and wares move into trade's store once, and the old tables go.
+
+**5d, the library.** The owner's books stay engine code: the providers (`library.py`, Calibre or a folder), the format readers, and the
+narrator's condensing, so raw text never reaches a module or the prompt. They become the first **source** (`sources.py`): trusted
+adapters a module may ask but never reach. A module names its `sources`, a hook proposes `{"source": {name, op, args}}`, and the engine
+runs it and calls the module's `on_source` at once with the answer, within the same call, so a tool's reply can come from it (`on_source`
+has the rights of the hook that asked). `books` does `search`, `wander`, `find` and `read` (the next stretch from a bookmark, condensed).
+Reading moves into a shipped `reading` module (the name `library` is the library's layout): `browse` and `read` at the library, a reading
+session of real time, bookmarks in its store (an older install's move there once), the books partway through as a status at the
+library, the bookmarks published for the dashboard, and what was read told as a moment (finishing a book is the same first as before:
+`module_firsts` may name the old one). A module whose sources aren't here offers no tools (no books, no reading). The engine's `read`
+tool, its reading session and bookmarks table are gone; its `browse` only looks over the junkyard. `settle`, listed with the library in
+the table above, is the mind's and stays core.
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of

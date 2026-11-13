@@ -123,7 +123,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           neighbours' wares and market days); `coins`, `part_with`, `whereabouts` and `notes`; module tools that take over an engine
           tool's name where they apply; the `scene` and `for_sale` conventions (the engine's market removed; an older install's moves
           into the module's store)
-    - [ ] 5d: the library (sources)
+    - [x] 5d (0.39.0): the library: the shipped `reading` module on the engine's first source (`books`: search, wander, find, read
+          condensed); sources, the `source` proposal and the `on_source` hook (the engine's reading and bookmarks removed; an older
+          install's bookmarks move into the module's store)
     - [ ] 5e: weather and calendar (sources)
     - [ ] 5f: crafting
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality

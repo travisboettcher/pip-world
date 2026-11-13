@@ -26,12 +26,12 @@ log = logging.getLogger(__name__)
 
 API = 1
 KINDS = ("thing", "rule", "part", "place")
-HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request")
+HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
 READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
          "answers")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
             "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
-            "character", "letter", "coins", "part_with", "whereabouts", "notes")
+            "character", "letter", "coins", "part_with", "whereabouts", "notes", "source")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -44,13 +44,13 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
-REPLY_MAX = 1_500                                     # what a tool says back: a shop's shelves, say
-PER_DAY = {"calls": 600, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
+REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)                                     # what a tool says back: a shop's shelves, say
+PER_DAY = {"calls": 600, "source": 60, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
            "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
-SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
                    "request": 200, "character": 2, "letter": 6}
 # What a feature needs to be a module (docs/DESIGN-world-packs.md, "Phase 4 in detail"): tools, storage, belongings, status, requests, sessions.
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
@@ -193,6 +193,14 @@ def check_manifest(m, author: str, state=None) -> dict:
         out["answers"] = dict(answers)
     if "session" in out["proposes"] and not {"on_action", "on_time"} <= set(out["hooks"]):
         raise Refused("a `session` starts from on_action and ends in on_time: it needs both hooks")
+    from . import sources as src
+    names = m.get("sources") or []
+    if not isinstance(names, list) or any(n not in src.KINDS for n in names) or len(set(names)) != len(names):
+        raise Refused(f"`sources` lists the engine's sources it asks: {', '.join(src.KINDS)}")
+    if bool(names) != ("source" in out["proposes"]) or bool(names) != ("on_source" in out["hooks"]):
+        raise Refused("`sources`, the `source` proposal and the `on_source` hook go together: say which sources it asks")
+    if names:
+        out["sources"] = list(names)
     return out
 
 
@@ -411,6 +419,10 @@ def _budget(m: dict, now: float) -> dict:
 def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> list:
     """Check a hook's proposals and return the changes to make, in order; raises Refused (and changes nothing) if any is not allowed."""
     man, budget, changes, cap = m["manifest"], _budget(m, now), [], limits(m)
+    if hook.startswith("on_source:"):                         # a source's answer, handed on within the hook that asked: that hook's rights
+        hook = hook.split(":", 1)[1]
+        if "source" in result:
+            raise Refused("on_source can't ask another source")
     allowed = set(man["proposes"]) - ({"session"} if hook != "on_action" else set()) | ({"reply"} if hook in ("on_action", "on_request") else set()) \
         | ({"refuse"} if hook == "on_request" else set())
     extra = sorted(set(result) - allowed)
@@ -456,6 +468,10 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("part_with", _part_with(state, result["part_with"])))
     if "whereabouts" in result:
         changes.append(("whereabouts", _whereabouts(state, result["whereabouts"])))
+    if "source" in result:
+        if budget["source"] >= cap["source"]:
+            raise Refused(f"it has asked its sources {cap['source']} times today")
+        changes.append(("source", _source(man, result["source"])))
     if "notes" in result:
         changes.append(("notes", _notes(state, result["notes"])))
     for key in ("character", "letter"):
@@ -577,7 +593,7 @@ def _log(v):
     if not isinstance(feel, dict) or any(k not in emo.NAMES or not isinstance(n, int) or isinstance(n, bool) or not -FEEL_MOST <= n <= FEEL_MOST
                                          for k, n in feel.items()):
         raise Refused(f"`log.feel` maps emotions ({', '.join(emo.NAMES)}) to whole numbers from -{FEEL_MOST} to {FEEL_MOST}")
-    return {"text": _text(v.get("text"), "log.text"), "kind": v["kind"], **({"feel": feel} if feel else {}),
+    return {"text": _text(v.get("text"), "log.text", LOG_MAX), "kind": v["kind"], **({"feel": feel} if feel else {}),
             **({"items": [{"name": x["name"].strip()[:40], "qty": x.get("qty", 1)} for x in items]} if items is not None else {}),
             **({"tool": v["tool"]} if v.get("tool") else {})}
 
@@ -823,6 +839,14 @@ def _whereabouts(state, v) -> dict:
     return {k: {"at": x["at"].strip(), **({"doing": x["doing"].strip()} if x.get("doing", "").strip() else {})} for k, x in v.items()}
 
 
+def _source(man: dict, v) -> dict:
+    """One question to a source the manifest names: {name, op, args?}. The engine asks it and hands the answer to on_source."""
+    if not isinstance(v, dict) or set(v) - {"name", "op", "args"} or v.get("name") not in man.get("sources", []) or not isinstance(v.get("op"), str) \
+            or not KIND_WORD.match(v["op"]) or not isinstance(v.get("args", {}), dict) or _size(v.get("args", {})) > ARGS_MAX:
+        raise Refused(f"`source` is {{name, op, args?}}: name is one of its sources ({', '.join(man.get('sources', [])) or 'none'})")
+    return {"name": v["name"], "op": v["op"], "args": dict(v.get("args", {}))}
+
+
 def _notes(state, v) -> dict:
     """A line about each of some people, which the agent sees beside their name and which they may bring up when they write or talk."""
     names = {c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident")}
@@ -1042,6 +1066,9 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             state.give_creation(c["id"], val["to"])
         elif kind in ("whereabouts", "notes"):
             fields[kind] = val
+        elif kind == "source":
+            out["source"] = val
+            budget["source"] += 1
         elif kind == "session":
             state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"])
         elif kind == "wake":
@@ -1107,7 +1134,7 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
         state.add_module_call(m["id"], now, hook, True, 0, "misfired (the work is rough)")
         return {"ok": True, "error": "", "refused": "", "wake": False, "reply": "", "misfired": True, "changed": False}
     t0 = time.monotonic()
-    res = await runner.run(m["source"], hook, context(state, settings, m, now, **extra))
+    res = await runner.run(m["source"], hook.split(":")[0], context(state, settings, m, now, **extra))
     ms = round((time.monotonic() - t0) * 1000)
     changes, refused, out = None, "", {"wake": False, "reply": ""}
     if res.get("ok") and not res.get("missing"):
@@ -1126,8 +1153,16 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
         if fails >= FAILS_TO_DISABLE and m["status"] == "live":
             disable(state, m["id"], f"its code failed {fails} times in a row: {res.get('error', '')}")
             m["status"] = "disabled"
-    return {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out,
+    done = {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out,
             "changed": any(k != "reply" for k, _ in changes or [])}
+    if not out.get("source"):
+        return done
+    from . import sources as src
+    q = done.pop("source")
+    answer = await src.ask(q["name"], q["op"], q["args"], settings, int(now) * 7919 + m["id"])
+    then = await call(state, settings, runner, m, f"on_source:{hook}", now, trial=trial, **extra, source={**q, "answer": answer})
+    return {**done, "ok": done["ok"] and then["ok"], "error": then["error"] or done["error"], "refused": then["refused"],   # asking was a change
+            "wake": done["wake"] or then["wake"], "reply": then["reply"] or done["reply"]}
 
 
 def misfires(state, m: dict, hook: str, now: float) -> bool:
@@ -1191,8 +1226,10 @@ async def ask_module(state, settings, runner, name: str, what: str, args: dict, 
 
 # --- tools a module offers, and the sessions they start ------------------------------------------------------------------------
 def tools_offered(state) -> list[tuple[dict, dict]]:
-    """(module, tool) for every tool live modules offer."""
-    return [(m, t) for m in state.modules("live") for t in m["manifest"].get("tools") or []]
+    """(module, tool) for every tool live modules offer: not a module's whose sources aren't here (no books, no reading)."""
+    from . import sources as src
+    return [(m, t) for m in state.modules("live") if all(src.available(n) for n in m["manifest"].get("sources") or [])
+            for t in m["manifest"].get("tools") or []]
 
 
 def check_args(params: dict, args) -> tuple[dict, str]:
@@ -1413,7 +1450,7 @@ def program_manifest(source: str, creation: dict, events=None) -> dict:
     Raises sandbox.Rejected (bad code) or Refused (a hook without what it needs)."""
     import ast
     tree = sandbox.check(source)
-    own = [h for h in HOOKS if h != "on_request"]                   # a program isn't asked things by other modules
+    own = [h for h in HOOKS if h not in ("on_request", "on_source")]   # a program isn't asked things by other modules, nor asks sources
     hooks = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in own]
     if not hooks:
         raise Refused(f"define at least one of {', '.join(own)}")
@@ -1748,7 +1785,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 

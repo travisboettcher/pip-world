@@ -37,7 +37,7 @@ def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
     assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
     assert T.SCOPES["work_on"] == ("home",) and T.SCOPES["experiment"] == ("home",) and T.SCOPES["tend"] == ("home",)
-    assert T.SCOPES["browse"] == ("library", "junkyard") and T.SCOPES["read"] == ("library",)
+    assert T.SCOPES["browse"] == ("junkyard",) and "read" not in T.SCOPES                     # reading is a module's (0.39.0)
     assert not {"buy", "sell", "pay"} & set(T.SCOPES)                               # trade is a module's (0.38.0)
     assert "gather" not in T.SCOPES                                                 # gathering is a module's (0.36.0)
 
@@ -54,8 +54,8 @@ async def test_a_tool_used_from_the_wrong_place_says_where_to_go(tmp_path, clock
     r = await run(ctx, "tend", creation="x")
     assert r.text == "you're at the library; go_to home first" and r.followup is True
     st.update_agent(location="workshop")
-    r = await run(ctx, "read", book="x")
-    assert r.text == "you're not at the library; go_to library first" and r.followup is True
+    r = await run(ctx, "browse")
+    assert r.text == "you're not at the junkyard; go_to junkyard first" and r.followup is True
 
 
 def test_out_of_place_for_unscoped_names_is_always_fine(tmp_path, clock):
@@ -80,7 +80,7 @@ async def test_a_wild_place_is_closed_in_the_dark(tmp_path, clock):
 
 def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     ctx, st = make(tmp_path)
-    tools = {n: T.REGISTRY[n] for n in ("say", "tend", "read", "browse")}
+    tools = {n: T.REGISTRY[n] for n in ("say", "tend", "browse")}
     names = lambda loc, **kw: sorted(s.name for s in T.specs_for(tools, loc, **kw))
     assert names("workshop") == ["say", "tend"]
     assert names("woods") == ["say"]
@@ -141,8 +141,8 @@ async def test_stop_working_reports_what_was_cut_short(tmp_path, clock):
     assert await T.stop_working(ctx) == " (you stopped out foraging at the woods early)"
     st.start_session(0, 0, 30, clock[0] + 1800, kind="walk", target="library")
     assert await T.stop_working(ctx) == ""
-    st.start_session(77, 0, 30, clock[0] + 1800, kind="read", target="Moby")
-    assert await T.stop_working(ctx) == " (you put Moby down early)"
+    st.start_session(77, 0, 30, clock[0] + 1800, kind="read", target="Moby")     # from before reading was a module: it just ends
+    assert await T.stop_working(ctx) == "" and st.session() is None
 
 
 # --- the journal checks ----------------------------------------------------------------------------

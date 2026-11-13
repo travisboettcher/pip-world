@@ -79,11 +79,6 @@ CREATE TABLE IF NOT EXISTS letters (
   text TEXT NOT NULL, enclosed TEXT NOT NULL DEFAULT '', parcel TEXT, deliver_at REAL NOT NULL,
   delivered_at REAL, attempts INTEGER NOT NULL DEFAULT 0, reply_to INTEGER
 );
-CREATE TABLE IF NOT EXISTS bookmarks (
-  book_id INTEGER PRIMARY KEY, title TEXT NOT NULL, section INTEGER NOT NULL DEFAULT 0,
-  offset INTEGER NOT NULL DEFAULT 0, percent INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0,
-  finished INTEGER NOT NULL DEFAULT 0, unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL
-);
 CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS night_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, op TEXT NOT NULL, target_kind TEXT NOT NULL DEFAULT '',
@@ -304,6 +299,7 @@ class State:
             self._seed_abilities()
             self._move_garden()
             self._move_market()
+            self._move_bookmarks()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -753,6 +749,21 @@ class State:
             self.db.execute(f"DROP TABLE IF EXISTS {t}")
         self.db.commit()
 
+    # --- bookmarks, before reading was a module ---------------------------
+    def _move_bookmarks(self) -> None:
+        """Once: an install from before 0.39.0 keeps where it is in each book. Its bookmarks move into the `reading` module's store
+        (module_library/reading.py), and the old table goes."""
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bookmarks'").fetchone():
+            return
+        marks = {str(r["book_id"]): {"book_id": r["book_id"], "title": r["title"], "section": r["section"], "offset": r["offset"],
+                                     "percent": r["percent"], "sessions": r["sessions"], "finished": bool(r["finished"]),
+                                     "unreadable": bool(r["unreadable"]), "last_read": r["last_read"]}
+                 for r in self.db.execute("SELECT * FROM bookmarks")}
+        if marks and not self.store("reading"):
+            self.merge_store("reading", {"marks": marks})
+        self.db.execute("DROP TABLE bookmarks")
+        self.db.commit()
+
     # --- workshop space --------------------------------------------------
     def project_limit(self) -> int:
         """Projects Pip can keep going at once: the starting limit plus workshop it built, never above the cap."""
@@ -1042,26 +1053,6 @@ class State:
         hit = [c for c in rows if c["name"].lower() == q] or \
               [c for c in rows if q and (q in c["name"].lower() or c["name"].lower() in q)]
         return hit[0] if len(hit) == 1 else None
-
-    # --- bookmarks (the library) -----------------------------------------------------
-    def bookmark(self, book_id: int) -> dict | None:
-        with self.lock:
-            row = self.db.execute("SELECT * FROM bookmarks WHERE book_id = ?", (book_id,)).fetchone()
-        return dict(row) if row else None
-
-    def bookmarks(self, include_finished: bool = True) -> list[dict]:
-        """Books Pip has read in, most recently read first."""
-        q = "SELECT * FROM bookmarks" + ("" if include_finished else " WHERE finished = 0 AND unreadable = 0")
-        with self.lock:
-            return [dict(r) for r in self.db.execute(q + " ORDER BY last_read DESC")]
-
-    def set_bookmark(self, book_id: int, title: str, **fields) -> None:
-        with self.lock:
-            self.db.execute("INSERT OR IGNORE INTO bookmarks (book_id, title) VALUES (?, ?)", (book_id, title))
-            if fields:
-                self.db.execute(f"UPDATE bookmarks SET {', '.join(f'{k} = ?' for k in fields)} WHERE book_id = ?",
-                                (*fields.values(), book_id))
-            self.db.commit()
 
     # --- letters ----------------------------------------------------------------------
     @staticmethod

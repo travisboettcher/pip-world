@@ -148,7 +148,10 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
             add(f"companion:{d['name']}", you(f"heard {d['name']} speak"))
     elif kind == "module" and d.get("moment"):          # a module's kind of moment: a first if the pack names it (content.json `module_firsts`)
         key = f"{d.get('name')}:{d['moment']}"
-        if (said := module_firsts().get(key)):
+        said = module_firsts().get(key)
+        if isinstance(said, dict):                        # {as, said}: the first it was when the feature was the engine's ("book_finished")
+            key, said = said.get("as") or key, said.get("said")
+        if said:
             add(key, you(said))                           # "garden:ripe": the same first as when the garden was the engine's
     if kind == "module":
         for it in d.get("items") or []:                   # what came of a module's moment: each thing found, the first time

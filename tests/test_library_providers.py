@@ -172,14 +172,14 @@ def test_a_long_text_file_is_read_in_sections_so_progress_moves(shelf, monkeypat
 @pytest.mark.asyncio
 async def test_pip_can_read_a_book_from_a_folder_like_any_other(tmp_path, shelf, monkeypatch):
     monkeypatch.setattr(lib, "TEXT_SECTION_CHARS", 200)
+    from app import sources
     s, st, gm, agent = make(tmp_path, library_path=shelf, work_speed=1e6, read_chars_per_minute=10)
+    agent.gm = None
     L = agent.library
     assert isinstance(L, folder_provider.Folder)
-    book = L.find("wild honey notes")[0]
-    lib.start_reading(st, s, book, 30)
-    data = await lib.finish_reading(st, s, None, L)
-    assert data["percent"] == 20 and data["summary"].startswith("Honey is stored") and st.bookmark(book["id"])["sessions"] == 1
-    assert st.bookmark(book["id"])["section"] == 1
+    book = (await sources.ask("books", "find", {"book": "wild honey notes"}, s, 1))["book"]
+    data = await sources.ask("books", "read", {"id": book["id"], "section": 0, "offset": 0, "minutes": 30}, s, 1)
+    assert data["percent"] == 20 and data["summary"].startswith("Honey is stored") and (data["section"], data["done"]) == (1, False)
 
 
 # --- the shared pieces the providers lean on -------------------------------------------------------------------------

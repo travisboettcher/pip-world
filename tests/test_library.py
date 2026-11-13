@@ -99,13 +99,46 @@ def calibre(root) -> str:
     return root
 
 
+def reading(st, **params):
+    """The shipped `reading` module, live."""
+    from app import modules as M
+    from tests.test_modules import live
+    man, src = M.library("reading")
+    man.pop("reason", None)
+    return live(st, {**man, "params": {**man["params"], **params}}, src, author=M.SHIPPED)
+
+
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     monkeypatch.setattr(lib, "EMPTY_RUN_LIMIT", 4)
     path = calibre(tmp_path / "calibre")
     def build(gm_script=None, **kw):
-        return make(tmp_path, gm_script, library_path=path, work_speed=1e6, read_chars_per_minute=10, **kw)
+        s, st, gm, agent = make(tmp_path, gm_script, library_path=path, work_speed=1e6, read_chars_per_minute=10, modules="on",
+                                module_runner="local", **kw)
+        reading(st, speed=1e6)
+        return s, st, gm, agent
     return build
+
+
+async def use(agent, name, **args):
+    """A tool as the agent uses it (the reading module's, where it applies): what it says."""
+    from app.llm.base import ToolCall
+    return (await agent._run_tool(ToolCall(id="1", name=name, arguments=args), 0))["content"]
+
+
+def moment(st):
+    return next(e["data"] for e in st.events(20) if e["kind"] == "module" and e["data"].get("tool") == "read")
+
+
+async def finish(agent):
+    """The reading session's time is up."""
+    agent.state.db.execute("UPDATE work_session SET ends_at = ?", (time.time() - 1,))
+    agent.state.db.commit()
+    return await agent.finish_work()
+
+
+def mark(st, book_id):
+    return (st.store("reading").get("marks") or {}).get(str(book_id))
 
 
 # --- the catalogue ---------------------------------------------------------------
@@ -120,7 +153,6 @@ def test_catalogue_search_find_wander(world):
     assert L.find("gears and wheels")[0]["id"] == 2 and "which one?" in L.find("ada")[1]
     shelf, books = L.wander(FixedRng())
     assert shelf in ("the shelves", "the Nature shelf", "the Making shelf") and books
-    assert lib.line(L.book(4)) == "#4 Old Sea Tales - Unknown (can't be read)"
     assert L.overview().startswith("about 4 books; shelves include")
 
 
@@ -139,9 +171,13 @@ def test_extract_epub_and_pdf_from_a_bookmark(world):
     assert pics["pictures"] and pics["text"] == ""
 
 
-def test_library_tools_are_off_without_a_library(tmp_path):
+def test_reading_is_offered_only_with_a_library(tmp_path):
+    from app import modules as M
+    s, st, gm, agent = make(tmp_path, library_path=str(tmp_path / "nope"), modules="on", module_runner="local")
+    reading(st)
+    assert agent.library is None and M.tools_offered(st) == [] and "read" not in agent.tool_names()
     s = Settings(library_path=str(tmp_path / "nope"), tools=["go_to", "browse", "read", "rest"])
-    assert list(tools_mod.enabled_tools(s)) == ["go_to", "rest"]  # go_to still visits neighbors
+    assert list(tools_mod.enabled_tools(s)) == ["go_to", "browse", "rest"]  # read is the reading module's; browse looks over the junkyard
 
 
 # --- going there ---------------------------------------------------------------------
@@ -185,46 +221,100 @@ async def test_browse_and_read_with_a_bookmark(world):
     s, st, gm, agent = world([report(text="A library."),
                               report(summary="You read about bees waking.", quotes=["The bees wake at dawn."]),
                               report(summary="You read about honey and wax.")])
-    assert "not at the library" in (await call(agent, "browse")).text
+    assert "not at the library" in await use(agent, "browse", query="bees")
     await at_library(agent, st)
-    r = await call(agent, "browse", query="bees")
-    assert r.text == "Looking for 'bees', you find:\n- #1 The Beekeeper's Year - Ada Comb [Nature]: All about bees."
-    assert "can't open (MOBI)" in (await call(agent, "read", book="old sea tales")).text
-    r = await call(agent, "read", book="#1", minutes=30)  # 30 min x 10 chars = 300 chars
-    assert r.text == "you settle in with The Beekeeper's Year by Ada Comb (from the start) for 30 min"
-    assert "you're reading The Beekeeper's Year" in (await call(agent, "go_to", place="home")).text
-    time.sleep(0.01)
-    await agent.finish_work()
+    assert await use(agent, "browse", query="bees") == "Looking for 'bees', you find:\n- #1 The Beekeeper's Year - Ada Comb [Nature]: All about bees."
+    assert await use(agent, "browse", query="zebras") == "nothing on the shelves matches 'zebras'"
+    assert (await use(agent, "browse")).startswith("Wandering along ")
+    assert "#4 Old Sea Tales - Unknown (can't be read)" in await use(agent, "browse", query="sea tales")
+    assert await use(agent, "read", book="old sea tales") == "Old Sea Tales is bound in a way you can't open (MOBI)"
+    assert await use(agent, "read", book="#9") == "error: there's no book #9 here"
+    assert await use(agent, "read", book="#1", minutes=30) == "you settle in with The Beekeeper's Year by Ada Comb (from the start) for 30 min"  # 300 chars
+    assert st.agent()["activity"] == "reading" and st.session()["kind"] == "module"
+    assert "reading The Beekeeper's Year" in (await call(agent, "go_to", place="home")).text
+    await finish(agent)
     task = gm.calls[1]["messages"][0]["content"]
     assert "The bees wake at dawn." in task and "Honey" not in task
-    mark = st.bookmark(1)
-    assert mark["sessions"] == 1 and not mark["finished"]
-    ev = st.events(1)[0]["data"]
-    assert ev["summary"] == "You read about bees waking." and ev["quotes"] == ["The bees wake at dawn."]
+    m = mark(st, 1)
+    assert m["sessions"] == 1 and not m["finished"] and m["section"] == 0 and m["offset"] == 300
+    ev = moment(st)
+    assert ev["text"] == 'You read The Beekeeper\'s Year (now 0% through): You read about bees waking. "The bees wake at dawn."' and ev["moment"] == "read"
+    assert st.agent()["description"] == "just read some of The Beekeeper's Year" and st.abilities()["knowledge"] == 30
     p = agent._perception("event", [])
-    assert '- you read The Beekeeper\'s Year (now 0% through): You read about bees waking. "The bees wake at dawn."' in p
-    assert "- #1 The Beekeeper's Year (0% in)" in p
-    assert "picking up where you left off" in (await call(agent, "read", book="beekeeper", minutes=90)).text
-    time.sleep(0.01)
-    await agent.finish_work()
+    assert '- You read The Beekeeper\'s Year (now 0% through): You read about bees waking. "The bees wake at dawn."' in p
+    assert "Books you're partway through:\n- #1 The Beekeeper's Year (0% in)" in p
+    assert "(you're 0% in)" in await use(agent, "browse", query="bees")
+    assert "picking up where you left off, 0% in" in await use(agent, "read", book="beekeeper", minutes=90)
+    await finish(agent)
     assert "Honey is stored in wax cells." in gm.calls[2]["messages"][0]["content"]
-    assert st.bookmark(1)["finished"] and "You finished reading The Beekeeper's Year" in agent._perception("e", [])
-    assert "already finished" in (await call(agent, "read", book="#1")).text
-    assert st.recall("honey wax")[0]["text"].startswith("You read The Beekeeper's Year: You read about honey")
+    assert mark(st, 1)["finished"] and moment(st)["moment"] == "finished_book" and moment(st)["text"].startswith("You read The Beekeeper's Year (and finished it)")
+    assert "You finished reading" not in agent._perception("e", []) and "- You read The Beekeeper's Year (and finished it)" in agent._perception("e", [])
+    assert await use(agent, "read", book="#1") == "you've already finished The Beekeeper's Year"
+    assert "(finished)" in await use(agent, "browse", query="bees")
+    assert st.recall("honey wax")[0]["text"].startswith("You read The Beekeeper's Year (and finished it): You read about honey")
+    from app import firsts
+    assert any(f["key"] == "book_finished" for e in st.events(40) for f in e["data"].get("firsts", []))
+    assert firsts.module_firsts()["reading:finished_book"] == {"as": "book_finished", "said": "finished a book"}
 
 
 @pytest.mark.asyncio
 async def test_picture_books_and_putting_a_book_down(world):
     s, st, gm, agent = world([report(text="A library.")])
     await at_library(agent, st)
-    await call(agent, "read", book="pictures of hives")
-    time.sleep(0.01)
-    await agent.finish_work()
-    assert st.events(1)[0]["data"]["summary"].startswith("These pages are almost all pictures")
-    assert "almost all pictures" in (await call(agent, "read", book="pictures of hives")).text
-    s.work_speed = 1  # real time from here: resting right away means almost nothing was read
-    await call(agent, "read", book="gears", minutes=60)
-    st.db.execute("UPDATE work_session SET ends_at = ?, started_at = ?", (time.time() + 999, time.time()))
+    await use(agent, "read", book="pictures of hives")
+    await finish(agent)
+    assert moment(st)["text"].startswith("You read Pictures of Hives (now 0% through): These pages are almost all pictures")
+    assert mark(st, 3)["unreadable"] and await use(agent, "read", book="pictures of hives") == "Pictures of Hives is almost all pictures; there's nothing more to read"
+    m = __import__("app.modules", fromlist=["x"]).live_named(st, "reading")
+    st.update_module(m["id"], manifest={**m["manifest"], "params": {"speed": 1}})      # real time from here: resting right away means almost nothing was read
+    await use(agent, "read", book="gears", minutes=60)
     r = await call(agent, "rest")
-    assert "you put Gears and Wheels down early" in r.text and not st.session()
-    assert st.events(1)[0]["data"]["summary"] == "You'd barely started before you put it down."
+    assert "you stopped reading Gears and Wheels early" in r.text and not st.session()
+    assert moment(st)["text"] == "You read Gears and Wheels (now 0% through): You'd barely started before you put it down."
+    assert mark(st, 2)["sessions"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_reading_session_from_before_it_was_a_module_just_ends(world):
+    s, st, gm, agent = world()
+    st.start_session(1, 0, 30, time.time() - 1, kind="read", target="The Beekeeper's Year")
+    assert await agent.finish_work() is False and not st.session()
+    st.start_session(1, 0, 30, time.time() + 999, kind="read", target="The Beekeeper's Year")
+    await call(agent, "rest")
+    assert not st.session()
+
+
+def test_an_older_install_keeps_its_bookmarks(tmp_path):
+    from app.state import State
+    path = str(tmp_path / "old.db")
+    st = State(Settings(), path)
+    st.db.executescript("""
+        CREATE TABLE bookmarks (book_id INTEGER PRIMARY KEY, title TEXT NOT NULL, section INTEGER NOT NULL DEFAULT 0, offset INTEGER NOT NULL DEFAULT 0,
+                                percent INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0,
+                                unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL);
+        INSERT INTO bookmarks VALUES (7, 'Tide Tables', 3, 120, 40, 2, 0, 0, 1000.0);
+        INSERT INTO bookmarks VALUES (8, 'Old Maps', 0, 0, 100, 4, 1, 0, 900.0);
+        INSERT INTO bookmarks VALUES (9, 'Plates', 2, 0, 10, 1, 0, 1, 800.0);
+    """)
+    st = State(Settings(), path)
+    assert st.store("reading") == {"marks": {
+        "7": {"book_id": 7, "title": "Tide Tables", "section": 3, "offset": 120, "percent": 40, "sessions": 2, "finished": False, "unreadable": False, "last_read": 1000.0},
+        "8": {"book_id": 8, "title": "Old Maps", "section": 0, "offset": 0, "percent": 100, "sessions": 4, "finished": True, "unreadable": False, "last_read": 900.0},
+        "9": {"book_id": 9, "title": "Plates", "section": 2, "offset": 0, "percent": 10, "sessions": 1, "finished": False, "unreadable": True, "last_read": 800.0}}}
+    assert not st.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'bookmarks'").fetchone()
+    assert State(Settings(), path).store("reading")["marks"]["7"]["offset"] == 120                  # once
+
+
+@pytest.mark.asyncio
+async def test_putting_a_book_down_late_still_takes_in_what_was_read(world):
+    from app import modules as M
+    s, st, gm, agent = world([report(text="A library."), report(summary="A summary from the narrator.")])
+    await at_library(agent, st)
+    m = M.live_named(st, "reading")
+    st.update_module(m["id"], manifest={**m["manifest"], "params": {"speed": 60}})          # an hour's reading in a minute
+    await use(agent, "read", book="#1", minutes=60)
+    st.db.execute("UPDATE work_session SET started_at = ?", (time.time() - 60,))
+    st.db.commit()
+    assert "you stopped reading The Beekeeper's Year early" in (await call(agent, "rest")).text
+    assert moment(st)["text"].startswith("You read The Beekeeper's Year (now ") and "A summary from the narrator." in moment(st)["text"]
+    assert mark(st, 1)["sessions"] == 1 and mark(st, 1)["offset"] + 1000 * mark(st, 1)["section"] > 0 and st.abilities()["knowledge"] >= 55

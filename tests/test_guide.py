@@ -174,7 +174,7 @@ def test_the_guide_follows_the_agents_own_tools_and_library(tmp_path):
 def test_a_mounted_library_is_described_to_the_agent_and_a_missing_one_is_not(tmp_path):
     from tests.test_scoping import FakeLibrary
     s, st, gm, agent = make(tmp_path)
-    agent.tools = {"browse": T.REGISTRY["browse"], "read": T.REGISTRY["read"], "go_to": T.REGISTRY["go_to"]}    # offered as if a library existed
+    agent.tools = {"browse": T.REGISTRY["browse"], "go_to": T.REGISTRY["go_to"]}    # offered as if a library existed
     agent.library = None
     assert "a library full of real books" not in agent._system_prompt()
     agent.library = FakeLibrary()

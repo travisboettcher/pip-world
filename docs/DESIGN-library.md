@@ -1,5 +1,8 @@
 # Design: places, and the library (Calibre, or any folder of books)
 
+Note (2026-11-13): since 0.39.0 reading is the shipped `reading` module (`app/module_library/reading.py`), on the `books` source
+(`app/sources.py`); the providers and format readers below are still the engine's (DESIGN-world-packs.md, "5d, the library").
+
 Note (2026-11-01): where the books come from is now a provider (`library.py` core; `library_calibre.py` and `library_folder.py` register by name; `LIBRARY_PROVIDER`,
 default `auto`). This document describes the Calibre provider, which is where the library started.
 

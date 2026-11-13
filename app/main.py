@@ -363,7 +363,8 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/library/bookmarks")
     def library_bookmarks():
-        return app.state.agent.state.bookmarks()
+        """The books Pip has read in, most recent first: what live modules publish as `bookmarks` (the reading module)."""
+        return [b for m in app.state.agent.state.modules("live") for b in ((m["facts"] or {}).get("bookmarks") or []) if isinstance(b, dict)]
 
     # --- modules (docs/DESIGN-modules.md): anyone sees what's live; only the owner sees proposals and decides ---------------------
     @app.get("/modules")

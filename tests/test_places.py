@@ -65,29 +65,26 @@ def test_a_closed_place_is_marked_in_the_directory(tmp_path, monkeypatch):
 
 
 def test_a_place_can_describe_a_verb_its_own_way(tmp_path):
-    spec_tools = {n: T.REGISTRY[n] for n in ("browse", "read", "say")}
-    plain = {sp.name: sp.description for sp in T.specs_for(spec_tools, "library")}
-    assert plain["browse"].startswith("Look through what is on offer where you are.")
-    place = P.Place("library", "x", 10, verbs={"browse": ("short", "At the library: search the catalogue.")})
-    over = {sp.name: sp.description for sp in T.specs_for(spec_tools, "library", place)}
-    assert over["browse"] == "At the library: search the catalogue." and over["read"] == plain["read"]
+    spec_tools = {n: T.REGISTRY[n] for n in ("browse", "say")}
+    plain = {sp.name: sp.description for sp in T.specs_for(spec_tools, "junkyard")}
+    assert plain["browse"].startswith("Look over what is lying about where you are")
+    place = P.Place("junkyard", "x", 10, verbs={"browse": ("short", "Pick over the heaps.")})
+    over = {sp.name: sp.description for sp in T.specs_for(spec_tools, "junkyard", place)}
+    assert over["browse"] == "Pick over the heaps." and over["say"] == plain["say"]
     assert T.REGISTRY["browse"][0].description == plain["browse"]             # the registered spec is not mutated
 
 
 @pytest.mark.asyncio
 async def test_the_old_tool_name_still_works_and_history_carries_over(tmp_path):
     s = Settings(tools=["say", "browse_library", "browse", "read"], library_path="/nonexistent")
-    assert list(T.enabled_tools(s)) == ["say"]                               # no library: neither name is offered
+    assert list(T.enabled_tools(s)) == ["say", "browse"]                     # the old name is the new one; reading is a module's
     s, st, gm, agent = make(tmp_path)
+    from tests.test_gather import daytime
+    daytime(s)
     agent.tools["browse"] = T.REGISTRY["browse"]
-    st.update_agent(location="library")
-    class Lib:                                                              # an old-name call from before the rename
-        def available(self): return True
-        def search(self, q): return []
-        def wander(self, rng): return "a shelf", []
-    agent.ctx.library = Lib()
-    out = await agent._run_tool(ToolCall("1", "browse_library", {"query": "bees"}), 0)
-    assert "nothing on the shelves matches" in out["content"]
+    st.update_agent(location="junkyard")
+    out = await agent._run_tool(ToolCall("1", "browse_library", {}), 0)       # an old-name call from before the rename
+    assert out["content"].startswith("Looking over the junkyard")
     st.log("tool", tool="browse_library", args={}, result="Wandering along a shelf, you see:\n- x")
     st.log("tool", tool="browse", args={}, result="Wandering along a shelf, you see:\n- y")
     assert {r["key"] for r in st.db.execute("SELECT key FROM facets")} >= {"tool:browse"} and \

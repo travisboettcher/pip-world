@@ -2,20 +2,18 @@
 
 Where the catalogue comes from is a *provider*, registered by name: `library_calibre.py` reads a Calibre library's metadata.db,
 `library_folder.py` reads a plain folder of books. This module is everything that does not care which: the `Library` base (finding a
-book), ranking a search, the format readers (EPUB: zipfile + HTML-to-text over the spine; PDF: pypdf, page by page; plain text in
-sections), and the reading session itself. A reading position is (section, offset): a section is a PDF page, an EPUB chapter or a
+book), ranking a search, and the format readers (EPUB: zipfile + HTML-to-text over the spine; PDF: pypdf, page by page; plain text in
+sections). The `books` source (sources.py) is how the world reaches it; reading itself is the `reading` module's. A reading position is (section, offset): a section is a PDF page, an EPUB chapter or a
 stretch of a text file. Raw text never reaches Pip's prompt - a reading session's stretch of text is condensed by the GM.
 Pick the provider with `LIBRARY_PROVIDER` (`auto` tries Calibre, then a folder). To add one, write a module that registers a
 `Library` subclass and import it at the bottom.
 """
-import asyncio
 import logging
 import math
 import os
 import posixpath
 import random
 import re
-import time
 import xml.etree.ElementTree as ET
 import zipfile
 from html.parser import HTMLParser
@@ -26,7 +24,6 @@ log = logging.getLogger("library")
 READABLE = ("EPUB", "PDF", "TXT")  # in order of preference
 TEXT_SECTION_CHARS = 3000  # a plain text file is read in sections of about this size, so progress moves
 MAX_READ_CHARS = 24000
-READ_MINUTES = (15, 90)
 EMPTY_RUN_LIMIT = 40  # this many textless sections in a row: treat the rest as pictures
 BLOCK_TAGS = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "blockquote", "section"}
 
@@ -200,78 +197,6 @@ def extract_file(path: str, fmt: str, section: int, offset: int, max_chars: int)
             "pictures": not parts and empty_run >= EMPTY_RUN_LIMIT}
 
 
-
-
-def line(b: dict, state=None) -> str:
-    mark = state.bookmark(b["id"]) if state else None
-    status = ("can't be read" if not b["format"] else
-              "finished" if mark and mark["finished"] else
-              f"you're {mark['percent']}% in" if mark and mark["sessions"] else "")
-    return (f"#{b['id']} {b['title']} - {b['authors']}" + (f" [{b['tags']}]" if b["tags"] else "")
-            + (f" ({status})" if status else "") + (f": {clip(b['description'], 140)}" if b["description"] else ""))
-
-
-def start_reading(state, settings, b: dict, minutes: int) -> str:
-    mark = state.bookmark(b["id"])
-    state.set_bookmark(b["id"], b["title"])
-    state.start_session(b["id"], 0, minutes, time.time() + minutes * 60 / settings.work_speed, kind="read",
-                        target=b["title"])
-    state.update_agent(activity="reading", description=f"reading {b['title']}")
-    where = f"picking up where you left off, {mark['percent']}% in" if mark and mark["sessions"] else "from the start"
-    return f"you settle in with {b['title']} by {b['authors']} ({where}) for {minutes} min"
-
-
-async def finish_reading(state, settings, gm, library, interrupted: bool = False, now: float | None = None) -> dict | None:
-    """End a reading session: pull the next stretch of text from the bookmark and condense it."""
-    sess = state.session()
-    if not sess or sess["kind"] != "read":
-        return None
-    now = now or time.time()
-    state.end_session()
-    minutes = sess["minutes"]
-    if interrupted:
-        minutes = min(minutes, max(0.0, now - sess["started_at"]) * settings.work_speed / 60)
-    b = library.book(sess["project_id"]) if library else None
-    mark = state.bookmark(sess["project_id"]) or {"section": 0, "offset": 0, "sessions": 0}
-    data = {"book_id": sess["project_id"], "title": sess["target"], "minutes": round(minutes),
-            "interrupted": interrupted, "summary": "", "quotes": [], "percent": mark.get("percent", 0),
-            "finished": False}
-    state.add_ability_xp({"knowledge": minutes})  # reading builds general knowledge
-    chars = min(MAX_READ_CHARS, int(minutes * settings.read_chars_per_minute))
-    got = None
-    if b and b["format"] and chars > 0:
-        try:
-            got = await asyncio.to_thread(library.extract, b, mark["section"], mark["offset"], chars)
-        except Exception as e:  # a damaged file shouldn't break the world
-            log.warning("reading %s failed: %s", b["title"], e)
-            data["summary"] = "The pages wouldn't come apart properly; you couldn't make sense of this one."
-    if got and got["pictures"]:
-        data["summary"] = "These pages are almost all pictures; there's hardly any text to read here."
-        state.set_bookmark(b["id"], b["title"], unreadable=1, last_read=now, sessions=mark["sessions"] + 1)
-    elif got:
-        out = await gm.read_summary(b["title"], b["authors"], got["text"], got["percent"]) if gm and got["text"] else None
-        data.update(summary=clip(out.get("summary"), 700) if out else clip(got["text"], 300),
-                    quotes=[clip(q, 200) for q in (out.get("quotes") or [])[:2] if isinstance(q, str)] if out else [],
-                    percent=got["percent"], finished=got["done"])
-        state.set_bookmark(b["id"], b["title"], section=got["section"], offset=got["offset"], percent=got["percent"],
-                           finished=int(got["done"]), sessions=mark["sessions"] + 1, last_read=now)
-    if not data["summary"]:
-        data["summary"] = "You'd barely started before you put it down."
-    if state.agent()["activity"] == "reading":
-        state.update_agent(activity="idle", description=f"just read some of {sess['target']}")
-    state.log("reading", **data)
-    return data
-
-
-def perception(state, library) -> list[str]:
-    if state.agent()["location"] != "library" or not library:
-        return []
-    lines = []
-    reading = state.bookmarks(include_finished=False)[:5]
-    if reading:
-        lines.append("Books you're partway through:")
-        lines += [f"- #{m['book_id']} {m['title']} ({m['percent']}% in)" for m in reading]
-    return lines
 
 
 from . import library_calibre, library_folder  # noqa: E402,F401  (register the "calibre" and "folder" providers)

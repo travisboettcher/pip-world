@@ -27,7 +27,7 @@ def test_manifest_refusals_word_for_word(tmp_path):
     bad = lambda m: refusal(M.check_manifest, m, "world", st)
     events = ", ".join(sorted(__import__("app.public_view", fromlist=["x"]).EVENT_FIELDS))
     assert bad({k: v for k, v in rule().items() if k != "name"}) == "`name` is 3 to 40 lowercase letters, digits and dashes, starting with a letter"
-    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer, on_request"
+    assert bad(rule(hooks=["x"])) == "`hooks` is a list drawn from: on_install, on_tick, on_time, on_event, on_action, on_message, on_answer, on_request, on_source"
     assert bad(rule(kind="thing")) == "a thing needs a `subject`: the name of the creation it makes work"
     assert bad(rule(subject="x")) == "only a thing has a subject (and reads or changes its runtime)"
     assert bad(rule(hooks=["on_event"], events=["inbox"])) == "`events` is a list of public event kinds: " + events
@@ -132,7 +132,7 @@ async def test_budgets_add_up_and_a_due_time_ends_on_its_moment(tmp_path):
     for _ in range(2):
         r = await M.call(st, s, agent.runner, m, "on_tick", NOW)
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "", "changed": True}
-    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "find": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
+    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "source": 0, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "find": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
     got = st.module(m["id"])
     assert got["due"] is None and [l["text"] for l in got["lines"]] == ["a", "a"]
     calls = st.module_calls(m["id"])

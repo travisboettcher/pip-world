@@ -167,7 +167,6 @@ async def test_a_finished_project_is_made_at_its_crafts_level(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize("kind,where,fn,result,note", [
-    ("read", "lib", "finish_reading", {"title": "Dune"}, " (you put Dune down early)"),
     ("experiment", "proj", "resolve_experiment", {"project": "Clock"}, " (you cut the experiment on Clock short)"),
     ("work", "proj", "resolve_session", {"project": "Clock"}, " (you stopped working on Clock early)"),
     ("module", "modules", "end_session", {"label": "tidying"}, " (you stopped tidying early)"),
@@ -187,7 +186,7 @@ async def test_stopping_early_hands_on_everything_and_says_so(tmp_path, monkeypa
     assert await T.stop_working(agent.ctx) == note
     args, kw = got[0]
     assert args[0] is st and kw == {"interrupted": True} and args[1] is s
-    if kind in ("experiment", "work", "read"):
+    if kind in ("experiment", "work"):
         assert agent.ctx.gm in args
     if kind in ("experiment", "work"):
         assert args[-1] is agent.ctx.rng
@@ -240,8 +239,8 @@ async def test_a_module_tools_result_and_what_it_carries(tmp_path):
 # --- enabled tools, decay, and the small registries ------------------------------------------------------------------------------------------
 def test_each_unavailable_tool_is_skipped_not_the_rest(tmp_path):
     base = dict(db_path=str(tmp_path / "t.db"), modules="off", emotions="off", outreach="off", sleep=False, library_path="")
-    got = T.enabled_tools(Settings(tools=["program", "settle", "send_postcard", "browse", "sleep", "say"], **base))
-    assert list(got) == ["say"]
+    got = T.enabled_tools(Settings(tools=["program", "settle", "send_postcard", "read", "sleep", "say", "browse"], **base))
+    assert list(got) == ["say", "browse"]                                    # browse looks over the junkyard, library or not
     assert list(T.enabled_tools(Settings(tools=["say", "say", "rest"], **base))) == ["say", "rest"]
 
 

@@ -113,6 +113,10 @@ version might be a still for clean water, or a salvage bench. See DESIGN-modules
 `finds` are what its booth sells; the village's market and Wren's own stall then work as Pip's do. Its prices, tills and stall live in
 the module's store, so a world that trades differently (barter, ration chits) copies `app/module_library/trade.py` and changes it.
 
+**Books** (works today; the shipped `reading` module on the engine's `books` source): with a library mounted (`LIBRARY_PATH`), the
+agent reads the owner's real books at the `library` place. Ashfall's version of it (a ruined archive) is a module of its own that asks
+the same source (`"sources": ["books"]`) and words it as salvaged pages, or ships a list of its own and asks nothing.
+
 **People** (works today for voices; phase 5 for characters with letters and visits): a village of survivors starts as a module with
 `voices`: the quartermaster, the medic, a child who follows Wren around. Each `on_message` keeps its own memory and `ask`s for its
 words; see `app/module_library/workings.py` (companions) for the pattern. With `std:letters`, they can also write.

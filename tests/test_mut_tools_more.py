@@ -1,31 +1,10 @@
 """Tools: the remaining edges of busy-handling, note checks, tool offers and the tool list."""
 import pytest
 
-from app import library as lib
 from app import tools as T
-from test_library import calibre
-from test_mut_projects_flow import StubGM, add as add_project, begin
+from test_mut_projects_flow import add as add_project, begin
 from test_mut_tools_core import make, clock  # noqa: F401
 from test_mut_tools_registry import settings
-
-
-class ReadGM(StubGM):
-    async def read_summary(self, title, authors, text, percent):
-        return {"summary": "A summary from the narrator.", "quotes": []}
-
-
-async def test_putting_a_book_down_early_still_records_what_was_read(tmp_path, clock):
-    path = calibre(tmp_path / "calibre")
-    ctx, st = make(tmp_path, library_path=path, work_speed=60.0, read_chars_per_minute=10)
-    ctx.library = lib.open_library(ctx.settings)
-    ctx.gm = ReadGM()
-    lib.start_reading(st, ctx.settings, ctx.library.book(1), 60)
-    clock[0] += 3600                                                     # an hour at work_speed 60: the full hour
-    note = await T.stop_working(ctx)
-    assert note == " (you put The Beekeeper's Year down early)"
-    ev = [e for e in st.events(limit=5) if e["kind"] == "reading"][0]["data"]
-    assert ev["interrupted"] is True and ev["summary"] == "A summary from the narrator."
-    assert ev["percent"] > 0 and st.bookmark(1)["sessions"] == 1
 
 
 async def test_an_experiment_whose_project_is_gone_leaves_no_note(tmp_path, clock):
@@ -37,13 +16,13 @@ async def test_an_experiment_whose_project_is_gone_leaves_no_note(tmp_path, cloc
 
 
 def test_a_closed_place_hides_its_own_tools_even_when_they_come_first():
-    tools = {n: T.REGISTRY[n] for n in ("read", "say")}
+    tools = {n: T.REGISTRY[n] for n in ("browse", "say")}
 
     class P:
-        scope = "library"
+        scope = "junkyard"
         verbs = {}
-    assert [s.name for s in T.specs_for(tools, "library", place=P(), open_=False)] == ["say"]
-    assert [s.name for s in T.specs_for(tools, "library", place=P(), open_=True)] == ["read", "say"]
+    assert [s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=False)] == ["say"]
+    assert [s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=True)] == ["browse", "say"]
 
 
 def test_a_tool_nobody_scoped_works_anywhere():
@@ -92,4 +71,4 @@ def test_enabled_tools_skips_unavailable_ones_without_stopping(tmp_path):
     s = settings(tmp_path, tools=["say", "say", "eat", "web_search", "rest", "sleep", "note_to_self", "send_postcard",
                                   "set_activity", "browse", "recall", "read", "where_to"],
                  sleep=False, tavily_api_key="", outreach="off", outreach_channels=[])
-    assert list(T.enabled_tools(s)) == ["say", "eat", "rest", "note_to_self", "set_activity", "recall", "where_to"]
+    assert list(T.enabled_tools(s)) == ["say", "eat", "rest", "note_to_self", "set_activity", "browse", "recall", "where_to"]

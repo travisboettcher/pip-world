@@ -6,7 +6,7 @@ from app.llm.base import LLMResponse, ToolCall, Usage
 from tests.test_projects import call, make
 
 HOME_ONLY = {"program", "work_on", "experiment", "tend", "sleep"}
-LIBRARY_ONLY = {"browse", "read"}
+YARD_ONLY = {"browse"}
 
 
 def names(specs):
@@ -16,8 +16,8 @@ def names(specs):
 def test_every_tool_has_a_scope_and_the_table_matches_the_design():
     assert set(T.SCOPES) == set(T.REGISTRY)
     assert {n for n, sc in T.SCOPES.items() if sc == ("home",)} == HOME_ONLY
-    assert {n for n, sc in T.SCOPES.items() if sc == ("library",)} == {"read"}
-    assert T.SCOPES["browse"] == ("library", "junkyard") and "gather" not in T.SCOPES and "buy" not in T.SCOPES    # the gathering and trade modules'
+    assert {n for n, sc in T.SCOPES.items() if sc == ("library",)} == set()                        # reading is the reading module's
+    assert T.SCOPES["browse"] == ("junkyard",) and not {"gather", "buy", "read"} & set(T.SCOPES)    # the gathering, trade and reading modules'
     assert T.SCOPES["where_to"] == ("anywhere",)
     assert all(T.SCOPES[n] == ("anywhere",) for n in ("say", "eat", "rest", "recall", "go_to", "start_project", "write_letter"))
 
@@ -25,9 +25,9 @@ def test_every_tool_has_a_scope_and_the_table_matches_the_design():
 def test_the_tool_list_depends_on_where_pip_is():
     everything = {n: T.REGISTRY[n] for n in T.REGISTRY}
     home, library = names(T.specs_for(everything, places.HOME)), names(T.specs_for(everything, "library"))
-    marigold = names(T.specs_for(everything, "Marigold's home"))
-    assert HOME_ONLY <= home and not LIBRARY_ONLY & home
-    assert LIBRARY_ONLY <= library and not HOME_ONLY & library
+    marigold, yard = names(T.specs_for(everything, "Marigold's home")), names(T.specs_for(everything, "junkyard"))
+    assert HOME_ONLY <= home and not YARD_ONLY & home
+    assert YARD_ONLY <= yard and not HOME_ONLY & library and not YARD_ONLY & library
     assert not HOME_ONLY & marigold and "read" not in marigold and "browse" not in marigold   # a neighbor's wares are the trade module's
     assert {"say", "go_to", "note_to_self", "recall"} <= home & library & marigold      # always there
     assert places.scope_of("Marigold's home") == "neighbor" and places.scope_of(places.HOME) == "home"
@@ -42,8 +42,8 @@ async def test_using_a_tool_from_the_wrong_place_is_refused_the_same_way_everywh
         r = await call(agent, tool, **args)
         assert r.text == "you're at the library; go_to home first" and r.followup, tool
     st.update_agent(location=places.HOME)
-    r = await call(agent, "read", book="x")
-    assert r.text == "you're not at the library; go_to library first" and r.followup
+    r = await call(agent, "browse")
+    assert r.text == "you're not at the junkyard; go_to junkyard first" and r.followup
     st.update_agent(location="Marigold's home")
     assert (await call(agent, "tend", creation="x")).text == "you're at Marigold's home; go_to home first"
 

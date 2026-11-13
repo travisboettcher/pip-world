@@ -349,7 +349,7 @@ async def test_where_no_module_tool_applies_the_engines_own_answers(tmp_path):
     r = (await agent._run_tool(ToolCall(id="1", name="browse", arguments={}), 0))["content"]
     assert r.startswith("Looking over the junkyard")
     specs = {sp.name: sp.description for sp in agent._specs()}
-    assert specs["browse"].startswith("Look through what is on offer")
+    assert specs["browse"].startswith("Look over what is lying about")
     st.update_agent(location="Marigold's home")
     assert (await agent._run_tool(ToolCall(id="1", name="browse", arguments={}), 0))["content"] == "stalls"
     assert {sp.name: sp.description for sp in agent._specs()}["browse"] == "look at the stalls"
