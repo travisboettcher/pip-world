@@ -126,7 +126,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 5d (0.39.0): the library: the shipped `reading` module on the engine's first source (`books`: search, wander, find, read
           condensed); sources, the `source` proposal and the `on_source` hook (the engine's reading and bookmarks removed; an older
           install's bookmarks move into the module's store)
-    - [ ] 5e: weather and calendar (sources)
+    - [x] 5e (0.40.0): weather and calendar: the shipped `sky` module asks the `weather` source and publishes the world's weather and
+          season, which the scene, happenings, layouts and modules read (the engine's weather line and refresh removed)
     - [ ] 5f: crafting
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
   - [ ] Phase 7: remove the engine's fallbacks for every moved feature

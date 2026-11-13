@@ -40,7 +40,7 @@ def test_parse_gives_up_on_unusable_answers():
     assert HA.parse({"attributes": {}}, good_s) is None
     assert HA.parse("rain", good_s) is None and HA.parse(good_w, "up") is None
     w = HA.parse(good_w, {"state": "above_horizon", "attributes": {"next_setting": "soon"}})
-    assert w.next_setting is None and w.line() == "Outside: rain, 8 C."
+    assert w.next_setting is None and (w.condition, w.temp, w.above_horizon) == ("rainy", 8.0, True)
 
 
 class FakeHA:

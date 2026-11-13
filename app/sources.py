@@ -4,6 +4,7 @@ ask but never reach themselves (they have no I/O). A module names the sources it
 
 A source is trusted engine code the owner configures, like a channel. `books` is the owner's library (library.py: Calibre or a folder of
 books): finding books, and reading a stretch of one, condensed by the GM so raw text never reaches a module or the agent's prompt.
+`weather` is the real sky outside (weather.py: Home Assistant), the last reading, fetched at most every ten minutes.
 """
 import asyncio
 import logging
@@ -66,7 +67,31 @@ class Books:
         return out
 
 
-KINDS = {"books": Books}
+class Sky:
+    """The real weather outside (weather.py's provider: Home Assistant), as the last reading, fetched at most every ten minutes:
+    {condition, temp, unit, daylight, next_rising, next_setting}, or None when there is no fresh reading."""
+    ops = ("now",)
+
+    def __init__(self, library, gm, settings):
+        self.s = settings
+
+    def available(self) -> bool:
+        from . import weather
+        src = weather.provider(self.s) if self.s and self.s.weather else None
+        return bool(src and src.ready)
+
+    async def now(self, args: dict, seed: int) -> dict:
+        import time
+        from . import weather
+        state = _wired["agent"].state
+        now = time.time()
+        await weather.refresh(state, self.s, now)
+        w = weather.current(state, now)
+        return {"reading": None if not w else {"condition": w.condition, "temp": w.temp, "unit": w.unit, "daylight": w.above_horizon,
+                                               "next_rising": w.next_rising, "next_setting": w.next_setting}}
+
+
+KINDS = {"books": Books, "weather": Sky}
 _wired: dict = {"agent": None}
 
 

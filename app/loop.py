@@ -23,7 +23,6 @@ from . import places
 from . import conversation as conv
 from . import happenings
 from . import reminders, talk
-from . import weather
 from . import wishes
 from . import worldmap
 from . import emotions as emo
@@ -180,7 +179,6 @@ class Agent:
 
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
-        await weather.refresh(self.state, self.s, time.time())
         await modules.offer_library(self.state, self.s, self.runner)
         if await modules.step(self.state, self.s, self.runner):
             self.request_wake()
@@ -709,7 +707,6 @@ class Agent:
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
         lines += abilities.perception(self.state, time.time())
-        lines += weather.perception(self.state, self.s, time.time())
         lines += emo.perception(self.state, self.s)
         lines += self._firsts()
         lines += self._calibration()

@@ -10,7 +10,6 @@ from datetime import datetime
 import pytest
 
 from app import modules as M
-from app import weather
 from tests.test_modules import BELLS, BELLS_MAN, NOW, clockwork, live, modular, rule
 from tests.test_world_view import clock
 
@@ -76,7 +75,8 @@ async def test_a_runner_that_cant_be_reached_says_how():
 def test_the_context_word_for_word(tmp_path):
     s, st, agent = modular(tmp_path, hemisphere="south")
     clock(st)
-    weather.save(st, weather.Weather("rain", 9.5, "C", True, None, None), NOW)
+    from tests.test_sky import sky_says
+    sky_says(st, {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True, "next_rising": None, "next_setting": None})   # what the sky publishes
     st.update_agent(activity="sleeping", location="workshop")
     off = live(st, rule(name="gone", proposes=["publish"]), "x")
     st.update_module(off["id"], facts={"x": 1}, status="disabled")
@@ -88,7 +88,8 @@ def test_the_context_word_for_word(tmp_path):
                            "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
     assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
-                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden"} and ctx["facts"] == {}
+                          "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden"}
+    assert ctx["facts"] == {"says": {"weather": {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True, "next_rising": None, "next_setting": None}}}
     c = st.creations()[0]
     assert ctx["subject"] == {"name": "Gear Clock", "quality": "sound", "description": "a clock", "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": []}
     st.give_creation(c["id"], "Oriel")

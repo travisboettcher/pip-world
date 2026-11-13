@@ -68,14 +68,14 @@ def test_water_is_spotted_in_any_part_of_a_place_record(tmp_path):
 
 
 def test_the_moment_the_map_is_drawn_for(tmp_path, monkeypatch):
-    import json
     from datetime import datetime
     s, st, gm, agent = make(tmp_path, weather=True, hemisphere="south")
     at = datetime(2026, 7, 9, 14, 25).timestamp()
-    st.set_meta(weather=json.dumps({"condition": "rainy", "temp": 9.0, "unit": "°C", "above_horizon": True, "next_rising": None, "next_setting": None}), weather_at=at)
+    from tests.test_sky import RAIN, sky_says
+    sky_says(st, RAIN)                                                                  # what the sky publishes
     now = WV.map_view(st, s, None, now=at)["now"]
     assert now == {"ts": at, "minutes": 14 * 60 + 25, "season": "winter", "weather": "rainy"}
-    s.weather = False
+    sky_says(st, None)
     assert WV.map_view(st, s, None, now=at)["now"]["weather"] is None
 
 
@@ -192,11 +192,11 @@ def test_the_scene_endpoint_is_public_and_says_when_a_place_is_unknown(tmp_path)
 
 def test_the_scene_carries_exactly_these_facts(tmp_path):
     import asyncio
-    import json
     from app import modules as M
     from tests.test_trade import LOOT, module as trade
     s, st, gm, agent = make(tmp_path, weather=True, modules="on", module_runner="local")
-    st.set_meta(weather=json.dumps({"condition": "rainy", "temp": 9.0, "unit": "°C", "above_horizon": True, "next_rising": None, "next_setting": None}), weather_at=time.time())
+    from tests.test_sky import RAIN, sky_says
+    sky_says(st, RAIN)
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=time.time(), heard_at=time.time(), hours=[0, 24], daylight_only=0,
                  walk_minutes=10.0, loot=LOOT, verbs={}, blurb="the square")
     trade(st)

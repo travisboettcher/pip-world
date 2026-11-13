@@ -32,10 +32,10 @@ def test_a_manifest_names_its_sources_with_the_proposal_and_the_hook():
         with pytest.raises(M.Refused) as e:
             M.check_manifest(bad, "world")
         assert str(e.value) == why
-    for bad in (["weather"], "books", ["books", "books"]):
+    for bad in (["moon"], "books", ["books", "books"]):
         with pytest.raises(M.Refused) as e:
             M.check_manifest(rule(hooks=["on_source"], proposes=["source"], sources=bad), "world")
-        assert str(e.value) == "`sources` lists the engine's sources it asks: books"
+        assert str(e.value) == "`sources` lists the engine's sources it asks: books, weather"
 
 
 def test_what_a_source_question_may_be():
@@ -90,7 +90,7 @@ async def test_without_the_source_a_modules_tools_are_not_offered_and_a_question
     assert M.tools_offered(st) == [] and not sources.available("books")
     text, _ = await M.use_tool(st, s, M.LocalRunner(), m, m["manifest"]["tools"][0], {}, NOW)
     assert text == "books search ['error']" and await sources.ask("books", "search", {}, s, 1) == {"error": "there is no books source here"}
-    assert sources.get("weather") is None and not sources.available("weather")
+    assert sources.get("moon") is None and not sources.available("moon")
 
 
 async def test_the_books(tmp_path, shelf, monkeypatch):

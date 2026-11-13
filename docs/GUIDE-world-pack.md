@@ -167,8 +167,10 @@ world feel lived in: a curfew bell, a trader's caravan every few days, the reser
 `guide/*.md` tells Wren how her world works, in the second person, a few lines a page: home, her needs, the
 places, the people. Features bring their own pages (`std:market` brings the market's); the pack adds what's particular to it.
 
-**Real-world sources** (phase 5): decide whether the world touches the real one. Ashfall probably wants its own weather (a module that
-invents ash days and acid rain and publishes them as the world's weather), no web search, and maybe the owner's books as a ruined archive.
+**Real-world sources** (works today for the books and the weather): decide whether the world touches the real one. Pip's world uses the
+shipped `sky` module, which asks the `weather` source and publishes the world's `weather` and `season`. Ashfall probably wants its own
+weather instead: a module that invents ash days and acid rain and publishes them as `weather` (and its own `season`), asking no source;
+no web search; and maybe the owner's books as a ruined archive.
 
 **Registries** (works today): `content.json` holds the world's lasting effects (what a finished project can change, and the line that
 says so), its abilities (what a working thing can give: the time, news), crafting's abilities (what a stage of work exercises) and what

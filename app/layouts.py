@@ -20,8 +20,12 @@ KINDS = ("home", "neighbor", "library", "wild", "yard", "shop", "market", "sight
 PARTS_MAX = 80
 
 
-def season(settings, now: float) -> str:
+def season(settings, now: float, state=None) -> str:
+    """The season a layout is built for: the world's (what the sky publishes), or the engine's reckoning without a state."""
     from .happenings import season_of
+    if state is not None:
+        from .modules import world_season
+        return world_season(state, settings, now)
     return season_of(now, settings.hemisphere)
 
 
@@ -87,7 +91,7 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
                       details: dict | None = None) -> dict:
     """A place module's layout for one place (its own, or for a kind module, the place named), built: {"shapes", "anchors", "parts"
     (name -> module id), "season", "version", "details"}. Raises Bad."""
-    s = season(settings, now)
+    s = season(settings, now, state)
     key = key or m["manifest"]["place"]
     details = details or {"key": key}
     res = await runner.run(m["source"], "on_build", {"params": {}, "season": s, "seed": seed_of(key), "place": key, "details": details})
@@ -131,7 +135,7 @@ def live_parts(state) -> list[int]:
 
 
 def _stale(state, settings, b: dict, version: int, now: float, details: dict | None = None) -> bool:
-    if not b or "error" in b or b.get("version") != version or b.get("season") != season(settings, now):
+    if not b or "error" in b or b.get("version") != version or b.get("season") != season(settings, now, state):
         return True
     if details is not None and b.get("details") != details:
         return True

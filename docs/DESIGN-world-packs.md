@@ -8,7 +8,8 @@ module (tools, storage, belongings, status, logged moments, requests, sessions),
 **phase 5a built (0.36.0)**: gathering is a shipped module on the engine's place data; **5b built (0.37.0)**: the neighbourhood module
 invents the neighbour and asks them to write first; **5c built (0.38.0)**: trade (booths, prices, tills, the agent's stall and its
 customers, accounts, the neighbours' wares and market days) is the shipped `trade` module; **5d built (0.39.0)**: reading is the
-shipped `reading` module, on the engine's first source (`books`). Next: 5e, weather and calendar. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+shipped `reading` module, on the engine's first source (`books`); **5e built (0.40.0)**: the shipped `sky` module publishes the world's
+weather and season, from the `weather` source. Next: 5f, crafting. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -310,6 +311,15 @@ library, the bookmarks published for the dashboard, and what was read told as a 
 `module_firsts` may name the old one). A module whose sources aren't here offers no tools (no books, no reading). The engine's `read`
 tool, its reading session and bookmarks table are gone; its `browse` only looks over the junkyard. `settle`, listed with the library in
 the table above, is the mind's and stays core.
+
+**5e, weather and calendar.** The provider stays engine code (`weather.py`, Home Assistant; the reading kept and fetched at most every ten
+minutes) as the second source, `weather` (op `now`: `{reading}`, none without a fresh one). A shipped `sky` module asks it every ten
+minutes and publishes the world's `weather` (`{condition, temp, unit, daylight, next_rising, next_setting}`) and `season` (from the
+date, the right way round for its `hemisphere` param, `HEMISPHERE`), and shows the agent an "Outside" status. The engine reads what is
+published (`modules.published`, `modules.world_season`): the scene's moment, the `weather` and `time` reads, happenings and layouts.
+Without a module publishing a season, the engine still reckons one from the date (until phase 7); without one publishing the weather,
+there is none. The engine's weather line, its wording of conditions and its refresh in the loop are gone. A wasteland's own sky module
+invents ash days and publishes them the same way, asking no source.
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of

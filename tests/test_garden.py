@@ -102,11 +102,11 @@ async def test_the_garden_only_works_at_home(tmp_path):
 
 
 async def test_growing_speed_and_the_weather(tmp_path):
-    from app import weather as W
     s, st, agent, m = setup(tmp_path, speed=2.0)
     assert await use(agent, "plant", seed="carrot") == "planted carrot seeds in plot 1; carrots will be ready in about 9 hours"
     assert plots(st)["1"]["ready_at"] - plots(st)["1"]["planted_at"] == pytest.approx(1080 * 30)
-    W.save(st, W.Weather("rainy", 10.0, "°C", True, None, None), time.time())
+    from tests.test_sky import RAIN, sky_says
+    sky_says(st, RAIN)                                                               # what the sky publishes
     await use(agent, "plant", seed="tomato")
     assert plots(st)["2"]["ready_at"] - plots(st)["2"]["planted_at"] == pytest.approx(1440 * 0.85 * 30)
 

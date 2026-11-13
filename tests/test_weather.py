@@ -17,17 +17,23 @@ def reading(condition="rainy", temp=8.0, unit="C", above=True, rising=RISES, set
     return W.Weather(condition, temp, unit, above, rising, setting)
 
 
-def test_the_line_says_what_it_is_like_and_when_the_sun_turns():
-    assert reading().line() == "Outside: rain, 8 C; the sun sets at 4:52 PM."
-    assert reading(above=False).line() == "Outside: rain, 8 C; the sun rises at 7:10 AM."
-    assert reading("partlycloudy", 21.0).line() == "Outside: partly cloudy, 21 C; the sun sets at 4:52 PM."
-    assert reading("clear-night", 3.4).line() == "Outside: clear, 3 C; the sun sets at 4:52 PM."
-    assert reading("lightning-rainy").line().startswith("Outside: thunder and rain, 8 C")
-    assert reading("mystery-weather", None).line() == "Outside: mystery weather; the sun sets at 4:52 PM."
-    assert reading(temp=None).line().startswith("Outside: rain; the sun")
-    assert reading("very_odd-sky", None).line().startswith("Outside: very odd sky;")
-    assert reading("rainy", 46.4, "F").line() == "Outside: rain, 46 F; the sun sets at 4:52 PM."
-    assert reading(setting=None).line() == "Outside: rain, 8 C." and reading(above=False, rising=None).line() == "Outside: rain, 8 C."
+def test_the_sky_says_what_it_is_like_and_when_the_sun_turns():
+    from tests.test_sky import G                                                       # the wording is the sky module's (0.40.0)
+    off = round(datetime.fromtimestamp(NOW).astimezone().utcoffset().total_seconds())
+
+    def line(*a, **kw):
+        w = reading(*a, **kw)
+        return "Outside: " + G["line"]({"condition": w.condition, "temp": w.temp, "unit": w.unit, "daylight": w.above_horizon,
+                                         "next_rising": w.next_rising, "next_setting": w.next_setting}, off)
+    assert line() == "Outside: rain, 8 C; the sun sets at 4:52 PM."
+    assert line(above=False) == "Outside: rain, 8 C; the sun rises at 7:10 AM."
+    assert line("partlycloudy", 21.0) == "Outside: partly cloudy, 21 C; the sun sets at 4:52 PM."
+    assert line("clear-night", 3.4) == "Outside: clear, 3 C; the sun sets at 4:52 PM."
+    assert line("lightning-rainy").startswith("Outside: thunder and rain, 8 C")
+    assert line("mystery-weather", None) == "Outside: mystery weather; the sun sets at 4:52 PM."
+    assert line(temp=None).startswith("Outside: rain; the sun") and line("very_odd-sky", None).startswith("Outside: very odd sky;")
+    assert line("rainy", 46.4, "F") == "Outside: rain, 46 F; the sun sets at 4:52 PM."
+    assert line(setting=None) == "Outside: rain, 8 C." and line(above=False, rising=None) == "Outside: rain, 8 C."
 
 
 def test_the_weather_is_kept_in_the_state_and_goes_stale_after_an_hour(tmp_path):
@@ -35,7 +41,7 @@ def test_the_weather_is_kept_in_the_state_and_goes_stale_after_an_hour(tmp_path)
     assert W.current(st, NOW) is None
     W.save(st, reading(), NOW)
     got = W.current(st, NOW + 3599)
-    assert got == reading() and got.line().startswith("Outside: rain, 8 C")
+    assert got == reading()
     assert W.current(st, NOW + 3600).condition == "rainy" and W.current(st, NOW + 3601) is None
     st.set_meta(weather_at="", weather="")
     assert W.current(st, NOW) is None
@@ -44,15 +50,6 @@ def test_the_weather_is_kept_in_the_state_and_goes_stale_after_an_hour(tmp_path)
     assert W.current(st, NOW) is None
     W.save(st, reading("snowy"), NOW + 4000)
     assert W.current(st, NOW + 4001).condition == "snowy"
-
-
-def test_perception_needs_the_feature_on_and_a_fresh_reading(tmp_path):
-    s, st, *_ = make(tmp_path)
-    W.save(st, reading(), NOW)
-    assert W.perception(st, s, NOW) == []                                               # off by default
-    s.weather = True
-    assert W.perception(st, s, NOW) == [reading().line()]
-    assert W.perception(st, s, NOW + 7200) == []                                        # stale: say nothing
 
 
 class FakeProvider:

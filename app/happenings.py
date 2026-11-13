@@ -15,6 +15,7 @@ from datetime import datetime
 from . import emotions as emo
 from . import creations as cr
 from . import finds
+from . import modules
 from . import sleep as sleepmod
 from .state import name_key
 from .text import clip, coins_text
@@ -113,7 +114,7 @@ def world(state, settings, now: float) -> dict:
     creations = state.creations()
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(),
-            "season": season_of(now, settings.hemisphere) if settings.happenings_seasons else None,
+            "season": modules.world_season(state, settings, now) if settings.happenings_seasons else None,
             "low": stats_mod.low(state),
             "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
             "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],

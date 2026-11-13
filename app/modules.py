@@ -44,7 +44,7 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "happenings")
+    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
 REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)                                     # what a tool says back: a shop's shelves, say
@@ -325,14 +325,12 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["asking"] = len(m.get("asks") or [])          # questions still waiting for the model's words
     reads = man["reads"]
     if "time" in reads:
-        from .happenings import season_of
         t = datetime.fromtimestamp(now)
-        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(now, settings.hemisphere),
+        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": world_season(state, settings, now),
                        "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     if "weather" in reads:
-        from . import weather
-        w = weather.current(state, now)
-        ctx["weather"] = {"condition": w.condition, "temp": w.temp, "unit": w.unit, "daylight": w.above_horizon} if w else None
+        w = published(state, "weather")
+        ctx["weather"] = {k: w.get(k) for k in ("condition", "temp", "unit", "daylight")} if isinstance(w, dict) else None
     if "agent" in reads or "pip" in reads:                   # `pip` is the old name of the `agent` read, kept for modules written with it
         a = state.agent()
         from . import places
@@ -858,6 +856,21 @@ def _notes(state, v) -> dict:
 def whereabouts(state, name: str) -> dict | None:
     """Where a live module says a character is just now ({at, doing?}), or None."""
     return next((m["whereabouts"][name] for m in state.modules("live") if name in (m.get("whereabouts") or {})), None)
+
+
+def published(state, key: str, default=None):
+    """What live modules publish as the world's `key` (the `sky` module's `weather` and `season`): the first that has it, else `default`."""
+    for m in state.modules("live"):
+        if key in (m.get("facts") or {}):
+            return m["facts"][key]
+    return default
+
+
+def world_season(state, settings, now: float) -> str:
+    """The world's season: what a live module publishes (the sky's), else the engine's own reckoning from the date (until phase 7)."""
+    from .happenings import season_of
+    s = published(state, "season")
+    return s if isinstance(s, str) and s else season_of(now, settings.hemisphere)
 
 
 def for_sale(state) -> list[tuple]:
@@ -1642,7 +1655,7 @@ async def _try_build(state, settings, runner, m: dict, now: float) -> dict:
     report = {"calls": 1, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "placed": [], "unplaced": []}
     try:
         if m["kind"] == "part":
-            b = await layouts.build_part(runner, m, {}, layouts.season(settings, now), layouts.seed_of(m["name"]))
+            b = await layouts.build_part(runner, m, {}, layouts.season(settings, now, state), layouts.seed_of(m["name"]))
         elif "kinds" in m["manifest"]:                           # a kind's layout: tried on a made-up place of each kind
             from .looks import fallback_scene
             shapes = anchors_n = 0
@@ -1785,7 +1798,7 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
-SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
+SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "sky": {"hemisphere": "hemisphere"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
 

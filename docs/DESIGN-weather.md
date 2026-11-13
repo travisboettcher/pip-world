@@ -1,6 +1,8 @@
 # Design: real weather and daylight
 
-Status (2026-11-01): built and deployed. Home Assistant is the first provider; the source is pluggable (see Providers). Roadmap: "Real weather / daylight from Home Assistant (harmless sensors only)".
+Status (2026-11-13): since 0.40.0 the provider is the engine's `weather` source (`app/sources.py`), and the shipped `sky` module
+(`app/module_library/sky.py`) words it for the agent and publishes the world's weather and season (DESIGN-world-packs.md, "5e").
+Before that (2026-11-01): built and deployed. Home Assistant is the first provider; the source is pluggable (see Providers). Roadmap: "Real weather / daylight from Home Assistant (harmless sensors only)".
 
 ## Goal
 The sky over the house is the sky over Pip's garden. Pip is told the real conditions and sunrise/sunset, and the weather nudges

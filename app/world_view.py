@@ -11,11 +11,9 @@ import time
 from datetime import datetime
 
 from . import finds
-from . import happenings
 from . import layouts
 from . import modules
 from . import places
-from . import weather
 from . import worldmap
 from . import stats as stats_mod
 from . import world_pack
@@ -66,10 +64,10 @@ def map_view(state, settings, library, now: float | None = None) -> dict:
 
 def moment(state, settings, now: float) -> dict:
     """The time of day (minutes past midnight), the season and the weather, as the map and the scenes draw them."""
-    w = weather.current(state, now) if settings.weather else None
+    w = modules.published(state, "weather")
     local = datetime.fromtimestamp(now)
-    return {"ts": now, "minutes": local.hour * 60 + local.minute, "season": happenings.season_of(now, settings.hemisphere),
-            "weather": w.condition if w else None}
+    return {"ts": now, "minutes": local.hour * 60 + local.minute, "season": modules.world_season(state, settings, now),
+            "weather": w.get("condition") if isinstance(w, dict) else None}
 
 
 def _clock(c: dict, now: float) -> dict:

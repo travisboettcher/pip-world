@@ -540,12 +540,13 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   `source` (`{name, op, args?}`) and the engine runs it and calls `on_source` straight away, within the same call, with
   `ctx["source"]` = `{name, op, args, answer}`. `on_source` has the rights of the hook that asked (from `on_action` it may `reply` and
   start a `session`) and may not ask again; 60 questions a day (600 for a shipped module). A module whose sources aren't here offers no
-  tools. `books` does `search` (`{query}`), `wander`, `find` (`{book}`) and `read` (`{id, section, offset, minutes}`: the next stretch,
+  tools. `weather` (0.40.0) does `now` (`{reading}`: the last reading, none without a fresh one); what a module publishes as `weather`
+  and `season` is the world's (`modules.published`). `books` does `search` (`{query}`), `wander`, `find` (`{book}`) and `read` (`{id, section, offset, minutes}`: the next stretch,
   condensed by the narrator: `{summary, quotes, percent, done, pictures, section, offset, failed}`). A `log`'s text may run to 1,200
   characters; `module_firsts` may name the first a moment stood for before (`{"as": "book_finished", "said": ...}`).
 - The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
   the neighbourhood the third: `module_library/neighborhood.py`; trade the fourth: `module_library/trade.py`; reading the fifth:
-  `module_library/reading.py`. The `garden` read and proposal are gone (read its `facts`;
+  `module_library/reading.py`; the sky the sixth: `module_library/sky.py`. The `garden` read and proposal are gone (read its `facts`;
   ask it to `hurry`), and so is the `crop` happening intent (ask it: `request` to `crop`).
 - **`session`** (from `on_action`; it needs `on_time` too): `{minutes (1 to 240), label, working?}`. The agent is busy with `label` until it
   ends, then `on_time` runs with `ctx["session"]` = `{label, interrupted, minutes}`; resting ends it early (`interrupted` true); a
