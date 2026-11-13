@@ -29,7 +29,7 @@ def test_tools_at_their_limits():
     params = lambda n: {"type": "object", "properties": {f"a{c}": {"type": "string"} for c in "abcdefghi"[:n]}}  # noqa: E731
     assert len(M._tools([tool(params=params(8))], "world")[0]["params"]["properties"]) == 8
     why = ("`dig`'s `params` is {type: object, properties, required?}: up to 8 arguments, each {type (string, integer, number, boolean), "
-           "description?, enum?}")
+           "description?, enum?}, a list of small objects, or a map of names to values")
     for bad in (params(9), {"type": "array", "properties": {}}, {"type": "object", "properties": {}, "required": "a"}, [1], {"properties": {}}):
         assert refused(M._tools, [tool(params=bad)], "world") == why
     assert M._tools([tool(where="x" * 60)], "world")[0]["where"] == "x" * 60

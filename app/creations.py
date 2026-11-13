@@ -173,6 +173,11 @@ async def make(state, gm, rng: random.Random, project: dict, skill_level: int) -
     q, marks = project_quality(project, skill_level), project_scars(project)
     allow = project["difficulty"] >= COMPANION_MIN_DIFFICULTY
     raw = await gm.design(project, q, marks, allow) if gm else None
+    return await made(state, raw, project, q, marks, rng)
+
+
+async def made(state, raw: dict | None, project: dict, q: str, marks: list[str], rng: random.Random) -> dict:
+    """A design (the narrator's, or a module's: modules.py `creation`) made real: checked, its world effect carried out, kept, told."""
     name, description, spec = sanitize_spec(raw, project, q, marks, rng)
     note = await world_effects.apply(state, spec)
     c = state.add_creation(name, description, project["id"], q, spec, initial_runtime(spec, time.time()))

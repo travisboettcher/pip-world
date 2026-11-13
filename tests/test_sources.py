@@ -35,7 +35,7 @@ def test_a_manifest_names_its_sources_with_the_proposal_and_the_hook():
     for bad in (["moon"], "books", ["books", "books"]):
         with pytest.raises(M.Refused) as e:
             M.check_manifest(rule(hooks=["on_source"], proposes=["source"], sources=bad), "world")
-        assert str(e.value) == "`sources` lists the engine's sources it asks: books, weather"
+        assert str(e.value) == "`sources` lists the engine's sources it asks: books, weather, narrator"
 
 
 def test_what_a_source_question_may_be():
@@ -58,21 +58,24 @@ async def test_the_answer_comes_back_within_the_same_call(tmp_path, shelf):
     t = m["manifest"]["tools"][0]
     text, changed = await M.use_tool(st, s, M.LocalRunner(), m, t, {}, NOW)
     assert text == "books search ['books']" and changed and st.module(m["id"])["state"] == {"via": "look_up"}
-    assert [c["hook"] for c in st.module_calls(m["id"], 5)] == ["on_source:on_action", "on_action"]
+    assert [c["hook"] for c in st.module_calls(m["id"], 5)] == ["on_source:1:on_action", "on_action"]
     assert M._budget(st.module(m["id"]), NOW)["source"] == 1 and M._budget(st.module(m["id"]), NOW)["calls"] == 2
     assert (await M.use_tool(st, s, M.LocalRunner(), m, t, {"op": "fly"}, NOW))[0] == "books fly ['error']"
     assert await sources.ask("books", "fly", {}, s, 1) == {"error": "`books` does: search, wander, find, read"}
 
 
-async def test_on_source_has_the_asking_hooks_rights_and_cant_ask_again(tmp_path, shelf):
+async def test_on_source_has_the_asking_hooks_rights_and_may_ask_again_three_deep(tmp_path, shelf):
     s, st, gm, agent = make(tmp_path, library_path=shelf, modules="on", module_runner="local")
-    again = ("def on_action(ctx):\n    return {'source': {'name': 'books', 'op': 'wander'}}\n"
-             "def on_source(ctx):\n    return {'source': {'name': 'books', 'op': 'wander'}, 'reply': 'twice'}\n")
-    m = live(st, rule(name="again", hooks=["on_action", "on_source"], proposes=["source"], sources=["books"], tools=TOOL), again)
-    text, _ = await M.use_tool(st, s, M.LocalRunner(), m, m["manifest"]["tools"][0], {}, NOW)
-    assert text == "error: on_source can't ask another source"
-    r = await M.call(st, s, M.LocalRunner(), m, "on_source:on_tick", NOW, source={"name": "books", "op": "x", "args": {}, "answer": {}})
-    assert r["refused"] in ("only on_action can reply", "on_source can't ask another source")
+    again = ("def on_action(ctx):\n    return {'source': {'name': 'books', 'op': 'wander'}, 'state': {'n': 0}}\n"
+             "def on_source(ctx):\n    n = ctx['state'].get('n', 0) + 1\n"
+             "    return {'source': {'name': 'books', 'op': 'wander'}, 'state': {'n': n}, 'reply': 'asked ' + str(n)}\n")
+    m = live(st, rule(name="again", hooks=["on_action", "on_source"], proposes=["source", "state"], sources=["books"], tools=TOOL), again)
+    text, _ = await M.use_tool(st, s, M.LocalRunner(), st.module(m["id"]), m["manifest"]["tools"][0], {}, NOW)
+    assert text == "error: it may ask its sources 3 times in one go" and M.SOURCE_DEPTH == 3
+    assert [c["hook"] for c in st.module_calls(m["id"], 5)] == ["on_source:3:on_action", "on_source:2:on_action", "on_source:1:on_action", "on_action"]
+    assert st.module(m["id"])["state"] == {"n": 2} and M._budget(st.module(m["id"]), NOW)["source"] == 3
+    r = await M.call(st, s, M.LocalRunner(), st.module(m["id"]), "on_source:1:on_tick", NOW, source={"name": "books", "op": "x", "args": {}, "answer": {}})
+    assert r["refused"] == "only on_action can reply"                                  # from on_tick, no reply
 
 
 async def test_a_day_of_questions_is_limited(tmp_path, shelf):
@@ -221,3 +224,62 @@ async def test_what_comes_of_a_question_and_its_answer_together(tmp_path, shelf)
     r = await M.call(st, s, M.LocalRunner(), m, "on_action", NOW, tool="look_up", args={"op": "boom"})
     assert r["ok"] is False and "ZeroDivisionError" in r["error"] and not r["wake"]
     assert M._budget(st.module(m["id"]), NOW)["source"] == 2
+
+
+# --- the narrator --------------------------------------------------------------------------------------------------------------------
+JUDGE = {"properties": {"verdict": {"type": "string", "enum": ["good", "bad"]}, "steps": {"type": "array", "items": {
+    "type": "object", "properties": {"name": {"type": "string"}, "minutes": {"type": "integer"}}, "required": ["name"]}}}, "required": ["verdict"]}
+
+
+async def test_the_narrator_judges_within_the_call(tmp_path):
+    s, st, gm, agent = make(tmp_path, [report(verdict="good", steps=[{"name": "cut", "minutes": "30"}, {"minutes": 5}], extra="x"),
+                                       report(verdict="maybe")])
+    assert sources.available("narrator") and sources.get("narrator").ops == ("ask",)
+    got = await sources.ask("narrator", "ask", {"prompt": "  Judge the kite. ", "schema": JUDGE}, s, 1)
+    assert got == {"data": {"verdict": "good", "steps": [{"name": "cut", "minutes": 30}]}}
+    task = gm.calls[0]["messages"][0]["content"]
+    assert task.startswith("Judge the kite.") and "report" in str(gm.calls[0]["tools"])
+    assert await sources.ask("narrator", "ask", {"prompt": "again", "schema": JUDGE}, s, 1) == {"data": None}      # didn't fit: none
+    agent.gm = None
+    assert not sources.available("narrator") and await sources.ask("narrator", "ask", {"prompt": "p", "schema": JUDGE}, s, 1) == \
+        {"error": "there is no narrator source here"}
+
+
+async def test_what_the_narrator_can_be_asked(tmp_path):
+    s, st, gm, agent = make(tmp_path)
+    ask = lambda **a: sources.ask("narrator", "ask", a, s, 1)  # noqa: E731
+    long = "x" * (sources.Narrator.PROMPT_MAX + 1)
+    for bad in ({"schema": JUDGE}, {"prompt": " ", "schema": JUDGE}, {"prompt": long, "schema": JUDGE}, {"prompt": 3, "schema": JUDGE}):
+        assert await ask(**bad) == {"error": "`prompt` is the task, at most 12000 characters"}
+    assert await ask(prompt="p") == {"error": "`schema` is what the answer holds: {properties, required?}"}
+    assert (await ask(prompt="p", schema={"properties": {}}))["error"].startswith("`ask.schema` is {properties, required?}")
+    assert (await ask(prompt="x" * sources.Narrator.PROMPT_MAX, schema=JUDGE)) == {"data": None} and gm.calls        # the longest prompt is asked
+
+
+# --- tool arguments that are lists and maps ---------------------------------------------------------------------------------------
+STEPS = {"type": "array", "description": "your steps, in order", "items": {"type": "object", "properties": {
+    "name": {"type": "string"}, "minutes": {"type": "integer"},
+    "materials": {"type": "object", "additionalProperties": {"type": "integer"}, "description": "what it uses up"}}, "required": ["name"]}}
+
+
+def test_a_tool_may_take_a_list_of_steps_each_with_a_map_of_materials():
+    t = M._tools([{"name": "start", "help": "start", "params": {"type": "object", "properties": {"name": {"type": "string"}, "steps": STEPS,
+                                                                                              "extra": {"type": "object", "additionalProperties": {"type": "number"}}},
+                                                                "required": ["steps"]}}], "world")[0]
+    got, why = M.check_args(t["params"], {"steps": [{"name": "cut", "minutes": "30", "materials": {"brass wire": "2", " ": 1, "cog": "x", "n" * 41: 1}},
+                                                    {"name": "join", "materials": "lots"}, {"minutes": 5}, {"name": "sand"}],
+                                          "extra": {"a": 1.5, "b": "2.5"}})
+    assert why == "" and got == {"steps": [{"name": "cut", "minutes": 30, "materials": {"brass wire": 2}}, {"name": "sand"}], "extra": {"a": 1.5, "b": 2.5}}
+    assert M.check_args(t["params"], {"steps": [], "extra": [1]}) == ({}, "`extra` is a map of names to number values")
+    many = {f"m{i}": 1 for i in range(13)}
+    assert len(M.check_args(t["params"], {"steps": [{"name": "x", "materials": many}]})[0]["steps"][0]["materials"]) == M.MAP_MOST == 12
+    words = {"type": "object", "additionalProperties": {"type": "string"}}
+    assert M._map_ok("notes", words) and M._map_ok("notes", {**words, "description": "d" * 200})
+    for bad in ({**words, "description": "d" * 201}, {**words, "x": 1}, {"type": "object", "additionalProperties": {"type": "boolean"}},
+                {"type": "object", "additionalProperties": {"type": "integer", "x": 1}}, {"type": "object"}, {"type": "array", "additionalProperties": {"type": "integer"}},
+                {**words, "description": 3}, "x"):
+        assert not M._map_ok("notes", bad), bad
+    assert not M._map_ok("Bad Name", words)
+    with pytest.raises(M.Refused) as e:
+        M._tools([{"name": "start", "help": "s", "params": {"type": "object", "properties": {"x": {"type": "object"}}}}], "world")
+    assert str(e.value).endswith("a list of small objects, or a map of names to values")

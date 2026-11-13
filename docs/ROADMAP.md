@@ -128,7 +128,10 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           install's bookmarks move into the module's store)
     - [x] 5e (0.40.0): weather and calendar: the shipped `sky` module asks the `weather` source and publishes the world's weather and
           season, which the scene, happenings, layouts and modules read (the engine's weather line and refresh removed)
-    - [ ] 5f: crafting
+    - [x] 5f's hooks (0.41.0): the `narrator` source (a judgement as data within the call), sources asked three deep, tool arguments that
+          are lists of small objects and maps, public events (`logs`, `event`: `work`, `experiment`, `plan_revised`, with the expectations
+          they settle), `creation` (a module makes one, the engine checks it), and a module session's `about` and work pose
+    - [ ] 5f: crafting moved onto them
   - [ ] Phase 6: stakes (health, `at_zero`, `harm`) and a second, small wasteland pack as the test of neutrality
   - [ ] Phase 7: remove the engine's fallbacks for every moved feature
 - [ ] Model escalation (Haiku -> bigger) for hard decisions

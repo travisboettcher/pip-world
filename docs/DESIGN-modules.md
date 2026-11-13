@@ -544,6 +544,14 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   and `season` is the world's (`modules.published`). `books` does `search` (`{query}`), `wander`, `find` (`{book}`) and `read` (`{id, section, offset, minutes}`: the next stretch,
   condensed by the narrator: `{summary, quotes, percent, done, pictures, section, offset, failed}`). A `log`'s text may run to 1,200
   characters; `module_firsts` may name the first a moment stood for before (`{"as": "book_finished", "said": ...}`).
+- **Crafting's hooks (0.41.0, 5f)**: the `narrator` source (op `ask`, `{prompt, schema}` -> `{data}`: the narrator's judgement within
+  the call, checked against the schema); a source may be asked again from `on_source`, three deep in one call; a tool's arguments may be
+  a list of small objects (`{type: array, items: {type: object, properties}}`) and a map (`{type: object, additionalProperties: {type}}`,
+  twelve names at most); `logs` and `event` (`{kind, data, expect?}`: a public event of a kind the manifest logs, `work`, `experiment` or
+  `plan_revised`, with that kind's fields, and up to two expectations it settles; 200 a day for a shipped module, 24 otherwise);
+  `creation` (`{name, description, quality, capabilities?, quirks?, scars?, made_of}`: one of the agent's creations, checked as the
+  narrator's design is, its world effect carried out, `creation_made` logged; 6 a day shipped, 2 otherwise); a `session`'s `about` (what
+  it's about, a project's name: reminders and the memory's context name it) and a working session's work pose.
 - The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
   the neighbourhood the third: `module_library/neighborhood.py`; trade the fourth: `module_library/trade.py`; reading the fifth:
   `module_library/reading.py`; the sky the sixth: `module_library/sky.py`. The `garden` read and proposal are gone (read its `facts`;

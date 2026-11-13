@@ -273,9 +273,9 @@ async def test_resting_ends_a_modules_session_early(tmp_path):
 
 def test_session_shapes(tmp_path):
     s, st, agent = modular(tmp_path)
-    assert M._session(st, {"minutes": 1, "label": "x"}) == {"minutes": 1.0, "label": "x", "working": False}
+    assert M._session(st, {"minutes": 1, "label": "x"}) == {"minutes": 1.0, "label": "x", "working": False, "about": ""}
     for v in ({"minutes": 0, "label": "x"}, {"minutes": 241, "label": "x"}, {"minutes": 5, "label": "x", "working": 1}, {"minutes": 5, "label": "x", "y": 1}, []):
-        with pytest.raises(M.Refused, match=r"`session` is \{minutes \(1 to 240\), label, working\?\}"):
+        with pytest.raises(M.Refused, match=r"`session` is \{minutes \(1 to 240\), label, working\?, about\?\}"):
             M._session(st, v)
     with pytest.raises(M.Refused, match="`session.label` is a line of text"):
         M._session(st, {"minutes": 5})

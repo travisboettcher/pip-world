@@ -260,6 +260,7 @@ class State:
                 ("projects", "dry", "INTEGER NOT NULL DEFAULT 0"),         # dry experiments in a row
                 ("projects", "revised_at", "INTEGER NOT NULL DEFAULT 0"),  # len(history) at the last plan revision
                 ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what Pip said it expects (may be empty)
+                ("work_session", "about", "TEXT NOT NULL DEFAULT ''"),      # what a module's session is about (a project's name)
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
                 ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
                 ("characters", "told", "TEXT NOT NULL DEFAULT '[]'"),      # what a neighbor has told Pip (phrases)
@@ -861,12 +862,12 @@ class State:
         return dict(row) if row else None
 
     def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float, kind: str = "work",
-                      target: str = "", expect: str = "") -> None:
-        """The one thing Pip is busy with in real time: work on a project, a walk, or reading (project_id = book)."""
+                      target: str = "", expect: str = "", about: str = "") -> None:
+        """The one thing Pip is busy with in real time: work on a project, a walk, or a module's session (`about` what)."""
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO work_session (id, project_id, stage, minutes, started_at, ends_at, "
-                            "kind, target, expect) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (project_id, stage, minutes, time.time(), ends_at, kind, target, expect))
+                            "kind, target, expect, about) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (project_id, stage, minutes, time.time(), ends_at, kind, target, expect, about))
             self.db.commit()
 
     def end_session(self) -> None:
@@ -1522,6 +1523,8 @@ class State:
         if sess and sess["kind"] in ("work", "experiment"):
             r = self.db.execute("SELECT name FROM projects WHERE id = ?", (sess["project_id"],)).fetchone()
             project = r["name"] if r else None
+        elif sess and sess["kind"] == "module" and sess["about"]:            # a module's session about something (a project)
+            project = sess["about"]
         excess = {r["name"]: r["value"] - BASELINE[r["name"]] for r in self.db.execute("SELECT name, value FROM emotions")}
         feeling = max(excess, key=excess.get, default=None)
         return {"place": place, "people": list(dict.fromkeys(people)), "activity": a["activity"],

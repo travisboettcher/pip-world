@@ -9,7 +9,8 @@ module (tools, storage, belongings, status, logged moments, requests, sessions),
 invents the neighbour and asks them to write first; **5c built (0.38.0)**: trade (booths, prices, tills, the agent's stall and its
 customers, accounts, the neighbours' wares and market days) is the shipped `trade` module; **5d built (0.39.0)**: reading is the
 shipped `reading` module, on the engine's first source (`books`); **5e built (0.40.0)**: the shipped `sky` module publishes the world's
-weather and season, from the `weather` source. Next: 5f, crafting. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
+map tool arguments, public events, `creation`, and a module's work session. Next: 5f, crafting moved onto them. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -320,6 +321,34 @@ published (`modules.published`, `modules.world_season`): the scene's moment, the
 Without a module publishing a season, the engine still reckons one from the date (until phase 7); without one publishing the weather,
 there is none. The engine's weather line, its wording of conditions and its refresh in the loop are gone. A wasteland's own sky module
 invents ash days and publishes them the same way, asking no source.
+
+**5f, crafting (planned 2026-11-13).** The biggest feature: projects (plans, stages, the dice, the narrator's judgement, materials,
+expectations), experiments, plan revision, craft skills, and making a creation at the end. It moves over four releases, each a working
+world, because so much reads what it logs: memory (recall, importance, day stats), firsts, emotions, the turning-point detector,
+capabilities, the night pass (pausing and resuming projects), reminders, the dashboard's Work tab and feed, the scene (the work pose).
+What stays core: the creations table and everything about a creation once made (running, tending, `use_item`, programs, workings,
+giving it away); the agent's abilities and `practice`; sessions; belongings.
+The owner chose (2026-11-13) to ship the hooks first, as their own release (0.41.0), then move crafting in a second.
+Projects, experiments, plan revisions and the finished creation all work on the same project records, so once those records move into
+a module's store, all of crafting has to move in one release: it can't be split by tool. What it needs, each generic:
+- **the `narrator` source** (built): op `ask` (`{prompt, schema}`) has the narrator answer within the call, as data checked against the
+  schema, so a tool's reply can rest on the narrator's judgement (`start_project`'s plan review); and a source asked again from
+  `on_source`, a few deep (a session's end is judged, then narrated, then, at a project's end, the thing designed).
+- **tool arguments that are lists and maps**: `start_project`'s `steps` (a list of `{name, minutes, materials}`, `materials` a map of
+  name to count), as the engine's tool takes them today.
+- **public events**: a shipped module logs an event of a public kind its manifest names (`logs: ["work", "experiment",
+  "plan_revised"]`), with that kind's fields, and the expectations it settles; so memory, firsts, emotions, the turning-point detector,
+  day stats, capabilities and the feed read it as they read the engine's own. (Phase 7 makes those readers the pack's.)
+- **`creation`**: a module makes one of the agent's creations (`{name, description, quality, capabilities, quirks}`); the engine
+  checks it as `sanitize_spec` does, applies world effects, logs `creation_made`, and offers its workings.
+- **requests from the engine**: the night pass asks a module (`pause`, `resume`) instead of writing a table (with the move: the
+  mechanism, `ask_module`, is already there).
+- a module session that is work shows as work (the scene's pose, reminders' cue, the memory's context): a session may say what it is
+  `about` (a project's name), and a working one poses as work.
+Then the `crafting` module: the six tools, the dice and the narrator's rulings, materials, craft skills (its store) and ability practice,
+expectations, the projects published for the dashboard and shown as status; the engine's projects.py, its tools, its narrator prompts for
+crafting, the project and skill tables and the `work`/`experiment` session kinds removed; an older install's projects and skills moved
+into the module's store once. About 3,000 lines of tests read or drive crafting directly and move with it.
 
 ## Phases
 1. **The pack, with Pip's world in it.** *1a (0.31.0)*: `app/world_pack.py` loads `world.json` (name; the agent's name, pronoun one of

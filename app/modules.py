@@ -31,7 +31,7 @@ READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works"
          "answers")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
             "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
-            "character", "letter", "coins", "part_with", "whereabouts", "notes", "source")
+            "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "pip", SHIPPED)
 PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
@@ -47,10 +47,22 @@ RULES = (  # the modules the engine ships (module_library/), in the order they a
     "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
+MAP_MOST = 12                                         # names in a map argument (materials)
+SOURCE_DEPTH = 3
+# public events a module may log as the engine logs them, with the fields their readers use (memory, firsts, emotions, day stats, the
+# turning-point detector, capabilities, the feed): crafting's, until those readers are the pack's (phase 7)
+LOGGABLE = {
+    "work": ("project", "project_id", "stage", "result", "craft", "abilities", "minutes", "text", "finished_stage", "project_done", "interrupted",
+             "percent", "approach", "lost", "learned", "expected", "expectation", "error", "surprise", "step_note", "step_surprise", "crossroads"),
+    "experiment": ("project", "project_id", "craft", "hypothesis", "outcome", "relevant", "minutes", "text", "finding", "answered", "added",
+                   "interrupted", "project_done", "percent", "crossroads", "expected", "expectation", "error", "surprise"),
+    "plan_revised": ("project", "project_id", "because", "finding", "answered", "added", "dropped"),
+}
+EXPECT_KINDS, EVENT_MAX = ("session", "step", "experiment"), 4_000                                      # sources asked in one go: judged, narrated, designed
 REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)                                     # what a tool says back: a shop's shelves, say
-PER_DAY = {"calls": 600, "source": 60, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
+PER_DAY = {"calls": 600, "source": 60, "event": 24, "creation": 2, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
            "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
-SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
+SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "event": 200, "creation": 6, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
                    "request": 200, "character": 2, "letter": 6}
 # What a feature needs to be a module (docs/DESIGN-world-packs.md, "Phase 4 in detail"): tools, storage, belongings, status, requests, sessions.
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
@@ -201,6 +213,13 @@ def check_manifest(m, author: str, state=None) -> dict:
         raise Refused("`sources`, the `source` proposal and the `on_source` hook go together: say which sources it asks")
     if names:
         out["sources"] = list(names)
+    logs = m.get("logs") or []
+    if not isinstance(logs, list) or any(k not in LOGGABLE for k in logs) or len(set(logs)) != len(logs) or (logs and author == "pip"):
+        raise Refused(f"`logs` lists the public events it logs: {', '.join(LOGGABLE)} (not for {world_pack.active().agent.name}'s programs)")
+    if bool(logs) != ("event" in out["proposes"]):
+        raise Refused("`logs` and the `event` proposal go together: say which public events it logs")
+    if logs:
+        out["logs"] = list(logs)
     return out
 
 
@@ -218,9 +237,9 @@ def _tools(tools, author: str) -> list:
         params = t.get("params") or {"type": "object", "properties": {}}
         props, required = params.get("properties") if isinstance(params, dict) else None, (params or {}).get("required", []) if isinstance(params, dict) else None
         if not isinstance(props, dict) or params.get("type") != "object" or len(props) > TOOL_PARAMS_MAX or not isinstance(required, list) \
-                or any(r not in props for r in required) or not all(_param_ok(k, v) for k, v in props.items()):
+                or any(r not in props for r in required) or not all(_param_ok(k, v) or _list_ok(k, v) or _map_ok(k, v) for k, v in props.items()):
             raise Refused(f"`{name}`'s `params` is {{type: object, properties, required?}}: up to {TOOL_PARAMS_MAX} arguments, each "
-                          f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}")
+                          f"{{type ({', '.join(PARAM_TYPES)}), description?, enum?}}, a list of small objects, or a map of names to values")
         where = t.get("where", "anywhere")
         wheres = where if isinstance(where, list) else [where]
         if not 1 <= len(wheres) <= 4 or not all(isinstance(w, str) and w.strip() and len(w) <= 60 for w in wheres):
@@ -235,6 +254,15 @@ def _tools(tools, author: str) -> list:
                     "where": [w.strip() for w in wheres] if isinstance(where, list) else where.strip(), **({"kinds": kinds} if kinds else {}),
                     "params": {"type": "object", "properties": props, "required": list(required)}, **({"first": first.strip()} if first else {})})
     return out
+
+
+def _map_ok(name, p) -> bool:
+    """An argument that is a map of names to counts or words (`{"brass wire": 2}`): `{type: object, additionalProperties: {type}}`."""
+    each = p.get("additionalProperties") if isinstance(p, dict) else None
+    return (KIND_WORD.match(str(name)) is not None and isinstance(p, dict) and p.get("type") == "object"
+            and set(p) <= {"type", "description", "additionalProperties"} and isinstance(each, dict) and set(each) == {"type"}
+            and each["type"] in ("integer", "number", "string") and isinstance(p.get("description", ""), str)
+            and len(p.get("description", "")) <= TEXT_MAX)
 
 
 def _param_ok(name, p) -> bool:
@@ -252,7 +280,7 @@ def _list_ok(name, p) -> bool:
     return (KIND_WORD.match(str(name)) is not None and p.get("type") == "array" and set(p) <= {"type", "description", "items"}
             and isinstance(p.get("description", ""), str) and len(p.get("description", "")) <= TEXT_MAX
             and items.get("type") == "object" and set(items) <= {"type", "properties", "required"} and isinstance(props, dict)
-            and 1 <= len(props) <= TOOL_PARAMS_MAX and all(_param_ok(k, q) for k, q in props.items())
+            and 1 <= len(props) <= TOOL_PARAMS_MAX and all(_param_ok(k, q) or _map_ok(k, q) for k, q in props.items())
             and isinstance(items.get("required", []), list) and all(r in props for r in items.get("required", [])))
 
 
@@ -418,9 +446,9 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
     """Check a hook's proposals and return the changes to make, in order; raises Refused (and changes nothing) if any is not allowed."""
     man, budget, changes, cap = m["manifest"], _budget(m, now), [], limits(m)
     if hook.startswith("on_source:"):                         # a source's answer, handed on within the hook that asked: that hook's rights
-        hook = hook.split(":", 1)[1]
-        if "source" in result:
-            raise Refused("on_source can't ask another source")
+        _, depth, hook = hook.split(":", 2)
+        if "source" in result and int(depth) >= SOURCE_DEPTH:
+            raise Refused(f"it may ask its sources {SOURCE_DEPTH} times in one go")
     allowed = set(man["proposes"]) - ({"session"} if hook != "on_action" else set()) | ({"reply"} if hook in ("on_action", "on_request") else set()) \
         | ({"refuse"} if hook == "on_request" else set())
     extra = sorted(set(result) - allowed)
@@ -466,6 +494,14 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("part_with", _part_with(state, result["part_with"])))
     if "whereabouts" in result:
         changes.append(("whereabouts", _whereabouts(state, result["whereabouts"])))
+    if "creation" in result:
+        if budget["creation"] >= cap["creation"]:
+            raise Refused(f"it has made {cap['creation']} things today")
+        changes.append(("creation", _creation_made(result["creation"])))
+    if "event" in result:
+        if budget["event"] >= cap["event"]:
+            raise Refused(f"it has logged {cap['event']} public events today")
+        changes.append(("event", _event(man, result["event"])))
     if "source" in result:
         if budget["source"] >= cap["source"]:
             raise Refused(f"it has asked its sources {cap['source']} times today")
@@ -837,6 +873,47 @@ def _whereabouts(state, v) -> dict:
     return {k: {"at": x["at"].strip(), **({"doing": x["doing"].strip()} if x.get("doing", "").strip() else {})} for k, x in v.items()}
 
 
+def _creation_made(v) -> dict:
+    """One of the agent's creations, made: its design (the engine checks it as it checks the narrator's: sanitize_spec) and what it was
+    made of ({id?, name, goal?, difficulty, stages?}: what a world effect or an ability may need of it)."""
+    from .projects import QUALITIES
+    shape = ("`creation` is {name, description, quality, capabilities?, quirks?, scars?, made_of: {id?, name, goal?, difficulty (1 to 5), "
+             "stages?}}: quality is one of " + ", ".join(QUALITIES))
+    of = v.get("made_of") if isinstance(v, dict) else None
+    strs = lambda x, n: isinstance(x, list) and len(x) <= n and all(isinstance(i, str) for i in x)  # noqa: E731
+    if not isinstance(v, dict) or set(v) - {"name", "description", "quality", "capabilities", "quirks", "scars", "made_of"} \
+            or v.get("quality") not in QUALITIES or not isinstance(v.get("name"), str) or not isinstance(v.get("description"), str) \
+            or not isinstance(v.get("capabilities", []), list) or len(v.get("capabilities", [])) > 6 or _size(v) > EVENT_MAX \
+            or not strs(v.get("quirks", []), 5) or not strs(v.get("scars", []), 5) or not isinstance(of, dict) \
+            or set(of) - {"id", "name", "goal", "difficulty", "stages"} or not isinstance(of.get("name"), str) or not of["name"].strip() \
+            or not _number(of.get("difficulty"), 1, 5) or not isinstance(of.get("goal", ""), str) or not strs(of.get("stages", []), 8) \
+            or not (of.get("id") is None or (isinstance(of["id"], int) and not isinstance(of["id"], bool))):
+        raise Refused(shape)
+    return {"raw": {k: v.get(k) for k in ("name", "description", "capabilities", "quirks")}, "quality": v["quality"], "scars": list(v.get("scars", [])),
+            "made_of": {"id": of.get("id"), "name": of["name"].strip(), "goal": of.get("goal", ""), "difficulty": int(of["difficulty"]),
+                        "stages": [{"name": n} for n in of.get("stages", [])]}}
+
+
+def _event(man: dict, v) -> dict:
+    """A public event of a kind the manifest logs, with that kind's fields, and the expectations it settles (each {kind, subject,
+    expected, actual, error, surprise}: what was guessed and how it came out, for the agent's sense of its own judgement)."""
+    shape = (f"`event` is {{kind, data, expect?}}: kind is one it logs ({', '.join(man.get('logs', [])) or 'none'}), data its fields, "
+             f"at most {EVENT_MAX} bytes, and up to 2 expectations")
+    if not isinstance(v, dict) or set(v) - {"kind", "data", "expect"} or v.get("kind") not in man.get("logs", []) or not isinstance(v.get("data"), dict) \
+            or set(v["data"]) - set(LOGGABLE[v["kind"]]) or _size(v["data"]) > EVENT_MAX:
+        raise Refused(shape)
+    needed = [f for f in pv.EVENT_FIELDS[v["kind"]] if f not in v["data"]]      # what its readers rely on: what the feed shows of it
+    if needed:
+        raise Refused(f"a `{v['kind']}` event needs {', '.join(needed)}")
+    expect = v.get("expect") or []
+    if not isinstance(expect, list) or len(expect) > 2 or not all(
+            isinstance(e, dict) and set(e) <= {"kind", "subject", "expected", "actual", "error", "surprise", "phrase"} and e.get("kind") in EXPECT_KINDS
+            and isinstance(e.get("subject"), str) and e["subject"].strip() and isinstance(e.get("actual"), str) and _number(e.get("error"), -100, 100)
+            and e.get("surprise") in (None, "better", "worse", "longer", "shorter") and isinstance(e.get("expected"), (str, int, float)) for e in expect):
+        raise Refused(shape)
+    return {"kind": v["kind"], "data": dict(v["data"]), "expect": [dict(e) for e in expect]}
+
+
 def _source(man: dict, v) -> dict:
     """One question to a source the manifest names: {name, op, args?}. The engine asks it and hands the answer to on_source."""
     if not isinstance(v, dict) or set(v) - {"name", "op", "args"} or v.get("name") not in man.get("sources", []) or not isinstance(v.get("op"), str) \
@@ -891,13 +968,14 @@ def notes_on(state, name: str) -> list[str]:
 
 def _session(state, v) -> dict:
     """Something that takes real time: the agent is busy with it until it ends (then on_time runs)."""
-    if not isinstance(v, dict) or set(v) - {"minutes", "label", "working"} or not _number(v.get("minutes"), *SESSION_MINUTES) \
-            or not isinstance(v.get("working", False), bool):
-        raise Refused(f"`session` is {{minutes ({SESSION_MINUTES[0]} to {SESSION_MINUTES[1]}), label, working?}}")
+    if not isinstance(v, dict) or set(v) - {"minutes", "label", "working", "about"} or not _number(v.get("minutes"), *SESSION_MINUTES) \
+            or not isinstance(v.get("working", False), bool) or not isinstance(v.get("about", ""), str) or len(v.get("about", "")) > 60:
+        raise Refused(f"`session` is {{minutes ({SESSION_MINUTES[0]} to {SESSION_MINUTES[1]}), label, working?, about?}}: about is what it's "
+                      "about (a project's name), at most 60 characters")
     if state.session():
         raise Refused(f"{world_pack.active().agent.name} is busy with something else")
     label = _text(v.get("label"), "session.label")
-    return {"minutes": float(v["minutes"]), "label": label[:80], "working": v.get("working", False)}
+    return {"minutes": float(v["minutes"]), "label": label[:80], "working": v.get("working", False), "about": v.get("about", "").strip()}
 
 
 def _voices(state, m: dict, v) -> list:
@@ -1082,8 +1160,17 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "source":
             out["source"] = val
             budget["source"] += 1
+        elif kind == "creation":
+            out["creation"] = val
+            budget["creation"] += 1
+        elif kind == "event":
+            event_id = state.log(val["kind"], **val["data"], by=m["name"])
+            for e in val["expect"]:
+                state.add_expectation(e["kind"], val["data"].get("project_id"), str(val["data"].get("craft") or ""), e["subject"], e, event_id)
+            budget["event"] += 1
         elif kind == "session":
-            state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"])
+            state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"],
+                                about=val["about"])
         elif kind == "wake":
             out["wake"] = True
             budget["wake"] += 1
@@ -1168,12 +1255,17 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
             m["status"] = "disabled"
     done = {"ok": bool(res.get("ok")), "error": res.get("error", ""), "refused": refused, **out,
             "changed": any(k != "reply" for k, _ in changes or [])}
+    if out.get("creation"):                                 # made after the rest applies: its world effect may ask another module
+        from . import creations as cr
+        c = done.pop("creation")
+        await cr.made(state, c["raw"], c["made_of"], c["quality"], c["scars"], random.Random(f"{m['id']}:{now}"))
     if not out.get("source"):
         return done
     from . import sources as src
     q = done.pop("source")
+    depth, origin = (int(hook.split(":")[1]), hook.split(":", 2)[2]) if hook.startswith("on_source:") else (0, hook)
     answer = await src.ask(q["name"], q["op"], q["args"], settings, int(now) * 7919 + m["id"])
-    then = await call(state, settings, runner, m, f"on_source:{hook}", now, trial=trial, **extra, source={**q, "answer": answer})
+    then = await call(state, settings, runner, m, f"on_source:{depth + 1}:{origin}", now, trial=trial, **{**extra, "source": {**q, "answer": answer}})
     return {**done, "ok": done["ok"] and then["ok"], "error": then["error"] or done["error"], "refused": then["refused"],   # asking was a change
             "wake": done["wake"] or then["wake"], "reply": then["reply"] or done["reply"]}
 
@@ -1264,6 +1356,17 @@ def check_args(params: dict, args) -> tuple[dict, str]:
             if not isinstance(v, list):
                 return {}, f"`{k}` is a list"
             out[k] = [got for got, why in (check_args({"required": [], **props[k]["items"]}, x) for x in v[:12]) if not why]
+            continue
+        if kind == "object":                                    # a map of names to values: the names that fit, with values that fit
+            each = props[k]["additionalProperties"]["type"]
+            if not isinstance(v, dict):
+                return {}, f"`{k}` is a map of names to {each} values"
+            got = {}
+            for name, x in list(v.items())[:MAP_MOST]:
+                x, why = check_args({"properties": {"x": {"type": each}}, "required": []}, {"x": x})
+                if not why and str(name).strip() and len(str(name).strip()) <= 40 and "x" in x:
+                    got[str(name).strip()] = x["x"]
+            out[k] = got
             continue
         if kind in ("integer", "number") and isinstance(v, str):
             try:

@@ -4,7 +4,8 @@ ask but never reach themselves (they have no I/O). A module names the sources it
 
 A source is trusted engine code the owner configures, like a channel. `books` is the owner's library (library.py: Calibre or a folder of
 books): finding books, and reading a stretch of one, condensed by the GM so raw text never reaches a module or the agent's prompt.
-`weather` is the real sky outside (weather.py: Home Assistant), the last reading, fetched at most every ten minutes.
+`weather` is the real sky outside (weather.py: Home Assistant), the last reading, fetched at most every ten minutes. `narrator` is the
+world's narrator, asked for a judgement as data within the call (a plan reviewed, a try judged).
 """
 import asyncio
 import logging
@@ -91,7 +92,35 @@ class Sky:
                                                "next_rising": w.next_rising, "next_setting": w.next_setting}}
 
 
-KINDS = {"books": Books, "weather": Sky}
+class Narrator:
+    """The world's narrator (the GM), asked for a judgement as data within the call: {prompt, schema} -> {data}, checked against the
+    schema as a structured ask's answer is (none if what came back didn't fit, or the day's tokens are spent). The engine adds the world's
+    voice (the narrator's system prompt); the module writes the task."""
+    ops = ("ask",)
+    PROMPT_MAX = 12_000
+
+    def __init__(self, library, gm, settings):
+        self.gm, self.s = gm, settings
+
+    def available(self) -> bool:
+        return self.gm is not None
+
+    async def ask(self, args: dict, seed: int) -> dict:
+        from . import modules
+        prompt = args.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > self.PROMPT_MAX:
+            return {"error": f"`prompt` is the task, at most {self.PROMPT_MAX} characters"}
+        if args.get("schema") is None:
+            return {"error": "`schema` is what the answer holds: {properties, required?}"}
+        try:
+            a = modules._ask({"prompt": "the task", "schema": args["schema"]})
+        except modules.Refused as e:
+            return {"error": str(e)}
+        got = await modules._answered(_wired["agent"].state, self.s, self.gm, {**a, "prompt": prompt.strip()})
+        return {"data": got["data"]}
+
+
+KINDS = {"books": Books, "weather": Sky, "narrator": Narrator}
 _wired: dict = {"agent": None}
 
 

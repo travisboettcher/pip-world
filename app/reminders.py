@@ -85,6 +85,9 @@ def cue(state, inbox: list[dict], now: float, partner: dict | None = None) -> Cu
             stages = p.get("stages") or []
             if 0 <= sess["stage"] < len(stages):
                 text.append(stages[sess["stage"]]["name"])
+    elif sess and sess["kind"] == "module":                       # a module's session: what it's about (a project) and what is being done
+        project = sess["about"] or None
+        text.append(sess["expect"])
     for e in state.events_since(now - CUE_HOURS * 3600):
         if e["kind"] == "happening":
             text.append(e["data"]["title"])
