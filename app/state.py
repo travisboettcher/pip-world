@@ -287,6 +287,7 @@ class State:
                     self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, ?)",
                                     (name, row.get(name, d.get("start", 0.5)), row.get(f"{name}_alerted", 0)))
             self._from_before_modules()
+            self._backfill_reads()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -355,7 +356,7 @@ class State:
             self.db.execute("UPDATE events SET data = ?, importance = ? WHERE id = ?",
                             (json.dumps({**data, **extra}),
                              event_importance(kind, data, new), cur.lastrowid))
-            if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
+            if (kind in RECALL_EVENT_KINDS or (data.get("read") or {}).get("line")) and (text := recall_text(kind, data)):
                 self._index(f"event:{kind}", cur.lastrowid, now, text, commit=False, data=data,
                             importance=event_importance(kind, data, new))
             self.db.commit()
@@ -703,6 +704,34 @@ class State:
         for t in self.OLD_TABLES:
             self.db.execute(f"DROP TABLE IF EXISTS {t}")
 
+    def _backfill_reads(self) -> None:
+        """Once (0.46.0): crafting's events from before they said how they read (`read`: memory, firsts, feelings, turning points, the day's
+        counts, the feed) get it, from the shipped crafting module's own `read_of`, so they keep reading as they did."""
+        if self.meta("event_reads") == "1":
+            return
+        rows = self.db.execute("SELECT id, kind, data FROM events WHERE kind IN ('work', 'experiment', 'plan_revised') "
+                               "AND json_extract(data, '$.read') IS NULL").fetchall()
+        if rows:
+            from .modules import library
+            code: dict = {}
+            exec(library("crafting")[1], code)                # the engine's own shipped code, run once here as it runs in the sandbox
+            blank = {"interrupted": False, "abilities": [], "finished_stage": False, "project_done": False, "percent": 0, "minutes": 0,
+                     "text": "", "stage": "", "result": "", "craft": "", "outcome": "", "hypothesis": "", "project": ""}
+            projects = self.store("crafting").get("projects") or {}      # what the oldest events didn't record: the project's craft and stage
+            for r in rows:
+                d = json.loads(r["data"])
+                p = projects.get(str(d.get("project_id")))
+                known = {} if not p else {"craft": p["craft"], "abilities": next((s.get("abilities") or [] for s in p["stages"]
+                                                                                 if s["name"] == d.get("stage")), [])}
+                d0 = {**blank, **known, **{k: v for k, v in d.items() if v not in (None, "", []) or k not in known}}
+                read = {k: v for k, v in code["read_of"](r["kind"], d0).items() if v not in (None, [], {})}
+                if read.get("tally"):
+                    read["tally"] = [x for x in read["tally"] if x["name"]] or None
+                read = {k: v for k, v in read.items() if v}
+                if read:
+                    self.db.execute("UPDATE events SET data = ? WHERE id = ?", (json.dumps({**d, "read": read}), r["id"]))
+        self.set_meta(event_reads="1")
+
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
         with self.lock:
@@ -1031,15 +1060,6 @@ class State:
             q += " WHERE " + " AND ".join(where)
         with self.lock:
             return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit))]
-
-    def capability_context(self) -> tuple[dict, dict]:
-        """({project id: craft}, {(project id, stage name): abilities}) for events that predate those fields (the crafting module's projects)."""
-        crafts, stages = {}, {}
-        for p in (self.store("crafting").get("projects") or {}).values():
-            crafts[p["id"]] = p["craft"]
-            for st in p["stages"]:
-                stages[(p["id"], st["name"])] = st.get("abilities") or []
-        return crafts, stages
 
     def save_capabilities(self, day: str, snapshot: dict) -> None:
         with self.lock:
@@ -1491,7 +1511,8 @@ class State:
             text = r["text"] + (f" (done: {r['outcome']})" if r["status"] == "done" and r["outcome"] else "")
             self._index(f"note:{r['section']}", r["id"], r["ts"], text, commit=False, fresh=False)
         marks = ",".join("?" * len(RECALL_EVENT_KINDS))
-        for r in self.db.execute(f"SELECT * FROM events WHERE kind IN ({marks})", RECALL_EVENT_KINDS).fetchall():
+        for r in self.db.execute(f"SELECT * FROM events WHERE kind IN ({marks}) OR json_extract(data, '$.read.line') IS NOT NULL",
+                                 RECALL_EVENT_KINDS).fetchall():
             if text := recall_text(r["kind"], json.loads(r["data"])):
                 self._index(f"event:{r['kind']}", r["id"], r["ts"], text, commit=False, fresh=False)
         for r in self.db.execute("SELECT * FROM reflections").fetchall():

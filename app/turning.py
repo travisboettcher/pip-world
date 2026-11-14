@@ -19,7 +19,11 @@ def _baseline(state, stats: dict, today: str, labels) -> list[dict]:
     if len(prior) < BASELINE_MIN:
         return []
     out = []
-    for key, label in labels:
+    labels = dict(labels)
+    for v in prior:                                       # a count only earlier days had (none today) is a change too
+        for key in v:
+            labels.setdefault(key, key.replace("_", " "))
+    for key, label in labels.items():
         vals = [v.get(key, 0) for v in prior]
         mean, sd, x = statistics.mean(vals), statistics.pstdev(vals), stats.get(key, 0)
         gap = abs(x - mean)
@@ -46,21 +50,15 @@ def detect(state, since: float, now: float, stats: dict, today: str, labels) -> 
     events = [e for e in state.events_since(since, limit=5000) if e["ts"] <= now]
     sig: list[dict] = []
     for e in events:
-        d, k = e["data"], e["kind"]
+        d = e["data"]
         for f in d.get("firsts", []):
             if f["tier"] == "major":
                 sig.append({"kind": "first", "events": [e["id"]], "text": f["label"]})
         for r in d.get("returns", []):
             sig.append({"kind": "return", "events": [e["id"]], "text": r["label"].replace(
                 "the first time", f"the first time in {round(r['days'])} days", 1)})
-        if k == "work" and d.get("project_done"):
-            sig.append({"kind": "goal", "events": [e["id"]], "text": f"you finished {d['project']}"})
-        elif k == "tool" and d.get("tool") == "abandon_project" and str(d.get("result", "")).startswith("abandoned"):
-            sig.append({"kind": "goal", "events": [e["id"]], "text": f"you gave up on {d['args'].get('project')}"})
-        elif k == "tool" and d.get("tool") == "start_project" and str(d.get("result", "")).startswith("started"):
-            sig.append({"kind": "goal", "events": [e["id"]], "text": f"you started {d['args'].get('name')}"})
-        elif k == "plan_revised" and (d.get("added") or d.get("dropped")):
-            sig.append({"kind": "goal", "events": [e["id"]], "text": f"you changed the plan for {d['project']}"})
+        if (d.get("read") or {}).get("goal"):                  # a module's event that says it is a turning in what the agent is after
+            sig.append({"kind": "goal", "events": [e["id"]], "text": d["read"]["goal"]})
     for x in state.expectations(limit=30, since=since, surprising=True):
         if x["kind"] != "step" and x["ts"] <= now and x["event_id"]:
             sig.append({"kind": "surprise", "events": [x["event_id"]],

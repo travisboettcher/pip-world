@@ -45,8 +45,8 @@ def test_who_and_what_each_have_their_own_facets(tmp_path):
     st.log("inbox", text="hello again", sender="Jade")
     st.log("inbox", text="anonymous")
     st.log("gift", sender="Morgan", item="needle file", qty=1)
-    st.log("work", project="clock", stage="s", text="t", result="blowup", project_done=False, interrupted=False)
-    st.log("work", project="clock", stage="s", text="t", result="good", project_done=True, interrupted=False)
+    st.log("work", by="crafting", read={"firsts": [{"key": "work:blowup", "label": "had a try blow up", "major": True}]})
+    st.log("work", by="crafting", read={"firsts": [{"key": "project:done", "label": "finished a project", "major": True}]})
     assert {"visitor", "person:Morgan", "person:Jade", "gift", "gift_from:Morgan", "gift_item:needle file",
             "work:blowup", "project:done"} <= keys(st)
     assert st.db.execute("SELECT count FROM facets WHERE key = 'visitor'").fetchone()["count"] == 3

@@ -11,9 +11,8 @@ TODAY = "2026-11-02"
 
 
 def work(st, **kw):
-    d = dict(project="clock", stage="s", text="t", result="good", project_done=False, interrupted=False, minutes=60,
-             approach="", finished_stage=False, percent=10)
-    return st.log("work", **{**d, **kw})
+    from tests.test_crafting import logged
+    return logged(st, "work", **kw)
 
 
 def detect(st, since=0.0, stats=None):

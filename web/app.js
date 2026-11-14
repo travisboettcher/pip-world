@@ -84,16 +84,6 @@ function describe(e) {
   switch (e.kind) {
     case 'say': return d.to_name ? { group: 'world', cls: 'world', text: `Pip to ${d.to_name}: ${d.text}` }
       : { group: 'chat', text: `Pip: ${d.text || '(says nothing)'}` };
-    case 'work': {
-      const tail = d.project_done ? ' — finished!' : d.finished_stage ? ' (stage done)' : ` (${d.percent}%)`;
-      if (d.interrupted) return { group: 'actions', text: `Pip stopped working on ${d.project} early${tail}` };
-      const cls = ['setback', 'blowup'].includes(d.result) ? 'warn' : 'world';
-      return { group: 'world', cls, text: `${d.project}, ${d.stage}: ${d.result} — ${d.text}${tail}` + (d.expectation ? ` (${d.expectation})` : '') + (d.learned ? ` Learned: ${d.learned}` : '') };
-    }
-    case 'experiment': {
-      if (d.interrupted) return { group: 'actions', text: `Pip cut an experiment on ${d.project} short` };
-      return { group: 'world', cls: 'world', text: `Experiment on ${d.project} (${d.hypothesis}): ${d.text}` + (d.finding ? ` Learned: ${d.finding}` : '') + (d.expectation ? ` (${d.expectation})` : '') };
-    }
     case 'gathered': return { group: 'world', cls: 'world', text: d.text + (d.interrupted ? ' (cut short)' : '') };
     case 'woke': return { group: 'world', cls: 'world', text: `Pip wakes after about ${d.hours} hours of sleep` + (d.early ? ' (woken early)' : '') };
     case 'made_work': return { group: 'world', cls: 'world', text: d.what === 'drawing' ? `Pip drew “${d.title}”${d.caption ? ` — ${d.caption}` : ''}` : `Pip wrote “${d.title}”` };
@@ -106,10 +96,6 @@ function describe(e) {
       return { group: 'journal', text: `Pip's sleeping self${d.mode === 'log' ? ' (logged only)' : ''}: ${bits.join('; ')}` };
     }
     case 'night_undo': return { group: 'journal', text: `Night decision #${d.decision} taken back: ${d.summary}` };
-    case 'plan_revised': {
-      const bits = [...(d.added || []).map((x) => `+${x}`), ...(d.dropped || []).map((x) => `−${x}`)];
-      return bits.length ? { group: 'world', cls: 'world', text: `Pip changed the plan for ${d.project}: ${bits.join(', ')}` } : null;
-    }
     case 'creation_made': return { group: 'world', cls: 'world', text: `Pip made ${d.name} (${[d.quality, ...(d.capabilities || [])].join(', ')}): ${d.description}` };
     case 'creation': return { group: 'world', cls: d.what === 'stopped' ? 'warn' : 'world', text: ['stopped', 'helper', 'used'].includes(d.what) ? d.text : `${d.name}: ${d.text}` };
     case 'companion': return { group: 'world', cls: 'world', text: `${d.name}: “${d.text}”` };
@@ -154,7 +140,10 @@ function describe(e) {
     case 'inbox_read': return { group: 'system', cls: 'system', text: `Pip read visitor message(s) ${(d.ids || []).join(', ')}` };
     case 'start': return { group: 'system', cls: 'system', text: `started: ${d.model} via ${d.backend}, pacing ${d.pacing}` };
     case 'tool': return describeTool(d);
-    default: return null;
+    default: {                                                    // a module's own event, as it says it reads (public: just its line)
+      const line = d.by && (d.text || d.read?.public || d.read?.line);
+      return line ? { group: 'world', cls: 'world', text: line } : null;
+    }
   }
 }
 
@@ -656,11 +645,11 @@ function handleEvent(e, live) {
   if (e.kind === 'tool' && ['note_to_self', 'edit_note', 'resolve_note'].includes(t)) debounce('notes', refreshNotes);
   if (e.kind === 'gathered' || e.kind === 'tool') { debounce('items', refreshItems); debounce('standing', refreshStanding); }   // a module's tool may give or take
   if (e.kind === 'gift') debounce('items', refreshItems);
-  if (['gift', 'inbox', 'work', 'experiment', 'creation_made', 'module', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind)) debounce('emotions', refreshEmotions);
+  if (['gift', 'inbox', 'creation_made', 'module', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind) || e.data?.read?.feel) debounce('emotions', refreshEmotions);
   if (e.kind === 'module') debounce('standing', refreshStanding);
   if (['happening', 'happening_felt'].includes(e.kind)) { debounce('lately', refreshLately); debounce('state', refreshState, 1200); debounce('items', refreshItems); debounce('standing', refreshStanding); }
   if (e.kind === 'arrived' || (e.kind === 'tool' && t === 'go_to')) debounce('map', refreshMap);
-  if (['work', 'experiment'].includes(e.kind) || (e.kind === 'tool' && ['revise_plan', 'resume_project', 'start_project', 'work_on', 'abandon_project', 'set_activity', 'rest'].includes(t))) debounce('projects', refreshProjects);
+  if (e.data?.by === 'crafting' || (e.kind === 'tool' && (e.data?.module === 'crafting' || ['set_activity', 'rest'].includes(t)))) debounce('projects', refreshProjects);
   if (e.kind === 'made_work') debounce('works', refreshWorks);
   if (['reflection', 'night_pass', 'night_undo', 'woke'].includes(e.kind) || (e.kind === 'tool' && t === 'undo_decision')) debounce('memory', refreshMemory);
   if (['letter_sent', 'letter_read', 'neighbor'].includes(e.kind) || (e.kind === 'inbox' && e.data.letter)) debounce('letters', refreshLetters);

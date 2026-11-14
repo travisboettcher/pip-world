@@ -19,22 +19,33 @@ def test_tools_count_by_outcome_and_skip_routine_ones():
     assert not {"set_activity", "say", "rest"} & set(got)
 
 
-def test_work_and_experiments_count_per_craft_and_ability():
+def test_crafts_and_abilities_are_counted_from_what_crafting_says_of_its_events():
+    from tests.test_crafting import BLANK, G
+    def ev(kind, **d):                                   # one of crafting's events, as it logs it
+        return {"kind": kind, "data": {"read": G["event"](kind, {**BLANK[kind], **d}).get("read", {})}}
     got = C.collect([
         ev("work", result="good", craft="clockmaking", abilities=["precision", "patience"]),
         ev("work", result="slow", craft="clockmaking", abilities=["precision"]),
         ev("work", result="blowup", craft="clockmaking", abilities=["precision"]),
-        ev("work", result="good", craft="clockmaking", abilities=["precision"], interrupted=True),   # ignored
+        ev("work", result="good", craft="clockmaking", abilities=["precision"], interrupted=True),   # not counted
         ev("experiment", outcome="insight", craft="clockmaking"), ev("experiment", outcome="nothing", craft="clockmaking")])
     assert got["craft"]["clockmaking"] == {"tries": 5, "good": 2, "neutral": 1, "bad": 2}
     assert got["ability"]["precision"] == {"tries": 3, "good": 1, "neutral": 1, "bad": 1}
     assert got["ability"]["ingenuity"] == {"tries": 2, "good": 1, "neutral": 0, "bad": 1}
 
 
-def test_older_events_are_filled_in_from_the_project():
-    got = C.collect([ev("work", result="good", project_id=7, stage="cut")], crafts={7: "clockmaking"},
-                    stage_abilities={(7, "cut"): ["precision"]})
-    assert got["craft"]["clockmaking"]["good"] == 1 and got["ability"]["precision"]["good"] == 1
+def test_the_oldest_events_are_filled_in_from_their_project_once(tmp_path):
+    from app.state import State
+    from tests.test_projects import make
+    s, st, gm, agent = make(tmp_path)
+    st.merge_store("crafting", {"projects": {"7": {"id": 7, "craft": "clockmaking", "stages": [{"name": "cut", "abilities": ["precision"]}]}}})
+    st.log("work", project="Clock", project_id=7, stage="cut", result="good", text="ok", minutes=20)
+    st.log("work", project="Clock", project_id=7, stage="other", result="good", text="ok", minutes=20)
+    st.log("work", project="Kite", project_id=8, stage="cut", result="good", text="ok", minutes=20)          # a project no longer kept
+    st.set_meta(event_reads="")
+    got = C.collect(State(s).events(10))
+    assert got["craft"] == {"clockmaking": {"tries": 2, "good": 2, "neutral": 0, "bad": 0}}
+    assert got["ability"] == {"precision": {"tries": 1, "good": 1, "neutral": 0, "bad": 0}}
 
 
 def test_the_prompt_block_is_counts_with_the_change_since_last_time():

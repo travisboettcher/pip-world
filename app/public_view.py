@@ -25,15 +25,12 @@ EVENT_FIELDS = {
     "settled": ("emotion", "from", "to", "how"),
     "arrived": ("place", "label", "first_time", "description"),
     "reading": ("title", "minutes", "summary", "quotes", "percent", "finished"),
-    "work": ("project", "stage", "result", "minutes", "text", "finished_stage", "project_done", "percent"),
-    "experiment": ("project", "hypothesis", "outcome", "minutes", "text", "finding", "project_done", "percent"),
     "gathered": ("place", "label", "minutes", "items", "text"),
     "creation": ("name", "what", "text", "item"),
     "creation_made": ("name", "description", "quality", "capabilities", "quirks", "project"),
     "made_work": ("id", "what", "title", "caption", "text"),
     "revised_work": ("id", "title", "revision"),
     "world_changed": ("effect", "text", "name"),
-    "plan_revised": ("project", "because"),
     "reflection": ("summary", "insights", "changes", "turning"),
     "night_pass": ("decisions", "focus", "kept", "carried", "dropped", "applied"),
     "heard_of_place": ("place", "distance"),
@@ -106,6 +103,8 @@ def public_event(event: dict) -> dict | None:
             keep["result"] = data["result"]
     elif kind in EVENT_FIELDS:
         keep = {k: data[k] for k in (*EVENT_FIELDS[kind], *ALWAYS) if k in data}
+    elif data.get("by") and (data.get("read") or {}).get("public"):     # a module's event, as it says the public may see it
+        keep = {"by": data["by"], "text": data["read"]["public"]}
     else:
         return None
     return {"id": event["id"], "ts": event["ts"], "kind": kind, "importance": event.get("importance"), "data": keep}

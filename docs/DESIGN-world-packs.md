@@ -12,8 +12,8 @@ shipped `reading` module, on the engine's first source (`books`); **5e built (0.
 weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
 map tool arguments, public events, `creation`, and a module's work session; **5f built (0.42.0)**: crafting is the shipped `crafting`
 module; **6a built (0.43.0)**: stakes (`at_zero`, `harm`); **6b built (0.44.0)**: Ashfall, the second world, and a pack's own
-`modules`; **7a built (0.45.0)**: the season is the world's, and the one-time moves for old installs are gone. Next: 7b, the
-readers of a module's events. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+`modules`; **7a built (0.45.0)**: the season is the world's, and the one-time moves for old installs are gone;
+**7b built (0.46.0)**: a module's events say how the engine reads them. The plan's phases are done. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -433,6 +433,10 @@ install's projects (finished ones compacted), skills and extra project slots mov
    `pip` read (kept as the old name of `agent`), and the scene's layouts beyond the home (Ashfall's ruins are drawn from Pip's
    `outdoors`).
 7. **Remove the fallbacks.** The engine's built-in workings, companions, customers, happenings' dice and each moved feature.
+   Those went in phase 5, as each feature moved. *7a built (0.45.0)*: the season is the world's (none when nothing publishes one), and
+   the one-time moves for installs from before 0.35.0 to 0.42.0 are gone (an older database is refused: start it on 0.44 once first).
+   *7b built (0.46.0)*: a module's own events and how they read (DESIGN-modules.md, "A module's own events"); memory, firsts,
+   emotions, turning points, capabilities, the recent events and the feed read nothing of crafting's by name.
 
 Every phase is a release with tests, mutation testing and Pip's world running unchanged on it.
 

@@ -135,15 +135,15 @@ def test_what_the_agent_has_been_able_to_do_counted_exactly():
         ev("module", tool="gather", items=[{"name": "b"}]), ev("module", tool="gather", items=[]), ev("module", tool="gather"), ev("module", items=[]),
         ev("tool", tool="gather", result="ok"), ev("tool", tool="plant", result="ok", module="garden"), ev("tool", tool="say", result="hi"),
         ev("tool", tool="recall", result="error: x"), ev("tool", tool="recall"), ev("tool", tool="recall", result="ok", noop=True),
-        ev("work", result="breakthrough", craft="clocks", abilities=["handiness"]), ev("work", result="slow", project_id=1, stage="s"),
-        ev("work", result="good", interrupted=True, craft="clocks"), ev("work", craft="clocks"), ev("work", result="awful", craft="clocks"),
-        ev("experiment", outcome="insight", craft="clocks"), ev("experiment", outcome="surprise", project_id=1), ev("experiment", outcome="clue"),
-        ev("experiment", outcome="nothing", interrupted=True), ev("experiment", craft="clocks"), ev("experiment", outcome="dud", project_id=2),
-    ], crafts={1: "kites"}, stage_abilities={(1, "s"): ["patience"]})
+        ev("work", by="crafting", read={"tally": [{"group": "craft", "name": "clocks", "outcome": "good"},
+                                                   {"group": "ability", "name": "handiness", "outcome": "good"}]}),
+        ev("work", by="crafting", read={"tally": [{"group": "craft", "name": "clocks", "outcome": "bad"}]}),
+        ev("work", by="crafting", read={"tally": [{"group": "craft", "name": "kites", "outcome": "neutral"}]}),
+        ev("work", by="crafting", read={"line": "x"}), ev("work", result="breakthrough", craft="clocks"),    # nothing said, nothing counted
+    ])
     assert got["tool"] == {"gather": {"tries": 4, "good": 2, "neutral": 0, "bad": 2}, "recall": {"tries": 2, "good": 1, "neutral": 0, "bad": 1}}
-    assert got["craft"] == {"clocks": {"tries": 3, "good": 2, "neutral": 0, "bad": 1}, "kites": {"tries": 2, "good": 1, "neutral": 1, "bad": 0}}
-    assert got["ability"] == {"handiness": {"tries": 1, "good": 1, "neutral": 0, "bad": 0}, "patience": {"tries": 1, "good": 0, "neutral": 1, "bad": 0},
-                              "ingenuity": {"tries": 4, "good": 2, "neutral": 1, "bad": 1}, "knowledge": {"tries": 4, "good": 2, "neutral": 1, "bad": 1}}
+    assert got["craft"] == {"clocks": {"tries": 2, "good": 1, "neutral": 0, "bad": 1}, "kites": {"tries": 1, "good": 0, "neutral": 1, "bad": 0}}
+    assert got["ability"] == {"handiness": {"tries": 1, "good": 1, "neutral": 0, "bad": 0}}
 
 
 def test_the_reads_and_proposals_at_their_last_edges(tmp_path):

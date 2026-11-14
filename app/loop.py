@@ -493,28 +493,12 @@ class Agent:
             return stakes.moment(d)
         if k == "creation_made":
             return f"Your {d['project']} became {d['name']}: {d['description']}"
-        if k == "work" and not d.get("interrupted"):
-            if d["project_done"]:
-                return f"You finished {d['project']}! {d['text']}"
-            if (d["result"] in ("breakthrough", "setback", "blowup") or d["finished_stage"] or d.get("learned")
-                    or d.get("expectation")):
-                done = " (that stage is done)" if d["finished_stage"] else ""
-                done += f" ({d['step_note']})" if d.get("step_note") else ""
-                done += f" ({d['expectation']})" if d.get("expectation") else ""
-                lost = f" You lost some {', '.join(d['lost'])}." if d.get("lost") else ""
-                learned = f" You learned: {d['learned']}" if d.get("learned") else ""
-                return f"Working on {d['project']}: {d['text']}{done}{lost}{learned}"
-        if k == "experiment" and not d.get("interrupted"):
-            extra = (f" You now know: {d['finding']}" if d.get("finding") else "") + (
-                " New steps opened up: " + ", ".join(d["added"]) + "." if d.get("added") else "")
-            note = f" ({d['expectation']})" if d.get("expectation") else ""
-            return f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}{extra}{note}"
+        if (d.get("read") or {}).get("moment"):              # a module's event that says it is a moment of the agent's day
+            return d["read"]["moment"]
         if k == "tool":
             t, a, r = d["tool"], d["args"], str(d.get("result", ""))
             if d.get("first") and not r.startswith("error"):   # a module's tool that has a first is a moment each time (planting)
                 return r.capitalize()
-            if t == "start_project" and r.startswith("started project"):
-                return f"You started a new project: {a.get('name')}"
             if t == "resolve_note" and r.startswith("crossed off"):
                 return f"You crossed off #{a.get('id')}" + (f": {a['outcome'][:100]}" if a.get("outcome") else "")
         return None  # visitor messages are summarised separately in _moments
@@ -743,19 +727,8 @@ class Agent:
                 elif e["kind"] == "creation_made":
                     lines.append(f"- you finished making {d['name']} ({d['quality']}): {d['description']}"
                                  + (f" (a drawing of it, with of=\"{d['name']}\", becomes how it looks in your {self.pack.data('places').get('home', {}).get('called', 'home')})" if "draw" in self.tools else ""))
-                elif e["kind"] == "experiment":
-                    lines.append(f"- experiment on {d['project']} ({d['hypothesis']}): {d['outcome']}"
-                                 + ("" if d.get("interrupted") else f" - {d['text']}")
-                                 + (f" [learned: {d['finding']}]" if d.get("finding") else "")
-                                 + (f" [{d['expectation']}]" if d.get("expectation") else ""))
-                elif e["kind"] == "work":
-                    lines.append(f"- work on {d['project']} ({d['stage']}): {d['result']}"
-                                 + ("" if d.get("interrupted") else f" - {d['text']}")
-                                 + (f" [learned: {d['learned']}]" if d.get("learned") else "")
-                                 + (f" [{d['expectation']}]" if d.get("expectation") else "")
-                                 + (f" [{d['step_note']}]" if d.get("step_note") else "")
-                                 + (" [project finished!]" if d["project_done"] else
-                                    " [stage done]" if d["finished_stage"] else f" [{d['percent']}% done]"))
+                elif (d.get("read") or {}).get("line") and d.get("by"):     # a module's event, as it says it reads
+                    lines.append(f"- {d['read']['line']}")
         def visitor(m):
             if m["gift"]:
                 return f"- {m['text']}"

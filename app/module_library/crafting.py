@@ -126,8 +126,108 @@ def expectation_fields(c, step):
     return out
 
 
-def settled(c, subject):
-    return {k: c[k] for k in ("kind", "expected", "actual", "error", "surprise", "phrase")} | {"subject": subject[:200]}
+def settled(c, subject, craft):
+    return {k: c[k] for k in ("kind", "expected", "actual", "error", "surprise", "phrase")} | {"subject": subject[:200], "group": craft[:40]}
+
+
+# --- how the engine reads crafting's events (modules.py, `event.read`): remembered, felt, counted, firsts, turning points ----------------
+WORK_FEEL = {"breakthrough": {"joy": 10, "surprise": 6, "anticipation": 5}, "good": {"joy": 4, "anticipation": 3}, "slow": {"sadness": 2},
+             "setback": {"sadness": 8, "anger": 6}, "blowup": {"fear": 12, "sadness": 8, "anger": 8, "surprise": 8}}
+EXPERIMENT_FEEL = {"nothing": {"sadness": 3, "anger": 2}, "clue": {"anticipation": 3}, "insight": {"joy": 6, "anticipation": 4},
+                   "surprise": {"surprise": 12, "joy": 4}}
+SURPRISE_FEEL = {"better": {"surprise": 6, "joy": 4}, "worse": {"surprise": 6, "fear": 3, "sadness": 3}}
+WORK_FIRSTS = {"setback": "had a setback on a project", "blowup": "had a try blow up", "breakthrough": "had a breakthrough"}
+WORK_TALLY = {"breakthrough": "good", "good": "good", "slow": "neutral"}
+EXPERIMENT_TALLY = {"insight": "good", "surprise": "good", "clue": "neutral"}
+WORK_COUNTS = {"setback": "setbacks", "blowup": "tries_that_blew_up", "breakthrough": "breakthroughs"}
+
+
+def added(*feels):
+    out = {}
+    for f in feels:
+        for k, n in f.items():
+            out[k] = out.get(k, 0) + n
+    return out
+
+
+def surprised(d):
+    s = d.get("surprise")
+    return [{"key": "surprise:" + s, "label": "had something go much " + s + " than you expected", "major": True}] if s in ("better", "worse") else []
+
+
+def notes(d, *keys):
+    return "".join(" (" + d[k] + ")" for k in keys if d.get(k))
+
+
+def read_of(kind, d):
+    """How the engine reads one of crafting's events: what is remembered of it and shown (line), whether it is a moment of the day, how much
+    it weighs, how it feels, the firsts and turning points it stands for, what it says of the agent's crafts and abilities, the day's
+    counts, and what the public sees."""
+    project = d.get("project", "")
+    if kind == "work":
+        if d["interrupted"]:
+            return {"line": "work on " + project + " (" + d["stage"] + ") was cut short", "importance": 1,
+                    "public": "stopped working on " + project + " early"}
+        result, done = d["result"], d["project_done"]
+        tail = " The project is finished!" if done else " That stage is done." if d["finished_stage"] else " (" + str(d["percent"]) + "% done)"
+        learned = " You learned: " + d["learned"] if d.get("learned") else ""
+        lost = " You lost some " + ", ".join(d["lost"]) + "." if d.get("lost") else ""
+        verdict = WORK_TALLY.get(result, "bad")
+        notable = done or result in ("breakthrough", "setback", "blowup") or d["finished_stage"] or d.get("learned") or d.get("expectation")
+        counts = {"work_sessions": 1, "minutes_worked": d["minutes"], "sessions_with_approach": 1 if d.get("approach") else 0,
+                  WORK_COUNTS.get(result, "_"): 1, "projects_finished": 1 if done else 0, "predictions_made": 1 if d.get("expected") else 0,
+                  "surprises": 1 if d.get("surprise") else 0}
+        return {"line": "Working on " + project + " (" + d["stage"] + "), " + result + ": " + d["text"] + learned + notes(d, "expectation") + tail,
+                "moment": ("You finished " + project + "! " + d["text"]) if done else
+                ("Working on " + project + ": " + d["text"] + (" (that stage is done)" if d["finished_stage"] else "") + notes(d, "step_note", "expectation")
+                 + lost + learned) if notable else None,
+                "importance": 7 if done else 5 if result in ("blowup", "breakthrough") else 4 if result == "setback" else 2,
+                "feel": added(WORK_FEEL.get(result, {}), SURPRISE_FEEL.get(d.get("surprise"), {})),
+                "firsts": ([{"key": "work:" + result, "label": WORK_FIRSTS[result], "major": True}] if result in WORK_FIRSTS else [])
+                + ([{"key": "project:done", "label": "finished a project", "major": True}] if done else []) + surprised(d),
+                "goal": "you finished " + project if done else None,
+                "tally": [{"group": "craft", "name": d["craft"], "outcome": verdict}] + [{"group": "ability", "name": a, "outcome": verdict}
+                                                                                         for a in d["abilities"]][:7],
+                "counts": {k: n for k, n in counts.items() if n and k != "_"},
+                "public": project + ", " + d["stage"] + ": " + result + " — " + d["text"] + tail + notes(d, "expectation")
+                + (" Learned: " + d["learned"] if d.get("learned") else "")}
+    if kind == "experiment":
+        if d["interrupted"]:
+            return {"line": "an experiment on " + project + " was cut short", "importance": 1, "public": "cut an experiment on " + project + " short"}
+        outcome = d["outcome"]
+        found = " You learned: " + d["finding"] if d.get("finding") else ""
+        verdict = EXPERIMENT_TALLY.get(outcome, "bad")
+        return {"line": "Experiment on " + project + " (" + d["hypothesis"] + "): " + d["text"] + found + notes(d, "expectation"),
+                "moment": "Experiment on " + project + " (" + d["hypothesis"] + "): " + d["text"]
+                + (" You now know: " + d["finding"] if d.get("finding") else "")
+                + (" New steps opened up: " + ", ".join(d["added"]) + "." if d.get("added") else "") + notes(d, "expectation"),
+                "importance": 6 if outcome == "surprise" else 5 if outcome == "insight" else 2,
+                "feel": dict(EXPERIMENT_FEEL.get(outcome, {})),
+                "firsts": surprised(d) + ([{"key": "experiment:" + outcome, "label": "had an experiment give you "
+                                            + ("an insight" if outcome == "insight" else "a surprise")}] if outcome in ("insight", "surprise") else []),
+                "tally": [{"group": "craft", "name": d["craft"], "outcome": verdict}]
+                + [{"group": "ability", "name": a, "outcome": verdict} for a in EXPERIMENT_ABILITIES],
+                "counts": {k: n for k, n in {"experiments": 1, "predictions_made": 1 if d.get("expected") else 0,
+                                             "surprises": 1 if d.get("surprise") else 0}.items() if n},
+                "public": "Experiment on " + project + " (" + d["hypothesis"] + "): " + d["text"] + found + notes(d, "expectation")}
+    if kind == "plan_revised":
+        bits = ["+" + x for x in d.get("added") or []] + ["−" + x for x in d.get("dropped") or []]
+        return {"goal": "you changed the plan for " + project, "public": "changed the plan for " + project + ": " + ", ".join(bits)} if bits else {}
+    if kind == "project_started":
+        return {"line": "You started a project: " + project, "moment": "You started a new project: " + project, "importance": 3,
+                "firsts": [{"key": "tool:start_project", "label": "started a project"}], "goal": "you started " + project,
+                "public": "started a project: " + project}
+    if kind == "project_abandoned":
+        return {"line": "You gave up on " + project + (": " + d["reason"] if d.get("reason") else ""), "importance": 3,
+                "firsts": [{"key": "tool:abandon_project", "label": "gave up on a project"}], "goal": "you gave up on " + project,
+                "public": "gave up on " + project}
+    return {}
+
+
+def event(kind, data, expect=()):
+    """One of crafting's events, with how the engine reads it (only what applies)."""
+    read = {k: v for k, v in read_of(kind, data).items() if v not in (None, [], {})}
+    return {"kind": kind, "data": data, **({"read": read} if read else {}), "expect": list(expect)}
 
 
 # --- plans --------------------------------------------------------------------------------------------------------------------------
@@ -690,7 +790,8 @@ def started(ctx, review):
                "revise_plan as you learn." if plan["questions"] else "")
     sketch = " You could sketch it first with draw." if "draw" in ctx["agent"].get("tools", []) else ""
     return finish(ctx, {"reply": "started project #" + str(pid) + " " + p["name"] + " (" + plan["craft"] + ", difficulty " + str(plan["difficulty"])
-                        + "/5). Your plan: " + listing + "." + tools + concern + unknown + sketch}, store)
+                        + "/5). Your plan: " + listing + "." + tools + concern + unknown + sketch,
+                        "event": event("project_started", {"project": p["name"], "project_id": pid})}, store)
 
 
 def work_on(ctx, args):
@@ -791,8 +892,8 @@ def revised(ctx, r, verdict):
         + (["you now know: " + changes["finding"]] if changes["finding"] else []) + (["settled: " + changes["answered"]] if changes["answered"] else [])
     reply = " ".join(x for x in ((msg + r["note"]).strip(), "; ".join(bits) or "the plan stays as it is") if x)
     store = save({"now": {"revise": None}}, p)
-    return finish(ctx, {"reply": reply, "event": {"kind": "plan_revised", "data": {"project": p["name"], "project_id": p["id"],
-                                                                                    "because": clip(r["because"], 200), **changes}}}, store)
+    return finish(ctx, {"reply": reply, "event": event("plan_revised", {"project": p["name"], "project_id": p["id"], "because": clip(r["because"], 200),
+                                                                         **changes})}, store)
 
 
 def abandon_project(ctx, args):
@@ -800,7 +901,8 @@ def abandon_project(ctx, args):
     if not p or p["status"] not in ("active", "paused"):
         return error(err or p["name"] + " is already " + p["status"])
     p = {**p, "status": "abandoned", "outcome": str(args.get("reason") or "")[:300], "finished_at": ctx["now"]}
-    return finish(ctx, {"reply": "abandoned " + p["name"]}, save({}, p))
+    return finish(ctx, {"reply": "abandoned " + p["name"], "event": event("project_abandoned", {"project": p["name"], "project_id": p["id"],
+                                                                                                "reason": p["outcome"]})}, save({}, p))
 
 
 def resume_project(ctx, args):
@@ -913,7 +1015,7 @@ def work_told(ctx, p, run):
             "minutes": round(minutes), "text": text, "finished_stage": finished_stage, "project_done": done, "interrupted": run["interrupted"],
             "percent": percent(p), "approach": run.get("approach", ""), "lost": lost, "learned": learned, **expectation_fields(comparison, step),
             "crossroads": crossroads({**p, "status": "active"}) and not done}
-    out["event"] = {"kind": "work", "data": data, "expect": [settled(c, stage["name"]) for c in (comparison, step) if c]}
+    out["event"] = event("work", data, [settled(c, stage["name"], p["craft"]) for c in (comparison, step) if c])
     out["wake"] = True
     sk = skills(ctx)
     store = save({"skills": {p["craft"]: sk.get(p["craft"], 0) + minutes}, "now": {"session": None, "run": None}}, p)
@@ -966,7 +1068,7 @@ def experiment_told(ctx, p, run, verdict):
     data = {"project": p["name"], "project_id": p["id"], "craft": p["craft"], "hypothesis": hypothesis, "outcome": outcome, "relevant": relevant,
             "minutes": round(minutes), "text": text, "finding": changes["finding"], "answered": changes["answered"], "added": changes["added"],
             "interrupted": run["interrupted"], "project_done": done, "percent": percent(p), "crossroads": crossroads(p), **expectation_fields(comparison, None)}
-    out["event"] = {"kind": "experiment", "data": data, "expect": [settled(comparison, hypothesis)] if comparison else []}
+    out["event"] = event("experiment", data, [settled(comparison, hypothesis, p["craft"])] if comparison else [])
     out["wake"] = True
     sk = skills(ctx)
     store = save({"skills": {p["craft"]: sk.get(p["craft"], 0) + minutes}, "now": {"session": None, "run": None}}, p)

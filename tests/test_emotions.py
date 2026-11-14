@@ -176,27 +176,11 @@ def test_a_gift_and_a_visitor_lift_joy_and_trust(tmp_path):
     assert moves(st, "inbox", id=1, text="hi", sender="Morgan") == {"joy": 5, "trust": 4, "sadness": -6}
 
 
-def test_work_results_move_the_right_emotions(tmp_path):
+def test_a_modules_event_moves_the_emotions_it_says(tmp_path):
     s, st, agent = fresh(tmp_path)
-    assert moves(st, "work", result="breakthrough") == {"joy": 10, "surprise": 6, "anticipation": 5}
-    assert moves(st, "work", result="good") == {"joy": 4, "anticipation": 3}
-    assert moves(st, "work", result="slow") == {"sadness": 2}
-    assert moves(st, "work", result="setback") == {"sadness": 8, "anger": 6}
-    assert moves(st, "work", result="blowup") == {"fear": 12, "sadness": 8, "anger": 8, "surprise": 8}
-
-
-def test_a_surprise_adds_a_direction(tmp_path):
-    s, st, agent = fresh(tmp_path)
-    assert moves(st, "work", result="good", surprise="better") == {"joy": 8, "anticipation": 3, "surprise": 6}
-    assert moves(st, "work", result="good", surprise="worse") == {"joy": 4, "anticipation": 3, "surprise": 6, "fear": 3, "sadness": 3}
-
-
-def test_experiment_outcomes(tmp_path):
-    s, st, agent = fresh(tmp_path)
-    assert moves(st, "experiment", outcome="nothing") == {"sadness": 3, "anger": 2}
-    assert moves(st, "experiment", outcome="clue") == {"anticipation": 3}
-    assert moves(st, "experiment", outcome="insight") == {"joy": 6, "anticipation": 4}
-    assert moves(st, "experiment", outcome="surprise") == {"surprise": 12, "joy": 4}
+    assert moves(st, "work", by="crafting", read={"line": "it went", "feel": {"joy": 10, "surprise": 6}}) == {"joy": 10, "surprise": 6}
+    assert moves(st, "work", by="crafting", read={"line": "it went"}) == {}                    # a module's event that says nothing moves nothing
+    assert moves(st, "work", result="breakthrough") == {}                                     # the engine reads no kind of crafting's itself
 
 
 def test_finishing_something_is_the_big_joy(tmp_path):

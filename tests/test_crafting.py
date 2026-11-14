@@ -24,6 +24,19 @@ G = code()
 PARAMS = {"speed": 1.0, "most": 3, "cap": 6, "abilities": ["precision", "patience", "ingenuity", "knowledge", "handiness"], "default_abilities": ["handiness"]}
 
 
+BLANK = {"work": {"project": "clock", "project_id": 1, "stage": "s", "text": "t", "result": "good", "craft": "clockmaking", "abilities": [],
+                  "minutes": 60, "finished_stage": False, "project_done": False, "interrupted": False, "percent": 10, "approach": ""},
+         "experiment": {"project": "clock", "project_id": 1, "craft": "clockmaking", "hypothesis": "h", "outcome": "clue", "minutes": 30,
+                        "text": "t", "interrupted": False, "project_done": False, "percent": 10, "added": []}}
+
+
+def logged(st, kind, **data):
+    """One of crafting's events, logged as the module logs it (with how it reads): an event id."""
+    d = {**BLANK.get(kind, {}), **data}
+    e = G["event"](kind, d)
+    return st.log(kind, **d, by="crafting", **({"read": e["read"]} if "read" in e else {}))
+
+
 def ctx_of(store=None, **kw):
     """A context as the module sees it, for its pure parts."""
     return {"params": dict(PARAMS), "store": store or {}, "abilities": {}, "items": [], "found": [], "now": NOW, "seed": 1,
@@ -418,3 +431,136 @@ def test_the_engine_reads_only_well_shaped_projects_and_skills(tmp_path):
     assert proj.published(st) == {"projects": [], "skills": {}}
     st.update_module(m["id"], facts={"projects": [{"id": 1}], "skills": {"kites": {"xp": 1, "level": 0}}})
     assert proj.published(st) == {"projects": [{"id": 1}], "skills": {"kites": {"xp": 1, "level": 0}}}
+
+
+
+@pytest.mark.parametrize("kind, data, moment", [
+    ("work", {"project": "Clock", "text": "Gears.", "result": "steady", "finished_stage": False, "project_done": False, "interrupted": True}, None),
+    ("work", {"project": "Clock", "text": "Gears.", "result": "steady", "finished_stage": False, "project_done": False}, None),
+    ("work", {"project": "Clock", "text": "Gears.", "result": "breakthrough", "finished_stage": False, "project_done": False},
+     "Working on Clock: Gears."),
+    ("work", {"project": "Clock", "text": "Gears.", "result": "blowup", "finished_stage": True, "project_done": False, "step_note": "fit",
+              "expectation": "as hoped", "lost": ["brass", "glue"], "learned": "go slow"},
+     "Working on Clock: Gears. (that stage is done) (fit) (as hoped) You lost some brass, glue. You learned: go slow"),
+    ("work", {"project": "Clock", "text": "Gears.", "result": "steady", "finished_stage": False, "project_done": False, "learned": "x"},
+     "Working on Clock: Gears. You learned: x"),
+    ("work", {"project": "Clock", "text": "Gears.", "result": "steady", "finished_stage": False, "project_done": False, "expectation": "e"},
+     "Working on Clock: Gears. (e)"),
+    ("experiment", {"project": "Clock", "hypothesis": "oil helps", "text": "It did.", "finding": "oil helps", "added": ["oil it", "test it"],
+                    "expectation": "right"}, "Experiment on Clock (oil helps): It did. You now know: oil helps New steps opened up: oil it, test it. (right)"),
+    ("experiment", {"project": "Clock", "hypothesis": "h", "text": "Nothing."}, "Experiment on Clock (h): Nothing."),
+    ("experiment", {"project": "Clock", "hypothesis": "h", "text": "Nothing.", "interrupted": True}, None),
+    ("work", {"project": "Clock", "text": "It ticks.", "result": "good", "finished_stage": True, "project_done": True}, "You finished Clock! It ticks."),
+])
+def test_what_of_crafting_is_a_moment_of_the_day(kind, data, moment):
+    assert G["read_of"](kind, {**BLANK[kind], **data}).get("moment") == moment
+
+
+
+def test_what_crafting_says_of_the_agents_crafts_and_abilities():
+    tally = lambda kind, **d: G["read_of"](kind, {**BLANK[kind], **d}).get("tally")  # noqa: E731
+    for result, verdict in (("breakthrough", "good"), ("good", "good"), ("slow", "neutral"), ("setback", "bad"), ("blowup", "bad")):
+        assert tally("work", result=result, abilities=["handiness", "patience"]) == [
+            {"group": "craft", "name": "clockmaking", "outcome": verdict}, {"group": "ability", "name": "handiness", "outcome": verdict},
+            {"group": "ability", "name": "patience", "outcome": verdict}]
+    for outcome, verdict in (("insight", "good"), ("surprise", "good"), ("clue", "neutral"), ("nothing", "bad")):
+        assert tally("experiment", outcome=outcome) == [{"group": "craft", "name": "clockmaking", "outcome": verdict},
+                                                        {"group": "ability", "name": "ingenuity", "outcome": verdict},
+                                                        {"group": "ability", "name": "knowledge", "outcome": verdict}]
+    assert tally("work", interrupted=True) is None and tally("experiment", interrupted=True) is None
+    assert len(tally("work", abilities=[str(i) for i in range(9)])) == 8                       # at most what a read may carry
+
+
+def read(kind, **d):
+    return G["read_of"](kind, {**BLANK.get(kind, {}), **d})
+
+
+def test_how_a_session_reads():
+    r = read("work", project="Kite", stage="frame", result="breakthrough", text="It holds.", learned="ash bends", expectation="better than you thought",
+             minutes=40, approach="steam it", expected="badly", surprise="better", abilities=["handiness"])
+    assert r["line"] == "Working on Kite (frame), breakthrough: It holds. You learned: ash bends (better than you thought) (10% done)"
+    assert r["moment"] == "Working on Kite: It holds. (better than you thought) You learned: ash bends" and r["importance"] == 5
+    assert r["feel"] == {"joy": 14, "surprise": 12, "anticipation": 5}
+    assert r["firsts"] == [{"key": "work:breakthrough", "label": "had a breakthrough", "major": True},
+                           {"key": "surprise:better", "label": "had something go much better than you expected", "major": True}]
+    assert r["goal"] is None and r["counts"] == {"work_sessions": 1, "minutes_worked": 40, "sessions_with_approach": 1, "breakthroughs": 1,
+                                                 "predictions_made": 1, "surprises": 1}
+    assert r["public"] == "Kite, frame: breakthrough — It holds. (10% done) (better than you thought) Learned: ash bends"
+    done = read("work", project="Kite", result="slow", text="Done.", finished_stage=True, project_done=True, lost=["glue"])
+    assert done["line"].endswith("Done. The project is finished!") and done["moment"] == "You finished Kite! Done." and done["importance"] == 7
+    assert done["goal"] == "you finished Kite" and done["firsts"] == [{"key": "project:done", "label": "finished a project", "major": True}]
+    assert done["counts"] == {"work_sessions": 1, "minutes_worked": 60, "projects_finished": 1} and done["feel"] == {"sadness": 2}
+    stage = read("work", result="blowup", finished_stage=True, lost=["glue", "pins"], step_note="it took longer")
+    assert stage["line"].endswith(" That stage is done.") and stage["importance"] == 5 and stage["counts"]["tries_that_blew_up"] == 1
+    assert stage["moment"] == "Working on clock: t (that stage is done) (it took longer) You lost some glue, pins."
+    assert read("work", result="setback")["importance"] == 4 and read("work", result="setback", surprise="worse")["feel"] == {
+        "sadness": 11, "anger": 6, "surprise": 6, "fear": 3}
+    assert read("work", result="good")["moment"] is None and read("work", result="good")["importance"] == 2
+    assert read("work", interrupted=True) == {"line": "work on clock (s) was cut short", "importance": 1, "public": "stopped working on clock early"}
+
+
+def test_how_an_experiment_a_revision_and_a_project_begun_or_given_up_read():
+    r = read("experiment", outcome="surprise", text="It sank.", finding="cork rots", added=["dry it"], expectation="worse than you thought",
+             expected="works", surprise="worse")
+    assert r["line"] == "Experiment on clock (h): It sank. You learned: cork rots (worse than you thought)"
+    assert r["moment"] == "Experiment on clock (h): It sank. You now know: cork rots New steps opened up: dry it. (worse than you thought)"
+    assert r["importance"] == 6 and r["feel"] == {"surprise": 12, "joy": 4}
+    assert r["firsts"] == [{"key": "surprise:worse", "label": "had something go much worse than you expected", "major": True},
+                           {"key": "experiment:surprise", "label": "had an experiment give you a surprise"}]
+    assert r["counts"] == {"experiments": 1, "predictions_made": 1, "surprises": 1} and r["public"].startswith("Experiment on clock (h): It sank.")
+    assert read("experiment", outcome="insight")["firsts"][0]["label"] == "had an experiment give you an insight"
+    assert read("experiment", outcome="insight")["importance"] == 5 and read("experiment", outcome="clue")["importance"] == 2
+    assert read("experiment", outcome="clue")["firsts"] == [] and read("experiment", outcome="nothing")["feel"] == {"sadness": 3, "anger": 2}
+    assert read("experiment", interrupted=True) == {"line": "an experiment on clock was cut short", "importance": 1, "public": "cut an experiment on clock short"}
+    assert read("plan_revised", project="Kite", added=["a"], dropped=["b"]) == {"goal": "you changed the plan for Kite", "public": "changed the plan for Kite: +a, −b"}
+    assert read("plan_revised", project="Kite") == {}
+    assert read("project_started", project="Kite") == {"line": "You started a project: Kite", "moment": "You started a new project: Kite", "importance": 3,
+                                                       "firsts": [{"key": "tool:start_project", "label": "started a project"}],
+                                                       "goal": "you started Kite", "public": "started a project: Kite"}
+    gave_up = read("project_abandoned", project="Kite", reason="too windy")
+    assert gave_up["line"] == "You gave up on Kite: too windy" and gave_up["goal"] == "you gave up on Kite" and gave_up["importance"] == 3
+    assert read("project_abandoned", project="Kite")["line"] == "You gave up on Kite" and read("nothing_of_ours") == {}
+    e = G["event"]("plan_revised", {"project": "Kite"})
+    assert e == {"kind": "plan_revised", "data": {"project": "Kite"}, "expect": []}                  # nothing to read: no `read`
+    assert G["event"]("work", {**BLANK["work"], "result": "good"})["read"].keys() == {"line", "importance", "feel", "tally", "counts", "public"}
+
+
+async def test_starting_and_giving_up_are_events_of_crafting(tmp_path):
+    s, st, gm, agent = world(tmp_path, [report(**REVIEW)])
+    await call(agent, "start_project", name="Kite")
+    (start,) = [e for e in st.events(10) if e["kind"] == "project_started"]
+    assert start["data"]["project"] == "Kite" and start["data"]["read"]["goal"] == "you started Kite"
+    assert [f["key"] for f in start["data"]["firsts"]] == ["tool:start_project"]
+    await call(agent, "abandon_project", project="Kite", reason="too windy")
+    (gone,) = [e for e in st.events(10) if e["kind"] == "project_abandoned"]
+    assert gone["data"]["reason"] == "too windy" and gone["data"]["read"]["line"] == "You gave up on Kite: too windy"
+
+
+def test_crafting_events_from_before_they_said_how_they_read_are_given_it_once(tmp_path):
+    from app.state import State
+    s, st, gm, agent = make(tmp_path)
+    old = st.log("work", project="Kite", stage="frame", result="breakthrough", text="It holds.", minutes=30, craft="kites", abilities=["handiness"],
+                 finished_stage=False, project_done=False, interrupted=False, percent=50)
+    bare = st.log("experiment", project="Kite", hypothesis="h", outcome="clue", text="hm")                          # an older one, missing fields
+    revised = st.log("plan_revised", project="Kite")
+    craftless = st.log("work", project="Kite", stage="frame", result="good", text="ok")
+    st.merge_store("crafting", {"projects": {"3": {"id": 3, "craft": "kitemaking", "stages": [{"name": "spar", "abilities": ["patience"]},
+                                                                                              {"name": "sail", "abilities": ["precision"]}]}}})
+    filled = st.log("work", project="Kite", project_id=3, stage="sail", result="good", text="ok", craft="")         # the project's craft, its stage's
+    own = st.log("work", project="Kite", project_id=3, stage="spar", result="slow", text="ok", craft="kites", abilities=["handiness"])
+    st.set_meta(event_reads="")
+    st = State(s)
+    got = {e["id"]: e["data"] for e in st.events(10)}
+    assert got[old]["read"] == {k: v for k, v in read("work", project="Kite", stage="frame", result="breakthrough", text="It holds.", minutes=30,
+                                                      craft="kites", abilities=["handiness"], percent=50).items() if v not in (None, [], {})}
+    assert got[bare]["read"]["line"] == "Experiment on Kite (h): hm" and "read" not in got[revised]
+    assert "tally" not in got[craftless]["read"] and st.meta("event_reads") == "1"                        # no craft recorded: none counted
+    assert got[filled]["read"]["tally"] == [{"group": "craft", "name": "kitemaking", "outcome": "good"},
+                                            {"group": "ability", "name": "precision", "outcome": "good"}]
+    assert got[own]["read"]["tally"] == [{"group": "craft", "name": "kites", "outcome": "neutral"},
+                                         {"group": "ability", "name": "handiness", "outcome": "neutral"}]            # what it recorded wins
+    assert "goal" not in got[bare]["read"] and "goal" not in got[craftless]["read"] and got[craftless]["read"]["line"].endswith("(0% done)")
+    assert got[craftless]["read"]["counts"] == {"work_sessions": 1} and got[bare]["read"]["counts"] == {"experiments": 1}
+    again = st.log("work", project="Kite", stage="frame", result="good", text="new")
+    State(s)
+    assert "read" not in {e["id"]: e["data"] for e in st.events(10)}[again]                               # once

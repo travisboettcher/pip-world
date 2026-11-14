@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening", "module", "stakes")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening", "module", "stakes")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -40,16 +40,8 @@ def recall_text(kind: str, d: dict) -> str | None:
         return f"You said to {d['to_name']}: {d['text']}" if d.get("to_name") else f"You said: {d['text']}"
     if kind == "gift":
         return f"{d['sender']} gave you {d['qty']} x {d['item']}"
-    if kind == "work":
-        return None if d.get("interrupted") else (
-            f"Working on {d['project']} ({d['stage']}), {d['result']}: {d['text']}"
-            + (f" You learned: {d['learned']}" if d.get("learned") else "")
-            + (f" ({d['expectation']})" if d.get("expectation") else ""))
-    if kind == "experiment":
-        return None if d.get("interrupted") else (
-            f"Experiment on {d['project']} ({d['hypothesis']}): {d['text']}"
-            + (f" You learned: {d['finding']}" if d.get("finding") else "")
-            + (f" ({d['expectation']})" if d.get("expectation") else ""))
+    if (d.get("read") or {}).get("line"):                     # a module's event, as it says it is remembered (modules.py, `event.read`)
+        return d["read"]["line"]
     if kind == "world_changed":
         return d["text"]
     if kind == "happening":
@@ -85,17 +77,14 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
     Deterministic, no LLM: visitors and finished things weigh most, routine tool use least; a first adds weight."""
     if kind == "tick":
         return 0
-    r = d.get("result") or d.get("outcome")
     if kind == "inbox":
         base = 6
     elif kind == "gift":
         base = 5
     elif kind in ("letter_sent", "companion"):
         base = 4 if kind == "letter_sent" else 3
-    elif kind == "work":
-        base = 7 if d.get("project_done") else 5 if r in ("blowup", "breakthrough") else 4 if r == "setback" else 2
-    elif kind == "experiment":
-        base = 6 if r == "surprise" else 5 if r == "insight" else 2
+    elif (d.get("read") or {}).get("importance"):            # a module's event, as heavy as it says
+        base = d["read"]["importance"]
     elif kind == "creation_made":
         base = 7
     elif kind == "reading":
@@ -118,7 +107,7 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
         base = 3
     elif kind == "tool":
         base = {"note_to_self": 3 if (d.get("args") or {}).get("section") == "diary" else 2, "resolve_note": 3,
-                "start_project": 3, "write_letter": 4, "sleep": 3}.get(d.get("tool"), 1)
+                "write_letter": 4, "sleep": 3}.get(d.get("tool"), 1)
     else:
         base = 1
     bonus = max((3 if f.get("tier") == "major" else 1 for f in firsts), default=0)
@@ -145,21 +134,9 @@ def compute_day_stats(state, since: float, until: float) -> dict:
         if e["ts"] > until:
             break
         k, d = e["kind"], e["data"]
-        if k == "work" and not d.get("interrupted"):
-            c["work_sessions"] += 1
-            c["minutes_worked"] += d.get("minutes") or 0
-            c["with_approach"] += 1 if d.get("approach") else 0
-            c["setbacks"] += d.get("result") == "setback"
-            c["blowups"] += d.get("result") == "blowup"
-            c["breakthroughs"] += d.get("result") == "breakthrough"
-            c["projects_finished"] += bool(d.get("project_done"))
-            c["predictions"] += bool(d.get("expected"))
-            c["surprises"] += bool(d.get("surprise"))
-        elif k == "experiment" and not d.get("interrupted"):
-            c["experiments"] += 1
-            c["predictions"] += bool(d.get("expected"))
-            c["surprises"] += bool(d.get("surprise"))
-        elif k == "inbox" and not d.get("letter") and not d.get("gift"):
+        for name, n in ((d.get("read") or {}).get("counts") or {}).items():     # what a module's event counts towards (its work, say)
+            c[name] = c.get(name, 0) + n
+        if k == "inbox" and not d.get("letter") and not d.get("gift"):
             c["visitor_messages"] += 1
             c["messages_from_outside"] += d.get("source", "web") != "web"
         elif k == "letter_sent":
@@ -178,9 +155,16 @@ def compute_day_stats(state, since: float, until: float) -> dict:
     return {k: round(v, 1) if isinstance(v, float) else int(v) for k, v in c.items()}
 
 
+def stat_labels(*days: dict) -> list[tuple[str, str]]:
+    """(name, label) for every count in these days: the engine's own as it words them, then any a module counted, worded from its name."""
+    names = {k for d in days for k in d}
+    return STAT_LABELS + [(k, k.replace("_", " ")) for k in sorted(names - {k for k, _ in STAT_LABELS})]
+
+
 def format_stats(rows: list[tuple[str, dict]]) -> str:
-    return "\n".join(f"- {day}: " + ", ".join(f"{s[k]} {label}" for k, label in STAT_LABELS if s.get(k))
-                     for day, s in rows if any(s.values())) 
+    labels = stat_labels(*(s for _, s in rows))
+    return "\n".join(f"- {day}: " + ", ".join(f"{s[k]} {label}" for k, label in labels if s.get(k))
+                     for day, s in rows if any(s.values()))
 
 
 # --- reflection ---------------------------------------------------------------
@@ -252,12 +236,11 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
     stats = compute_day_stats(state, since, now)
     today = datetime.fromtimestamp(now).date().isoformat()
     state.save_day_stats(today, stats)
-    crafts, ability_of = state.capability_context()
-    snapshot = caps.collect([e for e in state.events_since(0, limit=10**6) if e["ts"] <= now], crafts, ability_of)
+    snapshot = caps.collect([e for e in state.events_since(0, limit=10**6) if e["ts"] <= now])
     before = next((snap for day, snap in state.capability_snapshots(2) if day != today), None)
     state.save_capabilities(today, snapshot)
     can_do = caps.format_snapshot(snapshot, before)
-    candidate = turning.detect(state, since, now, stats, today, STAT_LABELS)
+    candidate = turning.detect(state, since, now, stats, today, stat_labels(stats))
     if candidate["flagged"]:
         state.add_turning(candidate["score"], candidate["signals"], since, now)
         for sg in candidate["signals"]:  # evidence Pip can cite even if the budget cut the line from the material
@@ -364,13 +347,9 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
     return data
 
 
-STAT_LABELS = [("work_sessions", "work sessions"), ("minutes_worked", "minutes worked"),
-               ("with_approach", "sessions where you described your approach"), ("setbacks", "setbacks"),
-               ("blowups", "tries that blew up"), ("breakthroughs", "breakthroughs"), ("experiments", "experiments"),
-               ("projects_finished", "projects finished"), ("visitor_messages", "messages from visitors"),
+STAT_LABELS = [("visitor_messages", "messages from visitors"),
                ("notes_written", "journal entries"), ("letters_sent", "letters sent"), ("hours_slept", "hours slept"),
                ("tool_errors", "tool errors"),
-               ("predictions", "predictions made"), ("surprises", "surprises"),
                ("focus_kept", "focus items kept"), ("focus_total", "focus items reviewed"),
                ("postcards_sent", "postcards sent"), ("messages_from_outside", "messages from outside"),
                ("pictures_drawn", "pictures drawn"), ("pieces_written", "pieces written")]

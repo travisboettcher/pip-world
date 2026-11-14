@@ -141,12 +141,12 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 6b (0.44.0): Ashfall (`worlds/ashfall`), a small wasteland pack, run for a simulated day in CI with fake models; a pack's
           `modules` (the engine's it runs, and its own); stats that change away from home; what it found of Pip's world in the engine
           made the world's
-  - [ ] Phase 7: remove the engine's fallbacks for every moved feature (its own workings, companions, customers and happenings' dice
+  - [x] Phase 7: remove the engine's fallbacks for every moved feature (its own workings, companions, customers and happenings' dice
         went as each feature moved, in phase 5)
     - [x] 7a (0.45.0): the season is the world's (no module publishing one, no season); the one-time moves for installs from before
           0.35.0 to 0.42.0 removed (a database that never moved its old tables must be started on 0.44 once first)
-    - [ ] 7b: the readers of crafting's events (memory, firsts, emotions, turning points, capabilities, the feed) become generic: a
-          module's event says how it is read
+    - [x] 7b (0.46.0): a module's events say how the engine reads them (`read`: remembered, the day's moment, weight, feelings,
+          firsts, turning points, crafts and abilities, the day's counts, the feed); none of the engine's readers knows crafting's kinds
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 

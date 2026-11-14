@@ -202,7 +202,7 @@ def verdicts(*pairs):
 def test_event_importance_is_deterministic_and_firsts_add_weight(tmp_path):
     from app.memory import event_importance as imp
     assert imp("tick", {}) == 0 and imp("tool", {"tool": "set_activity"}) == 1
-    assert imp("inbox", {}) == 6 and imp("work", {"result": "good", "project_done": True}) == 7
+    assert imp("inbox", {}) == 6 and imp("work", {"by": "crafting", "read": {"importance": 7}}) == 7 and imp("work", {"result": "good"}) == 1
     assert imp("inbox", {}, [{"tier": "major"}]) == 9 and imp("tool", {"tool": "plant"}, [{"tier": "minor"}]) == 2
     assert imp("creation_made", {}, [{"tier": "major"}]) == 10  # clamped
     s, st, *_ = make(tmp_path)
@@ -328,9 +328,9 @@ def test_an_existing_portrait_becomes_the_first_version(tmp_path):
 @pytest.mark.asyncio
 async def test_changes_cite_evidence_are_shown_to_pip_and_recalled(tmp_path):
     s, st, gm, agent = make(tmp_path, verify_insights=False)
+    from tests.test_crafting import logged
     for i in range(2):
-        st.log("work", project="clock", stage="s", text="t", result="blowup", project_done=False, interrupted=False,
-               minutes=60, approach="", finished_stage=False, percent=10)
+        logged(st, "work", result="blowup")
     ref = dict(summary="Two bad days.", people=[], insights=[], **{"self": "I rush more than I thought."},
                changed=[{"text": "I used to check before cutting; now I rush (0 of 2 sessions had an approach).",
                          "importance": 7, "because": [f"e{eid(st, 'work')}"]},
@@ -349,17 +349,16 @@ async def test_changes_cite_evidence_are_shown_to_pip_and_recalled(tmp_path):
 @pytest.mark.asyncio
 async def test_day_counts_are_plain_facts_in_the_prompt_and_stored(tmp_path):
     s, st, gm, agent = make(tmp_path, verify_insights=False)
-    st.log("work", project="clock", stage="s", text="t", result="setback", project_done=False, interrupted=False,
-           minutes=60, approach="measure first")
-    st.log("work", project="clock", stage="s", text="t", result="good", project_done=False, interrupted=False,
-           minutes=30, approach="")
+    from tests.test_crafting import logged
+    logged(st, "work", result="setback", minutes=60, approach="measure first")
+    logged(st, "work", result="good", minutes=30)
     visit(st, "hi")
     gm.queue(report(summary="A day.", people=[], insights=[], **{"self": "Pip."}))
     d = await agent.reflect()
-    assert d["stats"]["work_sessions"] == 2 and d["stats"]["minutes_worked"] == 90 and d["stats"]["with_approach"] == 1
+    assert d["stats"]["work_sessions"] == 2 and d["stats"]["minutes_worked"] == 90 and d["stats"]["sessions_with_approach"] == 1
     assert d["stats"]["setbacks"] == 1 and d["stats"]["visitor_messages"] == 1
     task = gm.calls[0]["messages"][0]["content"]
-    assert "2 work sessions, 90 minutes worked, 1 sessions where you described your approach, 1 setbacks" in task
+    assert "1 messages from visitors, 90 minutes worked, 1 sessions with approach, 1 setbacks, 2 work sessions" in task   # a module's, by name
     ((day, stored),) = st.day_stats(5)
     assert stored == d["stats"]
 
@@ -379,15 +378,9 @@ async def test_day_counts_are_plain_facts_in_the_prompt_and_stored(tmp_path):
     ("say", {"text": "hello", "to_name": "Briar"}, "You said to Briar: hello"),
     ("say", {"text": "hello"}, "You said: hello"),
     ("gift", {"sender": "Morgan", "qty": 2, "item": "brass wire"}, "Morgan gave you 2 x brass wire"),
-    ("work", {"project": "clock", "stage": "gears", "result": "progress", "text": "it turns"},
-     "Working on clock (gears), progress: it turns"),
-    ("work", {"project": "clock", "stage": "gears", "result": "setback", "text": "it jams", "learned": "oil it",
-              "expectation": "as expected"}, "Working on clock (gears), setback: it jams You learned: oil it (as expected)"),
-    ("work", {"project": "clock", "interrupted": True}, None),
-    ("experiment", {"project": "clock", "hypothesis": "oil helps", "text": "it did"}, "Experiment on clock (oil helps): it did"),
-    ("experiment", {"project": "clock", "hypothesis": "oil helps", "text": "it did", "finding": "oil helps",
-                    "expectation": "a surprise"}, "Experiment on clock (oil helps): it did You learned: oil helps (a surprise)"),
-    ("experiment", {"project": "clock", "interrupted": True}, None),
+    ("work", {"by": "crafting", "read": {"line": "Working on clock: it turns"}}, "Working on clock: it turns"),   # a module's, as it says
+    ("work", {"project": "clock", "stage": "gears", "result": "progress", "text": "it turns"}, None),            # the engine reads none itself
+    ("experiment", {"by": "crafting", "read": {"importance": 3}}, None),
     ("world_changed", {"text": "Snow fell."}, "Snow fell."),
     ("revised_work", {"title": "Gulls"}, "You looked at your drawing 'Gulls' and redrew it"),
     ("made_work", {"what": "drawing", "title": "Gulls"}, "You drew 'Gulls'"),

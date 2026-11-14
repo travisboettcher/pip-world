@@ -115,6 +115,9 @@ some of the starting places out.
 (a seed in, food out), a status section the agent sees every tick ("Your garden: plot 1: peas growing, ready in about {in:...}"), a
 logged moment that wakes the agent (a crop ripening), and what other modules may ask of it (`hurry`, `crop`, `add_plot`). Ashfall's
 version might be a still for clean water, or a salvage bench. See DESIGN-modules.md, "What a feature needs", for every hook.
+A feature's own events (works today, 0.46.0) say how the engine reads them: what the agent remembers of a salvage run, how it feels, the
+first time it found a working radio, what it says of her scavenging, and what the feed shows (DESIGN-modules.md, "A module's own
+events"; crafting's `read_of` is the full example).
 
 **Trade** (works today; the shipped `trade` module): give a place kind `trades: true` (and `stalls: true` for a market) and its
 `finds` are what its booth sells; the village's market and Wren's own stall then work as Pip's do. Its prices, tills and stall live in

@@ -20,11 +20,9 @@ def _tool_verdict(tool: str, result: str) -> str:
     return "good"
 
 
-def collect(events, crafts: dict | None = None, stage_abilities: dict | None = None) -> dict:
-    """{'tool': {name: {tries, good, neutral, bad}}, 'craft': {...}, 'ability': {...}} from events (any order).
-    Older events didn't record the craft or abilities, so `crafts` {project_id: craft} and `stage_abilities`
-    {(project_id, stage name): [abilities]} fill those in."""
-    crafts, stage_abilities = crafts or {}, stage_abilities or {}
+def collect(events) -> dict:
+    """{'tool': {name: {tries, good, neutral, bad}}, 'craft': {...}, 'ability': {...}} from events (any order): the engine's tools by how
+    they went, and crafts and abilities by what modules' events say of them (`read.tally`)."""
     out: dict = {"tool": {}, "craft": {}, "ability": {}}
 
     def hit(group, name, verdict):
@@ -40,18 +38,8 @@ def collect(events, crafts: dict | None = None, stage_abilities: dict | None = N
             hit("tool", d["tool"], "good" if d["items"] else "bad")
         elif k == "tool" and d.get("tool") not in SKIP_TOOLS and d.get("tool") != "gather" and not d.get("noop") and not d.get("module"):
             hit("tool", canonical(d["tool"]), _tool_verdict(canonical(d["tool"]), str(d.get("result", ""))))
-        elif k == "work" and not d.get("interrupted") and d.get("result"):
-            v = {"breakthrough": "good", "good": "good", "slow": "neutral"}.get(d["result"], "bad")
-            for name in filter(None, [d.get("craft") or crafts.get(d.get("project_id"))]):
-                hit("craft", name, v)
-            for name in d.get("abilities") or stage_abilities.get((d.get("project_id"), d.get("stage"))) or []:
-                hit("ability", name, v)
-        elif k == "experiment" and not d.get("interrupted") and d.get("outcome"):
-            v = {"insight": "good", "surprise": "good", "clue": "neutral"}.get(d["outcome"], "bad")
-            if craft := d.get("craft") or crafts.get(d.get("project_id")):
-                hit("craft", craft, v)
-            for name in ("ingenuity", "knowledge"):
-                hit("ability", name, v)
+        for x in (d.get("read") or {}).get("tally") or []:     # what a module's event says of the agent's crafts and abilities
+            hit(x["group"], x["name"], x["outcome"])
     return out
 
 

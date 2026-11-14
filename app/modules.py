@@ -50,15 +50,12 @@ STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4,
 QUALITIES_MADE = ("rough", "sound", "fine", "masterwork")
 MAP_MOST, LIST_STRING_MAX = 12, 240                  # names in a map argument (materials); a string in a list of them
 SOURCE_DEPTH, SOURCE_ARGS_MAX = 3, 16_000           # sources asked in one go: judged, narrated, designed; a question's size (a narrator's task)
-# public events a module may log as the engine logs them, with the fields their readers use (memory, firsts, emotions, day stats, the
-# turning-point detector, capabilities, the feed): crafting's, until those readers are the pack's (phase 7)
-LOGGABLE = {
-    "work": ("project", "project_id", "stage", "result", "craft", "abilities", "minutes", "text", "finished_stage", "project_done", "interrupted",
-             "percent", "approach", "lost", "learned", "expected", "expectation", "error", "surprise", "step_note", "step_surprise", "crossroads"),
-    "experiment": ("project", "project_id", "craft", "hypothesis", "outcome", "relevant", "minutes", "text", "finding", "answered", "added",
-                   "interrupted", "project_done", "percent", "crossroads", "expected", "expectation", "error", "surprise"),
-    "plan_revised": ("project", "project_id", "because", "finding", "answered", "added", "dropped"),
-}
+# a module's own events, and how the engine reads one (`read`): what is remembered of it and shown among recent events (`line`), the
+# agent's day (`moment`), its weight (`importance`), feelings, firsts, a turning point (`goal`), what it says of the agent's abilities
+# (`tally`), the day's counts and the public feed's line
+READ_KEYS = ("line", "moment", "importance", "feel", "firsts", "goal", "tally", "counts", "public")
+READ_TEXT, READ_FEEL_MOST, READ_FIRSTS, READ_TALLY, READ_COUNTS = 600, 20, 3, 8, 8
+TALLY_GROUPS, TALLY_OUTCOMES = ("craft", "ability"), ("good", "neutral", "bad")
 EXPECT_KINDS, EVENT_MAX = ("session", "step", "experiment"), 4_000  # the expectations an event may settle; an event's size
 REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)
 PER_DAY = {"calls": 600, "source": 60, "event": 24, "creation": 2, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
@@ -216,8 +213,10 @@ def check_manifest(m, author: str, state=None) -> dict:
     if names:
         out["sources"] = list(names)
     logs = m.get("logs") or []
-    if not isinstance(logs, list) or any(k not in LOGGABLE for k in logs) or len(set(logs)) != len(logs) or (logs and author == "pip"):
-        raise Refused(f"`logs` lists the public events it logs: {', '.join(LOGGABLE)} (not for {world_pack.active().agent.name}'s programs)")
+    if not isinstance(logs, list) or any(not isinstance(k, str) or not KIND_WORD.match(k) or k in engine_event_kinds() for k in logs) \
+            or len(set(logs)) != len(logs) or (logs and author == "pip"):
+        raise Refused("`logs` lists the kinds of event it logs: its own (a word, not a kind the engine logs itself), and not for "
+                      f"{world_pack.active().agent.name}'s programs")
     if bool(logs) != ("event" in out["proposes"]):
         raise Refused("`logs` and the `event` proposal go together: say which public events it logs")
     if logs:
@@ -914,24 +913,73 @@ def _creation_made(v) -> dict:
                         "stages": [{"name": n} for n in of.get("stages", [])]}}
 
 
+def engine_event_kinds() -> set:
+    """The kinds of event the engine logs itself, which a module's own can't be called."""
+    from .memory import RECALL_EVENT_KINDS
+    return set(pv.EVENT_FIELDS) | set(RECALL_EVENT_KINDS) | {"tool", "tool_error", "error", "recovered", "felt"}
+
+
 def _event(man: dict, v) -> dict:
-    """A public event of a kind the manifest logs, with that kind's fields, and the expectations it settles (each {kind, subject,
-    expected, actual, error, surprise}: what was guessed and how it came out, for the agent's sense of its own judgement)."""
-    shape = (f"`event` is {{kind, data, expect?}}: kind is one it logs ({', '.join(man.get('logs', [])) or 'none'}), data its fields, "
-             f"at most {EVENT_MAX} bytes, and up to 2 expectations")
-    if not isinstance(v, dict) or set(v) - {"kind", "data", "expect"} or v.get("kind") not in man.get("logs", []) or not isinstance(v.get("data"), dict) \
-            or set(v["data"]) - set(LOGGABLE[v["kind"]]) or _size(v["data"]) > EVENT_MAX:
+    """An event of a kind the manifest logs (its data, at most EVENT_MAX bytes), how the engine reads it (`read`), and the expectations it
+    settles (each {kind, subject, expected, actual, error, surprise}: what was guessed and how it came out, for the agent's sense of its own
+    judgement)."""
+    shape = (f"`event` is {{kind, data, read?, expect?}}: kind is one it logs ({', '.join(man.get('logs', [])) or 'none'}), data at most "
+             f"{EVENT_MAX} bytes, and up to 2 expectations")
+    if not isinstance(v, dict) or set(v) - {"kind", "data", "expect", "read"} or v.get("kind") not in man.get("logs", []) \
+            or not isinstance(v.get("data"), dict) or "by" in v["data"] or "read" in v["data"] or _size(v["data"]) > EVENT_MAX:
         raise Refused(shape)
-    needed = [f for f in pv.EVENT_FIELDS[v["kind"]] if f not in v["data"]]      # what its readers rely on: what the feed shows of it
-    if needed:
-        raise Refused(f"a `{v['kind']}` event needs {', '.join(needed)}")
+    read = _read(v.get("read") or {})
     expect = v.get("expect") or []
     if not isinstance(expect, list) or len(expect) > 2 or not all(
-            isinstance(e, dict) and set(e) <= {"kind", "subject", "expected", "actual", "error", "surprise", "phrase"} and e.get("kind") in EXPECT_KINDS
+            isinstance(e, dict) and set(e) <= {"kind", "subject", "group", "expected", "actual", "error", "surprise", "phrase"} and e.get("kind") in EXPECT_KINDS
+            and isinstance(e.get("group", ""), str) and len(e.get("group", "")) <= 40
             and isinstance(e.get("subject"), str) and e["subject"].strip() and isinstance(e.get("actual"), str) and _number(e.get("error"), -100, 100)
             and e.get("surprise") in (None, "better", "worse", "longer", "shorter") and isinstance(e.get("expected"), (str, int, float)) for e in expect):
         raise Refused(shape)
-    return {"kind": v["kind"], "data": dict(v["data"]), "expect": [dict(e) for e in expect]}
+    return {"kind": v["kind"], "data": {**v["data"], **({"read": read} if read else {})}, "expect": [dict(e) for e in expect]}
+
+
+def _read(v) -> dict:
+    """How the engine reads a module's event (READ_KEYS): checked, and only what was given."""
+    from . import emotions as emo
+    if not isinstance(v, dict) or set(v) - set(READ_KEYS):
+        raise Refused(f"`event.read` is {{{', '.join(k + '?' for k in READ_KEYS)}}}")
+    out = {}
+    for k in ("line", "moment", "goal", "public"):
+        if v.get(k) is not None:
+            out[k] = _text(v[k], f"event.read.{k}", READ_TEXT)
+    if "importance" in v:
+        if not isinstance(v["importance"], int) or isinstance(v["importance"], bool) or not 1 <= v["importance"] <= 9:
+            raise Refused("`event.read.importance` is a whole number from 1 to 9")
+        out["importance"] = v["importance"]
+    given = lambda k, empty: empty if v.get(k) is None else v[k]  # noqa: E731
+    feel = given("feel", {})
+    if not isinstance(feel, dict) or any(k not in emo.NAMES or not isinstance(n, int) or isinstance(n, bool) or not -READ_FEEL_MOST <= n <= READ_FEEL_MOST
+                                         for k, n in feel.items()):
+        raise Refused(f"`event.read.feel` maps emotions ({', '.join(emo.NAMES)}) to whole numbers from -{READ_FEEL_MOST} to {READ_FEEL_MOST}")
+    if feel:
+        out["feel"] = dict(feel)
+    firsts = given("firsts", [])
+    if not isinstance(firsts, list) or len(firsts) > READ_FIRSTS or not all(
+            isinstance(f, dict) and set(f) <= {"key", "label", "major"} and isinstance(f.get("key"), str) and STORE_KEY.match(f["key"])
+            and isinstance(f.get("label"), str) and f["label"].strip() and len(f["label"]) <= 120 and isinstance(f.get("major", False), bool) for f in firsts):
+        raise Refused(f"`event.read.firsts` is up to {READ_FIRSTS} {{key, label, major?}}: label reads after \"the first time you\"")
+    if firsts:
+        out["firsts"] = [{"key": f["key"], "label": f["label"].strip(), "major": f.get("major", False)} for f in firsts]
+    tally = given("tally", [])
+    if not isinstance(tally, list) or len(tally) > READ_TALLY or not all(
+            isinstance(x, dict) and set(x) == {"group", "name", "outcome"} and x["group"] in TALLY_GROUPS and isinstance(x["name"], str)
+            and x["name"].strip() and len(x["name"]) <= 40 and x["outcome"] in TALLY_OUTCOMES for x in tally):
+        raise Refused(f"`event.read.tally` is up to {READ_TALLY} {{group ({', '.join(TALLY_GROUPS)}), name, outcome ({', '.join(TALLY_OUTCOMES)})}}")
+    if tally:
+        out["tally"] = [dict(x) for x in tally]
+    counts = given("counts", {})
+    if not isinstance(counts, dict) or len(counts) > READ_COUNTS or not all(
+            isinstance(k, str) and KIND_WORD.match(k) and _number(n, 0, 10_000) for k, n in counts.items()):
+        raise Refused(f"`event.read.counts` maps up to {READ_COUNTS} names (lowercase words) to numbers: the day's counts")
+    if counts:
+        out["counts"] = {k: n for k, n in counts.items()}
+    return out
 
 
 def _source(man: dict, v) -> dict:
@@ -1192,9 +1240,9 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             out["creation"] = val
             budget["creation"] += 1
         elif kind == "event":
-            event_id = state.log(val["kind"], **val["data"], by=m["name"])
+            event_id = state.log(val["kind"], **val["data"], by=m["name"])                # `read`, if given, among its data
             for e in val["expect"]:
-                state.add_expectation(e["kind"], val["data"].get("project_id"), str(val["data"].get("craft") or ""), e["subject"], e, event_id)
+                state.add_expectation(e["kind"], None, e.get("group", ""), e["subject"], e, event_id)        # `group`: what it's about (a craft)
             budget["event"] += 1
         elif kind == "session":
             state.start_session(0, int(val["working"]), val["minutes"], now + val["minutes"] * 60, kind="module", target=m["name"], expect=val["label"],

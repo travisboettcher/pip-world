@@ -1,5 +1,6 @@
-"""Public events (docs/DESIGN-world-packs.md, 5f): a module logs an event of a public kind its manifest names, with that kind's fields and
-the expectations it settles, and the engine's readers (memory, firsts, emotions, the feed) take it as they take the engine's own."""
+"""A module's events (docs/DESIGN-world-packs.md, 5f and 7b): a module logs an event of a kind of its own its manifest names, says how the
+engine reads it (`read`: what is remembered, the day's moment, its weight, feelings, firsts, a turning point, what it says of the agent's
+crafts and abilities, the day's counts, the public line), and the expectations it settles."""
 import pytest
 
 from app import expectations as exp
@@ -14,6 +15,12 @@ WORK = {"project": "Kite", "project_id": 7, "stage": "cut the frame", "result": 
         "percent": 50}
 
 
+READ = {"line": "Working on Kite: the frame came together.", "moment": "The kite's frame came together.", "importance": 5,
+        "feel": {"joy": 10, "surprise": 6}, "firsts": [{"key": "work:breakthrough", "label": "had a breakthrough", "major": True}],
+        "goal": "you finished Kite", "tally": [{"group": "craft", "name": "kites", "outcome": "good"}], "counts": {"work_sessions": 1},
+        "public": "Kite, cut the frame: a breakthrough"}
+
+
 def worker(st, **kw):
     return live(st, rule(name="crafting", proposes=["event"], logs=["work", "experiment", "plan_revised"], **kw), "x")
 
@@ -24,34 +31,74 @@ def refused(fn, *args):
     return str(e.value)
 
 
-def test_a_manifest_names_the_public_events_it_logs():
+def test_a_manifest_names_the_kinds_of_event_it_logs():
     assert M.check_manifest(rule(proposes=["event"], logs=["work"]), "world")["logs"] == ["work"] and "logs" not in M.check_manifest(rule(), "world")
-    what = "`logs` lists the public events it logs: work, experiment, plan_revised (not for Pip's programs)"
-    for bad in (["tick"], "work", ["work", "work"]):
-        assert refused(M.check_manifest, rule(proposes=["event"], logs=bad), "world") == what
+    what = "`logs` lists the kinds of event it logs: its own (a word, not a kind the engine logs itself), and not for Pip's programs"
+    for bad in (["tick"], ["gift"], ["stakes"], "work", ["work", "work"], ["Work"], [3]):
+        assert refused(M.check_manifest, rule(proposes=["event"], logs=bad), "world") == what, bad
     assert refused(M.check_manifest, rule(proposes=["event"]), "world") == "`logs` and the `event` proposal go together: say which public events it logs"
     assert refused(M.check_manifest, rule(proposes=["state"], logs=["work"]), "world") == "`logs` and the `event` proposal go together: say which public events it logs"
-    assert set(M.LOGGABLE) == {"work", "experiment", "plan_revised"}
+    assert {"tool", "tool_error", "tick", "alert", "error", "module", "woke", "stakes", "recovered", "night_pass", "reflection", "emotion", "felt",
+            "gift", "inbox", "creation_made", "arrived"} <= M.engine_event_kinds() and "work" not in M.engine_event_kinds()
 
 
 def test_what_an_event_may_carry():
     man = {"logs": ["work"]}
     c = exp.compare_session("well", "setback")
-    got = M._event(man, {"kind": "work", "data": WORK, "expect": [{**c, "subject": "cut the frame"}]})
-    assert got == {"kind": "work", "data": WORK, "expect": [{**c, "subject": "cut the frame"}]}
+    got = M._event(man, {"kind": "work", "data": WORK, "read": READ, "expect": [{**c, "subject": "cut the frame", "group": "kites"}]})
+    assert got == {"kind": "work", "data": {**WORK, "read": READ}, "expect": [{**c, "subject": "cut the frame", "group": "kites"}]}
     assert M._event(man, {"kind": "work", "data": WORK}) == {"kind": "work", "data": WORK, "expect": []}
-    assert refused(M._event, man, {"kind": "work", "data": {"project": "Kite"}}) == \
-        "a `work` event needs stage, result, minutes, text, finished_stage, project_done, percent"
-    shape = "`event` is {kind, data, expect?}: kind is one it logs (work), data its fields, at most 4000 bytes, and up to 2 expectations"
+    assert M._event(man, {"kind": "work", "data": {"anything": 1}, "read": {}}) == {"kind": "work", "data": {"anything": 1}, "expect": []}
+    shape = "`event` is {kind, data, read?, expect?}: kind is one it logs (work), data at most 4000 bytes, and up to 2 expectations"
     ok_e = {**c, "subject": "s"}
-    for bad in ({"kind": "experiment", "data": {}}, {"kind": "work", "data": {"mood": "x"}}, {"kind": "work", "data": []}, {"kind": "work"},
-                {"kind": "work", "data": {"text": "x" * 4001}}, {"kind": "work", "data": WORK, "x": 1}, {"kind": "work", "data": WORK, "expect": [ok_e] * 3},
-                {"kind": "work", "data": WORK, "expect": [{**ok_e, "kind": "hunch"}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "subject": " "}]},
-                {"kind": "work", "data": WORK, "expect": [{**ok_e, "error": "big"}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "surprise": "wow"}]},
-                {"kind": "work", "data": WORK, "expect": [{**ok_e, "actual": 3}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "expected": None}]},
-                {"kind": "work", "data": WORK, "expect": [{**ok_e, "x": 1}]}, {"kind": "work", "data": WORK, "expect": "x"}, "work"):
+    for bad in ({"kind": "experiment", "data": {}}, {"kind": "work", "data": []}, {"kind": "work"}, {"kind": "work", "data": {"by": "me"}},
+                {"kind": "work", "data": {"read": {}}}, {"kind": "work", "data": {"text": "x" * 4001}}, {"kind": "work", "data": WORK, "x": 1},
+                {"kind": "work", "data": WORK, "expect": [ok_e] * 3}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "kind": "hunch"}]},
+                {"kind": "work", "data": WORK, "expect": [{**ok_e, "subject": " "}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "error": "big"}]},
+                {"kind": "work", "data": WORK, "expect": [{**ok_e, "surprise": "wow"}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "actual": 3}]},
+                {"kind": "work", "data": WORK, "expect": [{**ok_e, "expected": None}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "x": 1}]},
+                {"kind": "work", "data": WORK, "expect": [{**ok_e, "group": 3}]}, {"kind": "work", "data": WORK, "expect": [{**ok_e, "group": "g" * 41}]},
+                {"kind": "work", "data": WORK, "expect": "x"}, "work"):
         assert refused(M._event, man, bad) == shape, bad
-    assert refused(M._event, {}, {"kind": "work", "data": {}}).startswith("`event` is {kind, data, expect?}: kind is one it logs (none)")
+    assert M._event(man, {"kind": "work", "data": {"text": "x" * 3988}})["data"]                   # up to the size: 4000 in all
+    assert refused(M._event, man, {"kind": "work", "data": {"text": "x" * 3989}}) == shape
+    assert M._event(man, {"kind": "work", "data": {}, "expect": [{**ok_e, "group": "g" * 40}]})["expect"][0]["group"] == "g" * 40
+    assert refused(M._event, {}, {"kind": "work", "data": {}}).startswith("`event` is {kind, data, read?, expect?}: kind is one it logs (none)")
+
+
+def test_how_an_event_says_it_reads_is_checked():
+    assert M._read(READ) == READ and M._read({}) == {} and M._read({"line": None, "feel": {}, "firsts": [], "tally": [], "counts": {}}) == {}
+    assert M._read({"line": "  a  ", "firsts": [{"key": "k", "label": " l "}]}) == {"line": "a", "firsts": [{"key": "k", "label": "l", "major": False}]}
+    assert M._read({"line": "x" * M.READ_TEXT})["line"] == "x" * M.READ_TEXT and M._read({"importance": 9}) == {"importance": 9}
+    assert M._read({"importance": 1, "feel": {"joy": 20, "fear": -20}, "counts": {"a": 0, "b": 10_000}}) == {
+        "importance": 1, "feel": {"joy": 20, "fear": -20}, "counts": {"a": 0, "b": 10_000}}
+    assert M._read({"tally": [{"group": "ability", "name": "n" * 40, "outcome": "neutral"}] * 8})["tally"][0]["name"] == "n" * 40
+    assert len(M._read({"firsts": [{"key": "k", "label": "l" * 120}] * 3})["firsts"]) == 3
+    assert len(M._read({"counts": {f"c{chr(97 + i)}": 1 for i in range(8)}})["counts"]) == 8
+    assert refused(M._read, {"feel": {"glee": 1}}) == ("`event.read.feel` maps emotions (joy, sadness, anger, fear, trust, disgust, surprise, "
+                                                       "anticipation) to whole numbers from -20 to 20")
+    assert refused(M._read, {"tally": "x"}) == "`event.read.tally` is up to 8 {group (craft, ability), name, outcome (good, neutral, bad)}"
+    for bad, why in (
+            ({"x": 1}, "`event.read` is {line?, moment?, importance?, feel?, firsts?, goal?, tally?, counts?, public?}"), ("x", "`event.read` is"),
+            ({"line": "x" * (M.READ_TEXT + 1)}, "`event.read.line`"), ({"moment": 3}, "`event.read.moment`"), ({"goal": " "}, "`event.read.goal`"),
+            ({"public": "x" * 601}, "`event.read.public`"),
+            ({"importance": 0}, "`event.read.importance` is a whole number from 1 to 9"), ({"importance": 10}, "`event.read.importance`"),
+            ({"importance": True}, "`event.read.importance`"), ({"importance": 2.0}, "`event.read.importance`"),
+            ({"feel": {"glee": 1}}, "`event.read.feel` maps emotions"), ({"feel": {"joy": 21}}, "`event.read.feel`"), ({"feel": {"joy": -21}}, "`event.read.feel`"),
+            ({"feel": {"joy": True}}, "`event.read.feel`"), ({"feel": {"joy": 1.5}}, "`event.read.feel`"), ({"feel": []}, "`event.read.feel`"),
+            ({"firsts": [{"key": "k", "label": "l"}] * 4}, "`event.read.firsts` is up to 3"), ({"firsts": [{"key": "k k!", "label": "l"}]}, "`event.read.firsts`"),
+            ({"firsts": [{"key": "k", "label": " "}]}, "`event.read.firsts`"), ({"firsts": [{"key": "k", "label": "l" * 121}]}, "`event.read.firsts`"),
+            ({"firsts": [{"key": "k", "label": "l", "major": 1}]}, "`event.read.firsts`"), ({"firsts": [{"key": "k", "label": "l", "x": 1}]}, "`event.read.firsts`"),
+            ({"firsts": [{"label": "l"}]}, "`event.read.firsts`"), ({"firsts": "x"}, "`event.read.firsts`"),
+            ({"tally": [{"group": "tool", "name": "x", "outcome": "good"}]}, "`event.read.tally` is up to 8"),
+            ({"tally": [{"group": "craft", "name": " ", "outcome": "good"}]}, "`event.read.tally`"),
+            ({"tally": [{"group": "craft", "name": "n" * 41, "outcome": "good"}]}, "`event.read.tally`"),
+            ({"tally": [{"group": "craft", "name": "x", "outcome": "fine"}]}, "`event.read.tally`"),
+            ({"tally": [{"group": "craft", "name": "x"}]}, "`event.read.tally`"), ({"tally": [{"group": "craft", "name": "x", "outcome": "good"}] * 9}, "`event.read.tally`"),
+            ({"counts": {"Bad": 1}}, "`event.read.counts` maps up to 8"), ({"counts": {"a": -1}}, "`event.read.counts`"),
+            ({"counts": {"a": 10_001}}, "`event.read.counts`"), ({"counts": {f"c{chr(97 + i)}": 1 for i in range(9)}}, "`event.read.counts`"),
+            ({"counts": []}, "`event.read.counts`")):
+        assert refused(M._read, bad).startswith(why), bad
 
 
 async def test_a_logged_event_is_read_as_the_engines_own(tmp_path):
@@ -59,15 +106,16 @@ async def test_a_logged_event_is_read_as_the_engines_own(tmp_path):
     m = worker(st)
     c = exp.compare_session("badly", "breakthrough")                                      # a surprise: it went far better
     step = exp.compare_step(30, 90)
-    M.apply(st, m, M.plan(st, m, {"event": {"kind": "work", "data": WORK, "expect": [{**c, "subject": "cut the frame"}, {**step, "subject": "cut the frame"}]}},
-                          NOW, "on_tick"), NOW)
+    M.apply(st, m, M.plan(st, m, {"event": {"kind": "work", "data": WORK, "read": READ, "expect": [
+        {**c, "subject": "cut the frame", "group": "kites"}, {**step, "subject": "cut the frame"}]}}, NOW, "on_tick"), NOW)
     ev = next(e for e in st.events(10) if e["kind"] == "work")
-    assert {k: ev["data"][k] for k in WORK} == WORK and ev["data"]["by"] == "crafting"
-    assert any(f["key"] == "work:breakthrough" for f in ev["data"].get("firsts", []))              # a first, as the engine's work is
+    assert {k: ev["data"][k] for k in WORK} == WORK and ev["data"]["by"] == "crafting" and ev["data"]["read"] == READ
+    assert [f["key"] for f in ev["data"].get("firsts", [])] == ["work:breakthrough"]                 # the first it says it stands for
+    assert ev["importance"] >= 5
     got = st.expectations(5)
     assert sorted((e["kind"], e["project_id"], e["craft"], e["subject"], e["event_id"], e["surprising"]) for e in got) == [
-        ("session", 7, "kites", "cut the frame", ev["id"], 1), ("step", 7, "kites", "cut the frame", ev["id"], 1)]
-    assert st.recall("frame cleanly")                                                              # remembered
+        ("session", None, "kites", "cut the frame", ev["id"], 1), ("step", None, "", "cut the frame", ev["id"], 1)]
+    assert st.recall("frame came together")                                                        # remembered, as it says
     assert M._budget(st.module(m["id"]), NOW)["event"] == 1 and M.PER_DAY["event"] == 24 and M.SHIPPED_PER_DAY["event"] == 200
 
 
@@ -128,7 +176,7 @@ def test_the_edges_of_events_creations_and_sessions(tmp_path):
     for e in ({"error": -100}, {"error": 100}, {"surprise": "shorter"}, {"surprise": "longer"}):
         assert M._event(man, {"kind": "work", "data": WORK, "expect": [{"kind": "step", "subject": "s", "expected": "30 min", "actual": "9 min",
                                                                        "error": 0.3, "surprise": None, **e}]})["expect"][0]
-    assert refused(M._event, man, {"kind": "plan_revised", "data": {}}).startswith("`event` is {kind, data, expect?}: kind is one it logs (work, experiment)")
+    assert refused(M._event, man, {"kind": "plan_revised", "data": {}}).startswith("`event` is {kind, data, read?, expect?}: kind is one it logs (work, experiment)")
     s, st, agent = modular(tmp_path)
     assert M._session(st, {"minutes": 5, "label": "x" * 100})["label"] == "x" * 80
 
@@ -173,18 +221,23 @@ def test_a_map_keeps_the_names_that_fit_after_one_that_doesnt():
     assert M.check_args(params, {"m": {"a": "x", "b": 2, "n" * 40: 3, "n" * 41: 4}}) == ({"m": {"b": 2, "n" * 40: 3}}, "")
 
 
-async def test_the_least_of_each_event_is_read_without_a_hitch(tmp_path):
+async def test_an_event_that_says_nothing_of_how_it_reads_is_logged_and_left_at_that(tmp_path):
     from tests.test_modules import modular
+    from app import memory, public_view as pv
     s, st, agent = modular(tmp_path)
     m = worker(st)
-    least = {"work": {f: WORK[f] for f in M.pv.EVENT_FIELDS["work"]}, "experiment": EXPERIMENT, "plan_revised": REVISED}
-    for kind, data in least.items():
+    for kind, data in (("work", WORK), ("experiment", EXPERIMENT), ("plan_revised", REVISED)):
         M.apply(st, st.module(m["id"]), M.plan(st, st.module(m["id"]), {"event": {"kind": kind, "data": data}}, NOW, "on_tick"), NOW)
     assert [e["kind"] for e in st.events(3)] == ["plan_revised", "experiment", "work"]
-    agent._perception("x", [])                                                  # the recent events read them as the engine's own
-    from app import memory
+    assert "Kite" not in agent._perception("x", []) and not st.recall("frame came together cleanly")        # not shown, not remembered
     day = memory.compute_day_stats(st, __import__("time").time() - 3600, __import__("time").time() + 3600)
-    assert day["work_sessions"] == 1 and day["experiments"] == 1
+    assert "work_sessions" not in day and all(pv.public_event(e) is None for e in st.events(3))
+    M.apply(st, st.module(m["id"]), M.plan(st, st.module(m["id"]), {"event": {"kind": "work", "data": WORK, "read": READ}}, NOW, "on_tick"), NOW)
+    e = st.events(1)[0]
+    assert pv.public_event(e)["data"] == {"by": "crafting", "text": "Kite, cut the frame: a breakthrough"}
+    assert "- Working on Kite: the frame came together." in agent._perception("x", [])
+    day = memory.compute_day_stats(st, __import__("time").time() - 3600, __import__("time").time() + 3600)
+    assert day["work_sessions"] == 1 and memory.stat_labels(day)[-1] == ("work_sessions", "work sessions")
 
 
 def test_arguments_after_a_map_or_an_empty_one_are_still_checked():

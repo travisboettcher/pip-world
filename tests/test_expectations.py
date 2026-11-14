@@ -76,7 +76,7 @@ async def test_a_session_records_the_gap_between_expectation_and_outcome(tmp_pat
     assert "surprise:worse" in {r["key"] for r in st.db.execute("SELECT key FROM facets")}
     p = agent._perception("timer", [])
     assert "(you expected it to go well; it went badly - a setback)" in p
-    assert "the first time something went much worse than you expected" in p
+    assert "the first time you had something go much worse than you expected" in p
 
 
 @pytest.mark.asyncio
@@ -129,4 +129,4 @@ async def test_calibration_block_reflection_list_and_day_counts(tmp_path):
     d = await agent.reflect()
     task = gm.calls[-1]["messages"][0]["content"]
     assert "Things that did not go as you expected (cite their ids):" in task and "you expected well; badly - a setback" in task
-    assert d["stats"]["predictions"] == 5 and d["stats"]["surprises"] == 5
+    assert d["stats"]["predictions_made"] == 5 and d["stats"]["surprises"] == 5

@@ -36,13 +36,13 @@ def test_the_high_band_is_entered_at_exactly_60_and_not_left_and_reentered(tmp_p
 
 def test_causes_read_naturally(tmp_path):
     s, st = fresh(tmp_path)
-    for kind, data in (("gift", {"sender": "Morgan"}), ("inbox", {"sender": "Briar"}), ("work", {"result": "setback", "surprise": "worse"}),
-                       ("experiment", {"outcome": "clue"}), ("creation_made", {"name": "Gear Clock"}), ("module", {"text": "tomato ripened", "feel": {"joy": 3}}),
+    for kind, data in (("gift", {"sender": "Morgan"}), ("inbox", {"sender": "Briar"}), ("work", {"by": "crafting", "read": {"line": "Working on Kite, setback: it tore", "feel": {"sadness": 8}}}),
+                       ("experiment", {"by": "crafting", "read": {"feel": {"anticipation": 3}}}), ("creation_made", {"name": "Gear Clock"}), ("module", {"text": "tomato ripened", "feel": {"joy": 3}}),
                        ("alert", {"stat": "hunger"}), ("tool", {"tool": "plant", "result": "error: no plot"}),
                        ("outreach", {"what": "postcard", "delivered": True})):
         emo.appraise(st, s, kind, data, T)
     got = {c for _, c in causes(st)}
-    assert got == {"Morgan gave a gift", "Briar wrote", "work went setback, worse than expected", "an experiment: clue",
+    assert got == {"Morgan gave a gift", "Briar wrote", "Working on Kite, setback: it tore", "experiment",
                    "finished Gear Clock", "tomato ripened", "hunger needs attention", "plant failed", "a postcard went out"}
 
 
@@ -54,10 +54,10 @@ def test_causes_when_the_event_is_missing_details(tmp_path):
     assert {c for _, c in causes(st)} == {"someone gave a gift", "someone wrote", "finished something", ""}
 
 
-def test_work_without_a_surprise_has_no_direction_in_its_cause(tmp_path):
+def test_a_modules_event_is_felt_for_its_line_cut_short(tmp_path):
     s, st = fresh(tmp_path)
-    emo.appraise(st, s, "work", {"result": "good"}, T)
-    assert {c for _, c in causes(st)} == {"work went good"}
+    emo.appraise(st, s, "work", {"by": "crafting", "read": {"line": "x" * 100, "feel": {"joy": 4}}}, T)
+    assert {c for _, c in causes(st)} == {"x" * 80}
 
 
 def test_unknown_results_move_nothing(tmp_path):

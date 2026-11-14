@@ -12,16 +12,12 @@ from . import world_pack
 MAJOR, MINOR = "major", "minor"
 ROUTINE_TOOLS = {"set_activity", "say", "edit_note"}
 TOOL_LABELS = {
-    "eat": "ate something",
-    "start_project": "started a project", "work_on": "worked on a project", "experiment": "ran an experiment",
-    "revise_plan": "changed a plan", "write_letter": "wrote a letter", "read": "read a book",
+    "eat": "ate something", "write_letter": "wrote a letter",
     "browse": "browsed what was on offer", "web_search": "searched the web", "recall": "tried to remember something",
     "tend": "tended to something", "use_item": "used something", "rest": "rested", "resolve_note": "crossed something off",
-    "sleep": "went to sleep", "abandon_project": "gave up on a project",
+    "sleep": "went to sleep",
 }
 TOOL_MAJOR = {"sleep"}
-WORK_RESULTS = {"setback": "had a setback on a project", "blowup": "had a try blow up",
-                "breakthrough": "had a breakthrough"}
 def module_firsts() -> dict:
     """What a module's first moment of each kind is called, by "module:kind" (the pack's content.json `module_firsts`)."""
     return world_pack.active().data("content").get("module_firsts", {})
@@ -47,11 +43,6 @@ def alert_first(stat: str) -> str | None:
 
 def _ok(result) -> bool:
     return not str(result or "").startswith(("error", "not ", "no change"))
-
-
-def _surprise(add, d: dict) -> None:
-    if d.get("surprise") in ("better", "worse"):
-        add(f"surprise:{d['surprise']}", f"the first time something went much {d['surprise']} than you expected", MAJOR)
 
 
 def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]]:
@@ -96,18 +87,9 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
             add(f"gift_item:{str(d['item']).lower()}", you(f"were given {d['item']}"))
     elif kind == "letter_sent":
         add("letter:sent", you("sent a letter"), MAJOR)
-    elif kind == "work":
-        if not d.get("interrupted"):
-            if d.get("result") in WORK_RESULTS:
-                add(f"work:{d['result']}", you(WORK_RESULTS[d["result"]]), MAJOR)
-            if d.get("project_done"):
-                add("project:done", you("finished a project"), MAJOR)
-            _surprise(add, d)
-    elif kind == "experiment":
-        if not d.get("interrupted"):
-            _surprise(add, d)
-        if not d.get("interrupted") and d.get("outcome") in ("insight", "surprise"):
-            add(f"experiment:{d['outcome']}", you(f"had an experiment give you {'an insight' if d['outcome'] == 'insight' else 'a surprise'}"))
+    elif (d.get("read") or {}).get("firsts"):                # a module's event, and the firsts it says it stands for (modules.py)
+        for f in d["read"]["firsts"]:
+            add(f["key"], you(f["label"]), MAJOR if f.get("major") else MINOR)
     elif kind == "gathered":
         for it in d.get("items", []):
             add(f"found:{it['name']}", you(f"found {it['name']}"))

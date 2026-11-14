@@ -27,11 +27,6 @@ DYADS = {frozenset(("joy", "trust")): "warmth", frozenset(("trust", "fear")): "s
          frozenset(("anticipation", "joy")): "optimism"}
 BLEND_MIN_EXCESS = 8
 
-WORK = {"breakthrough": {"joy": 10, "surprise": 6, "anticipation": 5}, "good": {"joy": 4, "anticipation": 3}, "slow": {"sadness": 2},
-        "setback": {"sadness": 8, "anger": 6}, "blowup": {"fear": 12, "sadness": 8, "anger": 8, "surprise": 8}}
-EXPERIMENT = {"nothing": {"sadness": 3, "anger": 2}, "clue": {"anticipation": 3}, "insight": {"joy": 6, "anticipation": 4},
-              "surprise": {"surprise": 12, "joy": 4}}
-SURPRISE = {"better": {"surprise": 6, "joy": 4}, "worse": {"surprise": 6, "fear": 3, "sadness": 3}}
 def alert_feelings(stat: str) -> dict:
     """How an alert on a stat moves the emotions (the stat's `alert_feelings` in the pack's stats.json)."""
     from . import stats as stats_mod
@@ -92,13 +87,8 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
         return {"joy": 10, "trust": 6, "surprise": 8}, f"{data.get('sender', 'someone')} gave a gift"
     if kind == "inbox":
         return {"joy": 5, "trust": 4, "sadness": -6}, f"{data.get('sender', 'someone')} wrote"
-    if kind == "work":
-        moves = dict(WORK.get(data.get("result"), {}))
-        for k, v in SURPRISE.get(data.get("surprise"), {}).items():
-            moves[k] = moves.get(k, 0) + v
-        return moves, f"work went {data.get('result')}" + (f", {data['surprise']} than expected" if data.get("surprise") else "")
-    if kind == "experiment":
-        return dict(EXPERIMENT.get(data.get("outcome"), {})), f"an experiment: {data.get('outcome')}"
+    if (data.get("read") or {}).get("feel"):             # a module's event, and how it says it moves the agent (modules.py, `event.read`)
+        return dict(data["read"]["feel"]), str(data["read"].get("line") or kind)[:80]
     if kind == "creation_made":
         return {"joy": 20, "anticipation": 6}, f"finished {data.get('name', 'something')}"
     if kind == "module" and data.get("feel"):         # a moment a module logged, and how it says it feels (modules.py, `log`)

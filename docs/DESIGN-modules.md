@@ -552,6 +552,17 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   `creation` (`{name, description, quality, capabilities?, quirks?, scars?, made_of}`: one of the agent's creations, checked as the
   narrator's design is, its world effect carried out, `creation_made` logged; 6 a day shipped, 2 otherwise); a `session`'s `about` (what
   it's about, a project's name: reminders and the memory's context name it) and a working session's work pose.
+- **A module's own events (0.46.0, 7b)**: `logs` names kinds of the module's own (a word, not one the engine logs itself), and `event`
+  is `{kind, data, read?, expect?}`: data is the module's (at most 4,000 bytes), and `read` says how the engine reads it:
+  `line` (what is remembered of it and shown among recent events), `moment` (a line of the agent's day, for the diary prompt),
+  `importance` (1-9), `feel` (emotions moved, -20 to 20 each, its `line` the cause), `firsts` (up to 3 `{key, label, major?}`: label
+  reads after "the first time you"), `goal` (a turning point: "you finished the kite"), `tally` (up to 8 `{group: craft|ability, name,
+  outcome: good|neutral|bad}`: what the capabilities count), `counts` (up to 8 `{name: number}`: the day's counts, labelled from the name)
+  and `public` (the feed's line). An event with no `read` is logged and left at that. An expectation may name its `group` (a craft),
+  which the calibration groups by. Memory, firsts, emotions, the turning-point detector, capabilities, the loop's recent events and the
+  feed read only this: none of them knows a kind of crafting's any more. Crafting's events say all of it (`read_of`), and its events
+  from before 0.46.0 were given their `read` once, from the shipped module's own `read_of`, with a missing craft filled in from the
+  project. Starting and giving up on a project are crafting's events too (`project_started`, `project_abandoned`).
 - The garden is the first feature built on them: `module_library/garden.py`; gathering the second: `module_library/gathering.py`;
   the neighbourhood the third: `module_library/neighborhood.py`; trade the fourth: `module_library/trade.py`; reading the fifth:
   `module_library/reading.py`; the sky the sixth: `module_library/sky.py`; crafting the seventh (0.42.0): `module_library/crafting.py`,
