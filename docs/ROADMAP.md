@@ -147,6 +147,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           0.35.0 to 0.42.0 removed (a database that never moved its old tables must be started on 0.44 once first)
     - [x] 7b (0.46.0): a module's events say how the engine reads them (`read`: remembered, the day's moment, weight, feelings,
           firsts, turning points, crafts and abilities, the day's counts, the feed); none of the engine's readers knows crafting's kinds
+- [ ] The engine audit (docs/DESIGN-engine-audit.md, 2026-11-14): what still assumes Pip's world, and the releases to fix it: the small
+      leaks; the night pass and the guide; places and scopes; panels from modules; capabilities and happenings' effects from the pack;
+      letters as a module; the module API consolidated (`api: 2`)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
