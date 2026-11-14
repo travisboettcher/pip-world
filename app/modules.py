@@ -409,7 +409,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                         for r in state.db.execute("SELECT item, place FROM place_finds ORDER BY times DESC, last_ts DESC LIMIT 60")]
     if "making" in reads:                                   # what a made thing can do: the engine's menu, as it checks a `creation`
         from . import creations as cr
-        ctx["making"] = {"capabilities": cr.menu(False), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
+        crops = published(state, "plots") is not None                   # something grows crops (the garden module publishes its plots)
+        ctx["making"] = {"capabilities": cr.menu(False, crops), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
                          "qualities": list(QUALITIES_MADE)}
     if "answers" in reads:                                  # what each live module can be asked to do (a `request` to one that can't is refused)
         ctx["answers"] = {x["name"]: sorted(x["manifest"].get("answers") or {}) for x in state.modules("live") if x["manifest"].get("answers")}
@@ -1946,6 +1947,26 @@ def library(name: str) -> tuple[dict, str]:
     return json.loads((LIBRARY / f"{name}.json").read_text()), (LIBRARY / f"{name}.py").read_text()
 
 
+def world_modules(settings) -> dict:
+    """{name: (manifest, source)} for the rules, parts and layouts this world runs, in the order they are offered: its pack's `modules`
+    (the engine's and the pack's own, with the params the pack sets over those the settings carry), or, when the pack names none,
+    everything the engine ships (RULES)."""
+    pack = world_pack.active()
+    out = {}
+    for where, name, params in pack.modules if pack.modules is not None else (("std", n, {}) for n in RULES):
+        man, source = library(name) if where == "std" else pack.module(name)
+        if man.get("name") != name:
+            raise world_pack.PackError(f"world pack {pack.dir}: modules/{name}.json names itself {man.get('name')!r}")
+        base = settings_params(settings, name, man.get("params", {})) if where == "std" and name in SETTINGS_PARAMS else man.get("params", {})
+        man = {**man, "params": {**base, **params}} if base or params else man
+        if man.get("belongings"):                            # only the kinds of thing this world has (a world without seeds gathers none)
+            from . import world as world_content
+            kinds, b = set(world_content.kinds()), man["belongings"]
+            man = {**man, "belongings": {**b, **{k: [x for x in b[k] if x in kinds] for k in ("takes", "gives") if k in b}}}
+        out[name] = (man, source)
+    return out
+
+
 SETTINGS_PARAMS = {"gathering": {"speed": "work_speed"}, "crafting": {"speed": "work_speed", "most": "max_active_projects", "cap": "max_active_projects_cap"}, "sky": {"hemisphere": "hemisphere"}, "reading": {"speed": "work_speed"}, "neighborhood": {"invent": "neighbor", "every_hours": "neighbor_writes_every_hours"}, "trade": {"wares": "character_booths"}, "garden": {"plots": "garden_plots", "plots_max": "garden_plots_max", "speed": "garden_speed"},
                    "happenings": {"chance": "happenings_chance", "slot_hours": "happenings_slot_hours", "severity": "happenings_severity",
                                   "seasons": "happenings_seasons", "wake_hour": "wake_hour", "bedtime_hour": "bedtime_hour"}}
@@ -1997,13 +2018,12 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
         return []
     runner = runner or LocalRunner()
     made = []
-    for m in state.modules("live"):                        # one the engine shipped and ships no more (it became part of another) steps aside
-        if m["author"] == SHIPPED and m["kind"] != "thing" and m["name"] not in RULES:
-            disable(state, m["id"], "the engine no longer ships it", now)
-    for name in RULES:                                        # the world's own rules, once each, and again when the engine changes one
-        man, source = library(name)
+    runs = world_modules(settings)
+    for m in state.modules("live"):                        # one the engine shipped and ships no more (it became part of another), or one
+        if m["author"] == SHIPPED and m["kind"] != "thing" and m["name"] not in runs:     # this world doesn't run, steps aside
+            disable(state, m["id"], "the engine no longer ships it" if m["name"] not in RULES else "this world doesn't include it", now)
+    for name, (man, source) in runs.items():                 # the world's own rules, once each, and again when one changes
         reason = man.pop("reason", "")
-        man = {**man, "params": settings_params(settings, name, man["params"])} if name in SETTINGS_PARAMS else man
         last = ([o for o in state.modules() if o["name"] == name] or [None])[-1]
         if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live"           # once shipped as the world's
                          and (last["source"] != source or last["manifest"] != check_manifest(man, SHIPPED))):

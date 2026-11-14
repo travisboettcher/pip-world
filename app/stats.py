@@ -44,9 +44,9 @@ def alerting(d: dict, value: float) -> bool:
     return ("above" in a and value >= a["above"]) or ("below" in a and value <= a["below"])
 
 
-def rate(d: dict, activity: str, working: bool) -> float:
-    """How fast a stat changes an hour, given what the agent is doing."""
-    r = d.get("per_hour", 0.0)
+def rate(d: dict, activity: str, working: bool, away: bool = False) -> float:
+    """How fast a stat changes an hour, given what the agent is doing (and, with `away_per_hour`, whether it is out of its home)."""
+    r = d["away_per_hour"] if away and "away_per_hour" in d else d.get("per_hour", 0.0)
     if activity == "sleeping":
         r = d["asleep_per_hour"] if "asleep_per_hour" in d else r * d.get("asleep_factor", 1)
     elif activity == "resting" and "resting_per_hour" in d:

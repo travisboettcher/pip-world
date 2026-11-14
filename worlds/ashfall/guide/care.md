@@ -1,0 +1,1 @@
+- Look after yourself. If hunger is high, eat. If energy is low, rest - and say for how long (rest with minutes), so you can sleep through instead of waking every minute. If your health is low, rest at home; if radiation is high, take a rad pill and stay in.

@@ -10,6 +10,7 @@ To add a topic: write `<name>.md` in the pack's guide and one `Section` below sa
 from dataclasses import dataclass
 from typing import Callable
 
+from .. import stats
 from .. import world_pack
 
 
@@ -49,6 +50,7 @@ SECTIONS = (
     Section("emotions", lambda tools, s, lib: s.emotions == "on"),
     Section("settle", lambda tools, s, lib: s.emotions == "on" and "settle" in tools),
     Section("sleep", lambda tools, s, lib: "sleep" in tools and s.sleep),
+    Section("stakes", lambda tools, s, lib: any(d.get("at_zero") for d in stats.declared(s).values())),   # a stat that can run out
     Section("nightpass", lambda tools, s, lib: s.night_pass != "off"),
     Section("care", tool("eat", "rest"), bullet=True),
     Section("activity", tool("set_activity"), bullet=True),

@@ -1,0 +1,279 @@
+{
+ "look": {
+  "height": [
+   "short",
+   "medium",
+   "tall"
+  ],
+  "hair": [
+   "white",
+   "grey",
+   "black",
+   "brown",
+   "auburn",
+   "fair",
+   "none"
+  ],
+  "skin": [
+   "pale",
+   "light",
+   "olive",
+   "brown",
+   "dark"
+  ],
+  "top": [
+   "grey",
+   "brown",
+   "green",
+   "blue",
+   "red",
+   "ochre",
+   "plum",
+   "cream"
+  ],
+  "bottom": [
+   "grey",
+   "brown",
+   "green",
+   "blue",
+   "navy",
+   "black"
+  ],
+  "accessory": [
+   "shawl",
+   "apron",
+   "hat",
+   "glasses",
+   "satchel",
+   "scarf",
+   "none"
+  ]
+ },
+ "look_hints": {
+  "height": {
+   "tall": "tall",
+   "lanky": "tall",
+   "short": "short",
+   "small": "short",
+   "little": "short",
+   "stout": "short"
+  },
+  "hair": {
+   "white-haired": "white",
+   "white hair": "white",
+   "grey-haired": "grey",
+   "grey hair": "grey",
+   "silver": "grey",
+   "bald": "none",
+   "red-haired": "auburn",
+   "auburn": "auburn",
+   "fair-haired": "fair",
+   "blond": "fair",
+   "dark-haired": "black",
+   "widow": "white",
+   "old": "grey"
+  },
+  "accessory": {
+   "shawl": "shawl",
+   "apron": "apron",
+   "hat": "hat",
+   "spectacles": "glasses",
+   "glasses": "glasses",
+   "eyesight": "glasses",
+   "satchel": "satchel",
+   "scarf": "scarf",
+   "baker": "apron",
+   "smith": "apron",
+   "keeper": "shawl"
+  }
+ },
+ "props": {
+  "driftwood": [
+   "driftwood"
+  ],
+  "rope": [
+   "rope",
+   "ropes"
+  ],
+  "lanterns": [
+   "lantern",
+   "lanterns"
+  ],
+  "drawers": [
+   "drawer",
+   "drawers"
+  ],
+  "tin": [
+   "tin"
+  ],
+  "barrow": [
+   "barrow",
+   "barrows",
+   "cart"
+  ],
+  "crates": [
+   "barrel",
+   "barrels",
+   "crate",
+   "crates",
+   "drum",
+   "drums"
+  ],
+  "well": [
+   "well"
+  ],
+  "anvil": [
+   "anvil",
+   "forge",
+   "smith"
+  ],
+  "reeds": [
+   "reed",
+   "reeds",
+   "marsh"
+  ],
+  "tools": [
+   "tool",
+   "tools",
+   "file",
+   "hammer",
+   "wire"
+  ]
+ },
+ "scene": {
+  "walls": [
+   "plaster",
+   "whitewash",
+   "stone",
+   "brick",
+   "planks"
+  ],
+  "roof": [
+   "slate",
+   "tile",
+   "shingle"
+  ],
+  "palette": [
+   "cool",
+   "earth",
+   "slate",
+   "sand",
+   "moss"
+  ],
+  "setting": [
+   "wood",
+   "heath",
+   "shore",
+   "marsh",
+   "hills",
+   "riverside",
+   "town",
+   "field"
+  ]
+ },
+ "scene_props_max": 4,
+ "setting_words": {
+  "wood": [
+   "wood",
+   "forest",
+   "trees",
+   "copse",
+   "grove"
+  ],
+  "shore": [
+   "shore",
+   "beach",
+   "sea",
+   "coast",
+   "cove",
+   "harbour",
+   "harbor",
+   "quay"
+  ],
+  "marsh": [
+   "marsh",
+   "reeds",
+   "fen",
+   "mudflats",
+   "bog"
+  ],
+  "hills": [
+   "hill",
+   "hills",
+   "quarry",
+   "crag",
+   "ridge",
+   "tor"
+  ],
+  "riverside": [
+   "river",
+   "stream",
+   "brook",
+   "ford",
+   "mill"
+  ],
+  "heath": [
+   "heath",
+   "moor",
+   "heather",
+   "gorse"
+  ],
+  "town": [
+   "square",
+   "street",
+   "town",
+   "village",
+   "shop"
+  ],
+  "field": [
+   "field",
+   "meadow",
+   "orchard",
+   "farm",
+   "pasture"
+  ]
+ },
+ "kind_setting": {
+  "yard": "hills",
+  "wild": "wood",
+  "sight": "hills",
+  "home": "field"
+ },
+ "match_walls": [
+  "stone",
+  "brick",
+  "whitewash",
+  "planks"
+ ],
+ "match_roofs": [
+  "thatch",
+  "slate",
+  "tile"
+ ],
+ "default_setting": "field",
+ "coastal_words": [
+  "sea",
+  "seas",
+  "shore",
+  "shoreline",
+  "coast",
+  "harbour",
+  "harbor",
+  "quay",
+  "quayside",
+  "tide",
+  "tides",
+  "tidal",
+  "marsh",
+  "salt",
+  "beach",
+  "mudflats?",
+  "lighthouse",
+  "dunes?",
+  "cove",
+  "bay",
+  "pier",
+  "jetty",
+  "wharf"
+ ]
+}

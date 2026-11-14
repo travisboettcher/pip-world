@@ -1,0 +1,26 @@
+{
+ "name": "Ashfall",
+ "api": 1,
+ "agent": {
+  "name": "Wren",
+  "pronoun": "she",
+  "kind": "a survivor",
+  "lives": "lives alone in a shelter under a dead city"
+ },
+ "modules": [
+  "std:cutaway",
+  "std:scrap-heap",
+  "std:shed",
+  "std:round-tree",
+  "std:pine-tree",
+  "std:bench",
+  "std:standing-stones",
+  "std:lighthouse",
+  "std:outdoors",
+  "std:gathering",
+  "std:crafting",
+  "ashfall:shelter",
+  "ashfall:raids",
+  "ashfall:village"
+ ]
+}

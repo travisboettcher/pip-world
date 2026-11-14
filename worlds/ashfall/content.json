@@ -1,0 +1,62 @@
+{
+ "world_effects": {
+  "racks": {
+   "help": "fitting out the shelter (racks, a proper bench, shelving) so more projects can be kept going at once",
+   "words": [
+    "rack",
+    "racks",
+    "bench",
+    "workbench",
+    "shelf",
+    "shelves",
+    "storage",
+    "cabinet"
+   ],
+   "min_difficulty": 2,
+   "does": "request:crafting:add_slot",
+   "note": "The shelter is better fitted out now: you can keep {n} projects going at once."
+  }
+ },
+ "abilities": {
+  "time": {
+   "help": "the exact time of day (a clock: implied by the timekeeper capability)",
+   "words": [],
+   "per_day": 0,
+   "proposable": false,
+   "min_difficulty": 2
+  },
+  "news": {
+   "help": "a radio that picks up the village's broadcasts",
+   "words": [
+    "radio",
+    "receiver",
+    "aerial",
+    "antenna",
+    "transmitter"
+   ],
+   "per_day": 3,
+   "proposable": true,
+   "min_difficulty": 2
+  }
+ },
+ "crafting": {
+  "abilities": [
+   "precision",
+   "patience",
+   "ingenuity",
+   "knowledge",
+   "handiness"
+  ],
+  "default_abilities": [
+   "handiness"
+  ]
+ },
+ "happening_firsts": {
+  "raid": "had a brush with what's out there",
+  "salvage": "came across something worth having",
+  "ashfall": "were caught in the ash",
+  "kindness": "were helped by someone from the village",
+  "quiet": "noticed something in the air"
+ },
+ "module_firsts": {}
+}

@@ -52,7 +52,7 @@ def test_status_text_with_and_without_the_day_rhythm(tmp_path):
 def test_items_text(tmp_path):
     s, st, *_ = make(tmp_path)
     clear_items(st)
-    assert commands.answer(st, s, "/items") == "Items\nNothing in the workshop."
+    assert commands.answer(st, s, "/items") == "Items\nPip has nothing."
     st.add_item("brass wire", 3, "material")
     st.add_item("needle file", 1, "tool")
     assert commands.answer(st, s, "/items") == "Items\nbrass wire x3 (material)\nneedle file x1 (tool)"

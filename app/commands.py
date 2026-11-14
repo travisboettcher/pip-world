@@ -62,7 +62,7 @@ def _status(state, settings, arg, now):
 def _items(state, settings, arg, now):
     items = state.items()
     if not items:
-        return "Items\nNothing in the workshop."
+        return f"Items\n{world_pack.active().agent.name} has nothing."
     return "Items\n" + "\n".join(f"{i['name']} x{i['qty']} ({i['kind']})" for i in items)
 
 

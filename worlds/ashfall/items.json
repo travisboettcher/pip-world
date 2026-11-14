@@ -1,0 +1,211 @@
+{
+ "kinds": [
+  "tool",
+  "material",
+  "food"
+ ],
+ "food_default": 0.3,
+ "start": [
+  {
+   "name": "tinned beans",
+   "qty": 3,
+   "kind": "food",
+   "description": "dented tins of beans, still sealed",
+   "attrs": {
+    "food_value": 0.4
+   }
+  },
+  {
+   "name": "rad pills",
+   "qty": 2,
+   "kind": "food",
+   "description": "a strip of iodine pills",
+   "attrs": {
+    "restores": {
+     "radiation": 0.3
+    }
+   }
+  },
+  {
+   "name": "crowbar",
+   "qty": 1,
+   "kind": "tool",
+   "description": "a crowbar worn smooth at the grip",
+   "attrs": {}
+  }
+ ],
+ "finds": {
+  "ruins": [
+   [
+    "scrap",
+    "material",
+    30,
+    [
+     2,
+     5
+    ],
+    "twisted offcuts of steel",
+    {}
+   ],
+   [
+    "copper wire",
+    "material",
+    15,
+    [
+     1,
+     3
+    ],
+    "wire stripped from a wall",
+    {}
+   ],
+   [
+    "glass",
+    "material",
+    8,
+    [
+     1,
+     2
+    ],
+    "panes that didn't break",
+    {}
+   ],
+   [
+    "old cells",
+    "material",
+    6,
+    [
+     1,
+     2
+    ],
+    "batteries with a little charge left",
+    {}
+   ],
+   [
+    "cloth",
+    "material",
+    10,
+    [
+     1,
+     3
+    ],
+    "curtain and sacking",
+    {}
+   ],
+   [
+    "tinned beans",
+    "food",
+    8,
+    [
+     1,
+     2
+    ],
+    "a tin that survived the shelves",
+    {
+     "food_value": 0.4
+    }
+   ],
+   [
+    "rad pills",
+    "food",
+    3,
+    [
+     1,
+     1
+    ],
+    "a strip of iodine pills",
+    {
+     "restores": {
+      "radiation": 0.3
+     }
+    }
+   ],
+   [
+    "spanner",
+    "tool",
+    2,
+    [
+     1,
+     1
+    ],
+    "a heavy spanner",
+    {}
+   ],
+   [
+    "hacksaw",
+    "tool",
+    2,
+    [
+     1,
+     1
+    ],
+    "a hacksaw with a fresh-ish blade",
+    {}
+   ]
+  ],
+  "flats": [
+   [
+    "driftwood",
+    "material",
+    30,
+    [
+     2,
+     5
+    ],
+    "bleached driftwood",
+    {}
+   ],
+   [
+    "reeds",
+    "material",
+    15,
+    [
+     2,
+     4
+    ],
+    "long dry reeds",
+    {}
+   ],
+   [
+    "cattail roots",
+    "food",
+    15,
+    [
+     1,
+     3
+    ],
+    "starchy roots, washed in the river",
+    {
+     "food_value": 0.25
+    }
+   ],
+   [
+    "crayfish",
+    "food",
+    8,
+    [
+     1,
+     2
+    ],
+    "a few crayfish from the shallows",
+    {
+     "food_value": 0.3
+    }
+   ],
+   [
+    "clay",
+    "material",
+    8,
+    [
+     1,
+     2
+    ],
+    "grey river clay",
+    {}
+   ]
+  ]
+ },
+ "gerunds": {
+  "ruins": "scavenging",
+  "flats": "foraging"
+ }
+}

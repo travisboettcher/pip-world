@@ -1,0 +1,1 @@
+{"name": "shelter", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["home"], "reason": "The shelter as a layout: a concrete room under the city opened like a dollhouse, its barred door and stairwell, rubble and dead trees above."}

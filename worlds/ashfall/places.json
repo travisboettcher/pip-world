@@ -1,0 +1,220 @@
+{
+ "home": {
+  "key": "shelter",
+  "description": "your home: a shelter under the city",
+  "offers": [
+   "projects",
+   "sleep"
+  ],
+  "about": "a concrete shelter with a barred door",
+  "aliases": [
+   "home",
+   "shelter",
+   "bunker",
+   "my shelter"
+  ],
+  "called": "shelter"
+ },
+ "start": [
+  {
+   "key": "ruins",
+   "description": "the ruins above the shelter: gutted offices and flats, scrap, wire and the odd tin",
+   "walk": 10,
+   "offers": [
+    "gather",
+    "browse"
+   ],
+   "daylight_only": true,
+   "verbs": {
+    "gather": [
+     "scavenge through the ruins",
+     "Scavenge the ruins for 15-60 minutes: scrap, wire, glass, old cells, cloth, now and then a tin or a tool. What you find is down to luck and how picked-over it is. You'll see what you found when the time is up; resting stops early."
+    ],
+    "browse": [
+     "look over the ruins to see what's worth digging for",
+     null
+    ]
+   },
+   "about": "the ruins of the city above",
+   "kind": "yard",
+   "tag": "scrap"
+  },
+  {
+   "key": "flats",
+   "description": "the river flats past the old bridge: driftwood, reeds, roots and crayfish",
+   "walk": 20,
+   "offers": [
+    "gather"
+   ],
+   "daylight_only": true,
+   "verbs": {
+    "gather": [
+     "forage the flats",
+     "Forage the river flats for 15-60 minutes: driftwood, reeds, clay, roots and crayfish. What you find is down to luck and the river. You'll see what you found when the time is up; resting stops early."
+    ]
+   },
+   "about": "the river flats past the old bridge",
+   "kind": "wild",
+   "tag": "foraging"
+  },
+  {
+   "key": "village",
+   "description": "the walled village by the reservoir, where the survivors keep a gate and a radio",
+   "walk": 40,
+   "offers": [],
+   "daylight_only": true,
+   "verbs": {},
+   "about": "a walled village by the reservoir",
+   "kind": "sight",
+   "tag": "people"
+  }
+ ],
+ "kinds": {
+  "wild": {
+   "help": "somewhere outdoors to forage: a river bank, a flooded park, a railway cutting",
+   "words": [
+    "river",
+    "bank",
+    "flats",
+    "park",
+    "cutting",
+    "marsh",
+    "field",
+    "reservoir",
+    "canal",
+    "embankment"
+   ],
+   "verbs": {
+    "gather": [
+     "forage for what grows here",
+     "foraging"
+    ]
+   },
+   "loot_kinds": [
+    "material",
+    "food"
+   ],
+   "max_tools": 0,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  },
+  "yard": {
+   "help": "somewhere to dig through what's left: ruins, a depot, a wrecked yard",
+   "words": [
+    "ruin",
+    "ruins",
+    "depot",
+    "wreck",
+    "yard",
+    "tower",
+    "block",
+    "mall",
+    "station",
+    "factory",
+    "warehouse"
+   ],
+   "verbs": {
+    "gather": [
+     "scavenge through what's lying about",
+     "scavenging"
+    ],
+    "browse": [
+     "look over what's lying about to see what's worth digging for",
+     null
+    ]
+   },
+   "loot_kinds": [
+    "material",
+    "tool"
+   ],
+   "max_tools": 1,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  },
+  "sight": {
+   "help": "somewhere just to go and see: a bridge, a tower top, the village gate",
+   "words": [],
+   "verbs": {},
+   "loot_kinds": [],
+   "max_tools": 0,
+   "capacity": 120,
+   "refill": 15,
+   "shop_hours": false,
+   "session": [
+    15,
+    60
+   ],
+   "trades": false,
+   "stalls": false
+  }
+ },
+ "fallback_kind": "sight",
+ "shop_default_hours": [
+  9,
+  17
+ ],
+ "opens": [
+  7,
+  10
+ ],
+ "closes": [
+  16,
+  19
+ ],
+ "words": {
+  "trade": [],
+  "reserved": [
+   "home",
+   "shelter",
+   "bunker",
+   "ruins",
+   "flats",
+   "village",
+   "here",
+   "there",
+   "nowhere",
+   "anywhere",
+   "outside",
+   "inside"
+  ],
+  "features": [
+   "block",
+   "tower",
+   "bridge",
+   "station",
+   "depot",
+   "reservoir",
+   "river",
+   "canal",
+   "park",
+   "square",
+   "estate",
+   "yard",
+   "works",
+   "mall",
+   "village",
+   "hills?",
+   "marsh",
+   "quarry",
+   "tunnel",
+   "overpass",
+   "flats",
+   "ruins?",
+   "gate"
+  ]
+ }
+}

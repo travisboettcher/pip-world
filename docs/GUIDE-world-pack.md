@@ -22,6 +22,10 @@ Before writing anything, know what you don't have to:
 - **The world view**: a map and a scene for every place, drawn from layouts.
 - **The builder**: a night-time role that proposes rules and places within your bible, for the owner to approve.
 
+`worlds/ashfall` is this guide's world built (0.44.0): a shelter, the ruins and the river flats to scavenge and forage, health and
+radiation, raids, and a village of voices. Its CI test runs a day of it with fake models and fails if anything of Pip's world comes
+through (`tests/test_ashfall.py`). Read it alongside this guide.
+
 ## 1. The smallest pack that runs
 Four files and one module. With these, Wren lives in a shelter, gets tired and sleeps, talks to visitors, remembers, and can walk to
 places as they're found. Nothing else happens yet, and that's fine.
@@ -32,19 +36,21 @@ worlds/ashfall/
   persona.md
   narrator.md
   stats.json
-  modules/shelter-layout.{json,py}
+  modules/shelter.{json,py}
 ```
 
-**`world.json`** (phase 1; `name`, `api` and `agent` work today, the rest later): who the agent is, the home, what's included.
+**`world.json`** (works today): who the agent is, and what the world runs.
 ```json
 {"name": "Ashfall", "api": 1,
- "agent": {"name": "Wren", "pronoun": "she", "kind": "a survivor"},
- "home": {"key": "shelter", "label": "the shelter", "kind": "home"},
- "modules": ["ashfall:shelter-layout"],
- "settings": {"wake_hour": 6, "bedtime_hour": 22}}
+ "agent": {"name": "Wren", "pronoun": "she", "kind": "a survivor", "lives": "lives alone in a shelter under a dead city"},
+ "modules": ["std:cutaway", "std:gathering", {"module": "std:crafting", "params": {"most": 2}}, "ashfall:shelter", "ashfall:raids"]}
 ```
-`agent.kind` is how the narrator refers to her in a word. `home` is the place she starts and sleeps. `modules` are what the world includes:
-`ashfall:` names the pack's own (in `modules/`), `std:` the engine's standard library.
+`agent.kind` is how the narrator refers to her in a word. `modules` (0.44.0) are what the world runs, in order: `std:<name>` one the
+engine ships (`app/module_library/`), `<pack>:<name>` the pack's own (`modules/<name>.json` and `.py`, trusted like the engine's), or
+`{"module": ..., "params": {...}}` to set its params (over its defaults and anything the settings set). A module that builds from parts
+needs them listed too (`std:outdoors` uses seven). The kinds of thing a module takes and gives are kept to the world's (a world without
+seeds gathers none). A pack that names no `modules` runs everything the engine ships, as Pip's world does. The home (its key and label)
+is in `places.json`.
 
 **`persona.md`** (works today; `PERSONA_PATH` overrides it): who the agent is, in the second person, as the agent reads it every tick. Who she is,
 how she talks, what she cares about, what she wants. Not the world's rules: those come from the guide.
@@ -62,12 +68,13 @@ and so are small kindnesses. Nothing is magic; the monsters are animals the ash 
 {"energy": {"start": 1.0, "per_hour": -0.03, "asleep_per_hour": 0.25, "resting_per_hour": 0.3, "alert": {"below": 0.2}, "low_at": 0.25,
             "restored_by": ["rest", "sleep"], "floor": 0.1, "tires": true, "tired_below": 0.3, "scale": "0=exhausted"}}
 ```
-`good` is `high` unless you say `low`; `low_at` is where the world starts sparing her; `tires` marks the stat work wears down.
+`good` is `high` unless you say `low`; `low_at` is where the world starts sparing her; `tires` marks the stat work wears down;
+`away_per_hour` (0.44.0) is its rate while she is out of her home (radiation builds outside, and falls at home).
 `worlds/pip/stats.json` has every field.
 
 **The home's layout**: a place module that lays out the shelter (works today; see DESIGN-modules.md, "Parts and layouts", and the
-shipped `home` layout in `app/module_library/` for a full example). At its smallest: a ground box, a building from the `cutaway` part,
-and anchors tagged `pip` (where she stands), `bed` and `seat` (renamed `agent` in phase 1), so the renderer can draw her poses.
+shipped `home` layout in `app/module_library/` and Ashfall's `modules/shelter.py`). At its smallest: a ground box, a building, and
+anchors tagged `pip` (where she stands; the name is the renderer's), `seat` and `workbench`, so the renderer can draw her poses.
 
 Start it with `WORLD_PACK=worlds/ashfall` (works today). Check the dashboard: the scene, the journal filling, the Work tab's modules all live.
 

@@ -1,1 +1,1 @@
-{"name": "bench", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}, "reason": "A part: a wooden bench to sit and look from; its seat is where Pip sits."}
+{"name": "bench", "kind": "part", "api": 1, "hooks": ["on_build"], "params": {}, "reason": "A part: a wooden bench to sit and look from; its seat is where the agent sits."}

@@ -90,8 +90,9 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
     return name, description, {"capabilities": caps, "quirks": quirks, "scars": [_line(s, 200) for s in scars[:3]]}
 
 
-def menu(allow_companion: bool) -> list[str]:
-    """What a made thing can do, as the narrator is told when it designs one: the capabilities `sanitize_spec` keeps, worded."""
+def menu(allow_companion: bool, crops: bool = True) -> list[str]:
+    """What a made thing can do, as the narrator is told when it designs one: the capabilities `sanitize_spec` keeps, worded (what
+    works on crops only where something grows them: `crops`)."""
     a = world_pack.active().agent
     caps = [
         "timekeeper: it tells the time",
@@ -99,11 +100,12 @@ def menu(allow_companion: bool) -> list[str]:
         "whatever fits this thing) and `hours` (4-72) it lasts between tendings",
         "periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences "
         "describing it, in this thing's own manner) and `every_minutes` (20-720)",
-        f"sensor: it notices something and reacts; `condition` is one of crop_ripe (a crop in {a.possessive} garden is ripe), "
-        f"visitor (someone comes to talk to {a.name}), dawn, dusk, hungry ({a.name} is hungry), tired ({a.name} is tired); "
+        "sensor: it notices something and reacts; `condition` is one of "
+        + (f"crop_ripe (a crop in {a.possessive} garden is ripe), " if crops else "") + f"visitor (someone comes to talk to {a.name}), dawn, dusk, hungry ({a.name} is hungry), tired ({a.name} is tired); "
         "`alert` is a short line describing how it reacts",
-        "helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden "
-        "do better - guarding, watering, warming it - so crops ripen sooner), find "
+        "helper: it regularly helps in one of these ways (`effect`): "
+        + ("hurry_crops (anything that helps the garden do better - guarding, watering, warming it - so crops ripen sooner), " if crops else "")
+        + "find "
         f"(it turns up small useful things; give `finds`: 2-4 kinds of thing it would find), or comfort ({a.name} feels "
         "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
         world_effects.gm_lines(), abilities.gm_lines(),

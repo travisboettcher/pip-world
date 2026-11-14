@@ -344,11 +344,12 @@ class State:
             hours = max(0.0, now - a["updated_at"]) / 3600
             sess = self.session()
             working = bool(sess and sess["kind"] == "module" and sess["stage"])           # a module's session that is work (crafting)
+            away = a["location"] != world_pack.load(self.s).data("places").get("home", {}).get("key", "home") or bool(sess and sess["kind"] == "walk")
             new, fields = [], {"updated_at": now}
             for name, d in stats_mod.declared(self.s).items():
                 if name not in a:
                     continue
-                value = clamp(a[name] + stats_mod.rate(d, a["activity"], working) * hours)
+                value = clamp(a[name] + stats_mod.rate(d, a["activity"], working, away) * hours)
                 alert = stats_mod.alerting(d, value)
                 if alert and not a[f"{name}_alerted"]:
                     new.append(name)

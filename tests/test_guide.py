@@ -147,7 +147,9 @@ def test_sections_are_paragraphs_and_the_guidelines_are_one_list():
 
 def test_every_section_in_the_registry_has_its_text_and_every_text_is_in_the_registry():
     files = {p.stem for p in (W.DEFAULT / "guide").glob("*.md")}
-    assert files == {s.name for s in G.SECTIONS} and len(files) == len(G.SECTIONS)
+    ashfall = {p.stem for p in (W.DEFAULT.parent / "ashfall" / "guide").glob("*.md")}
+    assert files | ashfall == {s.name for s in G.SECTIONS} and len(G.SECTIONS) == len({s.name for s in G.SECTIONS})
+    assert {s.name for s in G.SECTIONS} - files == {"stakes"}                         # Pip's world has nothing that can run out
 
 
 # --- how the agent puts it together -----------------------------------------------------------------------------------------

@@ -11,7 +11,8 @@ customers, accounts, the neighbours' wares and market days) is the shipped `trad
 shipped `reading` module, on the engine's first source (`books`); **5e built (0.40.0)**: the shipped `sky` module publishes the world's
 weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
 map tool arguments, public events, `creation`, and a module's work session; **5f built (0.42.0)**: crafting is the shipped `crafting`
-module; **6a built (0.43.0)**: stakes (`at_zero`, `harm`). Next: 6b, a second pack. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+module; **6a built (0.43.0)**: stakes (`at_zero`, `harm`); **6b built (0.44.0)**: Ashfall, the second world, and a pack's own
+`modules`. Next: phase 7, removing the engine's fallbacks. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -416,6 +417,20 @@ install's projects (finished ones compacted), skills and extra project slots mov
 6. **Stakes and a second world.** Health and `at_zero`, `harm`; then a small **wasteland pack** as the test: a shelter, scavenging,
    radiation, a village of survivors as voices, raids as happenings, no garden. Its CI run (a day of simulated ticks with a fake model)
    proves the engine has no Pip in it.
+   *6a built (0.43.0)*: stakes, above. *6b built (0.44.0)*: `worlds/ashfall`. Wren keeps a shelter under a dead city: the ruins
+   (scavenging) and the river flats (foraging) by the shipped `gathering`, projects by `crafting`, health (`knocked_out`) and radiation
+   (`weak`, building at `away_per_hour` while she is out), and three modules of its own: `shelter` (the home's layout), `raids` (its
+   happenings: a raid hurts her outside and costs food at home; salvage, ash days, a kindness from the village) and `village` (the
+   radio's evening broadcast and Marta at the gate, as voices). What the engine needed: a pack's `modules` in world.json (`std:`
+   and the pack's own, with params; none named runs everything, as Pip's world does), a module's belongings kept to the world's kinds,
+   `away_per_hour`, a `stakes` guide page, and the creation menu's crop capabilities only where something publishes `plots`.
+   `tests/test_ashfall.py` runs a day of it with fake models (the agent working through its day, a visitor, raids, a finished
+   project) and fails on any word of Pip's world in what the agent and the narrator are sent or in a chat command's answer. What it
+   found was made the world's: `workings`' prompts named Pip, the tool descriptions named the library, a neighbour's home and the
+   workshop, firsts took "workshop" for home, `/items` said "Nothing in the workshop", crafting's example was brass wire.
+   Not yet the world's: the dashboard's wording (it says "Pip" about 130 times), the renderer's anchor names (`pip`), the module API's
+   `pip` read (kept as the old name of `agent`), and the scene's layouts beyond the home (Ashfall's ruins are drawn from Pip's
+   `outdoors`).
 7. **Remove the fallbacks.** The engine's built-in workings, companions, customers, happenings' dice and each moved feature.
 
 Every phase is a release with tests, mutation testing and Pip's world running unchanged on it.

@@ -6,6 +6,7 @@ own words), `narrator.md` (the narrator's voice and the world in a paragraph), `
 any of the prose out. The engine's own fixed instructions to the narrator (`NARRATOR_RULES`) follow the pack's paragraph.
 """
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -13,6 +14,8 @@ from pathlib import Path
 API = 1
 DEFAULT = Path(__file__).resolve().parent.parent / "worlds" / "pip"
 PRONOUNS = ("it", "she", "he", "they")
+LIBRARY = Path(__file__).resolve().parent / "module_library"     # the engine's own modules (`std:` in a pack's `modules`)
+MODULE_NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 NARRATOR_RULES = """Keep the world consistent: things behave the way such things plausibly would, and nothing becomes more powerful
 than it is. You never decide what {agent} does and you never change a result you are given. Answer only by calling
 the `report` tool."""
@@ -64,6 +67,12 @@ class Pack:
     dir: Path
     name: str
     agent: Agent
+    modules: tuple | None = None    # what the world runs: ((where, name, params), ...), `std` the engine's, `pack` its own; None: all the engine ships
+
+    def module(self, name: str) -> tuple[dict, str]:
+        """One of the pack's own modules (`modules/<name>.json` and `.py`): (manifest, source)."""
+        d = self.dir / "modules"
+        return json.loads((d / f"{name}.json").read_text()), (d / f"{name}.py").read_text()
 
     def _text(self, rel: str) -> str:
         f = self.dir / rel
@@ -135,4 +144,28 @@ def _load(path: str, changed: float = 0.0) -> Pack:
     pronoun = a.get("pronoun", "they")
     if pronoun not in PRONOUNS:
         raise bad(f"the agent's pronoun is one of {', '.join(PRONOUNS)}")
-    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or "")))
+    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or "")),
+                _modules(d, w.get("modules"), bad))
+
+
+def _modules(d: Path, raw, bad) -> tuple | None:
+    """world.json's `modules`: each `"std:<name>"` (one the engine ships), `"<pack>:<name>"` (the pack's own, in `modules/`), or
+    `{"module": ..., "params": {...}}` to set its params. None when the pack names none: it runs everything the engine ships."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise bad("`modules` is a list")
+    out = []
+    for e in raw:
+        spec, params = (e, {}) if isinstance(e, str) else (e.get("module"), e.get("params", {})) if isinstance(e, dict) else (None, None)
+        where, _, name = str(spec or "").partition(":")
+        if not MODULE_NAME.match(name) or where not in ("std", d.name) or not isinstance(params, dict):
+            raise bad(f'each of `modules` is "std:<name>" (the engine\'s), "{d.name}:<name>" (the pack\'s own, in modules/), or '
+                      '{"module": ..., "params": {...}}')
+        files = (LIBRARY / name, ) if where == "std" else (d / "modules" / name, )
+        if not all(f.with_suffix(x).is_file() for f in files for x in (".json", ".py")):
+            raise bad(f"no module {spec}: " + ("the engine ships none by that name" if where == "std" else f"modules/{name}.json and .py are needed"))
+        out.append(("std" if where == "std" else "pack", name, params))
+    if len({n for _, n, _ in out}) < len(out):
+        raise bad("each module once in `modules`")
+    return tuple(out)

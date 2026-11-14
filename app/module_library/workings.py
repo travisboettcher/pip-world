@@ -156,13 +156,14 @@ def on_action(ctx):
 # --- a mind of its own ---------------------------------------------------------------------------------------------------------
 def _prompt(ctx, heard):
     s, pip, name = ctx["subject"], ctx["agent"], ctx["subject"]["name"]
+    who = pip["name"]
     about = s["description"] + (f" Quirks: {'; '.join(s['quirks'])}." if s.get("quirks") else "")
     lines = ctx["state"].get("lines") or []
-    return (f"Voice {name}, something Pip made that has a mind of its own: {about}\n"
+    return (f"Voice {name}, something {who} made that has a mind of its own: {about}\n"
             f"Who {name} is: {s['capabilities']['companion']['persona']}\n"
-            f"Right now: Pip is {pip['activity']}, feeling {pip['mood']}.\n"
+            f"Right now: {who} is {pip['activity']}, feeling {pip['mood']}.\n"
             + ("Recent conversation:\n" + "\n".join(lines) + "\n" if lines else "")
-            + (f"Pip just said to {name}: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer Pip as {name}."
+            + (f"{who} just said to {name}: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer {who} as {name}."
                if heard else f"Nobody spoke to {name}; say something on its own that fits the moment, or do a small action (in *asterisks*) "
                              "if words don't fit.")
             + " One short line, at most 2 sentences, in character, and not something already said in the conversation above. It can't do "
@@ -181,7 +182,7 @@ def on_message(ctx):
         return {}
     text = ctx["message"]["text"]
     st["heard"] = (st.get("heard") or []) + [text]
-    st["lines"] = ((st.get("lines") or []) + [f"Pip: {text}"])[-LINES_KEPT:]
+    st["lines"] = ((st.get("lines") or []) + [f"{ctx['agent']['name']}: {text}"])[-LINES_KEPT:]
     replies = [t for t in st.get("replies") or [] if now - t < 3600]
     st["replies"] = replies
     out = {"state": st}
@@ -202,9 +203,10 @@ def _listen(ctx):
         return {"reply": f"only static now: your {s['name']} has told you all the news it has today"}
     st["news_log"] = heard + [now]
     w, t = ctx.get("weather"), ctx["time"]
-    prompt = (f"Pip listens to {s['name']}, something it made: {s['description']}. It is {t['weekday']}, {t['hour']}:00, in {t['season']}"
+    a = ctx["agent"]
+    prompt = (f"{a['name']} listens to {s['name']}, something {a['they']} made: {s['description']}. It is {t['weekday']}, {t['hour']}:00, in {t['season']}"
               + (f", and the weather is {w['condition']}" if w else "") + ". Write the bulletin that comes through: 2-3 sentences of news "
-              "about Pip's own small world only (the weather, the neighbors, the season, something invented and harmless), never real-world "
+              f"about {a['possessive']} own small world only (the weather, the neighbors, the season, something invented and harmless), never real-world "
               "events, in the voice of whatever this receiver picks up.")
     return {"state": st, "ask": {"prompt": prompt, "purpose": "news", "most": 400},
             "reply": f"you tune in to your {s['name']}; a bulletin is coming through"}

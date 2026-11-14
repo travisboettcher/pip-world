@@ -1,6 +1,7 @@
 """Crafting (docs/DESIGN-world-packs.md, phase 5f): the shipped `crafting` module (module_library/crafting.py): projects on the agent's own
 plans, work sessions judged by the die and the narrator, materials, experiments, plan revisions, craft skills, what a finished project turns
 out to be, and the night pass's requests."""
+import asyncio
 import random
 import time
 
@@ -471,10 +472,13 @@ def test_what_crafting_reads_where_things_were_found_and_what_a_made_thing_can_d
     assert ctx["found"] == [{"item": "pine cones", "place": "woods", "label": "the woods"},                # most often, then most lately
                             {"item": "old maps", "place": "library", "label": "the library"},
                             {"item": "brass wire", "place": "junkyard", "label": "the junkyard"}]
-    assert ctx["making"] == {"capabilities": cr.menu(False), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
+    assert ctx["making"] == {"capabilities": cr.menu(False, crops=False), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
                              "qualities": ["rough", "sound", "fine", "masterwork"]}
     assert ctx["making"]["companion"].startswith("companion:") and not any(c.startswith("companion:") for c in ctx["making"]["capabilities"])
     assert ctx["agent"]["tiring"] == "energy" and ctx["agent"]["tired"] is False
+    from tests.test_garden import garden
+    asyncio.run(M.call(st, s, M.LocalRunner(), garden(st), "on_install", NOW))     # with something growing crops, the crop capabilities too
+    assert M.context(st, s, M.live_named(st, "crafting"), NOW)["making"]["capabilities"] == cr.menu(False)
 
 
 def test_a_request_waits_with_who_asked_and_only_the_last_ten_are_kept(tmp_path):

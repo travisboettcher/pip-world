@@ -586,7 +586,7 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 # --- places and the library ---------------------------------------------------------
-@tool("go_to", "Walk somewhere: home, the library, a neighbor's home (to visit them) - any place you know. It "
+@tool("go_to", "Walk somewhere: home, or any place you know (someone's home, to visit them). It "
       "takes a little while.",
       _obj({"place": {"type": "string"}}, ["place"]))
 async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
@@ -758,7 +758,7 @@ def _picture(w: dict) -> list:
       _obj({"creation": {"type": "string", "description": "the name of something you made and still have"},
             "code": {"type": "string", "description": "the whole program"},
             "events": {"type": "array", "items": {"type": "string"}, "description": "with on_event: the kinds of thing it listens for, "
-                                                                                    "like garden, arrived, made_work"}},
+                                                                                    "like arrived, made_work, happening"}},
            ["creation", "code"]), where="home")
 async def program(ctx: ToolContext, args: dict) -> ToolResult:
     if not ctx.runner:
@@ -794,7 +794,7 @@ async def program(ctx: ToolContext, args: dict) -> ToolResult:
       "instead, on a 400 x 300 canvas (viewBox 0 0 400 300; rect, circle, ellipse, line, polyline, polygon, path, text, g, gradients; no scripts, "
       "images, links or styles; under about 8 KB). Things worth a picture: a sketch of something you're designing, before you build it; a place "
       "you've just seen for the first time; something that happened; a picture for a friend. A drawing of one of your creations, with `of` "
-      "set to its name, becomes how it looks in your workshop. Drawings hang in your gallery where visitors see them, and you can send one "
+      "set to its name, becomes how it looks at home. Drawings hang in your gallery where visitors see them, and you can send one "
       "with a postcard. When it's done you SEE how it came out; if it isn't what you meant, draw it again with `replaces` set to its number "
       "(up to 3 times). If something isn't allowed you'll be told what to change.",
       _obj({"title": {"type": "string", "description": "a short title"},
@@ -852,7 +852,7 @@ async def draw(ctx: ToolContext, args: dict) -> ToolResult:
         ctx.state.log("made_work", id=wid, what="drawing", title=title, caption=caption)
         text = f"you finish a drawing, #{wid}: {title}. It's in your gallery; you can send it with a postcard."
     if pixels and (of := ctx.state.work(wid)["subject"]):
-        text += f" It's how {of} looks in your workshop now."
+        text += f" It's how {of} looks in your {world_pack.active().data('places').get('home', {}).get('called', 'home')} now."
     if not ctx.vision:
         return ToolResult(text)
     # Pip sees what it made, and can answer with a redo in the same breath
