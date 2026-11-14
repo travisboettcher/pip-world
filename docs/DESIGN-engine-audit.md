@@ -1,8 +1,20 @@
 # Engine audit: what still assumes Pip's world (2026-11-14)
 
-Status: **audit, nothing built yet.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
+Status: **audit, decisions taken (2026-11-14), nothing built yet.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
 The owner asked whether one more pass was needed: over the module architecture (the hooks it offers) and over engine code that still
-expects a workflow specific to Pip. This is that pass: what was checked, what was found, and a proposed order of releases.
+expects a workflow specific to Pip. This is that pass: what was checked, what was found, the owner's decisions, and the order of releases.
+
+## Decisions (the owner, 2026-11-14)
+- **The engine is not to be made anemic.** What many worlds would share and is hard to get right stays the engine's, built to be
+  extended by modules. Neighbour visits and talk scenes are the example: they don't move into a module as they are; the machinery (a
+  character present, a scene of talk, what is remembered of it, letters there and back) stays the engine's and works for any character a
+  module brings, so a world can simulate a whole village of people talking through the same scenes. Modules decide who exists and what
+  they do (C1).
+- **The dashboard is Pip's world's for now.** The engine may later offer an abstract dashboard and components that worlds reuse or plug
+  their own panels into, likely on a framework; that is a bigger refactor, not part of this plan. Until then the dashboard page moves into
+  Pip's pack, and the engine serves the active pack's page (B5).
+- **`pip` is renamed completely.** No aliases remain in the engine: the `pip` read, the `"pip"` author, the scene's `pip` key and anchor,
+  and the engine's own docstrings and comments, with a migration for what is stored (A4).
 
 ## Verdict
 Nothing the engine *says* is Pip's any more: no string literal in `app/` outside the shipped modules names Pip, and `tests/test_ashfall.py`
@@ -41,9 +53,12 @@ identity, places and walking, the map, creations as things, the module runtime a
   (`memory.py`, `material`), now duplicating crafting's `project_started` event; the `/projects` chat command and the `projects` entry in
   `/help` are crafting's (`commands.py`). *Fix:* word `undo_decision` from what the night pass did; drop the tool branch; see B5 for commands.
 - **A4. Pip in names.** The module author `"pip"` (the agent's own programs), `PIP_READS`, the `pip` read (kept as the old name of `agent`;
-  no shipped module uses it), the scene JSON's `pip` key (`world_view.py`), the layouts' `pip` anchor, and about 130 "Pip"s in the
-  dashboard (`web/app.js`, `index.html`, `world/layout.js`, `world/map.js`). *Fix:* rename to `agent` with a migration for stored rows
-  (modules' `author`) and an alias for a while; the dashboard takes the name from `/state`.
+  no shipped module uses it), the scene JSON's `pip` key (`world_view.py`, `world/map.js`), the layouts' `pip` anchor (the shipped
+  layouts, Ashfall's `shelter`, `world/layout.js`), and "Pip" in about 350 of the engine's docstrings, comments and identifiers. *Fix
+  (decided):* rename to `agent` everywhere in the engine, with no alias: a migration rewrites stored rows (a module's `author`, the
+  `"id": "pip"` anchor in a world-made layout's source, which is then rebuilt); a manifest that reads `pip` is refused. Pip's live world
+  has no programs of the agent's own, and its 7 live layouts with that anchor are shipped ones that change with the release. The
+  dashboard's "Pip"s are Pip's world's once the page is its pack's (B5).
 - **A5. Legacy fields.** `public_view.py` keeps fields for `garden` events from before 0.35.0. *Fix:* drop (installs older than 0.44 are
   refused anyway).
 
@@ -64,18 +79,27 @@ identity, places and walking, the map, creations as things, the module runtime a
   not a suffix.
 - **B4. Tool scopes by place key.** `browse` is scoped to `junkyard` (0.44.1 added the place-kind verbs as a way round). *Fix:* engine
   tools scope by role (`home`, `anywhere`, `offered`: where a place's kind lists the verb), never by a place's key.
-- **B5. Feature endpoints and panels.** `/projects` (crafting), `/letters` (neighbours) and `/library/bookmarks` (reading) are endpoints of
-  one feature each; the dashboard's Work tab renders projects and the World tab letters; `/projects` is a chat command. The generic
-  mechanism exists: `/standing` shows every module's status. *Fix:* a module may publish a panel (a list of `{title, lines, progress?}`
-  under a key it names) that the dashboard and a `/<name>` chat command show; the three endpoints become panels of their modules.
+- **B5. The dashboard and feature endpoints.** `/projects` (crafting), `/letters` (neighbours) and `/library/bookmarks` (reading) are
+  endpoints of one feature each; the dashboard's Work tab renders projects and the World tab letters; `/projects` is a chat command. The
+  generic mechanism exists: `/standing` shows every module's status. *Fix (decided):* the dashboard page (`web/index.html`, `app.js`,
+  `style.css`) moves into Pip's pack (`worlds/pip/web/`), and the engine serves the active pack's `web/` at `/ui` (a pack without one gets
+  a plain page of the agent's state and its modules' standing). The scene and map renderer (`web/world/`, three.js, the fonts) draws the
+  engine's layout contract, so it stays the engine's and any pack's page may load it. A generic read of what live modules publish
+  (`/published`) replaces the three feature endpoints, so a pack's page reads its modules' data without routes of their own; the chat
+  command for a module's standing is `/<module>`. The abstract dashboard with reusable components is a later piece of work.
 
 ### C. Features still built into the engine
 - **C1. Neighbours and letters.** `neighbors.py` (about 350 lines), `write_letter`, the `letters` table, the narrator's
   `neighbor_letter` and `speak_in_person`, in-person talk scenes, residents of invented places, and the `neighbor` character kind. 5b moved
   only the neighbour's invention into a module and kept letters as "conversation at a distance". Ashfall's village of survivors had to be
-  voices on a radio. *Fix:* letters become a module: what it needs is a delayed delivery (`send`: a message into the inbox at a time, from
-  a character) and a delayed reply (the module's `on_message` to its own character already exists). Characters stay the engine's (who
-  someone is, how they look, what the agent remembers of them); what they do moves to modules. Probably two releases.
+  voices on a radio. *Fix (decided: the machinery stays the engine's, for any character):* the engine keeps people as a service that
+  any module's characters use: characters of any role a module names (not just `neighbor` and `resident`), each with a home place it
+  owns or whereabouts a module says, in-person talk scenes with whoever is present (turns, what the agent remembers of the talk, the
+  narrator voicing the character), and correspondence (letters there and back over hours, parcels within limits) for any character the
+  world lets the agent write to. Modules decide who exists and what they do: inventing them, their lives and schedules, when they visit
+  or write first, what they bring. What moves out of the engine is the neighbour's own rules in `neighbors.py` (when it writes first,
+  its parcels, its trade note, its visits), into the neighbourhood module. Ashfall's village becomes a dozen villagers at the village,
+  each someone to talk to through the same scenes. Two or three releases.
 - **C2. What made things can do.** The capability catalogue is fixed in `creations.py`: `CAPABILITIES`, `SENSOR_CONDITIONS` (`crop_ripe`,
   `visitor`, `dawn`, `dusk`, `hungry`, `tired`), `HELPER_EFFECTS` (`hurry_crops`, `find`, `comfort`). Two parts are already the pack's
   (`world` effects and `provides` abilities, in `content.json`); the rest assume Pip's stats and a garden (0.44.0 hides the crop ones where
@@ -110,18 +134,18 @@ Nine hooks, nineteen reads and thirty-four proposals, added one feature at a tim
 - **How:** a manifest `api: 2`, with `api: 1` manifests accepted and translated for a few releases (the shipped modules move in the same
   release); the sandbox runner and the builder's API page (`app/builder/api.md`) change with it.
 
-## Proposed releases
+## Releases
 Each a release with tests, mutation testing on what changed, Pip's world running unchanged, and the Ashfall day extended to cover it.
-1. **A: the small leaks** (A1-A5). The dashboard's name comes from `/state`; Ashfall's test reads the dashboard's text too.
-2. **B1 + B2: the night pass and the guide** made generic; Ashfall's projects are tidied overnight and its pages need no engine change.
-3. **B3 + B4: places and scopes** from the pack; a neighbour's home a character's place.
-4. **B5: panels** from modules; `/projects`, `/letters` and `/library/bookmarks` become panels; the Work tab renders any module's panel.
-5. **C2 + C3: capabilities and happenings' effects** from the pack and through `request`; Ashfall gains a water filter that works.
-6. **C1: letters as a module** (two releases: delayed delivery and replies, then the move); Ashfall's village can write.
-7. **D: the API consolidated** (`api: 2`), last, once the releases above have shown which proposals are really needed.
+1. **The small leaks and the rename** (A1-A5): no `pip` left in the engine, the old columns and legacy fields gone.
+2. **The dashboard into Pip's pack** (B5): the engine serves the pack's page and the shared renderer, `/published` replaces the feature
+   endpoints, `/<module>` the feature commands; Ashfall gets the plain page.
+3. **The night pass and the guide** (B1, B2): plans any module offers, tidied overnight; guide pages that say when they apply.
+4. **People, part one** (B3, B4, C1): place kinds and scopes from the pack; characters of any role with a home place they own; talk
+   scenes with whoever is present; Ashfall's villagers to talk to at the village.
+5. **People, part two** (C1): correspondence for any character; the neighbourhood module drives the neighbour's letters, parcels and
+   visits; `neighbors.py` keeps only the machinery.
+6. **What things can do, and what happens** (C2, C3): capabilities from the pack, happenings' other effects through `request`; Ashfall
+   gains a water filter that works.
+7. **The API consolidated** (D, `api: 2`), last, once the releases above have shown which proposals are really needed.
 
-## Open questions for the owner
-- Characters: should their in-person talk (visits in `neighbors.py`, talk scenes in `talk.py`, the narrator's `speak_in_person`) move
-  with letters in C1, or stay the engine's?
-- The dashboard: is it the engine's (generic panels, as B5 proposes) or a world's (each pack ships its own page)?
-- Names: rename `pip` to `agent` in stored data (module authors, scene JSON) with a migration, or only in new code with aliases?
+Later, not in this plan: the engine's abstract dashboard, with components worlds reuse and panels they plug in.
