@@ -180,12 +180,13 @@ def test_the_built_in_places_are_exactly_these_records(tmp_path):
     assert reg["workshop"].walk_minutes == 7 and P.registry(st, None, None)["workshop"].walk_minutes == 10.0
     assert reg["woods"] == P.Place("woods", "a patch of woods past the garden: sticks, bark, resin, berries and nuts, "
                                    "birdsong", 8, offers=("gather",), daylight_only=True,
-                                   verbs={"gather": ("forage for sticks, bark, berries and nuts", P._data()["start"][0]["verbs"]["gather"][1])})
+                                   verbs={"gather": ("forage for sticks, bark, berries and nuts", P._data()["start"][0]["verbs"]["gather"][1])},
+                                   kind="wild")
     assert reg["junkyard"] == P.Place(
         "junkyard", "a scrapyard over the hill: heaps of scrap metal, wire, springs and old machine parts", 15,
         offers=("gather", "browse"), daylight_only=True,
         verbs={"gather": ("scavenge through the heaps", P._data()["start"][1]["verbs"]["gather"][1]),
-               "browse": ("look over the heaps to see what's worth digging for", None)})
+               "browse": ("look over the heaps to see what's worth digging for", None)}, kind="yard")
     st.add_character("Marigold", "neighbor", None, "persona", 60, 0, about="a beekeeper")
     st.add_character("Briar", "neighbor", None, "persona", 60, 0)
     reg = P.registry(st, s, None)

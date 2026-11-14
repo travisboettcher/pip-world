@@ -88,7 +88,7 @@ def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     assert names("junkyard") == ["browse", "say"]
 
     class P:
-        scope = "junkyard"
+        scope, invented, kind = "junkyard", False, "yard"
         verbs = {"browse": ("short", "Look over the heaps.")}
     out = {s.name: s for s in T.specs_for(tools, "junkyard", place=P())}
     assert out["browse"].description == "Look over the heaps." and out["say"].description == T.REGISTRY["say"][0].description

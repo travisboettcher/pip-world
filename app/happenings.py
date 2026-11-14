@@ -139,8 +139,16 @@ def _one_of(rng: random.Random, seq):
     return seq[rng.randrange(len(seq))]
 
 
+def _tables(kind: str) -> list:
+    """What can be found at the world's own places of a kind (wild: a wood, the river flats; yard: a junkyard, the ruins), or anywhere
+    when it has none of that kind."""
+    starts = world_pack.active().data("places").get("start", [])
+    keys = [p["key"] for p in starts if p.get("kind") == kind] or list(finds.loot())
+    return [e for k in keys for e in finds.loot().get(k, [])]
+
+
 def _find_pool(kinds) -> list:
-    return [e for e in finds.loot().get("woods", []) if e[1] in kinds]
+    return [e for e in _tables("wild") if e[1] in kinds]
 
 
 def _found_item(rng, severity, kinds):
@@ -158,7 +166,7 @@ def _pest_loss(w, severity, rng, smallest):
 
 
 def _mending_part(rng):
-    pool = [e for e in finds.loot().get("junkyard", []) if e[1] == "material"]
+    pool = [e for e in _tables("yard") if e[1] == "material"]
     entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
     return {"name": entry[0], "qty": rng.randint(*tone_mod.size("mending_qty"))}
 
@@ -393,10 +401,12 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         lo, hi = tone_mod.size("found_coins", severity)
         return Plan([{"kind": "coins", "delta": rng.randint(lo, hi), **({"gift": True} if i.get("gift") else {})}])
     if kind == "item":
-        pool = {e[0]: e for e in finds.loot().get("woods", []) + finds.loot().get("junkyard", [])}
+        pool = {e[0]: e for table in finds.loot().values() for e in table}       # anything this world's places have
         name = str(i.get("name") or "").strip().lower()
         if name and name not in pool:
             raise ValueError(f"nothing called {name} is found in this world; leave the name out, or use one of: {', '.join(sorted(pool))}")
+        if not name and not _find_pool(("food", "seed", "material")):
+            raise ValueError("nothing is found in this world")
         item = _found_item(rng, severity, ("food", "seed", "material")) if not name else \
             {"kind": "item", "name": name, "qty": rng.randint(*tone_mod.size("found_items", severity)), "item_kind": pool[name][1], "description": pool[name][4], "attrs": pool[name][5]}
         return Plan([{**item, **({"gift": True} if i.get("gift") else {})}], [item["name"]])

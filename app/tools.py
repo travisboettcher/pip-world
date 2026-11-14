@@ -95,8 +95,15 @@ def is_here(scope: tuple[str, ...], location: str) -> bool:
 
 
 def listed_here(name: str, place) -> bool:
-    """An invented place offers the shared verbs its record lists (gather, browse), wherever it is."""
-    return bool(getattr(place, "invented", False)) and name in place.verbs
+    """A place offers the shared verbs its record lists (gather, browse), wherever it is: an invented place any of them, a world's own
+    place those its kind has (the ruins, a yard, can be browsed)."""
+    if not place or name not in place.verbs:
+        return False
+    if place.invented:
+        return True
+    from . import place_kinds
+    kind = place_kinds.registry().get(place.kind)
+    return bool(kind) and name in kind.verbs
 
 
 def out_of_place(ctx, name: str, scope: tuple[str, ...] | None = None) -> str:

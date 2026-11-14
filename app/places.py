@@ -104,6 +104,7 @@ class Place:
     heard: bool = False      # ...and Pip hasn't been yet: no description, no verbs
     mentions: list = field(default_factory=list)
     distance: str = ""
+    kind: str = ""           # a starting place's kind of place (places.json: wild, yard...), whose shared verbs it may offer
 
     @property
     def label(self) -> str:
@@ -150,7 +151,7 @@ def registry(state, settings, library) -> dict[str, Place]:
 
 def _built_in(p: dict, walk: float) -> Place:
     return Place(p["key"], p["description"], p.get("walk", walk), offers=tuple(p.get("offers", ())), daylight_only=p.get("daylight_only", False),
-                 verbs={v: tuple(x) for v, x in (p.get("verbs") or {}).items()})
+                 verbs={v: tuple(x) for v, x in (p.get("verbs") or {}).items()}, kind=p.get("kind", ""))
 
 
 def said_about(mentions: list, n: int = 2) -> str:

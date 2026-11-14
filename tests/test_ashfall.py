@@ -4,7 +4,8 @@ every chat command's answer is recorded, and none of it may name anything of Pip
 import json
 import re
 import time
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -74,11 +75,16 @@ def test_ashfall_is_a_world_of_its_own(ashfall):
     assert not PIPS_WORLD.search("\n".join(f.read_text() for f in ASHFALL.rglob("*") if f.is_file() and f.suffix in (".md", ".json")))
 
 
-async def test_a_day_in_ashfall_has_nothing_of_pips_world_in_it(tmp_path, ashfall, monkeypatch):
+DAYS = [datetime(2026, 3, 9, 7), datetime(2026, 7, 21, 7), datetime(2026, 11, 2, 7)] + [
+    datetime(2026, 1, 1, 7) + timedelta(days=12 * i) for i in range(int(os.environ.get("ASHFALL_MORE_DAYS", "0")))]   # more, by hand
+
+
+@pytest.mark.parametrize("start", DAYS, ids=[d.date().isoformat() for d in DAYS])
+async def test_a_day_in_ashfall_has_nothing_of_pips_world_in_it(tmp_path, ashfall, monkeypatch, start):
     from app.loop import Agent
     from app.pacing import get_policy
     from app.state import State
-    clock = [datetime.now().replace(hour=7, minute=0, second=0, microsecond=0).timestamp()]
+    clock = [start.timestamp()]
     monkeypatch.setattr(time, "time", lambda: clock[0])
     monkeypatch.delenv("TOOLS", raising=False)
     s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "a.db"), persona_path="/nonexistent", pacing="manual", min_tick_interval=0,
@@ -273,3 +279,67 @@ def test_the_menu_without_crops_word_for_word(ashfall):
     assert m[3] == ("sensor: it notices something and reacts; `condition` is one of visitor (someone comes to talk to Wren), dawn, dusk, "
                     "hungry (Wren is hungry), tired (Wren is tired); `alert` is a short line describing how it reacts")
     assert m[4].startswith("helper: it regularly helps in one of these ways (`effect`): find (it turns up")
+
+
+def test_what_a_happening_finds_or_needs_mending_is_this_worlds(tmp_path, ashfall):
+    import random
+    from app import happenings as H
+    from app.state import State
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "a.db"), persona_path="/x")
+    st = State(s)
+    flats = {e[0] for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["flats"]}
+    ruins = {e[0] for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["ruins"]}
+    for seed in range(20):
+        (found,) = H.decide(st, s, {"category": "salvage", "tone": "good", "severity": "medium", "effects": [{"kind": "item"}]},
+                            time.time(), random.Random(seed))["effects"]
+        assert found["name"] in flats                                                  # what turns up is what the wild places have
+        part = H._mending_part(random.Random(seed))["name"]
+        assert part in ruins and next(e for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["ruins"] if e[0] == part)[1] == "material"
+    named = H.decide(st, s, {"category": "salvage", "tone": "good", "effects": [{"kind": "item", "name": "copper wire"}]}, time.time(), random.Random(1))
+    assert named["effects"][0]["name"] == "copper wire"
+    with pytest.raises(ValueError, match="nothing called brass wire is found in this world"):
+        H.decide(st, s, {"category": "salvage", "tone": "good", "effects": [{"kind": "item", "name": "brass wire"}]}, time.time(), random.Random(1))
+
+
+def test_a_world_with_nothing_to_find_finds_nothing(tmp_path):
+    import random
+    from app import happenings as H
+    from app.state import State
+    from tests.test_world_pack import pack_dir
+    d = pack_dir(tmp_path)
+    s = Settings(world_pack=str(d), db_path=str(tmp_path / "a.db"), persona_path="/x")
+    try:
+        W.set_active(W.load(s))
+        st = State(s)
+        with pytest.raises(ValueError, match="^nothing is found in this world$"):
+            H.decide(st, s, {"category": "found", "tone": "good", "effects": [{"kind": "item"}]}, time.time(), random.Random(1))
+    finally:
+        W.set_active(W.load(Settings()))
+
+
+def test_the_ruins_can_be_browsed_and_the_flats_cannot(tmp_path, ashfall):
+    from app import places
+    from app import tools as T
+    from app.state import State
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "a.db"), persona_path="/x")
+    st = State(s)
+    reg = places.registry(st, s, None)
+    assert reg["ruins"].kind == "yard" and reg["flats"].kind == "wild"
+    assert T.listed_here("browse", reg["ruins"]) and not T.listed_here("browse", reg["flats"]) and not T.listed_here("browse", None)
+    assert not T.listed_here("gather", reg["village"])                                 # it lists nothing to do
+    assert "browse" in {t.name for t in T.specs_for({"browse": T.REGISTRY["browse"]}, "ruins", reg["ruins"])}
+
+
+def test_a_wild_place_with_nothing_listed_has_nothing_to_find(tmp_path):
+    from app import happenings as H
+    from tests.test_world_pack import pack_dir
+    d = pack_dir(tmp_path)
+    (d / "places.json").write_text(json.dumps({"home": {"key": "camp"}, "start": [{"key": "dunes", "kind": "wild", "description": "dunes"},
+                                                                                  {"key": "pit", "kind": "yard", "description": "a pit"}]}))
+    (d / "items.json").write_text(json.dumps({"kinds": ["material"], "finds": {"pit": [["bolts", "material", 1, [1, 2], "bolts", {}]]}}))
+    try:
+        W.set_active(W.load(Settings(world_pack=str(d))))
+        assert H._tables("wild") == [] and [e[0] for e in H._tables("yard")] == ["bolts"]
+        assert [e[0] for e in H._tables("sight")] == ["bolts"]                         # none of that kind: anything the world has
+    finally:
+        W.set_active(W.load(Settings()))
