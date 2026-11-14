@@ -12,7 +12,8 @@ shipped `reading` module, on the engine's first source (`books`); **5e built (0.
 weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
 map tool arguments, public events, `creation`, and a module's work session; **5f built (0.42.0)**: crafting is the shipped `crafting`
 module; **6a built (0.43.0)**: stakes (`at_zero`, `harm`); **6b built (0.44.0)**: Ashfall, the second world, and a pack's own
-`modules`. Next: phase 7, removing the engine's fallbacks. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+`modules`; **7a built (0.45.0)**: the season is the world's, and the one-time moves for old installs are gone. Next: 7b, the
+readers of a module's events. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -330,8 +331,8 @@ minutes) as the second source, `weather` (op `now`: `{reading}`, none without a 
 minutes and publishes the world's `weather` (`{condition, temp, unit, daylight, next_rising, next_setting}`) and `season` (from the
 date, the right way round for its `hemisphere` param, `HEMISPHERE`), and shows the agent an "Outside" status. The engine reads what is
 published (`modules.published`, `modules.world_season`): the scene's moment, the `weather` and `time` reads, happenings and layouts.
-Without a module publishing a season, the engine still reckons one from the date (until phase 7); without one publishing the weather,
-there is none. The engine's weather line, its wording of conditions and its refresh in the loop are gone. A wasteland's own sky module
+Without a module publishing a season there is none (since 0.45.0; before, the engine reckoned one from the date); without one
+publishing the weather, there is none either. The engine's weather line, its wording of conditions and its refresh in the loop are gone. A wasteland's own sky module
 invents ash days and publishes them the same way, asking no source.
 
 **5f, crafting (planned 2026-11-13).** The biggest feature: projects (plans, stages, the dice, the narrator's judgement, materials,

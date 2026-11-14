@@ -176,7 +176,7 @@ async def test_a_live_place_is_built_from_its_parts_and_drawn_instead_of_its_tem
     assert WV.scene_view(st, s, None, "woods")["layout"] is None                                      # not built yet
     assert await L.step(st, s, agent.runner, NOW) == 1 and await L.step(st, s, agent.runner, NOW) == 0
     b = st.module(m["id"])["built"]
-    assert b["parts"] == {"tree": st.modules()[0]["id"]} and b["season"] == L.season(s, NOW) and b["version"] == 1
+    assert b["parts"] == {"tree": st.modules()[0]["id"]} and b["season"] == L.season(st) and b["version"] == 1
     assert [sh["at"] for sh in b["shapes"]] == [[0.0, -0.5, -4.0], [3.0, 1.0, -4.0], [-3.0, 0.5, -4.0], [0.0, 1.0, -8.0]]
     assert [a["id"] for a in b["anchors"]] == ["pip", "big-shade", "tree-1-shade", "tree-2-shade"]
     assert b["anchors"][1]["at"] == [4.0, 0.0, -4.0] and "big" in b["anchors"][1]["tags"]               # turned: its shade is to the side
@@ -202,7 +202,10 @@ async def test_a_layout_is_rebuilt_when_the_season_or_a_part_changes_and_a_failu
     s, st, agent, m = await laid_out(tmp_path)
     await L.step(st, s, agent.runner, NOW)
     assert not L.stale(st, s, st.module(m["id"]), NOW)
-    assert L.stale(st, s, st.module(m["id"]), NOW + 100 * 86400)                                          # another season
+    from tests.test_sky import sky_says
+    sky_says(st, None, "winter")
+    assert L.stale(st, s, st.module(m["id"]), NOW)                                                       # another season
+    sky_says(st, None, "")
     tree = L.part_named(st, "tree")
     two = await M.propose(st, s, agent.runner, "world", part_man(), TREE.replace("s / 2", "s"), replaces=tree["id"], now=NOW)
     assert L.stale(st, s, st.module(m["id"]), NOW) and await L.step(st, s, agent.runner, NOW) == 1
@@ -346,10 +349,9 @@ async def test_what_a_place_and_its_parts_are_told(tmp_path):
     p = await M.propose(st, s, agent.runner, "world", place_man(), plan, now=NOW)
     b = await L.build_place(st, s, agent.runner, st.module(p["id"]), NOW)
     own, part = b["shapes"]
-    assert own["tip"] == {"title": "woods", "text": L.season(s, NOW) + "{}"} and own["at"][0] == L.seed_of("woods") % 50
-    assert part["tip"] == {"title": L.season(s, NOW), "text": "[('a', 1), ('b', 'y')]"}
+    assert own["tip"] == {"title": "woods", "text": L.season(st) + "{}"} and own["at"][0] == L.seed_of("woods") % 50
+    assert part["tip"] == {"title": L.season(st), "text": "[('a', 1), ('b', 'y')]"}
     assert part["at"][0] == L.seed_of("woods", "echo", '{"b": "y"}') % 50
-    assert L.season(s, NOW) != L.season(type(s)(hemisphere="north"), NOW)                                      # the hemisphere counts
     assert L.seed_of("woods") == int(__import__("hashlib").sha256(b"woods").hexdigest()[:8], 16)
 
 

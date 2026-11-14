@@ -51,25 +51,6 @@ def test_ability_xp_accumulates_and_orders(tmp_path, clock):
     assert list(st.abilities()) == ["patience", "precision"]
 
 
-def test_old_craft_xp_seeds_abilities_once(tmp_path, clock):
-    st = mk(tmp_path)
-    st.db.execute("INSERT INTO skills VALUES ('a', 60)")
-    st.db.execute("INSERT INTO skills VALUES ('b', 40)")
-    st.db.execute("DELETE FROM meta WHERE key = 'abilities_seeded'")
-    st.db.commit()
-    st._seed_abilities()
-    ab = st.abilities()
-    assert ab == {"handiness": pytest.approx(40), "precision": pytest.approx(30), "patience": pytest.approx(30)}
-    assert st.meta("abilities_seeded") == "1"
-    st._seed_abilities()
-    assert st.abilities() == ab
-
-
-def test_fresh_world_seeds_no_abilities_but_marks_seeded(tmp_path, clock):
-    st = mk(tmp_path)
-    assert st.abilities() == {} and st.meta("abilities_seeded") == "1"
-
-
 # --- creations ---------------------------------------------------------------------------
 def test_creations_roundtrip_give_and_find(tmp_path, clock):
     st = mk(tmp_path)
@@ -632,3 +613,26 @@ def test_usage_accumulates_per_day_and_budget(tmp_path, clock):
     assert st.budget_exceeded() is False
     st.add_usage(20, 15)
     assert st.usage_today()["total_tokens"] == 100 and st.budget_exceeded() is True     # at the budget counts as exceeded
+
+
+def test_the_old_feature_tables_go_and_a_database_that_never_moved_them_is_refused(tmp_path, clock):
+    import sqlite3
+    from app.config import Settings
+    from app.state import DatabaseTooOld, State
+    st = mk(tmp_path)
+    for t in State.OLD_TABLES:                                                          # an install that moved them: empty, or dropped already
+        st.db.execute(f"CREATE TABLE IF NOT EXISTS {t} (x INTEGER)")
+    st.db.commit()
+    st = State(st.s)
+    have = {r["name"] for r in st.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert not set(State.OLD_TABLES) & have
+    for t in ("projects", "bookmarks"):
+        db = sqlite3.connect(st.s.db_path)
+        db.execute(f"CREATE TABLE {t} (x INTEGER)")
+        db.execute(f"INSERT INTO {t} VALUES (1)")
+        db.commit()
+    with pytest.raises(DatabaseTooOld) as e:
+        State(Settings(db_path=st.s.db_path, persona_path="/x"))
+    assert str(e.value) == ("this database is from before pip-world 0.44 (its bookmarks, projects haven't moved into their modules): "
+                            "start it once on 0.44 to move them, then on this version")
+    assert State.OLD_TABLES == ("garden", "market_prices", "stalls", "tills", "bookmarks", "projects", "skills")

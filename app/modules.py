@@ -362,7 +362,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     reads = man["reads"]
     if "time" in reads:
         t = datetime.fromtimestamp(now)
-        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": world_season(state, settings, now),
+        ctx["time"] = {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": world_season(state),
                        "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     if "weather" in reads:
         w = published(state, "weather")
@@ -972,11 +972,10 @@ def published(state, key: str, default=None):
     return default
 
 
-def world_season(state, settings, now: float) -> str:
-    """The world's season: what a live module publishes (the sky's), else the engine's own reckoning from the date (until phase 7)."""
-    from .happenings import season_of
+def world_season(state, settings=None, now: float | None = None) -> str:
+    """The world's season: what a live module publishes (the sky's), or "" in a world where nothing does."""
     s = published(state, "season")
-    return s if isinstance(s, str) and s else season_of(now, settings.hemisphere)
+    return s if isinstance(s, str) else ""
 
 
 def for_sale(state) -> list[tuple]:
@@ -1804,7 +1803,7 @@ async def _try_build(state, settings, runner, m: dict, now: float) -> dict:
     report = {"calls": 1, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "placed": [], "unplaced": []}
     try:
         if m["kind"] == "part":
-            b = await layouts.build_part(runner, m, {}, layouts.season(settings, now, state), layouts.seed_of(m["name"]))
+            b = await layouts.build_part(runner, m, {}, layouts.season(state), layouts.seed_of(m["name"]))
         elif "kinds" in m["manifest"]:                           # a kind's layout: tried on a made-up place of each kind
             from .looks import fallback_scene
             shapes = anchors_n = 0

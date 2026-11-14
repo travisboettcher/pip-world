@@ -72,7 +72,7 @@ def test_the_moment_the_map_is_drawn_for(tmp_path, monkeypatch):
     s, st, gm, agent = make(tmp_path, weather=True, hemisphere="south")
     at = datetime(2026, 7, 9, 14, 25).timestamp()
     from tests.test_sky import RAIN, sky_says
-    sky_says(st, RAIN)                                                                  # what the sky publishes
+    sky_says(st, RAIN, "winter")                                                        # what the sky publishes
     now = WV.map_view(st, s, None, now=at)["now"]
     assert now == {"ts": at, "minutes": 14 * 60 + 25, "season": "winter", "weather": "rainy"}
     sky_says(st, None)

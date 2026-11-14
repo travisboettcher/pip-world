@@ -21,8 +21,8 @@ def on_time(ctx):
     me = ctx["agent"]
     prompt = ("Write tonight's broadcast from a walled village of survivors by a reservoir in a dead city, twenty years after the ash: "
               "two or three short notices read over the radio (the water ration, a work party, a warning about dogs in the east blocks, a "
-              "birth, a trade). Plain and calm, in the voice of whoever reads them. It is " + ctx["time"]["season"] + ". "
-              + me["name"] + " is listening in her shelter.")
+              "birth, a trade). Plain and calm, in the voice of whoever reads them. "
+              + (f"It is {ctx['time']['season']}. " if ctx["time"]["season"] else "") + me["name"] + " is listening in her shelter.")
     return {"ask": {"prompt": prompt, "purpose": "broadcast", "most": 400}, "schedule": _next_broadcast(ctx)}
 
 

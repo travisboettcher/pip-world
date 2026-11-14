@@ -10,7 +10,6 @@ from datetime import date
 from .config import Settings
 from . import firsts as firstsmod
 from .memory import RECALL_EVENT_KINDS, event_importance, STOP_WORDS, recall_text
-from .text import craft_name
 from . import world as world_content
 from .world import normalize_attrs
 from . import stats as stats_mod
@@ -54,13 +53,6 @@ CREATE TABLE IF NOT EXISTS items (
   description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'tool',
   qty INTEGER NOT NULL DEFAULT 1, attrs TEXT NOT NULL DEFAULT '{}', ts REAL NOT NULL
 );
-CREATE TABLE IF NOT EXISTS projects (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, goal TEXT NOT NULL DEFAULT '',
-  craft TEXT NOT NULL, difficulty INTEGER NOT NULL,
-  stages TEXT NOT NULL, tools TEXT NOT NULL DEFAULT '[]', history TEXT NOT NULL DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'active', outcome TEXT NOT NULL DEFAULT '',
-  ts REAL NOT NULL, finished_at REAL
-);
 CREATE TABLE IF NOT EXISTS work_session (
   id INTEGER PRIMARY KEY CHECK (id = 1), project_id INTEGER NOT NULL, stage INTEGER NOT NULL,
   minutes REAL NOT NULL, started_at REAL NOT NULL, ends_at REAL NOT NULL
@@ -79,7 +71,6 @@ CREATE TABLE IF NOT EXISTS letters (
   text TEXT NOT NULL, enclosed TEXT NOT NULL DEFAULT '', parcel TEXT, deliver_at REAL NOT NULL,
   delivered_at REAL, attempts INTEGER NOT NULL DEFAULT 0, reply_to INTEGER
 );
-CREATE TABLE IF NOT EXISTS skills (craft TEXT PRIMARY KEY COLLATE NOCASE, xp REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS night_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, op TEXT NOT NULL, target_kind TEXT NOT NULL DEFAULT '',
   target_id INTEGER, args TEXT NOT NULL DEFAULT '{}', before TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '',
@@ -224,6 +215,10 @@ def name_key(name: str) -> str:
     return " ".join(_singular(w) for w in str(name).lower().split())
 
 
+class DatabaseTooOld(RuntimeError):
+    """A database whose features haven't moved into their modules: it must be started once on 0.44 first."""
+
+
 class State:
     def __init__(self, settings: Settings, path: str | None = None):
         self.s = settings
@@ -254,11 +249,6 @@ class State:
                 ("events", "importance", "INTEGER NOT NULL DEFAULT 0"),
                 ("reflections", "grounded", "INTEGER NOT NULL DEFAULT 1"),     # 0 = a hunch: nothing cited / unsupported
                 ("reflections", "support", "TEXT NOT NULL DEFAULT 'legacy'"),  # supported|partly|unsupported|unchecked|none|legacy
-                ("projects", "questions", "TEXT NOT NULL DEFAULT '[]'"),   # open questions (strings)
-                ("projects", "hidden", "TEXT NOT NULL DEFAULT '[]'"),      # [{fact, found}], unseen until discovered
-                ("projects", "findings", "TEXT NOT NULL DEFAULT '[]'"),    # what Pip has learned (strings)
-                ("projects", "dry", "INTEGER NOT NULL DEFAULT 0"),         # dry experiments in a row
-                ("projects", "revised_at", "INTEGER NOT NULL DEFAULT 0"),  # len(history) at the last plan revision
                 ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what Pip said it expects (may be empty)
                 ("work_session", "about", "TEXT NOT NULL DEFAULT ''"),      # what a module's session is about (a project's name)
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
@@ -296,12 +286,7 @@ class State:
                 if name not in have:
                     self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, ?)",
                                     (name, row.get(name, d.get("start", 0.5)), row.get(f"{name}_alerted", 0)))
-            self._normalize_crafts()
-            self._seed_abilities()
-            self._move_garden()
-            self._move_market()
-            self._move_bookmarks()
-            self._move_crafting()
+            self._from_before_modules()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -703,94 +688,20 @@ class State:
             self.db.execute("INSERT OR IGNORE INTO happening_rolls (slot, ts, roll, hit) VALUES (?, ?, ?, ?)", (slot, ts, roll, int(hit)))
             self.db.commit()
 
-    # --- the garden, before it was a module ------------------------------
-    def _move_garden(self) -> None:
-        """Once: an install from before 0.35.0 keeps its garden. Its plots (and the plots it cleared) move into the `garden` module's
-        store, where the shipped module (module_library/garden.py) reads them, and the old table goes."""
-        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'garden'").fetchone():
-            return
-        plots = {str(r["plot"]): {"seed": r["seed"], "crop": r["crop"], "planted_at": r["planted_at"], "ready_at": r["ready_at"],
-                                  "yield": r["yield"], "food_value": r["food_value"], "notified": bool(r["notified"])}
-                 for r in self.db.execute("SELECT * FROM garden")}
-        extra = int(self.meta("extra_plots") or 0)
-        if not self.store("garden"):
-            self.merge_store("garden", {"plots": plots, **({"meta": {"extra_plots": extra}} if extra else {})})
-        self.db.execute("DROP TABLE garden")
-        self.db.commit()
+    # --- an install from before its features were modules ----------------
+    OLD_TABLES = ("garden", "market_prices", "stalls", "tills", "bookmarks", "projects", "skills")
 
-    # --- the market, before it was a module ------------------------------
-    def _move_market(self) -> None:
-        """Once: an install from before 0.38.0 keeps its trade. Prices, tills, the agent's stall, what's on account and the neighbours' wares
-        move into the `trade` module's store (module_library/trade.py), keyed as it keys them, and the old tables go."""
-        import zlib
-
-        def slot(*parts):
-            return "%08x" % zlib.crc32("|".join(parts).encode())
+    def _from_before_modules(self) -> None:
+        """The tables the engine kept before its features were modules (0.35.0 to 0.42.0) go. Up to 0.44 each moved into its module's store
+        the first time that version started; one still holding rows was never moved, and its database must be started once on 0.44
+        first (DatabaseTooOld)."""
         tables = {r["name"] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        if "market_prices" not in tables:
-            return
-        moved: dict = {"prices": {}, "tills": {}, "stall": {}, "accounts": {}, "wares": {}}
-        for r in self.db.execute("SELECT * FROM market_prices"):
-            moved["prices"][slot(r["place"], r["item"])] = {"booth": r["place"], "item": r["item"], "local": r["local"], "at": r["local_at"],
-                                                            "day": r["day"], "sold": r["sold_today"]}
-        for r in self.db.execute("SELECT * FROM tills"):
-            moved["tills"][slot(r["place"])] = {"booth": r["place"], "day": r["day"], "coins": r["coins"]}
-        for r in self.db.execute("SELECT * FROM stalls"):
-            moved["stall"][slot(r["place"], r["item"])] = {**{k: r[k] for k in ("place", "item", "name", "kind", "description", "qty", "ask", "sold",
-                                                                                 "earned", "sold_today", "day")}, "attrs": json.loads(r["attrs"])}
-        for r in self.db.execute("SELECT key, on_account FROM places"):
-            if json.loads(r["on_account"] or "{}"):
-                moved["accounts"][slot(r["key"])] = {"place": r["key"], "items": json.loads(r["on_account"])}
-        if "wares" in {c["name"] for c in self.db.execute("PRAGMA table_info(characters)")}:
-            for r in self.db.execute("SELECT name, wares FROM characters WHERE kind = 'neighbor'"):
-                if json.loads(r["wares"] or "[]"):
-                    moved["wares"][slot(r["name"])] = {"name": r["name"], "wares": json.loads(r["wares"])}
-        if not self.store("trade"):
-            self.merge_store("trade", {k: v for k, v in moved.items() if v})
-        self.db.execute("UPDATE places SET on_account = '{}'")
-        for t in ("market_prices", "stalls", "tills"):
+        full = [t for t in self.OLD_TABLES if t in tables and self.db.execute(f"SELECT 1 FROM {t} LIMIT 1").fetchone()]
+        if full:
+            raise DatabaseTooOld(f"this database is from before pip-world 0.44 (its {', '.join(full)} haven't moved into their modules): "
+                                 "start it once on 0.44 to move them, then on this version")
+        for t in self.OLD_TABLES:
             self.db.execute(f"DROP TABLE IF EXISTS {t}")
-        self.db.commit()
-
-    # --- projects and crafts, before crafting was a module ---------------------
-    def _move_crafting(self) -> None:
-        """Once: an install from before 0.42.0 keeps its projects, crafts and workshop space. They move into the `crafting` module's store
-        (module_library/crafting.py), kept as it keeps them (a finished project small), and the old tables are emptied."""
-        rows = self.db.execute("SELECT * FROM projects ORDER BY id").fetchall()
-        crafts = self.db.execute("SELECT craft, xp FROM skills").fetchall()
-        extra = int(self.meta("extra_project_slots") or 0)
-        if not rows and not crafts and not extra:
-            return
-        projects = {}
-        for r in rows:
-            p = {k: json.loads(r[k]) if k in ("stages", "tools", "history", "questions", "hidden", "findings") else r[k] for k in r.keys()}
-            if p["status"] in ("done", "abandoned"):                # kept small, as the module keeps a finished one
-                p = {**p, "history": [{k: h.get(k) for k in ("ts", "stage", "result", "minutes", "text", "kind", "interrupted")} for h in p["history"][-4:]],
-                     "hidden": [], "findings": p["findings"][-2:], "stages": [{**st, "materials": {}} for st in p["stages"]]}
-            projects[str(p["id"])] = p
-        if not self.store("crafting"):
-            self.merge_store("crafting", {"projects": projects, "skills": {r["craft"]: r["xp"] for r in crafts},
-                                          "meta": {"all": {"next_id": max([int(k) for k in projects] + [0]) + 1, "extra_slots": extra}}})
-        self.db.execute("DELETE FROM projects")
-        self.db.execute("DELETE FROM skills")
-        self.db.execute("DELETE FROM meta WHERE key = 'extra_project_slots'")
-        self.db.commit()
-
-    # --- bookmarks, before reading was a module ---------------------------
-    def _move_bookmarks(self) -> None:
-        """Once: an install from before 0.39.0 keeps where it is in each book. Its bookmarks move into the `reading` module's store
-        (module_library/reading.py), and the old table goes."""
-        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bookmarks'").fetchone():
-            return
-        marks = {str(r["book_id"]): {"book_id": r["book_id"], "title": r["title"], "section": r["section"], "offset": r["offset"],
-                                     "percent": r["percent"], "sessions": r["sessions"], "finished": bool(r["finished"]),
-                                     "unreadable": bool(r["unreadable"]), "last_read": r["last_read"]}
-                 for r in self.db.execute("SELECT * FROM bookmarks")}
-        if marks and not self.store("reading"):
-            self.merge_store("reading", {"marks": marks})
-        self.db.execute("DROP TABLE bookmarks")
-        self.db.commit()
-
 
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
@@ -851,20 +762,6 @@ class State:
         """ability -> xp (minutes of practice)."""
         with self.lock:
             return {r["name"]: r["xp"] for r in self.db.execute("SELECT * FROM abilities ORDER BY xp DESC")}
-
-    def _seed_abilities(self) -> None:
-        """One-time: spread the old per-craft xp over a general blend so earlier practice isn't lost."""
-        if self.meta("abilities_seeded"):
-            return
-        total = sum(self.skills().values())
-        if total:
-            self.add_ability_xp({"handiness": total * 0.4, "precision": total * 0.3, "patience": total * 0.3})
-        self.set_meta(abilities_seeded="1")
-
-    def skills(self) -> dict[str, float]:
-        """craft -> xp (minutes of practice)."""
-        with self.lock:
-            return {r["craft"]: r["xp"] for r in self.db.execute("SELECT * FROM skills ORDER BY xp DESC")}
 
     # --- creations --------------------------------------------------------------
     @staticmethod
@@ -1586,17 +1483,6 @@ class State:
             return [dict(r) for r in self.db.execute(
                 "SELECT r.text, r.source, r.ref, r.ts FROM memory_context c JOIN recall_index r ON r.source = c.source AND r.ref = c.ref "
                 f"WHERE c.faded = 0 AND ({' OR '.join(where)}) ORDER BY c.ts DESC LIMIT ?", (*args, limit))]
-
-    def _normalize_crafts(self) -> None:
-        """Older plans stored long craft names ('clockmaking (gear train, escap'); fold them into the core skill."""
-        for r in self.db.execute("SELECT id, craft FROM projects").fetchall():
-            if craft_name(r["craft"]) != r["craft"]:
-                self.db.execute("UPDATE projects SET craft = ? WHERE id = ?", (craft_name(r["craft"]), r["id"]))
-        for r in self.db.execute("SELECT craft, xp FROM skills").fetchall():
-            if craft_name(r["craft"]) != r["craft"]:
-                self.db.execute("DELETE FROM skills WHERE craft = ?", (r["craft"],))
-                self.db.execute("INSERT INTO skills VALUES (?, ?) ON CONFLICT(craft) DO UPDATE SET xp = xp + excluded.xp",
-                                (craft_name(r["craft"]), r["xp"]))
 
     def _backfill_recall(self) -> None:
         """(Re)build the recall index from everything stored. Runs when RECALL_INDEX_VERSION changes."""

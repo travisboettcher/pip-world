@@ -66,7 +66,7 @@ def moment(state, settings, now: float) -> dict:
     """The time of day (minutes past midnight), the season and the weather, as the map and the scenes draw them."""
     w = modules.published(state, "weather")
     local = datetime.fromtimestamp(now)
-    return {"ts": now, "minutes": local.hour * 60 + local.minute, "season": modules.world_season(state, settings, now),
+    return {"ts": now, "minutes": local.hour * 60 + local.minute, "season": modules.world_season(state),
             "weather": w.get("condition") if isinstance(w, dict) else None}
 
 

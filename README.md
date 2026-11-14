@@ -31,6 +31,8 @@ docker compose up -d          # pulls the published image (ghcr.io/travisboettch
 To build the image from your checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 The image is built and published by CI (`.github/workflows/image.yml`): `:latest` follows `main`, and each release tag `vX.Y.Z` is published as `:X.Y.Z`;
 pin one in `docker-compose.yml` if you want upgrades to be a choice.
+An install from before 0.44 upgrades through 0.44: start that version once (it moves the old tables into their modules), then the
+latest; a newer version refuses a database that hasn't.
 
 Open <http://localhost:8000/ui/> for the dashboard. Talk to Pip from a terminal with the stdlib-only CLI:
 

@@ -674,39 +674,6 @@ async def test_scenes_wishes_and_pictures_read_what_it_publishes(tmp_path):
 
 
 # --- the market before it was a module ------------------------------------------------------------------------------------------------
-def test_an_older_install_keeps_its_prices_tills_stall_accounts_and_wares(tmp_path):
-    from app.config import Settings
-    from app.state import State
-    path = str(tmp_path / "old.db")
-    st = State(Settings(), path)
-    st.db.executescript("""
-        CREATE TABLE market_prices (place TEXT, item TEXT, local REAL, local_at REAL, day TEXT, sold_today INTEGER, PRIMARY KEY (place, item));
-        CREATE TABLE stalls (place TEXT, item TEXT, name TEXT, kind TEXT, description TEXT, attrs TEXT, qty INTEGER, ask INTEGER, sold INTEGER,
-                             earned INTEGER, sold_today INTEGER, day TEXT, PRIMARY KEY (place, item));
-        CREATE TABLE tills (place TEXT PRIMARY KEY, coins INTEGER, day TEXT);
-        ALTER TABLE characters ADD COLUMN wares TEXT NOT NULL DEFAULT '[]';
-        INSERT INTO market_prices VALUES ('Brygdon', 'tomato', 1.2, 100.0, '2026-11-10', 2);
-        INSERT INTO stalls VALUES ('Brygdon', 'tomato', 'tomatoes', 'food', 'ripe', '{"food_value": 0.5}', 6, 3, 1, 3, 0, '');
-        INSERT INTO tills VALUES ('Brygdon', 73, '2026-11-10');
-    """)
-    st.add_place("Saltholm", "saltholm", kind="shop", status="real", created_at=NOW, heard_at=NOW, loot=LOOT, verbs={})
-    st.update_place("Saltholm", on_account={"brass wire": 7})
-    ch = st.add_character("Oriel", "neighbor", None, "x", 60, NOW)
-    st.db.execute("UPDATE characters SET wares = ? WHERE id = ?", ('[{"name": "sea glass", "kind": "material", "per_day": 3}]', ch["id"]))
-    st.db.commit()
-    st = State(Settings(), path)
-    got = st.store("trade")
-    assert got["prices"] == {slot("Brygdon", "tomato"): {"booth": "Brygdon", "item": "tomato", "local": 1.2, "at": 100.0, "day": "2026-11-10", "sold": 2}}
-    assert got["tills"] == {slot("Brygdon"): {"booth": "Brygdon", "day": "2026-11-10", "coins": 73}}
-    assert got["stall"] == {slot("Brygdon", "tomato"): {"place": "Brygdon", "item": "tomato", "name": "tomatoes", "kind": "food", "description": "ripe",
-                                                         "qty": 6, "ask": 3, "sold": 1, "earned": 3, "sold_today": 0, "day": "", "attrs": {"food_value": 0.5}}}
-    assert got["accounts"] == {slot("Saltholm"): {"place": "Saltholm", "items": {"brass wire": 7}}}
-    assert got["wares"] == {slot("Oriel"): {"name": "Oriel", "wares": [{"name": "sea glass", "kind": "material", "per_day": 3}]}}
-    tables = {r["name"] for r in st.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert not {"market_prices", "stalls", "tills"} & tables and st.place_row("Saltholm")["on_account"] == {}
-    assert State(Settings(), path).store("trade") == got                              # once
-
-
 def test_the_guide_tells_of_trade_while_its_tools_are_offered(tmp_path):
     s, st, agent = world(tmp_path)
     page = "Some places have booths: a shop, or a market with several."

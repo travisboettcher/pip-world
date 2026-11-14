@@ -36,7 +36,6 @@ RESOLVE_AFTER_MINUTES = 45        # or this long awake after it was first shown
 FRESH_HOURS = 3                   # a resolved happening stays in Pip's prompt this long
 
 SEASONS = ("winter", "spring", "summer", "autumn")
-SEASON_OF_MONTH = ("winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter")   # January first
 # What a season makes likelier (a missing entry is 1): which categories come up, and the tone of a category (see DESIGN-happenings.md, "Seasons").
 OLD_NOTE_DAYS = 2                                                       # a note this old can come back to mind
 MIN_DIARY = 7
@@ -60,7 +59,7 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-# --- the dice the engine still owns: a secret per install, the season, the lens, the amounts ----------------------------
+# --- the dice the engine still owns: a secret per install, the lens, the amounts ----------------------------
 def salt(state) -> str:
     """A secret per install, so the dice are reproducible here and not guessable from outside."""
     value = state.meta("happenings_salt")
@@ -68,12 +67,6 @@ def salt(state) -> str:
         value = secrets.token_hex(8)
         state.set_meta(happenings_salt=value)
     return value
-
-
-def season_of(now: float, hemisphere: str = "north") -> str:
-    """The meteorological season of a timestamp (December to February is winter in the north; the south is half a year along)."""
-    month = datetime.fromtimestamp(now).month - 1
-    return SEASON_OF_MONTH[(month + (6 if hemisphere == "south" else 0)) % 12]
 
 
 def pick_lens(rng: random.Random, tone: str) -> str:
@@ -115,7 +108,7 @@ def world(state, settings, now: float) -> dict:
     creations = state.creations()
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(),
-            "season": modules.world_season(state, settings, now) if settings.happenings_seasons else None,
+            "season": (modules.world_season(state) or None) if settings.happenings_seasons else None,
             "low": stats_mod.low(state), "stats": stats_mod.declared(settings), "down": stakes.condition(state) is not None,
             "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
             "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],

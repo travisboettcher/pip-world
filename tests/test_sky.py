@@ -88,18 +88,18 @@ def test_how_the_sky_is_worded():
     assert G["line"]({**RAIN, "next_setting": 18 * 3600 + 30 * 60}, 0) == "rain, 9 C; the sun sets at 6:30 PM."
 
 
-def test_the_engine_reads_the_published_season_and_falls_back_to_its_own(tmp_path):
-    from app.happenings import season_of
+def test_the_engine_reads_the_published_season_and_without_one_there_is_none(tmp_path):
     s, st, gm, agent = make(tmp_path)
     now = time.time()
-    assert M.world_season(st, s, now) == season_of(now, s.hemisphere) and M.published(st, "season") is None and M.published(st, "x", 3) == 3
-    sky_says(st, RAIN, "midwinter")
-    assert M.world_season(st, s, now) == "midwinter" and WV.moment(st, s, now)["season"] == "midwinter"
-    from app import happenings as H, layouts as L
+    assert M.world_season(st) == "" and M.published(st, "season") is None and M.published(st, "x", 3) == 3
     s.happenings_seasons = True
-    assert H.world(st, s, now)["season"] == "midwinter" and L.season(s, now, st) == "midwinter" and L.season(s, now) == season_of(now, s.hemisphere)
+    from app import happenings as H, layouts as L
+    assert H.world(st, s, now)["season"] is None and L.season(st) == "" and WV.moment(st, s, now)["season"] == ""
+    sky_says(st, RAIN, "midwinter")
+    assert M.world_season(st) == "midwinter" and WV.moment(st, s, now)["season"] == "midwinter"
+    assert H.world(st, s, now)["season"] == "midwinter" and L.season(st) == "midwinter"
     sky_says(st, RAIN, "")
-    assert M.world_season(st, s, now) == season_of(now, s.hemisphere)                       # nothing said: the engine's reckoning
+    assert M.world_season(st) == ""                                                          # nothing said: no season
 
 
 async def test_the_weather_source_reads_the_sky_at_most_every_ten_minutes(tmp_path, monkeypatch):
@@ -124,7 +124,6 @@ async def test_the_weather_source_reads_the_sky_at_most_every_ten_minutes(tmp_pa
 
 async def test_no_fresh_reading_no_weather_and_only_live_modules_speak_for_the_world(tmp_path, monkeypatch):
     from app import weather as W
-    from app.happenings import season_of
     s, st, gm, agent = make(tmp_path, weather=True, hass_token="t")
 
     async def nothing(self, http=None):
@@ -134,10 +133,10 @@ async def test_no_fresh_reading_no_weather_and_only_live_modules_speak_for_the_w
     m = sky_says(st, RAIN, "midwinter")
     M.disable(st, m["id"])
     now = time.time()
-    assert M.published(st, "weather") is None and M.world_season(st, s, now) == season_of(now, s.hemisphere)
+    assert M.published(st, "weather") is None and M.world_season(st) == ""
     other = live(st, rule(name="odd"), "x")
     st.update_module(other["id"], facts={"season": 3})
-    assert M.world_season(st, s, now) == season_of(now, s.hemisphere)                     # not a season's name: the engine's reckoning
+    assert M.world_season(st) == ""                     # not a season's name: none
 
 
 async def test_places_are_built_for_the_published_season_and_rebuilt_when_it_turns(tmp_path):

@@ -114,7 +114,10 @@ def test_the_world_as_the_dice_see_it(tmp_path):
     assert w["known"] == ["beans"] and w["answers"] == {"pots": ["grow"]} and w["season"] is None and w["now"] == now
     assert {"beans", "saltholm", "figs", "oriel", "needle file"} <= H.world_names(w)
     s2 = Settings(**{**s.__dict__, "happenings_seasons": True, "hemisphere": "south"})
-    assert H.world(st, s2, NOW)["season"] == H.season_of(NOW, "south") != H.season_of(NOW, "north")
+    assert H.world(st, s2, NOW)["season"] is None                                       # no module publishes one
+    from tests.test_sky import sky_says
+    sky_says(st, None, "autumn")
+    assert H.world(st, s2, NOW)["season"] == "autumn" and H.world(st, s, NOW)["season"] is None
 
 
 def test_world_names_without_the_optional_parts():

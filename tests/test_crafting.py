@@ -361,104 +361,14 @@ def test_describe_stage_summarises_a_step():
     assert G["describe_stage"](p, 2) == "stage 3/3 'paint' (about 20 min of work)"            # already paid for
 
 
-# --- an install from before 0.42.0 ------------------------------------------------------------------------------------------------------
-async def test_an_old_installs_projects_crafts_and_space_move_into_the_module(tmp_path):
-    import json
-    from app import projects as proj
-    from app.state import State
-    s, st, gm, agent = make(tmp_path)
-    stage = {"name": "cut the wheels", "minutes": 60, "guess": 45, "progress": 30.0, "started": True, "materials": {"brass wire": 2}, "abilities": ["precision"]}
-    history = [{"ts": 10.0 + i, "stage": "cut the wheels", "result": "good", "minutes": 15, "text": f"session {i}", "kind": "work",
-                "interrupted": False, "extra": "dropped when finished"} for i in range(6)]
-    for name, status, craft in (("gear clock", "active", "Clockmaking (gear train)"), ("old kite", "done", "wood & metal-work")):
-        st.db.execute("INSERT INTO projects (name, goal, craft, difficulty, stages, tools, history, status, outcome, ts, finished_at, questions, hidden, "
-                      "findings, dry, revised_at) VALUES (?, 'a goal', ?, 3, ?, '[\"tweezers\"]', ?, ?, '', 5.0, ?, '[\"will it run?\"]', ?, ?, 1, 7.0)",
-                      (name, craft, json.dumps([stage]), json.dumps(history), status, 99.0 if status == "done" else None,
-                       json.dumps([{"fact": "the spring is weak", "found": False}]), json.dumps(["f1", "f2", "f3"])))
-    st.db.execute("INSERT INTO skills VALUES ('clockmaking', 100), ('Clockmaking (escapement)', 20), ('wood & metal-work', 5)")
-    st.set_meta(extra_project_slots="2")
-    st.db.commit()
-    st = State(s)                                                                    # the next start: the move, once
-    got = store(st)
-    live, done = got["projects"]["1"], got["projects"]["2"]
-    assert (live["name"], live["craft"], live["stages"], live["tools"], live["questions"], live["dry"], live["revised_at"], live["finished_at"]) == \
-        ("gear clock", "clockmaking", [stage], ["tweezers"], ["will it run?"], 1, 7.0, None)
-    assert live == {"id": 1, "name": "gear clock", "goal": "a goal", "craft": "clockmaking", "difficulty": 3, "stages": [stage], "tools": ["tweezers"],
-                    "history": history, "status": "active", "outcome": "", "ts": 5.0, "finished_at": None, "questions": ["will it run?"],
-                    "hidden": [{"fact": "the spring is weak", "found": False}], "findings": ["f1", "f2", "f3"], "dry": 1, "revised_at": 7.0}
-    assert (done["craft"], done["status"], done["finished_at"], done["hidden"], done["findings"]) == ("wood metal work", "done", 99.0, [], ["f2", "f3"])
-    assert done["history"] == [{k: v for k, v in h.items() if k != "extra"} for h in history[-4:]] and done["stages"] == [{**stage, "materials": {}}]
-    assert got["skills"] == {"clockmaking": 120, "wood metal work": 5} and got["meta"] == {"all": {"next_id": 3, "extra_slots": 2}}
-    assert st.db.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0 and st.db.execute("SELECT COUNT(*) FROM skills").fetchone()[0] == 0
-    assert st.meta("extra_project_slots") is None
-    assert st.capability_context() == ({1: "clockmaking", 2: "wood metal work"}, {(1, "cut the wheels"): ["precision"], (2, "cut the wheels"): ["precision"]})
-    st.merge_store("crafting", {"skills": {"clockmaking": 1}})
-    st = State(s)                                                                    # once: a later start leaves the store alone
-    assert store(st)["skills"]["clockmaking"] == 1
-    crafting(st)
-    await M.call(st, s, M.LocalRunner(), M.live_named(st, "crafting"), "on_install", NOW)
-    said = proj.published(st)
-    assert [(p["name"], p["status"], p["percent"]) for p in said["projects"]] == [("gear clock", "active", 50), ("old kite", "done", 50)]
-    assert said["skills"]["clockmaking"] == {"xp": 1, "level": 0} and M.published(st, "project_limit") == 5
-
-
-async def test_a_fresh_install_has_nothing_to_move(tmp_path):
-    s, st, gm, agent = make(tmp_path)
-    assert store(st) == {}
-    st.merge_store("crafting", {"skills": {"x": 1}})
-    from app.state import State
-    State(s)
-    assert store(st) == {"skills": {"x": 1}}
-
-
-def old_rows(st, *rows, skills=(), slots=0):
-    """An install from before 0.42.0: (name, status) projects in the old table, crafts' experience, extra workshop space."""
-    import json
-    for name, status in rows:
-        st.db.execute("INSERT INTO projects (name, craft, difficulty, stages, history, status, ts, findings) VALUES (?, 'kites', 1, ?, ?, ?, 1.0, ?)",
-                      (name, json.dumps([{"name": "cut", "minutes": 30, "materials": {"silk": 1}}]),
-                       json.dumps([{"ts": 1.0, "stage": "cut", "text": "x", "extra": 1}]), status, json.dumps(["a", "b", "c"])))
-    st.db.executemany("INSERT INTO skills VALUES (?, ?)", skills)
-    if slots:
-        st.set_meta(extra_project_slots=str(slots))
-    st.db.commit()
-
-
-def test_an_abandoned_project_is_kept_small_too_and_space_alone_moves(tmp_path):
-    from app.state import State
-    s, st, gm, agent = make(tmp_path)
-    old_rows(st, ("kite", "abandoned"))
-    p = store(State(s))["projects"]["1"]
-    assert (p["history"], p["findings"], p["stages"][0]["materials"]) == ([{"ts": 1.0, "stage": "cut", "result": None, "minutes": None, "text": "x",
-                                                                          "kind": None, "interrupted": None}], ["b", "c"], {})
-    (tmp_path / "b").mkdir()
-    s, st, gm, agent = make(tmp_path / "b")
-    old_rows(st, slots=1)
-    assert store(State(s)) == {"meta": {"all": {"next_id": 1, "extra_slots": 1}}}             # empty collections aren't kept
-    (tmp_path / "c").mkdir()
-    s, st, gm, agent = make(tmp_path / "c")
-    old_rows(st, skills=[("kites", 30.0)])
-    assert store(State(s))["skills"] == {"kites": 30.0}
-
-
-def test_a_store_already_there_is_kept_and_the_old_tables_still_emptied(tmp_path):
-    from app.state import State
-    s, st, gm, agent = make(tmp_path)
-    st.merge_store("crafting", {"skills": {"kites": 1}})
-    old_rows(st, ("kite", "active"), skills=[("kites", 30.0)], slots=2)
-    st = State(s)
-    assert store(st) == {"skills": {"kites": 1}} and st.meta("extra_project_slots") is None
-    assert st.db.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0 and st.db.execute("SELECT COUNT(*) FROM skills").fetchone()[0] == 0
-
-
-def test_the_engine_names_a_craft_as_the_module_keys_it():
-    from app.text import craft_name
+# --- names ------------------------------------------------------------------------------------------------------
+def test_a_craft_is_named_by_its_core_letters_digits_and_spaces():
     cases = {"Clockmaking (gear train, escapement)": "clockmaking", "wood & metal-work": "wood metal work", "  Glass.  ": "glass",
              "kite making and": "kite making", "rope or": "rope", "art of": "art", "work with": "work", "into the": "into",
              "made for": "made", "one two three four": "one two three", "a.b": "a b", "": "tinkering", "&": "tinkering",
              "Bread-baking: sourdough": "bread baking", "x" * 40: "x" * 30, "café work": "caf work", ". dots .": "dots", "and": "tinkering"}
     for raw, want in cases.items():
-        assert craft_name(raw) == want == G["craft_name"](raw), raw
+        assert G["craft_name"](raw) == want, raw
 
 
 def test_what_crafting_reads_where_things_were_found_and_what_a_made_thing_can_do(tmp_path):

@@ -221,35 +221,6 @@ async def test_finishing_a_bed_adds_a_plot(tmp_path):
 
 
 # --- the old garden moves in ---------------------------------------------------------------------------------------------------------------
-def test_an_older_install_keeps_its_garden(tmp_path):
-    from app.state import State
-    s = Settings(db_path=str(tmp_path / "old.db"))
-    st = State(s)
-    st.db.execute("CREATE TABLE garden (plot INTEGER PRIMARY KEY, seed TEXT NOT NULL, crop TEXT NOT NULL, planted_at REAL NOT NULL, "
-                  "ready_at REAL NOT NULL, yield INTEGER NOT NULL, food_value REAL NOT NULL, notified INTEGER NOT NULL DEFAULT 0)")
-    st.db.execute("INSERT INTO garden VALUES (2, 'carrot seeds', 'carrots', 100, 200, 3, 0.4, 1)")
-    st.set_meta(extra_plots=2)
-    st.db.commit()
-    st = State(s)
-    assert st.store("garden") == {"meta": {"extra_plots": 2}, "plots": {"2": {"seed": "carrot seeds", "crop": "carrots", "planted_at": 100,
-                                                                              "ready_at": 200, "yield": 3, "food_value": 0.4, "notified": True}}}
-    assert not st.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'garden'").fetchone()
-    State(s)                                                                # once
-    st.db.execute("CREATE TABLE garden (plot INTEGER PRIMARY KEY, seed TEXT, crop TEXT, planted_at REAL, ready_at REAL, yield INTEGER, "
-                  "food_value REAL, notified INTEGER)")
-    st.db.commit()
-    assert State(s).store("garden")["plots"]["2"]["crop"] == "carrots"     # a store already there is kept
-
-
-def test_an_empty_old_garden_moves_as_nothing(tmp_path):
-    from app.state import State
-    s = Settings(db_path=str(tmp_path / "old.db"))
-    st = State(s)
-    st.db.execute("CREATE TABLE garden (plot INTEGER PRIMARY KEY)")
-    st.db.commit()
-    assert State(s).store("garden") == {}
-
-
 async def test_the_module_reads_a_moved_garden(tmp_path):
     s, st, agent, m = setup(tmp_path)
     st.merge_store("garden", {"plots": {"2": {"seed": "carrot seeds", "crop": "carrots", "planted_at": 100, "ready_at": 200, "yield": 3,

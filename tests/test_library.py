@@ -284,27 +284,6 @@ async def test_a_reading_session_from_before_it_was_a_module_just_ends(world):
     assert not st.session()
 
 
-def test_an_older_install_keeps_its_bookmarks(tmp_path):
-    from app.state import State
-    path = str(tmp_path / "old.db")
-    st = State(Settings(), path)
-    st.db.executescript("""
-        CREATE TABLE bookmarks (book_id INTEGER PRIMARY KEY, title TEXT NOT NULL, section INTEGER NOT NULL DEFAULT 0, offset INTEGER NOT NULL DEFAULT 0,
-                                percent INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0, finished INTEGER NOT NULL DEFAULT 0,
-                                unreadable INTEGER NOT NULL DEFAULT 0, last_read REAL);
-        INSERT INTO bookmarks VALUES (7, 'Tide Tables', 3, 120, 40, 2, 0, 0, 1000.0);
-        INSERT INTO bookmarks VALUES (8, 'Old Maps', 0, 0, 100, 4, 1, 0, 900.0);
-        INSERT INTO bookmarks VALUES (9, 'Plates', 2, 0, 10, 1, 0, 1, 800.0);
-    """)
-    st = State(Settings(), path)
-    assert st.store("reading") == {"marks": {
-        "7": {"book_id": 7, "title": "Tide Tables", "section": 3, "offset": 120, "percent": 40, "sessions": 2, "finished": False, "unreadable": False, "last_read": 1000.0},
-        "8": {"book_id": 8, "title": "Old Maps", "section": 0, "offset": 0, "percent": 100, "sessions": 4, "finished": True, "unreadable": False, "last_read": 900.0},
-        "9": {"book_id": 9, "title": "Plates", "section": 2, "offset": 0, "percent": 10, "sessions": 1, "finished": False, "unreadable": True, "last_read": 800.0}}}
-    assert not st.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'bookmarks'").fetchone()
-    assert State(Settings(), path).store("reading")["marks"]["7"]["offset"] == 120                  # once
-
-
 @pytest.mark.asyncio
 async def test_putting_a_book_down_late_still_takes_in_what_was_read(world):
     from app import modules as M

@@ -413,7 +413,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     bare = M.context(st, s, live(st, rule(name="bare", reads=[]), "x"), NOW, due=5)
     assert set(bare) == {"now", "seed", "state", "offers", "due"} and bare["seed"] == int(NOW) * 7919 + 2
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
-    assert full["time"]["weekday"] and full["time"]["season"] in ("spring", "summer", "autumn", "winter") and 0 <= full["time"]["hour"] < 24
+    assert full["time"]["weekday"] and full["time"]["season"] == "" and 0 <= full["time"]["hour"] < 24
     assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
                             "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}

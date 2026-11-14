@@ -83,8 +83,7 @@ def test_the_context_word_for_word(tmp_path):
     m = live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x")
     ctx = M.context(st, s, m, NOW)
     t = datetime.fromtimestamp(NOW)
-    from app.happenings import season_of
-    assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": season_of(NOW, "south"),
+    assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": "",
                            "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
     assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,

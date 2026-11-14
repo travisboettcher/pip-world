@@ -204,8 +204,8 @@ def _listen(ctx):
     st["news_log"] = heard + [now]
     w, t = ctx.get("weather"), ctx["time"]
     a = ctx["agent"]
-    prompt = (f"{a['name']} listens to {s['name']}, something {a['they']} made: {s['description']}. It is {t['weekday']}, {t['hour']}:00, in {t['season']}"
-              + (f", and the weather is {w['condition']}" if w else "") + ". Write the bulletin that comes through: 2-3 sentences of news "
+    prompt = (f"{a['name']} listens to {s['name']}, something {a['they']} made: {s['description']}. It is {t['weekday']}, {t['hour']}:00"
+              + (f", in {t['season']}" if t["season"] else "") + (f", and the weather is {w['condition']}" if w else "") + ". Write the bulletin that comes through: 2-3 sentences of news "
               f"about {a['possessive']} own small world only (the weather, the neighbors, the season, something invented and harmless), never real-world "
               "events, in the voice of whatever this receiver picks up.")
     return {"state": st, "ask": {"prompt": prompt, "purpose": "news", "most": 400},

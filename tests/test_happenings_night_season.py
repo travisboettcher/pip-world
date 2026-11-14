@@ -13,27 +13,7 @@ def when(month, day=15, hour=12):
     return time.mktime((2026, month, day, hour, 0, 0, 0, 0, -1))
 
 
-# --- the seasons ------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("month, season", [(12, "winter"), (1, "winter"), (2, "winter"), (3, "spring"), (4, "spring"), (5, "spring"),
-                                           (6, "summer"), (7, "summer"), (8, "summer"), (9, "autumn"), (10, "autumn"), (11, "autumn")])
-def test_the_season_follows_the_month_in_the_northern_hemisphere(month, season):
-    assert H.season_of(when(month), "north") == season
-
-
-@pytest.mark.parametrize("month, season", [(12, "summer"), (3, "autumn"), (6, "winter"), (9, "spring"), (1, "summer"), (7, "winter"), (5, "autumn"), (11, "spring")])
-def test_and_is_turned_round_in_the_southern_one(month, season):
-    assert H.season_of(when(month), "south") == season
-
-
-def test_the_northern_hemisphere_is_the_default():
-    assert H.season_of(when(1)) == "winter" and H.season_of(when(7)) == "summer"
-
-
-def test_the_edges_of_a_season_are_the_first_and_last_of_the_month():
-    assert H.season_of(when(2, 28, 23), "north") == "winter" and H.season_of(when(3, 1, 0), "north") == "spring"
-    assert H.season_of(when(11, 30, 23), "north") == "autumn" and H.season_of(when(12, 1, 0), "north") == "winter"
-
-
+# --- the seasons (the world's: the sky module reckons them, test_sky.py) ----------------------------------------
 @pytest.mark.asyncio
 async def test_the_author_is_told_the_season():
     from app.llm.base import LLMResponse, ToolCall, Usage
