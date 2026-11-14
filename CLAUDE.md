@@ -36,12 +36,24 @@ If a feature can't be expressed as a module, that is a **missing generic hook**:
 `ask`, `happen` and `sell` were added), build the feature on it, and write both down in DESIGN-modules.md. Never add a branch for one
 feature ("if the module is the garden...") or a read or effect that only one world could use.
 
+But don't make the engine anemic (the owner, 2026-11-14; docs/DESIGN-engine-audit.md): machinery many worlds would share, and that is
+hard to get right, stays the engine's and is built for modules to extend. Talk scenes are the example: a world with a village of people
+should talk with all of them through the engine's scenes, not rebuild scenes in a module. How to tell:
+- **Mechanism versus policy.** The engine owns how a thing works (a scene of talk, a delivery over hours, what is remembered, the
+  budgets that keep many of them affordable); modules own who, when and why (who exists, when they visit or write, what they want).
+- **Roles, not nouns.** Engine code may know roles (character, place, scene, message, item, plan) and never a world's nouns (neighbour,
+  garden, project, workshop). A role a module names (`role: "villager"`) is data the engine carries, not a branch it takes.
+- **Two real users first.** Generalize machinery against two worlds that use it differently (Pip's world and Ashfall), and prove it in the
+  Ashfall day (`tests/test_ashfall.py`), not against one world and a guess.
+- **Keep primitives small.** Where the mechanism is thin (letters are a delivery over hours), the engine part stays thin; the rest is
+  policy in a module.
+
 Checks before committing:
 - `tests/test_engine_neutral.py` fails if an engine string names Pip: use the pack's agent (`world_pack.Agent`, or
   `world_pack.active().agent` where there are no settings at hand), with its name as a sentence's subject and its `them`, `their`,
   `themself` elsewhere.
 - No engine code, engine prompt, tool description or engine test fixture introduces a world noun (a place, item, creature, feature) or
-  the agent's name where a neutral word or a setting would do. Existing ones are being moved out (DESIGN-world-packs.md, phases 1 to 7);
+  the agent's name where a neutral word or a setting would do. The ones left are listed in DESIGN-engine-audit.md and being moved out;
   don't add more, and when you touch one, prefer moving it out over extending it.
 - A new engine read or effect is checked as generic: would a wasteland, a space station and Pip's world each have a use for it?
 - A shipped module carries the world's specifics; the engine carries the limits.

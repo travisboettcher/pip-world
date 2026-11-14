@@ -9,7 +9,18 @@ expects a workflow specific to Pip. This is that pass: what was checked, what wa
   extended by modules. Neighbour visits and talk scenes are the example: they don't move into a module as they are; the machinery (a
   character present, a scene of talk, what is remembered of it, letters there and back) stays the engine's and works for any character a
   module brings, so a world can simulate a whole village of people talking through the same scenes. Modules decide who exists and what
-  they do (C1).
+  they do (C1). How to tell what stays (also in CLAUDE.md):
+  - *Mechanism versus policy:* the engine owns how a thing works (a scene, a delivery over hours, what is remembered, the budgets that
+    keep many of them affordable); modules own who, when and why.
+  - *Roles, not nouns:* engine code may know roles (character, place, scene, message, item, plan), never a world's nouns (neighbour,
+    garden, project, workshop); a role a module names is data the engine carries, not a branch.
+  - *Two real users first:* machinery is generalized against two worlds that use it differently (Pip's neighbour and Ashfall's
+    villagers), and proven in the Ashfall day.
+  - *Keep primitives small:* letters are mostly a delivery over hours; that part is the engine's and stays thin, the rest is policy.
+  Why not move talk scenes out: crafting's move showed the price (a stack of new hooks, 69 KB of module, `read` to give its events back
+  their meaning); a scene is many model calls with turns and memory, which through the sandbox would be `ask`/`on_answer` round trips
+  under budgets meant for untrusted code; and a conversation feeds memory, cues, emotions, firsts, the inbox and the channels, which the
+  engine wires once for every world.
 - **The dashboard is Pip's world's for now.** The engine may later offer an abstract dashboard and components that worlds reuse or plug
   their own panels into, likely on a framework; that is a bigger refactor, not part of this plan. Until then the dashboard page moves into
   Pip's pack, and the engine serves the active pack's page (B5).
