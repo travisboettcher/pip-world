@@ -72,7 +72,7 @@ def test_the_listed_reads_answer_and_are_cacheable(client, path):
 
 def test_public_state_leaves_out_operations(client):
     st = client.get("/state", headers=PUBLIC).json()
-    assert set(st) == {"agent", "ticks", "coins"}
+    assert set(st) == {"agent", "ticks", "coins", "condition"}
 
 
 def test_memory_leaves_out_people(client):

@@ -11,7 +11,7 @@ customers, accounts, the neighbours' wares and market days) is the shipped `trad
 shipped `reading` module, on the engine's first source (`books`); **5e built (0.40.0)**: the shipped `sky` module publishes the world's
 weather and season, from the `weather` source; **5f's hooks built (0.41.0)**: the `narrator` source, sources asked three deep, list and
 map tool arguments, public events, `creation`, and a module's work session; **5f built (0.42.0)**: crafting is the shipped `crafting`
-module. Next: phase 6, stakes and a second pack. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
+module; **6a built (0.43.0)**: stakes (`at_zero`, `harm`). Next: 6b, a second pack. Follows the modules work (DESIGN-modules.md, 0.17.0 to 0.28.0). The owner asked
 (2026-11-11) for an audit: could the engine just as easily run a post-apocalyptic wasteland with monsters, radiation sickness and a
 village of survivors, and what would leak over? The answer was no; this is how to get to yes. The owner's direction: **features are
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
@@ -131,6 +131,16 @@ A world that can hurt needs a stat that can run out and an answer to what happen
 recovers), and nothing permanent: no permadeath, no lost memory. The `happen` intents gain `harm` (`{"kind": "harm", "stat": "health"}`,
 sized by severity) and become pack-extensible: an intent is a stat move, an item move, a coin move, a crop move, a creation stopping, as
 today, all sized by the pack's tables.
+
+**Built (0.43.0, 6a)**: `app/stakes.py`. A stat's `at_zero` is `knocked_out` (whatever the agent was doing ends; it is at home, out
+cold, for `out_hours`, default 4, and comes to with the stat at `recovers_to`, by default 0.1 past `low_at`) or `weak` (whatever it was
+doing ends; until the stat is off its low side it is offered only eat, rest, sleep, say, note_to_self, recall and feel, and any other
+tool is refused). "Runs out" is the bad end: 0 where high is good, 1 where low is good. The world's turn (the monitor, and each tick)
+checks; a tick while out cold does nothing, and a visitor's words wait. Both are logged (`stakes`, then `recovered`), remembered (the
+recall index, importance 6), a moment of the agent's day, on `/status` and in `/state`'s `condition`. `harm` is a bad turn on a stat
+with `at_zero`, sized by `tone.json`'s `harm` (0.1, 0.25, 0.5 by default); unlike a `stat` turn it isn't spared when the agent is low,
+but it never lands while the agent is already out or weak. `Settings.stats` may now add a stat the world hasn't (tests use it to give
+Pip health). Pip's world marks none, so nothing changes there. The `happen` intents being pack-extensible is left for later.
 
 ### Tone: what the world allows
 `tone.json` holds what was code (built, 0.34.0; `app/tone.py`): `deny`, the words a happening may not use; `big_words`, the words too

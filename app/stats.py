@@ -10,10 +10,11 @@ from . import world_pack
 
 
 def declared(settings=None) -> dict:
-    """{name: definition} for the world's stats, with any overrides the settings carry (`Settings.stats`, for tests and tuning)."""
+    """{name: definition} for the world's stats, with any overrides the settings carry (`Settings.stats`, for tests and tuning: one
+    that names a stat the world hasn't adds it)."""
     base = (world_pack.load(settings) if settings is not None else world_pack.active()).data("stats")
     over = getattr(settings, "stats", None) or {}
-    return {name: {**d, **over.get(name, {})} for name, d in base.items()}
+    return {name: {**base.get(name, {}), **over.get(name, {})} for name in {**base, **over}}
 
 
 def restored_by(action: str, settings=None) -> list[str]:

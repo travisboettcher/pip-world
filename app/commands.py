@@ -4,11 +4,13 @@ A message to Pip over a channel that starts with `/word` is answered here from s
 inbox, no wake. They mirror `pipchat` (status, items, projects...). Everything is read-only.
 """
 import re
+from datetime import datetime
 import time
 
 from . import emotions as emo
 from . import projects as proj
 from . import sleep as sleepmod
+from . import stakes
 from .state import SECTIONS
 from .text import span
 from . import world_pack
@@ -47,6 +49,10 @@ def _status(state, settings, arg, now):
     lines = [f"{world_pack.active().agent.name} is {doing}",
              f"Mood {a['mood']}; " + ", ".join(f"{d.get('label', n)} {round(a[n] * 100)}%" for n, d in stats_mod.declared(settings).items() if n in a)
              + f"; at the {a['location']}."]
+    c = stakes.condition(state)
+    if c:
+        lines.append(f"Knocked out ({c['label']} ran out) until {datetime.fromtimestamp(c['until']).strftime('%-I:%M %p')}."
+                     if c["outcome"] == "knocked_out" else f"Too weak to do much ({c['label']} ran out) until it recovers.")
     lines.append(f"Day {sleepmod.day_number(state, now)}" + (f", {sleepmod.period(settings, now)}" if settings.sleep else "") + ".")
     from . import modules
     lines += modules.status_lines(state)                      # what live modules show the agent (its garden, say)

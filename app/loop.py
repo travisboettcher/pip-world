@@ -27,6 +27,7 @@ from . import wishes
 from . import worldmap
 from . import emotions as emo
 from . import sleep as sleepmod
+from . import stakes
 from .config import Settings
 from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
@@ -129,8 +130,8 @@ class Agent:
                     self._urgent = False
                     return "forced"
                 if self.pacing.wakes_on_events:
-                    if sleepmod.asleep(self.state) and not self._urgent:
-                        continue  # only a visitor wakes a sleeper; the rest will be there in the morning
+                    if sleepmod.asleep(self.state) and (not self._urgent or stakes.out(self.state)):
+                        continue  # only a visitor wakes a sleeper (not one out cold); the rest will be there in the morning
                     self._urgent = False
                     wait = self.last_tick + self.s.min_tick_interval - time.time()
                     if wait > 0:
@@ -179,6 +180,8 @@ class Agent:
     async def resolve_world(self) -> None:
         """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
         await modules.offer_library(self.state, self.s, self.runner)
+        if await stakes.step(self.state, self.s):                          # a stat that ran out, or the agent recovering
+            self.request_wake()
         if await modules.step(self.state, self.s, self.runner):
             self.request_wake()
         if await modules.answer(self.state, self.s, self.gm, self.runner):     # the model's words for what modules asked
@@ -264,6 +267,9 @@ class Agent:
         """
         self.last_tick = time.time()
         self.state.apply_decay()
+        await stakes.step(self.state, self.s)
+        if stakes.out(self.state):                # out cold: nothing until the agent comes to (a visitor's words wait)
+            return
         sleepmod.wake_up(self.state)
         await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
@@ -325,6 +331,8 @@ class Agent:
         entry = self.tools.get(canonical(call.name))
         if index >= MAX_TOOL_CALLS:
             out.update(content="skipped: too many tool calls this turn", is_error=True)
+        elif not stakes.allowed(self.state, canonical(call.name)):
+            out.update(content="you're too weak for that; eat, rest or sleep until you recover", is_error=True, followup=True)
         elif (mod := await module_tool(self.ctx, call.name, call.arguments, engine_has=bool(entry))) is not None:
             self.state.log("tool", tool=call.name, args=call.arguments, result=mod.text, module=mod.module, **({"first": mod.first} if mod.first else {}),
                            **({"noop": True} if mod.noop else {}))
@@ -481,6 +489,8 @@ class Agent:
             return f"You finished reading {d['title']}"
         if k == "arrived" and d.get("first_time") and d["place"] != places.HOME:
             return f"You went to {places.label(d['place'])} for the first time"
+        if k == "stakes":
+            return stakes.moment(d)
         if k == "creation_made":
             return f"Your {d['project']} became {d['name']}: {d['description']}"
         if k == "work" and not d.get("interrupted"):
@@ -643,7 +653,7 @@ class Agent:
             mods = module_specs(self.state, here.key, here, open_)
             engine = specs_for(self.tools, here.key, here, open_)
         names = {t.name for t in mods}                                  # where a module's tool applies, it stands for the engine's of that name
-        return [t for t in engine if t.name not in names] + mods
+        return [t for t in [t for t in engine if t.name not in names] + mods if stakes.allowed(self.state, t.name)]
 
     def _perception(self, reason: str, inbox: list[dict]) -> str:
         a = self.state.agent()
@@ -656,6 +666,7 @@ class Agent:
         ]
         if "sleep" in self.tools:
             lines += sleepmod.perception(self.state, self.s, time.time())
+        lines += stakes.perception(self.state)
         lines += abilities.perception(self.state, time.time())
         lines += emo.perception(self.state, self.s)
         lines += self._firsts()

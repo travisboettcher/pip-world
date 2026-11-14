@@ -98,6 +98,8 @@ function describe(e) {
     case 'woke': return { group: 'world', cls: 'world', text: `Pip wakes after about ${d.hours} hours of sleep` + (d.early ? ' (woken early)' : '') };
     case 'made_work': return { group: 'world', cls: 'world', text: d.what === 'drawing' ? `Pip drew “${d.title}”${d.caption ? ` — ${d.caption}` : ''}` : `Pip wrote “${d.title}”` };
     case 'world_changed': return { group: 'world', cls: 'world', text: d.text };
+    case 'stakes': return { group: 'world', cls: 'warn', text: d.outcome === 'knocked_out' ? `Pip's ${d.label} ran out: knocked out, comes to at home in ${d.hours} hours` : `Pip's ${d.label} ran out: too weak to do much until it recovers` };
+    case 'recovered': return { group: 'world', cls: 'world', text: d.outcome === 'knocked_out' ? 'Pip comes to' : `Pip's ${d.label} recovers` };
     case 'night_pass': {
       const bits = [...(d.decisions || []), ...(d.focus || []).map((f) => `focus: ${f}`)];
       if (!bits.length) return d.failed ? { group: 'system', cls: 'warn', text: 'The night pass failed' } : null;

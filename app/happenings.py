@@ -19,6 +19,7 @@ from . import modules
 from . import sleep as sleepmod
 from .state import name_key
 from .text import clip, coins_text
+from . import stakes
 from . import stats as stats_mod
 from . import tone as tone_mod
 from . import world_pack
@@ -115,7 +116,7 @@ def world(state, settings, now: float) -> dict:
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(),
             "season": modules.world_season(state, settings, now) if settings.happenings_seasons else None,
-            "low": stats_mod.low(state),
+            "low": stats_mod.low(state), "stats": stats_mod.declared(settings), "down": stakes.condition(state) is not None,
             "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
             "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],
             "foods": foods, "period": sleepmod.period(settings, now),
@@ -351,9 +352,10 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
 # day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
-INTENTS = ("coins", "item", "food_loss", "stat", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat
+INTENTS = ("coins", "item", "food_loss", "stat", "harm", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat;
+#                                                                                     `harm` one that can run out (stakes.py)
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
-GAINS, LOSSES = {"coins", "item", "stat", "news", "request"}, {"coins", "food_loss", "stat", "stop", "news", "request"}
+GAINS, LOSSES = {"coins", "item", "stat", "news", "request"}, {"coins", "food_loss", "stat", "harm", "stop", "news", "request"}
 
 
 def _kinds() -> str:
@@ -419,6 +421,14 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if tone == "bad" and w["low"]:
             raise ValueError(f"{world_pack.active().agent.name} is too low already")
         return Plan([{"kind": "stat", "stat": name, "delta": sign * stats_mod.good_sign(declared[name]) * tone_mod.size("stat", severity)}])
+    if kind == "harm":                        # a hurt that can take a stat to its end (stakes.py): the world's stakes, so not spared when low
+        name, declared = i.get("stat"), w["stats"]
+        can = [n for n, d in declared.items() if d.get("at_zero") in stakes.OUTCOMES]
+        if name not in can:
+            raise ValueError(f"`stat` is one of the stats that can run out: {', '.join(can) or 'none in this world'}")
+        if w["down"]:
+            raise ValueError(f"{world_pack.active().agent.name} is down already")
+        return Plan([{"kind": "stat", "stat": name, "delta": -stats_mod.good_sign(declared[name]) * tone_mod.size("harm", severity)}])
     if kind == "stop":
         c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
         if not c or severity == "minor":

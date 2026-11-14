@@ -148,6 +148,7 @@ class Settings:
     public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people Pip knows are hidden anyway)
 
     # The agent's stats are its world's (the pack's stats.json); this overrides any of a stat's numbers: {"hunger": {"per_hour": 0.1}}
+    # (or, naming one the world hasn't, adds it)
     stats: dict | None = None
 
     @classmethod

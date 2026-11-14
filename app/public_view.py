@@ -122,4 +122,4 @@ def public_events(state, settings):
 
 
 def public_state(state_json: dict) -> dict:
-    return {"agent": state_json["agent"], "ticks": state_json["ticks"], "coins": state_json["coins"]}
+    return {"agent": state_json["agent"], "ticks": state_json["ticks"], "coins": state_json["coins"], "condition": state_json.get("condition")}

@@ -13,7 +13,7 @@ from . import capabilities as caps
 from . import turning
 from .text import clip
 
-RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening", "module")
+RECALL_EVENT_KINDS = ("inbox", "say", "gift", "work", "experiment", "creation_made", "companion", "letter_sent", "reading", "gathered", "outreach", "world_changed", "made_work", "revised_work", "heard_of_place", "happening", "module", "stakes")
 MAX_INSIGHTS = 5
 SELF_PORTRAIT_CHARS = 900
 REFLECT_MAX_TOKENS = 2048
@@ -68,6 +68,9 @@ def recall_text(kind: str, d: dict) -> str | None:
         return None if d.get("interrupted") and not d.get("items") else d["text"]
     if kind == "module" and d.get("moment"):                 # a module's moment (a haul, a crop ripening)
         return d["text"]
+    if kind == "stakes":                                     # a stat that ran out (stakes.py)
+        from .stakes import moment
+        return moment(d)
     if kind == "creation_made":
         return f"You finished making {d['name']}: {d['description']}"
     if kind == "companion":
@@ -99,7 +102,7 @@ def event_importance(kind: str, d: dict, firsts=()) -> int:
         base = 4 if d.get("finished") else 2
     elif kind in ("woke", "alert"):
         base = 3
-    elif kind == "world_changed":
+    elif kind in ("world_changed", "stakes"):
         base = 6
     elif kind in ("made_work", "revised_work"):
         base = 5

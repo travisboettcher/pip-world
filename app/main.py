@@ -19,6 +19,7 @@ from . import invented_places as invented
 from . import happenings
 from . import modules
 from . import places
+from . import stakes
 from . import public_view as pv
 from . import projects as proj
 from . import worldmap
@@ -141,6 +142,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             "model": settings.llm_model,
             "pacing": agent.pacing.name,
             "tools": list(agent.tools),
+            "condition": stakes.condition(agent.state),             # a stat that ran out: knocked out, or weak (stakes.py)
         }
         return pv.public_state(full) if request.state.public else full
 

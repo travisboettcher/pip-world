@@ -136,12 +136,16 @@ Words are regular expressions, matched whole; a size table you give replaces the
 `worlds/pip/tone.json` for every size. The engine's floor still holds whatever this says: no sexual content, nothing encouraging
 self-harm, nothing about real people.
 
-**Stakes** (phase 6): a stat that can run out, and what happens then.
+**Stakes** (works today, 0.43.0): a stat that can run out, and what happens then (`at_zero`).
 ```json
-"health":    {"start": 1.0, "low": 0.3, "at_zero": "knocked_out", "restored_by": ["rest", "use:medicine"]},
-"radiation": {"start": 0.0, "high": 0.6, "shown": "radiation sickness", "restored_by": ["use:rad pills"], "harms": {"health": 0.02}}
+"health":    {"start": 0.9, "per_hour": 0.01, "low_at": 0.3, "at_zero": "knocked_out", "out_hours": 4, "recovers_to": 0.4, "scale": "0=dying"},
+"radiation": {"start": 0.0, "per_hour": 0.002, "good": "low", "low_at": 0.6, "at_zero": "weak", "label": "radiation sickness"}
 ```
-`knocked_out` costs time and wakes her in the shelter with a happening saying what happened; nothing is permanent.
+`knocked_out`: whatever she was doing ends, and she comes to in the shelter `out_hours` later with the stat at `recovers_to` (by
+default a little past `low_at`). `weak`: whatever she was doing ends, and until the stat is off its low side she can only eat, rest,
+sleep, talk and think. Nothing is permanent: no death, no lost memory. The world hurts her through a happening's `harm`
+(`{"kind": "harm", "stat": "health"}`, a bad turn sized by `tone.json`'s `harm`; unlike other bad turns it isn't spared when she is
+low, but never lands while she is already down) or a module's `affect`.
 
 **Happenings** (works today as `happen`; phase 2 moves the categories to data): include `std:happenings` with params, and give it the
 world's categories: `raid` (bad: `harm`, `food_loss`), `salvage` (good: `item`), `ashfall` (bad: `energy`, `radiation`: any stat by its name), `kindness`
