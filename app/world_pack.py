@@ -3,7 +3,10 @@
 A pack holds `world.json` (its name, and who the agent is: a name, a pronoun, what kind of being), `persona.md` (who the agent is, in its
 own words), `narrator.md` (the narrator's voice and the world in a paragraph), `bible.md` (what the builder may add) and `guide/*.md`
 (what the agent is told about how its world works). `WORLD_PACK` chooses it; by default it is Pip's world, `worlds/pip`. A pack may leave
-any of the prose out. The engine's own fixed instructions to the narrator (`NARRATOR_RULES`) follow the pack's paragraph.
+any of the prose out. The engine's own fixed instructions to the narrator (`NARRATOR_RULES`) follow the pack's paragraph. How the agent
+looks in a scene: `sprite.json` (its own pixel frames, SPRITE_FRAMES of them), else the agent's `look` in world.json (words from the
+pack's scene.json `look` lists, the same a character's look is chosen from), else a look drawn from its name and persona. A pack's `web/`
+is its page (docs/DESIGN-engine-audit.md, B5).
 """
 import json
 import re
@@ -27,6 +30,7 @@ class PackError(ValueError):
     pass
 
 
+SPRITE_FRAMES = 10   # sprite.json's frames, in order: 0-1 standing, 2-5 walking, 6 asleep, 7-8 working (two beats), 9 sitting
 FORMS = {"it": ("it", "its", "itself"), "she": ("her", "her", "herself"), "he": ("him", "his", "himself"), "they": ("them", "their", "themself")}
 
 
@@ -38,6 +42,7 @@ class Agent:
     pronoun: str = "they"
     kind: str = ""
     lives: str = ""                # where and how the agent lives, for prompts that need it ("lives alone in a workshop with a garden")
+    look: tuple = ()               # world.json's `look`, as (field, word) pairs: how a scene draws the agent without a sprite.json
 
     @property
     def they(self) -> str:
@@ -101,6 +106,10 @@ class Pack:
         f = self.dir / "guide" / f"{page}.md"
         return f.read_text().strip("\n") if f.is_file() else ""
 
+    def sprite(self) -> dict | None:
+        """The agent's own pixel frames (sprite.json, checked when the pack loads): {w, h, palette, frames}, or None."""
+        return _sprite(str(self.dir / "sprite.json"))
+
 
 @lru_cache(maxsize=32)
 def _data(path: str) -> dict:
@@ -144,8 +153,37 @@ def _load(path: str, changed: float = 0.0) -> Pack:
     pronoun = a.get("pronoun", "they")
     if pronoun not in PRONOUNS:
         raise bad(f"the agent's pronoun is one of {', '.join(PRONOUNS)}")
-    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or "")),
-                _modules(d, w.get("modules"), bad))
+    look = a.get("look", {})
+    if not isinstance(look, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in look.items()):
+        raise bad("the agent's `look` maps a look's fields to words, like {\"hair\": \"auburn\"}")
+    try:
+        _sprite(str(d / "sprite.json"))
+    except ValueError as e:
+        raise bad(f"sprite.json: {e}") from None
+    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""),
+                                                       tuple(look.items())), _modules(d, w.get("modules"), bad))
+
+
+@lru_cache(maxsize=8)
+def _sprite(path: str) -> dict | None:
+    """sprite.json: {"palette": {letter: colour}, "frames": [rows, ...]}, every frame a pixel picture of the same size."""
+    from . import art
+    raw = _data(path)
+    if not raw:
+        return None
+    frames = raw.get("frames")
+    if not isinstance(frames, list) or len(frames) != SPRITE_FRAMES:
+        raise ValueError(f"`frames` is a list of {SPRITE_FRAMES} pixel pictures: 0-1 standing, 2-5 walking, 6 asleep, 7-8 working, 9 sitting")
+    out = []
+    for i, rows in enumerate(frames):
+        try:
+            rows, palette = art.clean_pixels(rows, raw.get("palette"))
+        except art.SvgRejected as e:
+            raise ValueError(f"frame {i}: {e}") from None
+        out.append(rows)
+    if len({(len(r), len(r[0])) for r in out}) > 1:
+        raise ValueError("every frame is the same size")
+    return {"w": len(out[0][0]), "h": len(out[0]), "palette": palette, "frames": out}
 
 
 def _modules(d: Path, raw, bad) -> tuple | None:

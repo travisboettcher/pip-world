@@ -195,9 +195,9 @@ async def test_a_trial_catches_a_picture_that_only_appears_later_in_the_day(tmp_
            '    if ctx["now"] >= ctx["state"].get("t", ctx["now"]) and ctx["time"]["hour"] == 17:\n'
            '        out["show"] = [{"id": "lamp", "sprite": {"rows": ["kkkk"] * 4, "palette": {"k": "#fc3"}}, "at": {"type": "wall", "place": "home", "tags": ["window"]}}]\n'
            '    return out\n')
+    await shipped_layouts(st, s, "home")
     r = await M.propose(st, s, agent.runner, "world", B.manifest(src, "dusk-lamp", []), src, now=NOW)
     assert r["report"]["unplaced"] == ["lamp: no wall tagged window anchor here"] and r["report"]["clean"] is False
-    await shipped_layouts(st, s, "home")
     good = src.replace('"tags": ["window"]', '"tags": ["back"]')
     r = await M.propose(st, s, agent.runner, "world", B.manifest(good, "dusk-lamp-2", []), good, now=NOW)
     assert r["report"]["placed"] == ["lamp: back-wall-by-window at workshop"] and r["report"]["clean"]

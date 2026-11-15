@@ -44,7 +44,7 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 SHOW_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 SHOW_MAX, SIZE_RANGE, MOTIONS, WORKS_SHOWN = 8, (0.2, 1.5), ("bob", "sway", "spin"), 12
 RULES = (  # the modules the engine ships (module_library/), in the order they are offered; each says what it is in its manifest's `reason`
-    "gallery-wall", "stall-pictures", "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "home", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "crafting", "happenings")
+    "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "crafting", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
 QUALITIES_MADE = ("rough", "sound", "fine", "masterwork")
@@ -1636,10 +1636,10 @@ def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
 def scene_objects(state, key: str, kind: str) -> list[dict]:
     """The objects for the scene view: what to draw and where (anchors.py worked out the where)."""
     placed, _ = objects_for(state, key, kind)
-    name = world_pack.active().agent.name
-    told = lambda tip: {k: v.replace("$name", name) for k, v in tip.items()}  # noqa: E731   # "$name": the agent, in any world
+    name, now = world_pack.active().agent.name, time.time()
+    told = lambda tip: {k: until(v.replace("$name", name), now) for k, v in tip.items()}  # noqa: E731   # "$name": the agent; "{in:<time>}": how long
     return [{"key": o["key"], "rows": o["sprite"]["rows"], "palette": o["sprite"]["palette"], "frame": o["frame"], "w": o["w"], "h": o["h"],
-             "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], **({"motion": o["motion"]} if "motion" in o else {}),
+             "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], "anchor": o["anchor"], **({"motion": o["motion"]} if "motion" in o else {}),
              **({"tip": told(o["tip"])} if "tip" in o else {})} for o in placed]
 
 
@@ -1981,6 +1981,10 @@ def _placement(state, settings, m: dict, now: float) -> tuple[list[str], list[st
     for key in dict.fromkeys(where(state, m, o["at"]["place"]) for o in m["show"]):
         if key not in kinds:
             unplaced += [f"{o['id']}: {o['at']['place']!r} isn't a place in the world" for o in m["show"] if where(state, m, o["at"]["place"]) == key]
+            continue
+        from . import layouts
+        if layouts.anchors_for(state, key, kinds[key]) is None:   # no layout yet (a first start offers modules before building any)
+            placed += [f"{o['id']}: at {key}, once a layout is built there" for o in m["show"] if where(state, m, o["at"]["place"]) == key]
             continue
         ok, bad = objects_for(state, key, kinds[key])
         placed += [f"{o['key'][len(m['name']) + 1:]}: {o['anchor']} at {key}" for o in ok if o["key"].startswith(m["name"] + ":")]

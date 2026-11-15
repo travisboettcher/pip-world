@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The agent</title>
+  <link rel="stylesheet" href="plain.css">
+</head>
+<body>
+  <!-- The engine's plain page, for a world pack without a page of its own (docs/DESIGN-engine-audit.md, B5): the agent's state, its scene,
+       what its modules show it, and what happened lately. A pack's page goes in its web/ folder and is served here instead. -->
+  <header>
+    <h1 id="name">…</h1>
+    <p id="doing" class="doing"></p>
+    <ul id="stats" class="stats"></ul>
+  </header>
+  <main>
+    <section class="wide">
+      <div id="scene" class="scene"></div>
+      <p id="where" class="hint"></p>
+    </section>
+    <section>
+      <h2>What it keeps an eye on</h2>
+      <div id="standing"><p class="hint">Nothing yet.</p></div>
+    </section>
+    <section>
+      <h2>Lately</h2>
+      <ul id="events" class="events"></ul>
+    </section>
+    <section id="talk" hidden>
+      <h2>Say something</h2>
+      <form id="say"><input id="say-text" maxlength="2000" placeholder="Say something" autocomplete="off"><button>Send</button></form>
+      <p id="said" class="hint"></p>
+    </section>
+  </main>
+  <script type="module" src="plain.js"></script>
+</body>
+</html>

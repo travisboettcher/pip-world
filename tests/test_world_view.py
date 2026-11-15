@@ -157,8 +157,8 @@ async def test_a_work_session_names_its_project_and_what_is_being_done(tmp_path)
     await call(agent, "start_project", name="Gear clock", goal="a clock", steps=PIP_STEPS)
     await call(agent, "work_on", project="#1")
     sess = WV.scene_view(st, s, None)["agent"]["session"]
-    assert {k: sess[k] for k in ("kind", "target", "label", "working", "project")} == \
-        {"kind": "module", "target": "crafting", "label": "working on Gear clock: cut the wheels", "working": True, "project": "Gear clock"}
+    assert {k: sess[k] for k in ("kind", "target", "label", "working", "about")} == \
+        {"kind": "module", "target": "crafting", "label": "working on Gear clock: cut the wheels", "working": True, "about": "Gear clock"}
     assert sess["ends_at"] > sess["started_at"]
 
 
@@ -206,7 +206,10 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     d = WV.scene_view(st, s, None, "Brygdon")
     assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props", "scene", "finds"}
     assert d["place"]["label"] == "Brygdon" and d["place"]["blurb"] == "the square" and d["place"]["description"] == "" and d["place"]["heard_only"] is False
-    assert set(d["agent"]) == {"name", "here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
+    assert set(d["agent"]) == {"name", "here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session",
+                               "stats", "sprite"}
+    assert [(x["name"], x["label"]) for x in d["agent"]["stats"]] == [("hunger", "hunger"), ("energy", "energy")]    # in the world's order
+    assert d["agent"]["sprite"]["w"] == 16 and len(d["agent"]["sprite"]["frames"]) == 10                         # Pip's own frames (its pack)
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
     assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "agent", "present", "booths", "stall", "now", "objects", "layout", "facts"}
@@ -223,7 +226,7 @@ def test_a_module_session_about_nothing_names_no_project(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.start_session(0, 0, 30, time.time() + 600, kind="module", target="reading", expect="reading A book")
     sess = WV.scene_view(st, s, None)["agent"]["session"]
-    assert (sess["label"], sess["working"], "project" in sess) == ("reading A book", False, False)
+    assert (sess["label"], sess["working"], "about" in sess) == ("reading A book", False, False)
     st.start_session(0, 0, 10, time.time() + 600, kind="walk", target="woods")
     assert set(WV.scene_view(st, s, None)["agent"]["session"]) == {"kind", "started_at", "ends_at", "target"}
 

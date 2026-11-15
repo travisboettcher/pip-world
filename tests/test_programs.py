@@ -260,7 +260,7 @@ async def test_the_loop_tells_the_owner(tmp_path):
     await M.propose(st, s, None, "world", rule(name="bells"), "def on_tick(ctx):\n    return {}\n")
     await agent.resolve_world()
     assert [t.split(" - ")[1].split(" v1")[0] for t, _ in ch.notices] == ["bells"]          # the shipped ones went live: nothing to tell
-    assert {m["name"] for m in st.modules("live")} >= set(M.RULES)
+    assert {m["name"] for m in st.modules("live")} >= set(M.world_modules(st.s))
 
 
 @pytest.mark.asyncio

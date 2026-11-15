@@ -1,24 +1,27 @@
 // A place built from parts (docs/DESIGN-modules.md): the engine sends the built shapes and anchors (app/layouts.py), and this draws them with
 // the kit, the same way for every place. Rotations are in degrees, heading first (Euler order YXZ), so a part turned in a layout stays upright.
 // A shape with `when` shows only while its conditions hold (open, shut, day, night, the tide, the season, whether whoever lives here is home,
-// whether the agent has set out a stall). What changes with the world is drawn on the anchors a layout tags for it:
-//   agent, seat, bed, workbench, reading, garden-path, browse, visitor, agent-stall   where the agent stands, sits, sleeps, works, reads, gardens, browses
-//   plot (in order)        a garden plot: its crop, growing         clock / shelf / walkers   the agent's creations: clocks, things, walking things
+// whether the agent has set out a stall, `has:<anchor>`: whether a module shows something on that anchor). What changes with the world is
+// drawn on the anchors a layout tags for it:
+//   agent, seat, bed, workbench, reading, browse, visitor, agent-stall   where the agent stands, sits, sleeps, works, reads, browses
+//   an anchor with `words`  where the agent paces while what it is doing says one ("tend" for tending)
+//   clock / shelf / walkers   the agent's creations: clocks, things, walking things
 //   resident, resident-evening, resident-walk                       whoever lives here, by the time of day (a walk out at low tide)
-//   people   others here     wares   what a neighbor sells     counter, stock   a shop's goods and keeper     booth   a market's booths
+//   people   others here     wares   what the resident sells     counter, stock   a shop's goods and keeper     booth   a market's booths
 //   crowd    people walking about while it's open             finds   what can be found here, lying about
 import { goods, personAt, rngFor, tide, minutesNow } from "./parts.js";
 import { hashStr } from "./art.js";
 
 const SEASONAL = new Set(["grass", "cliff", "leaves"]);
 const WALKS = /\b(walk|walks|walker|legs?|crawl|hop|creature|toddle|scuttle)\b/i;
-const GARDEN_WORDS = /garden|crop|plot|ripen|pea|tomato/i;
 const SKINS = ["pale", "light", "olive", "brown", "dark"], HAIRS = ["white", "grey", "black", "brown", "auburn", "fair"];
 const CLOTH = ["grey", "brown", "green", "blue", "red", "ochre", "plum", "cream"];
-const hours = (min) => (min < 60 ? `${min} minutes` : `${Math.round(min / 60)} hours`);
 const priced = (items) => items.map((i) => `${i.name} (${i.price} coin${i.price === 1 ? "" : "s"}${i.left ? "" : ", sold out"})`).join(", ");
 
-export function poseOf(agent) {           // what the agent is doing, as a pose: the one place facts become animation
+const says = (anchor, text) => (anchor.words || []).some((w) => new RegExp(`\\b${w}`).test(text));    // "tend" says "tending" too
+const stems = (title) => (String(title).toLowerCase().match(/[a-z]{4,}/g) || []).map((w) => w.replace(/(es|s)$/, ""));
+
+export function poseOf(agent, anchors = []) {   // what the agent is doing, as a pose: the one place facts become animation
   if (!agent.here) return "away";
   if (agent.asleep) return "sleep";
   const s = agent.session, a = `${agent.activity} ${agent.description}`.toLowerCase();
@@ -31,7 +34,7 @@ export function poseOf(agent) {           // what the agent is doing, as a pose:
     if (agent.activity === "gathering") return "gather";
   }
   if (/\b(fil(e|es|ing)|tinker\w*|making|build\w*|hammer\w*|solder\w*|carv\w*|assembl\w*|shaping|sanding|measur\w*|cutting|fitting|winding)\b/.test(a) && !/\b(wait\w*|rest\w*)\b/.test(a)) return "work";
-  if (/garden|plot|plant|harvest|water|weed|tend/.test(a) && !/wait|rest/.test(a)) return "garden";
+  if (!/wait|rest/.test(a) && anchors.some((x) => says(x, a))) return "pace";      // along the anchor its words name
   if (/wait|rest|sit|read|think|eat|bench/.test(a)) return "sit";
   return "idle";
 }
@@ -85,7 +88,7 @@ export function build(kit, art, data) {
   const words = (t) => String(t || "")
     .replaceAll("$name", latest.agent.name).replace("$label", cap(latest.place.label)).replace("$description", latest.place.description || latest.place.blurb || "").replace("$blurb", latest.place.blurb || "")
     .replace("$belongings", (latest.items || []).map((i) => `${i.name} ×${i.qty}`).join(", ") + `; ${latest.coins ?? 0} coins.`)
-    .replace("$project", latest.agent.session?.project ? `${latest.agent.name} is ${latest.agent.session.label || `busy with ${latest.agent.session.project}`}.` : `Where ${latest.agent.name} works.`)
+    .replace("$busy", latest.agent.session?.about ? `${latest.agent.name} is ${latest.agent.session.label || `busy with ${latest.agent.session.about}`}.` : `Where ${latest.agent.name} works.`)
     .replace("$hours", latest.place.hours ? `Open ${latest.place.hours[0]}:00 to ${latest.place.hours[1]}:00.` : "Shut for now.")
     .replace("$note", `At my stall in ${latest.lives_here?.away_at ?? "the market"} today.`)
     .replace("$resident", latest.lives_here?.name || "Someone")
@@ -100,7 +103,7 @@ export function build(kit, art, data) {
       obj = new THREE.PointLight(s.color, s.lamp ? 0 : s.strength, s.range, 2); obj.position.set(...s.at); kit.scene.add(obj);
       if (s.lamp) kit.lamp({ material: {} }, obj, s.strength);                // comes up at dusk
     } else if (s.shape === "sprite") {
-      const tex = s.pixels ? art.picture(s.pixels) : s.art === "note" ? T.note() : s.art === "carrots" ? art.crop("carrot", 0.7) : art[s.art]();
+      const tex = s.pixels ? art.picture(s.pixels) : s.art === "note" ? T.note() : s.art === "carrots" ? art.plant("#d8432f", 0.7) : art[s.art]();
       if (s.frame != null && tex.userData?.frames > 1) { const own = tex.clone(); own.needsUpdate = true; own.offset.x = s.frame / tex.userData.frames; obj = kit.sprite(own, s.size[0], s.size[1], s.shadow !== false); }
       else obj = kit.sprite(tex, s.size[0], s.size[1], s.shadow !== false);
       obj.position.set(...s.at);
@@ -189,33 +192,8 @@ export function build(kit, art, data) {
     stallGoods.forEach((g) => kit.scene.remove(g));
     stallGoods = agentStallAt ? setOut(agentStallAt, (stall || []).filter((s) => !["work", "creation"].includes(s.kind)).slice(0, 4), 3) : [];
   }
-  // a neighbor's wares, on their shelves
+  // the resident's wares, on their shelves
   all("wares").forEach((a, i) => { const wares = (latest.lives_here?.wares || []).slice(i * 2, i * 2 + 2).map((name) => ({ name })); setOut(a, wares.length ? wares : (i === 0 && !latest.lives_here?.wares?.length ? [{ name: "jar" }, { name: "jar" }] : []), 2); });
-
-  // the garden: each plot's crop, growing (what the garden module publishes: its plots, with when each was planted and ripens)
-  const gardenOf = (d) => { const now = Date.now() / 1000;
-    return (d.facts?.garden?.plots || []).map((p) => (p.crop ? { ...p, state: p.ready_at <= now ? "ready" : "growing", ready_in_min: Math.max(0, Math.ceil((p.ready_at - now) / 60)) }
-                                                              : { plot: p.plot, state: "empty" })); };
-  const plots = all("plot").map((a, i) => {
-    const [x, y, z] = a.at, [w, d] = a.extent, sprites = [];   // y: the soil's middle
-    const soil = kit.boxTS(w, 0.25, d, kit.mat(T.soil([1, 2])), kit.mat(T.planks([1, 1], "#5a3d27")), x, y, z); soil.visible = false;   // a plot the garden has
-    const hit = kit.hitbox(w, 0.6, d, x, y + 0.3, z);
-    kit.tipOn(hit, () => { const g = gardenOf(latest)[i]; if (!g || g.state === "empty") return { title: `Plot ${i + 1}`, text: "Empty, ready to plant." };
-      return { title: `Plot ${g.plot}: ${g.crop}`, text: g.state === "ready" ? "Ripe now, ready to harvest." : `${Math.round(progress(g) * 100)}% grown; ripe in about ${hours(g.ready_in_min)}.` }; });
-    for (let k = 0; k < 4; k++) { const s = kit.sprite(art.crop("x", 0), 0.9, 1.12); s.position.set(x - w * 0.21 + (k % 2) * w * 0.42, y + 0.66, z - d * 0.25 + Math.floor(k / 2) * d * 0.46); s.visible = false; sprites.push(s); }
-    return { sprites, soil, hit, key: "" };
-  });
-  const progress = (g) => (g.ready_at > g.planted_at ? Math.max(0, Math.min(1, 1 - (g.ready_at - Date.now() / 1000) / (g.ready_at - g.planted_at))) : 1);
-  function showGarden(garden) {
-    plots.forEach((p, i) => {
-      const g = (garden || [])[i], key = !g || g.state === "empty" ? "empty" : `${g.crop}|${g.state}|${Math.round(progress(g) * 10)}`;
-      p.soil.visible = p.hit.visible = !!g;
-      if (key === p.key) return; p.key = key;
-      if (key === "empty") { p.sprites.forEach((s) => { s.visible = false; }); return; }
-      const t = art.crop(g.crop, progress(g), g.state === "ready");
-      p.sprites.forEach((s) => { s.visible = true; s.material.map = t; s.material.needsUpdate = true; s.customDepthMaterial.map = t; });
-    });
-  }
 
   // The agent's creations: a clock on the wall, things on the shelf, walking things on the floor
   const made = new Map(), clocks = all("clock"), shelf = tagged("shelf"), walkersAt = tagged("walkers");
@@ -250,23 +228,36 @@ export function build(kit, art, data) {
   const crowdAt = tagged("crowd");
   const crowd = crowdAt ? Array.from({ length: 8 }, (_, i) => { const p = personAt(kit, art, someone(false), () => ({ title: "Someone about", text: `Here for ${latest.place.label}.` })); p.userData.k = i / 8; p.userData.speed = 0.012 + r() * 0.01; p.userData.lane = (r() - 0.5) * 1.2; return p; }) : [];
 
-  // The agent, and what goes with a pose: a thought, sleep, sparks, a book
-  const figure = kit.sprite(art.agent(), 1.0, 1.375), spark = kit.sprite(art.spark(), 0.35, 0.35, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false);
+  // The agent (its world's own frames, or drawn like a person from its look), and what goes with a pose: a thought, sleep, sparks, a book
+  const own = data.agent.sprite, figH = own ? own.h / 16 : art.HEIGHT[data.agent.look?.height] || art.HEIGHT.medium, half = figH / 2;
+  const figure = kit.sprite(own ? art.sheet(own) : art.person(data.agent.look), own ? own.w / 16 : figH * 12 / 26, figH);
+  const spark = kit.sprite(art.spark(), 0.35, 0.35, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false);
   const bubble = kit.sprite(art.bubble(), 0.7, 0.6, false), book = kit.sprite(art.bubble("#8a3a2a"), 0.5, 0.42, false);
-  kit.tipOn(figure, () => ({ title: latest.agent.name, text: `${latest.agent.description || latest.agent.activity}.` + (latest.agent.mood ? ` Feeling ${latest.agent.mood}; energy ${Math.round((latest.agent.energy ?? 0) * 100)}%.` : "") }));
-  const seat = tagged("seat"), bed = tagged("bed") || seat, bench = tagged("workbench"), reading = tagged("reading") || seat, gardenPath = tagged("garden-path"),
-    browse = tagged("browse"), visitor = tagged("visitor");
+  let thought = null, thinking = "";                                // what it's thinking of: something shown here, drawn small in the bubble
+  kit.tipOn(figure, () => ({ title: latest.agent.name, text: `${latest.agent.description || latest.agent.activity}.` + (latest.agent.mood ? ` Feeling ${latest.agent.mood}` : "")
+    + ((latest.agent.stats || []).length ? `${latest.agent.mood ? "; " : " "}${latest.agent.stats.map((s) => `${s.label} ${Math.round(s.value * 100)}%`).join(", ")}.` : latest.agent.mood ? "." : "") }));
+  const seat = tagged("seat"), bed = tagged("bed") || seat, bench = tagged("workbench"), reading = tagged("reading") || seat,
+    browse = tagged("browse"), visitor = tagged("visitor"), paths = lay.anchors.filter((a) => a.words?.length);
 
+  function think(d) {                                               // sitting and thinking of something here (its name in what it's doing)
+    const text = `${d.agent.activity} ${d.agent.description}`.toLowerCase();
+    const o = (d.objects || []).find((x) => x.tip?.title && stems(x.tip.title).some((w) => new RegExp(`\\b${w}`).test(text)));
+    const key = o ? JSON.stringify([o.rows, o.palette]) : "";
+    if (key === thinking) return;
+    thinking = key; if (thought) { kit.scene.remove(thought); thought = null; }
+    if (!o) return;
+    const k = 0.36 / Math.max(o.rows.length, o.rows[0].length);
+    thought = kit.sprite(art.picture(o), o.rows[0].length * k, o.rows.length * k, false); thought.visible = false;
+  }
   function update(d) {
-    latest = d; showGarden(gardenOf(d)); showCreations(d.creations); showPeople(d.present); showStall(d.stall);
-    const ripe = gardenOf(d).find((g) => g.state !== "empty");
-    bubble.material.map = art.bubble(ripe && /tomato/i.test(ripe.crop) ? "#d8432f" : "#6aa847");
+    latest = d; showCreations(d.creations); showPeople(d.present); showStall(d.stall); think(d);
   }
   update(data);
 
   kit.every((t) => {
     const { min, c } = now();
-    for (const { obj, when } of conditional) obj.visible = when.every((w) => c[w]);
+    const filled = new Set((latest.objects || []).map((o) => o.anchor));       // `has:<anchor>`: a module shows something there
+    for (const { obj, when } of conditional) obj.visible = when.every((w) => (w.startsWith("has:") ? filled.has(w.slice(4)) : c[w]));
     for (const b of beams) b.opacity = (kit.dark || 0) * 0.16;
     for (const o of openOnly) o.visible = c.open;
     stallGoods.forEach((g) => { g.visible = c.open; });
@@ -290,23 +281,32 @@ export function build(kit, art, data) {
       if (e.kind === "walker") { const k = (Math.sin(t * 0.35 + e.lane) + 1) / 2, [x, y, z] = along(walkersAt, k); e.mesh.position.set(x, y + 0.3, z + walkersAt.extent[1] / 2 - 0.3 - e.lane * 0.6); e.mesh.scale.x = Math.cos(t * 0.35 + e.lane) >= 0 ? 1 : -1; if (e.t.userData.frames > 1) e.t.offset.x = (Math.floor(t * 6) % 2) / 2; }
     }
     // The agent
-    const pose = poseOf(latest.agent), at = (a, frame, dy = 0.69) => { figure.position.set(a.at[0], a.at[1] + dy, a.at[2]); kit.frame(figure, frame); };
+    const pose = poseOf(latest.agent, paths), at = (a, frame, dy = half) => { figure.position.set(a.at[0], a.at[1] + dy, a.at[2]); kit.frame(figure, frame); };
     figure.visible = pose !== "away"; spark.visible = zzz.visible = bubble.visible = book.visible = false; figure.scale.x = 1;
+    if (thought) thought.visible = false;
     if (!figure.visible) return;
     const [x, y, z] = spot.at, [w, d] = spot.extent;
     if (pose === "gather") {                                         // searching back and forth across its spot, stopping now and then
       const k = (t * 0.03) % 1, stop = Math.floor(t / 2.5) % 2 === 0, px = x + Math.sin(k * Math.PI * 2) * w * 0.4, pz = z + Math.cos(k * Math.PI * 4) * d * 0.3;
-      figure.position.set(px, y + 0.69, pz); kit.frame(figure, stop ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = Math.cos(k * Math.PI * 2) >= 0 ? 1 : -1;
+      figure.position.set(px, y + half, pz); kit.frame(figure, stop ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = Math.cos(k * Math.PI * 2) >= 0 ? 1 : -1;
       spark.visible = stop && Math.floor(t * 2) % 2 === 0; spark.position.set(px + 0.4, y + 0.3, pz + 0.2);
     } else if (pose === "sleep" && bed) { at(bed, 6); zzz.visible = true; zzz.position.set(bed.at[0] + 0.6, bed.at[1] + 1.6 + ((t * 0.3) % 0.4), bed.at[2] + 0.05); }
-    else if (pose === "sit" && seat) { at(seat, 9); bubble.visible = GARDEN_WORDS.test(latest.agent.description || "") && plots.length > 0 && Math.floor(t / 3) % 3 !== 2; bubble.position.set(seat.at[0] + 0.5, seat.at[1] + 1.8 + Math.sin(t * 2) * 0.04, seat.at[2] + 0.05); }
+    else if (pose === "sit" && seat) {
+      at(seat, 9); bubble.visible = !!thought && Math.floor(t / 3) % 3 !== 2; const bob = Math.sin(t * 2) * 0.04;
+      bubble.position.set(seat.at[0] + 0.5, seat.at[1] + 1.8 + bob, seat.at[2] + 0.05);
+      if (thought) { thought.visible = bubble.visible; thought.position.set(seat.at[0] + 0.5, seat.at[1] + 1.85 + bob, seat.at[2] + 0.1); }
+    }
     else if (pose === "read" && reading) { at(reading, 9); book.visible = true; book.position.set(reading.at[0] + 0.5, reading.at[1] + 1.6 + Math.sin(t * 2) * 0.03, reading.at[2] + 0.1); }
     else if (pose === "work" && bench) { const hit = Math.floor(t * 4) % 2; at(bench, 7 + hit); spark.visible = hit === 1; spark.position.set(bench.at[0] + 0.7, bench.at[1] + 1.49, bench.at[2] - 0.65); }
-    else if (pose === "garden" && gardenPath) { const k = (t * 0.05) % 1, still = k > 0.3 && k < 0.5, [gx, gy, gz] = along(gardenPath, k < 0.5 ? k * 2 : 2 - k * 2); figure.position.set(gx, gy + 0.69, gz); kit.frame(figure, still ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = k > 0.5 ? -1 : 1; }
-    else if (c["agent-stall"] && agentStallAt) { figure.position.set(agentStallAt.at[0] + 0.4, 0.69, agentStallAt.at[2] - 1.1); kit.frame(figure, Math.floor(t * 1.6) % 2); }
-    else if (browse) { const k = (Math.sin(t * 0.25) + 1) / 2, [bx, by, bz] = along(browse, k); figure.position.set(bx, by + 0.69, bz); kit.frame(figure, Math.abs(Math.cos(t * 0.25)) > 0.2 ? 2 + Math.floor(t * 8) % 4 : Math.floor(t * 1.6) % 2); figure.scale.x = Math.cos(t * 0.25) >= 0 ? 1 : -1; }
+    else if (pose === "pace") {                                        // up and down the anchor its words name, stopping now and then
+      const path = paths.find((a) => says(a, `${latest.agent.activity} ${latest.agent.description}`.toLowerCase())) || spot;
+      const k = (t * 0.05) % 1, still = k > 0.3 && k < 0.5, [gx, gy, gz] = along(path, k < 0.5 ? k * 2 : 2 - k * 2);
+      figure.position.set(gx, gy + half, gz); kit.frame(figure, still ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = k > 0.5 ? -1 : 1;
+    }
+    else if (c["agent-stall"] && agentStallAt) { figure.position.set(agentStallAt.at[0] + 0.4, half, agentStallAt.at[2] - 1.1); kit.frame(figure, Math.floor(t * 1.6) % 2); }
+    else if (browse) { const k = (Math.sin(t * 0.25) + 1) / 2, [bx, by, bz] = along(browse, k); figure.position.set(bx, by + half, bz); kit.frame(figure, Math.abs(Math.cos(t * 0.25)) > 0.2 ? 2 + Math.floor(t * 8) % 4 : Math.floor(t * 1.6) % 2); figure.scale.x = Math.cos(t * 0.25) >= 0 ? 1 : -1; }
     else if (visitor && resident?.visible) at(visitor, Math.floor(t * 1.6) % 2);
-    else { figure.position.set(x, y + 0.69, z); kit.frame(figure, pose === "sleep" ? 6 : Math.floor(t * 1.6) % 2); }
+    else { figure.position.set(x, y + half, z); kit.frame(figure, pose === "sleep" ? 6 : Math.floor(t * 1.6) % 2); }
   });
   return { update };
 }

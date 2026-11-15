@@ -55,7 +55,7 @@ Read-only: `../calibre/library` is bind-mounted at `/library` with `:ro`, and `m
 - A `reading` event per session: shown in perception, a diary moment when Pip finishes a book, indexed for
   `recall` ("You read The Strange: ..."), and part of the nightly reflection, so what Pip reads can become insights.
 - The UI and `pipchat` show where Pip is; `pipchat library` lists bookmarks; `GET /library/search?q=` and
-  `GET /library/bookmarks`.
+  `GET /published` (the reading module's `bookmarks`; `/library/bookmarks` until 0.48.0).
 
 ## Not now
 Borrowing books to read at home, a librarian character, more places (they'll reuse the registry and `go_to`).

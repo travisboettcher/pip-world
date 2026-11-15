@@ -576,10 +576,15 @@ def published(ctx, store):
     sk = {**skills(ctx), **(store.get("skills") or {})}
     out = []
     for p in sorted(ps.values(), key=lambda p: p["id"]):
-        worked = [h["ts"] for h in p["history"]]
+        worked, i = [h["ts"] for h in p["history"]], current_stage(p)
         out.append({"id": p["id"], "name": p["name"], "goal": p["goal"], "craft": p["craft"], "difficulty": p["difficulty"], "status": p["status"],
-                    "percent": percent(p), "current_stage": current_stage(p), "last_worked": max(worked) if worked else p["ts"],
+                    "percent": percent(p), "current_stage": i, "last_worked": max(worked) if worked else p["ts"],
                     "stages": [{"name": s["name"], "minutes": s["minutes"], "progress": round(s["progress"], 1)} for s in p["stages"]]})
+        if p["status"] in ("active", "paused"):             # for a page: what the stage still needs, and what happened last
+            st = p["stages"][i] if i is not None else None
+            last = p["history"][-1] if p["history"] else None
+            out[-1].update(needs=dict(st["materials"]) if st and not st["started"] else {},
+                           last={"result": last["result"], "text": clip(last["text"], 160)} if last else None)
     extra = {**meta(ctx), **((store.get("meta") or {}).get("all") or {})}.get("extra_slots", 0)
     return {"projects": out[-40:], "skills": {c: {"xp": round(x, 1), "level": level(x)} for c, x in sk.items()},
             "project_limit": min(ctx["params"]["cap"], ctx["params"]["most"] + extra)}

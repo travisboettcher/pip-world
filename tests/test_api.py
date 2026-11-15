@@ -130,7 +130,7 @@ def test_gift_points_at_matching_wish(tmp_path):
         assert "wished for" not in texts[1]
 
 
-def test_projects_and_creations_endpoints(tmp_path):
+def test_published_projects_and_creations_endpoints(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
         st = c.app.state.agent.state
@@ -140,9 +140,9 @@ def test_projects_and_creations_endpoints(tmp_path):
         _, _, spec = cr.sanitize_spec({"description": "a clock", "capabilities": [{"type": "timekeeper"}]},
                                       {"name": "clock", "difficulty": 1}, "fine", [], random.Random(1))
         st.add_creation("clock", "a clock", None, "fine", spec, cr.initial_runtime(spec, time.time()))
-        r = c.get("/projects").json()
-        assert r["projects"][0]["percent"] == 50 and r["projects"][0]["working_until"] == 9e9
-        assert r["skills"] == {"sewing": {"xp": 120, "level": 1}}
+        r = c.get("/published").json()["crafting"]                           # what the crafting module publishes, for a pack's page
+        assert r["projects"][0]["percent"] == 50 and r["skills"] == {"sewing": {"xp": 120, "level": 1}}
+        assert c.get("/state").json()["session"]["about"] == "kite" and c.get("/state").json()["session"]["ends_at"] == 9e9
         (made,) = c.get("/creations").json()
         assert made["running"] and made["clock"]["minutes_off"] == 0 and made["summary"].startswith("clock (fine)")
 

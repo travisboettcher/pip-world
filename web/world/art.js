@@ -37,46 +37,22 @@ export function makeArt(THREE) {
     window: (lit) => tex(12, 12, (px) => { px(0, 0, 12, 12, "#4a2f1f"); const a = lit ? "#ffcf7a" : "#26394a", b = lit ? "#ffe2a8" : "#3a5468"; px(1, 1, 10, 10, a); px(5, 1, 2, 10, "#4a2f1f"); px(1, 5, 10, 2, "#4a2f1f"); px(2, 2, 2, 2, b); px(8, 8, 2, 1, b); })
   };
 
-  // The agent: 0-1 idle, 2-5 walk, 6 asleep, 7-8 hammering, 9 sitting
-  const agent = () => sprite(16, 22, 10, (px, f) => {
-    const bob = (f === 1 || f === 3 || f === 5) ? 1 : 0, y0 = 2 + bob + (f === 9 ? 2 : 0), sleep = f === 6, glow = "#f2b45c";
-    px(7, y0 - 2, 1, 3, "#4d5c6c"); px(6, y0 - 4, 3, 2, sleep ? "#a8762a" : glow); px(7, y0 - 4, 1, 1, sleep ? "#a8762a" : "#fff2c4");
-    px(3, y0 + 1, 10, 1, "#2a3440"); px(2, y0 + 2, 12, 7, "#2a3440"); px(3, y0 + 2, 10, 6, "#a9bccf"); px(3, y0 + 7, 10, 1, "#7f93a8"); px(3, y0 + 2, 10, 1, "#c8d6e4");
-    if (sleep) px(5, y0 + 5, 6, 1, "#1d2421"); else { px(4, y0 + 4, 8, 3, "#1d2421"); px(5, y0 + 4, 2, 2, "#9fe0ff"); px(9, y0 + 4, 2, 2, "#9fe0ff"); }
-    px(3, y0 + 9, 10, 7, "#2a3440"); px(4, y0 + 9, 8, 6, "#7f93a8"); px(4, y0 + 9, 8, 1, "#9fb3c8"); px(7, y0 + 11, 2, 2, glow);
-    px(2, y0 + 10, 2, 4, "#5d6f82");
-    if (f === 7) { px(12, y0 + 5, 2, 5, "#5d6f82"); px(11, y0 + 3, 5, 2, "#b8b8b8"); } else if (f === 8) { px(12, y0 + 10, 3, 2, "#5d6f82"); px(14, y0 + 9, 2, 5, "#b8b8b8"); } else px(12, y0 + 10, 2, 4, "#5d6f82");
-    if (f === 9) { px(4, 19, 3, 2, "#4d5c6c"); px(9, 19, 3, 2, "#4d5c6c"); return; }
-    const step = f >= 2 && f <= 5 ? [0, 1, 0, -1][f - 2] : 0;
-    px(5, y0 + 15 + Math.max(0, step), 2, 3 - Math.max(0, step), "#4d5c6c"); px(9, y0 + 15 + Math.max(0, -step), 2, 3 - Math.max(0, -step), "#4d5c6c"); px(4, 20, 3, 1, "#2a3440"); px(9, 20, 3, 1, "#2a3440");
-  });
   const walker = () => sprite(14, 10, 2, (px, f) => { px(2, 1, 10, 6, "#8a6a2a"); px(3, 1, 8, 5, "#c9a24a"); px(3, 1, 8, 1, "#f3dc8e"); px(9, 2, 2, 2, "#ffe9a8"); px(3 + f, 7, 2, 3 - f, "#6b4f1f"); px(9 - f, 7, 2, 2 + f, "#6b4f1f"); });
   const QUALITY = { rough: "#9a7a3a", sound: "#b8923e", fine: "#c9a24a", masterwork: "#e0b84e" };
   // The agent's own pixel drawings ({rows, palette}, "." for nothing): as a sprite (a creation's look), or framed for a wall or a stall
   const picture = (p) => sprite(p.rows[0].length, p.rows.length, 1, (px) => p.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") px(x, y, 1, 1, p.palette[ch]); })));
   const framed = (p) => { const w = p.rows[0].length, h = p.rows.length; return tex(w + 4, h + 4, (px) => { px(0, 0, w + 4, h + 4, "#5a3d27"); px(1, 1, w + 2, h + 2, "#8a6440"); px(2, 2, w, h, "#efe4c8"); p.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") px(x + 2, y + 2, 1, 1, p.palette[ch]); })); }); };
   const contraption = (quality, seed) => sprite(12, 12, 1, (px) => { const b = QUALITY[quality] || QUALITY.sound, r = rnd(seed); px(1, 4, 10, 7, shade(b, 0.7)); px(2, 4, 8, 6, b); px(2, 4, 8, 1, shade(b, 1.3)); px(3 + Math.floor(r() * 4), 1, 3, 3, shade(b, 1.1)); px(4 + Math.floor(r() * 3), 6, 2, 2, "#3a2a1c"); px(1, 11, 10, 1, "#3a2a1c"); });
-  const bubble = (fruit = "#6aa847") => sprite(14, 12, 1, (px) => { px(1, 0, 12, 8, "#f5f1d7"); px(0, 1, 14, 6, "#f5f1d7"); px(5, 8, 3, 2, "#f5f1d7"); px(4, 10, 2, 2, "#f5f1d7"); px(3, 3, 8, 3, fruit); px(4, 4, 2, 1, "#f5f1d7"); px(7, 4, 2, 1, "#f5f1d7"); });
+  const bubble = (fruit) => sprite(14, 12, 1, (px) => { px(1, 0, 12, 8, "#f5f1d7"); px(0, 1, 14, 6, "#f5f1d7"); px(5, 8, 3, 2, "#f5f1d7"); px(4, 10, 2, 2, "#f5f1d7"); if (fruit) { px(3, 3, 8, 3, fruit); px(4, 4, 2, 1, "#f5f1d7"); px(7, 4, 2, 1, "#f5f1d7"); } });
   const zzz = () => sprite(12, 12, 1, (px) => { [[0, 8], [4, 4], [8, 0]].forEach(([x, y]) => { px(x, y, 4, 1, "#cfe6ff"); px(x + 2, y + 1, 1, 1, "#cfe6ff"); px(x + 1, y + 2, 1, 1, "#cfe6ff"); px(x, y + 3, 4, 1, "#cfe6ff"); }); });
   const spark = () => sprite(8, 8, 1, (px) => { px(3, 0, 2, 8, "#ffd27a"); px(0, 3, 8, 2, "#ffd27a"); px(3, 3, 2, 2, "#fff6d0"); });
   const flower = () => sprite(8, 8, 4, (px, f) => { if (f === 3) { px(1, 2, 1, 6, "#6fa047"); px(3, 0, 1, 8, "#5f9a3e"); px(5, 3, 1, 5, "#7fb04f"); px(6, 1, 1, 7, "#5f9a3e"); return; } const c = ["#e86a8a", "#f2d45c", "#9a8ae8"][f]; px(3, 4, 1, 4, "#4f7d34"); px(2, 1, 3, 3, c); px(3, 2, 1, 1, "#fff2c4"); px(1, 6, 2, 1, "#5f9a3e"); });
-  // a crop at its growth: peas climb canes, tomatoes bush and redden, anything else is a leafy plant with fruit in a colour of its own
-  function crop(name, p, ripe) {
-    const n = String(name).toLowerCase(), fruit = ["#d8432f", "#e0782a", "#e8c040", "#9a4a8a", "#c8d860", "#e86a8a"][hashStr(n) % 6];
-    return sprite(16, 20, 1, (px) => {
-      const hgt = Math.round(3 + Math.min(1, p) * 15);
-      if (p < 0.1) { px(7, 17, 2, 3, "#6fa047"); return; }
-      if (n.includes("pea") || n.includes("bean")) {
-        px(3, 20 - hgt - 1, 1, hgt + 1, "#8a6a45"); px(12, 20 - hgt - 1, 1, hgt + 1, "#8a6a45");
-        for (let i = 0; i < hgt; i++) { px(5 + (i % 2), 19 - i, 2, 1, "#5f9a3e"); px(9 - (i % 2), 19 - i, 2, 1, "#6aa847"); if (i % 3 === 1) { px(4, 19 - i, 2, 1, "#8cc06a"); px(10, 19 - i, 2, 1, "#8cc06a"); } }
-        if (p > 0.6 || ripe) for (let i = 4; i < hgt; i += 4) px(7, 19 - i, 1, 3, "#b9e08e");
-      } else {
-        for (let r = 0; r < hgt; r++) { const ww = Math.max(2, Math.round((5 + p * 6) * Math.sin((r / hgt) * Math.PI)) + 2); px(8 - Math.floor(ww / 2), 19 - r, ww, 1, r % 3 ? "#4e8a36" : "#5f9a3e"); }
-        const col = n.includes("tomato") ? "#d8432f" : fruit;
-        if (p > 0.35 || ripe) [[5, 14], [10, 12], [7, 9], [11, 16]].slice(0, ripe ? 4 : Math.round(p * 4)).forEach(([x, y]) => { px(x, y, 2, 2, ripe || p > 0.85 ? col : "#a8c04a"); px(x, y, 1, 1, "#fff2c4"); });
-      }
-    });
-  }
+  // a leafy plant `p` of the way grown, with fruit in a colour of its own (a module draws its own growing things as pictures)
+  const plant = (fruit, p) => sprite(16, 20, 1, (px) => {
+    const hgt = Math.round(3 + Math.min(1, p) * 15);
+    for (let r = 0; r < hgt; r++) { const ww = Math.max(2, Math.round((5 + p * 6) * Math.sin((r / hgt) * Math.PI)) + 2); px(8 - Math.floor(ww / 2), 19 - r, ww, 1, r % 3 ? "#4e8a36" : "#5f9a3e"); }
+    if (p > 0.35) [[5, 14], [10, 12], [7, 9], [11, 16]].slice(0, Math.round(p * 4)).forEach(([x, y]) => { px(x, y, 2, 2, p > 0.85 ? fruit : "#a8c04a"); px(x, y, 1, 1, "#fff2c4"); });
+  });
   // the Gear Clock (or any timekeeper): a live sprite whose hands show its own face and whose pendulum swings while it runs
   function clock() {
     const c = document.createElement("canvas"); c.width = 16; c.height = 28; const t = canvasTex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
@@ -111,31 +87,38 @@ export function makeArt(THREE) {
     heather: (rep) => tex(16, 16, (px, g, w, h) => speckle(px, w, h, "#6a5a4a", ["#8a5a7a", "#7a4a6a", "#5a6a3a", "#9a6a8a"], 110, 65), rep),
     stripes: (a, b) => tex(16, 16, (px) => { for (let x = 0; x < 16; x += 4) { px(x, 0, 2, 16, a); px(x + 2, 0, 2, 16, b); } px(0, 15, 16, 1, shade(a, 0.7)); })
   });
-  // a person from a look (looks.py): 0-1 idle, 2-5 walk, 6 crouched with a palm on the ground
+  // a person from a look (looks.py), in the frames the agent has too: 0-1 idle, 2-5 walk, 6 asleep, 7-8 working (a tool up, then down), 9 sitting
   const SKIN = { pale: "#f0d0b8", light: "#e2c4a8", olive: "#c8a07a", brown: "#a8724a", dark: "#6e4a32" };
   const HAIR = { white: "#e8e8e8", grey: "#a8a8a8", black: "#2a2420", brown: "#6a4a2a", auburn: "#a8502a", fair: "#d8b860" };
   const TOP = { grey: "#8a8d92", brown: "#7a5a3a", green: "#6a8a4a", blue: "#4a5a8a", red: "#8a4a3a", ochre: "#b8892f", plum: "#6a4a7a", cream: "#e2d6b8" };
   const BOTTOM = { grey: "#5a5d62", brown: "#5a4a3a", green: "#4a5a3a", blue: "#3a4a6a", navy: "#2e3a4e", black: "#2a2a2e" };
-  const person = (look = {}) => sprite(12, 26, 7, (px, f) => {
+  const person = (look = {}) => sprite(12, 26, 10, (px, f) => {
     const skin = SKIN[look.skin] || SKIN.light, hair = HAIR[look.hair] || null, top = TOP[look.top] || TOP.grey, bottom = BOTTOM[look.bottom] || BOTTOM.navy, acc = look.accessory;
-    const crouch = f === 6, y0 = (crouch ? 6 : 0) + (f === 1 ? 1 : 0);
+    const sit = f === 9, y0 = (sit ? 4 : 0) + (f === 1 ? 1 : 0);
     if (hair) { px(3, y0, 6, 2, hair); px(2, y0 + 2, 1, 3, hair); px(9, y0 + 2, 1, 2, hair); }
     if (acc === "hat") { px(2, y0, 8, 2, "#5a4a3a"); px(1, y0 + 2, 10, 1, "#4a3a2a"); }
-    px(3, y0 + 2, 6, 5, skin); px(4, y0 + 4, 1, 1, "#2a2420"); px(7, y0 + 4, 1, 1, "#2a2420");
+    px(3, y0 + 2, 6, 5, skin);
+    if (f === 6) { px(4, y0 + 4, 1, 1, shade(skin, 0.7)); px(7, y0 + 4, 1, 1, shade(skin, 0.7)); }       // asleep: eyes shut
+    else { px(4, y0 + 4, 1, 1, "#2a2420"); px(7, y0 + 4, 1, 1, "#2a2420"); }
     if (acc === "glasses") { px(3, y0 + 4, 3, 1, "#3a3028"); px(6, y0 + 4, 3, 1, "#3a3028"); }
-    px(2, y0 + 7, 8, 8, top); px(1, y0 + 8, 1, 5, top); px(10, y0 + 8, 1, 5, top); px(1, y0 + 13, 1, 1, skin); px(10, y0 + 13, 1, 1, skin);
+    px(2, y0 + 7, 8, 8, top); px(1, y0 + 8, 1, 5, top); px(1, y0 + 13, 1, 1, skin);
+    if (f === 7) { px(10, y0 + 4, 1, 4, top); px(10, y0 + 3, 1, 1, skin); px(9, y0 + 1, 3, 2, "#b8b8b8"); }               // a tool raised
+    else if (f === 8) { px(10, y0 + 8, 2, 2, top); px(11, y0 + 10, 1, 1, skin); px(11, y0 + 11, 1, 3, "#b8b8b8"); }       // and brought down
+    else { px(10, y0 + 8, 1, 5, top); px(10, y0 + 13, 1, 1, skin); }
     if (acc === "shawl") { px(1, y0 + 7, 10, 3, shade(top, 0.7)); px(2, y0 + 10, 2, 2, shade(top, 0.7)); px(8, y0 + 10, 2, 2, shade(top, 0.7)); }
     if (acc === "scarf") px(3, y0 + 7, 6, 2, "#b5402f");
     if (acc === "apron") { px(3, y0 + 9, 6, 8, "#e6dbc0"); }
     if (acc === "satchel") { px(2, y0 + 7, 1, 7, "#5a3d27"); px(8, y0 + 11, 3, 3, "#7a5236"); }
-    if (crouch) { px(3, y0 + 15, 7, 4, bottom); px(10, y0 + 14, 2, 2, skin); px(2, 24, 3, 2, "#3a2a20"); px(7, 24, 3, 2, "#3a2a20"); return; }
+    if (sit) { px(2, y0 + 15, 9, 3, bottom); px(8, y0 + 18, 3, 4 - (y0 - 4), bottom); px(8, 24, 4, 2, "#3a2a20"); return; }   // knees forward, feet down
     px(3, y0 + 15, 6, 9 - y0, bottom);
     const step = f >= 2 && f <= 5 ? [0, 1, 0, -1][f - 2] : 0;
     px(3, 24 + Math.max(0, step), 3, 2 - Math.max(0, step), "#3a2a20"); px(6, 24 + Math.max(0, -step), 3, 2 - Math.max(0, -step), "#3a2a20");
   });
+  // the agent's own frames, when its world pack has them (sprite.json: {w, h, palette, frames}, in the order above)
+  const sheet = (s) => sprite(s.w, s.h, s.frames.length, (px, f) => s.frames[f].forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") px(x, y, 1, 1, s.palette[ch]); })));
   const HEIGHT = { short: 1.45, medium: 1.7, tall: 2.0 };
   const curlew = () => sprite(10, 8, 2, (px, f) => { px(2, 2, 5, 3, "#8a6e4e"); px(3, 2, 3, 1, "#a8896a"); px(6, 1, 2, 2, "#8a6e4e"); px(7, 2 + f, 3, 1, "#3a3028"); px(9, 3 + f, 1, 1, "#3a3028"); px(3, 5, 1, 3, "#5a4a3a"); px(5, 5, 1, 3, "#5a4a3a"); });
   const reed = () => sprite(8, 16, 1, (px) => { [[1, 0], [3, 2], [5, 1], [6, 4]].forEach(([x, y], i) => { px(x, y, 1, 16 - y, i % 2 ? "#a99a5e" : "#8f8a4e"); if (i < 2) px(x, y, 1, 3, "#6b4a2e"); }); });
   const coin = () => sprite(6, 6, 1, (px) => { px(1, 0, 4, 6, "#e8b04a"); px(0, 1, 6, 4, "#e8b04a"); px(2, 1, 2, 1, "#fff2c4"); });
-  return { T, tex, sprite, shade, agent, walker, contraption, picture, framed, bubble, zzz, spark, flower, crop, clock, dot, LEAF, GRASS, person, HEIGHT, curlew, reed, coin };
+  return { T, tex, sprite, shade, sheet, walker, contraption, picture, framed, bubble, zzz, spark, flower, plant, clock, dot, LEAF, GRASS, person, HEIGHT, curlew, reed, coin };
 }

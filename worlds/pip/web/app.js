@@ -385,7 +385,7 @@ document.addEventListener('keydown', (ev) => {
   if (!$('usage-pop').hidden) { $('usage-pop').hidden = true; $('usage-pill').setAttribute('aria-expanded', 'false'); }
   else if (chat.open) setChatOpen(false);
 });
-const refreshState = async () => { state = await api('/state'); renderState(); };
+const refreshState = async () => { state = await api('/state'); renderState(); renderProjects(); };   // projects show what Pip is busy with
 
 // ---- emotion state (the engine's numbers; see DESIGN-emotions.md) ----------------
 let emotionData = null;
@@ -449,17 +449,17 @@ const refreshStanding = async () => { try { standingData = await api('/standing'
 
 let projectData = { projects: [], skills: {} };
 function renderProjects() {
-  const now = Date.now() / 1000;
+  const now = Date.now() / 1000, s = state?.session;
+  const until = (p) => (s && s.kind === 'module' && s.about === p.name ? s.ends_at : null);    // busy with it right now
   const active = projectData.projects.filter((p) => p.status === 'active');
   const done = projectData.projects.filter((p) => p.status !== 'active').slice(-5).reverse();
   const card = (p) => {
     const st = p.current_stage != null ? p.stages[p.current_stage] : null;
-    const mats = st && !st.started ? Object.entries(st.materials).map(([n, q]) => `${q} ${n}`).join(', ') : '';
-    const last = p.history[p.history.length - 1];
+    const mats = Object.entries(p.needs || {}).map(([n, q]) => `${q} ${n}`).join(', '), last = p.last;   // as the crafting module publishes them
     const sub = [`${p.craft}, difficulty ${p.difficulty}/5`,
                  st ? `stage ${p.current_stage + 1}/${p.stages.length}: ${st.name}` : null,
                  mats ? `needs ${mats}` : null,
-                 p.working_until ? `working, ~${Math.max(1, Math.round((p.working_until - now) / 60))} min left` : null];
+                 until(p) ? `working, ~${Math.max(1, Math.round((until(p) - now) / 60))} min left` : null];
     return h('div', { class: 'plot' },
       h('span', {}, `#${p.id} ${p.name}`, h('small', {}, `${p.percent}%`)),
       h('div', { class: 'bar' }, h('i', { style: `width:${p.percent}%` })),
@@ -472,7 +472,11 @@ function renderProjects() {
     skills ? h('p', { class: 'hint' }, `Skills: ${skills}`) : '',
     ...done.map((p) => h('p', { class: 'hint' }, `${p.status === 'done' ? '✓' : '✗'} ${p.name}`)));
 }
-const refreshProjects = async () => { projectData = await api('/projects'); renderProjects(); };
+// what the crafting module publishes (any live module's `projects` and `skills`), read with every other module's at /published
+const refreshProjects = async () => {
+  const said = Object.values(await api('/published')).find((f) => Array.isArray(f.projects)) || {};
+  projectData = { projects: said.projects || [], skills: said.skills || {} }; renderProjects();
+};
 
 let memoryData = null;
 const STAT_NAMES = { work_sessions: 'work sessions', minutes_worked: 'minutes worked', with_approach: 'with an approach stated',
@@ -523,10 +527,10 @@ async function refreshMemory() {
 }
 
 async function refreshLetters() {
-  const r = await api('/letters?limit=30');
+  const [r, people] = await Promise.all([api('/letters?limit=30'), api('/characters')]);
   const now = Date.now() / 1000;
   $('letters').replaceChildren(
-    ...r.neighbors.map((n) => h('p', {}, h('b', {}, n.name), ` — ${n.about}`)),
+    ...people.filter((c) => c.kind === 'neighbor').map((n) => h('p', {}, h('b', {}, n.name), ` — ${n.about}`)),
     h('ul', { class: 'plain' }, ...(r.letters.length ? r.letters.slice().reverse().map((l) => {
       const transit = l.delivered_at ? fmtDay(l.ts) : `on its way, arrives in ~${Math.max(1, Math.round((l.deliver_at - now) / 60))} min`;
       const extra = [l.enclosed && `enclosed: ${l.enclosed}`, l.parcel && `parcel: ${l.parcel.qty} × ${l.parcel.name}`].filter(Boolean);
@@ -549,6 +553,7 @@ const refreshWorks = async () => { worksData = await api('/works?limit=60'); ren
 
 // ---- modules (docs/DESIGN-modules.md): proposals wait here for the owner; the public sees what is live ----------------------
 const MODULE_ORDER = { waiting: 0, live: 1, disabled: 2, proposed: 3, rejected: 4, replaced: 5 };
+const AUTHORS = { world: 'by the world', agent: 'by Pip', library: 'shipped' };     // the engine's library and Pip's world's own
 function moduleCard(m) {
   const r = m.report || {};
   const list = (title, xs) => (xs && xs.length ? [h('b', {}, title), h('ul', { class: 'plain' }, ...[...new Set(xs)].slice(0, 6).map((x) => h('li', {}, x)))] : []);
@@ -567,7 +572,7 @@ function moduleCard(m) {
   const summary = r.calls !== undefined
     ? `Dry run: ${r.calls} calls, ${r.clean ? 'clean' : 'problems'}${r.slowest_ms ? `, slowest ${r.slowest_ms} ms` : ''}.` : '';
   return h('details', { class: `module ${m.status}`, ...(m.status === 'waiting' ? { open: '' } : {}) },
-    h('summary', {}, h('b', {}, m.name), ` v${m.version} · ${m.kind}${m.subject ? ` of ${m.subject}` : ''} · by ${m.author === 'world' ? 'the world' : 'Pip'} `,
+    h('summary', {}, h('b', {}, m.name), ` v${m.version} · ${m.kind}${m.subject ? ` of ${m.subject}` : ''} · ${AUTHORS[m.author] || `by ${m.author}`} `,
       h('span', { class: 'mstatus' }, m.status)),
     m.reason ? h('p', {}, m.reason) : null,
     m.offers && m.offers.length ? h('p', {}, h('b', {}, 'Actions: '), m.offers.map((o) => `${o.name} (${o.help})`).join('; ')) : null,

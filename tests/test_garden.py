@@ -117,7 +117,8 @@ async def test_the_garden_is_shown_every_time_and_a_ripe_crop_wakes_the_agent(tm
     await use(agent, "plant", seed="tomato")
     lines = M.status_lines(st)
     assert lines[0] == "Your garden:" and lines[1] == "- plot 1: tomatoes growing, ready in about 24 hours" and lines[2] == "- plot 2: empty"
-    assert st.module(m["id"])["due"] == pytest.approx(plots(st)["1"]["ready_at"])
+    p = plots(st)["1"]
+    assert st.module(m["id"])["due"] == pytest.approx(p["planted_at"] + (p["ready_at"] - p["planted_at"]) / 10)   # the next tenth: drawn again
     assert M.live_named(st, "garden")["facts"]["names"] == ["tomatoes"]
     ripen(st)
     assert await step(st, s, agent) is True                              # ripe: the agent wakes
@@ -128,6 +129,49 @@ async def test_the_garden_is_shown_every_time_and_a_ripe_crop_wakes_the_agent(tm
     assert plots(st)["1"]["notified"] is True
     assert await step(st, s, agent) is False                             # told once
     assert agent._free_time(time.time()) == []                           # something waits: no free time
+
+
+
+async def test_the_garden_draws_its_plots_on_the_beds_of_a_scene(tmp_path):
+    """What the renderer drew before 0.48.0, the garden shows itself: each plot's crop as a picture on the bed anchor of the same number."""
+    s, st, agent, m = setup(tmp_path)
+    await use(agent, "plant", seed="tomato")
+    shown = st.module(m["id"])["show"]
+    assert [o["id"] for o in shown] == ["plot-1", "plot-2", "plot-3"]
+    one, two = shown[0], shown[1]
+    assert one["at"] == {"type": "ground", "place": "home", "tags": ["plot"], "near": "plot-1"} and two["at"]["near"] == "plot-2"
+    assert len(one["sprite"]["rows"]) == 29 and len(one["sprite"]["rows"][0]) == 28 and one["size"] == 1.5
+    ready = plots(st)["1"]["ready_at"]
+    assert one["tip"] == {"title": "Plot 1: tomatoes", "text": "Just planted; ripe in about {in:%s}." % ready}
+    assert two["tip"] == {"title": "Plot 2", "text": "Empty, ready to plant."} and len(two["sprite"]["rows"]) < 20
+    p = plots(st)["1"]
+    half = p["planted_at"] + (p["ready_at"] - p["planted_at"]) * 0.55
+    await step(st, s, agent, half)
+    grown = st.module(m["id"])["show"][0]
+    assert grown["tip"]["text"] == "50% grown; ripe in about {in:" + str(ready) + "}." and grown["sprite"]["rows"] != one["sprite"]["rows"]
+    assert st.module(m["id"])["due"] == pytest.approx(p["planted_at"] + (p["ready_at"] - p["planted_at"]) * 0.6)
+    ripen(st)
+    await step(st, s, agent)
+    ripe = st.module(m["id"])["show"][0]
+    assert ripe["tip"]["text"] == "Ripe now, ready to harvest." and "#d8432f" in ripe["sprite"]["palette"].values()   # red tomatoes
+
+
+def test_a_crop_is_drawn_by_how_far_it_has_grown():
+    """The crop pictures: a sprout, a plant growing taller, fruit that colours as it ripens; peas climb canes."""
+    src = M.library("garden")[1]
+    g = {}
+    exec(compile(src, "garden", "exec"), g)
+    rows = lambda name, p, ripe=False: g["_picture"](name, p, ripe)[0]          # noqa: E731
+    sprout = rows("tomatoes", 0.05)
+    assert sum(ch != "." for r in sprout for ch in r) == 4 * 2 * 3 and len(sprout) == 29 and len(sprout[0]) == 28    # four sprouts
+    assert [i for i, r in enumerate(sprout) if r.strip(".")] == [17, 18, 19, 26, 27, 28]                             # the back pair, the front lower
+    tall = lambda r: next(i for i, row in enumerate(r) if row.strip("."))      # noqa: E731   # the first row with anything in it
+    assert tall(rows("tomatoes", 0.9)) < tall(rows("tomatoes", 0.4)) < tall(sprout)
+    tomato, pal = g["_picture"]("tomatoes", 1.0, True)
+    assert "#d8432f" in pal.values() and "#d8432f" not in g["_picture"]("tomatoes", 0.4)[1].values()
+    peas, ppal = g["_picture"]("peas", 0.7)
+    assert "#8a6a45" in ppal.values() and "#8a6a45" not in pal.values()          # canes
+    assert g["_picture"]("leeks", 1.0, True)[1] != g["_picture"]("chard", 1.0, True)[1]   # anything else: a fruit colour of its own
 
 
 async def test_harvesting_and_planting_are_moments_and_firsts(tmp_path):

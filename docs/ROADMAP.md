@@ -150,6 +150,11 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [ ] The engine audit (docs/DESIGN-engine-audit.md, 2026-11-14; decisions taken): the small leaks and `pip` renamed completely; the
       dashboard into Pip's pack; the night pass and the guide; people (characters of any role, talk scenes and letters as engine machinery
       any module's characters use); capabilities and happenings' effects from the pack; the module API consolidated (`api: 2`)
+    - [x] 1 (0.47.0): the small leaks; `pip` is `agent` everywhere in the engine, with a migration and no aliases
+    - [x] 2 (0.48.0): the dashboard is Pip's pack's page (`worlds/pip/web/`), a pack without one gets the engine's plain page; `/published`,
+          `/characters` and `/abilities` replace `/projects`, `/library/bookmarks` and the letters' neighbours; a module's standing is a
+          chat command by its name; the renderer draws no garden (the garden module shows its crops) and the agent from its pack
+          (`sprite.json` or a `look`); `home`, `gallery-wall` and `stall-pictures` are Pip's world's own modules
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

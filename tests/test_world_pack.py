@@ -135,7 +135,9 @@ def test_until_a_world_is_set_the_active_one_is_pips_and_they_agree_with_their_v
     d = pack_dir(tmp_path)
     (d / "world.json").write_text(json.dumps({"name": "Bare", "api": 1, "agent": {"name": "Ox", "pronoun": "they"}}))
     W.set_active(W.load(Settings(world_pack=str(d))))
-    assert W.active().agent.name == "Ox" and "what Ox is doing and how they are" in commands.answer(None, Settings(), "/help")
+    from app.state import State
+    st = State(Settings(db_path=str(tmp_path / "t.db")))
+    assert W.active().agent.name == "Ox" and "what Ox is doing and how they are" in commands.answer(st, Settings(), "/help")
 
 
 # --- phase 2: a world's content is its pack's -----------------------------------------------------------------------------------

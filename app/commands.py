@@ -1,14 +1,14 @@
 """Slash commands: information straight from the engine, not a reply from the agent.
 
 A message to the agent over a channel that starts with `/word` is answered here from state: no LLM call, nothing in the agent's
-inbox, no wake. They mirror `pipchat` (status, items, projects...). Everything is read-only.
+inbox, no wake. They mirror `pipchat` (status, items, notes...). Everything is read-only. A live module that shows a standing (the
+garden's plots, crafting's projects) is a command too, by its name: `/garden` shows what it shows the agent.
 """
 import re
 from datetime import datetime
 import time
 
 from . import emotions as emo
-from . import projects as proj
 from . import sleep as sleepmod
 from . import stakes
 from .state import SECTIONS
@@ -16,11 +16,11 @@ from .text import span
 from . import world_pack
 from . import stats as stats_mod
 
-COMMAND = re.compile(r"^/([a-z]+)(?:\s+(.*))?$", re.I | re.S)
+COMMAND = re.compile(r"^/([a-z][a-z0-9-]*)(?:\s+(.*))?$", re.I | re.S)
 OPEN_SECTIONS = ("todo", "wishlist", "ambitions")
-NAMES = ("help", "status", "items", "projects", "creations", "notes", "emotions", "usage")
+NAMES = ("help", "status", "items", "creations", "notes", "emotions", "usage")
 HELP = {"help": "this list", "status": "what {name} is doing and how {they} {are}", "items": "what {name} owns",
-        "projects": "projects in progress", "creations": "what {name} has made",
+        "creations": "what {name} has made",
         "notes": "open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)",
         "emotions": "{possessive} emotion state", "usage": "today's token use against the budget"}
 
@@ -32,15 +32,25 @@ def answer(state, settings, text: str, now: float | None = None) -> str | None:
         return None
     name, arg = m.group(1).lower(), (m.group(2) or "").strip()
     handler = _HANDLERS.get(name)
-    if not handler:
-        return f"I don't know /{name}. Try /help."
-    return handler(state, settings, arg, now or time.time())
+    if handler:
+        return handler(state, settings, arg, now or time.time())
+    shown = next((s for s in _standing(state, now) if s["module"] == name), None)
+    if shown:
+        return f"{shown['title']}\n" + ("\n".join(shown["lines"]) or "Nothing to show right now.")
+    return f"I don't know /{name}. Try /help."
+
+
+def _standing(state, now: float | None = None) -> list[dict]:
+    """What live modules show the agent, each a command by its module's name (never one of the engine's own)."""
+    from . import modules
+    return [s for s in modules.standing(state, now) if s["module"] not in _HANDLERS]
 
 
 def _help(state, settings, arg, now):
     a = world_pack.active().agent
     words = {"name": a.name, "possessive": a.possessive, "they": a.they, "are": "are" if a.pronoun == "they" else "is"}
-    return f"Commands (answered by the engine, not by {a.name}):\n" + "\n".join(f"/{n}: {HELP[n].format(**words)}" for n in NAMES)
+    return (f"Commands (answered by the engine, not by {a.name}):\n" + "\n".join(f"/{n}: {HELP[n].format(**words)}" for n in NAMES)
+            + "".join(f"\n/{s['module']}: {s['title'].lower()}" for s in _standing(state)))
 
 
 def _status(state, settings, arg, now):
@@ -64,18 +74,6 @@ def _items(state, settings, arg, now):
     if not items:
         return f"Items\n{world_pack.active().agent.name} has nothing."
     return "Items\n" + "\n".join(f"{i['name']} x{i['qty']} ({i['kind']})" for i in items)
-
-
-def _projects(state, settings, arg, now):
-    active = [p for p in proj.published(state)["projects"] if p["status"] == "active"]     # what the crafting module publishes
-    if not active:
-        return "Projects\nNo projects right now."
-    lines = []
-    for p in active:
-        i = p["current_stage"]
-        nxt = p["stages"][i]["name"] if i is not None else "all the planned steps are done"
-        lines.append(f"{p['name']}: {p['percent']}%, next: {nxt}")
-    return "Projects\n" + "\n".join(lines)
 
 
 def _creations(state, settings, arg, now):
@@ -109,5 +107,5 @@ def _usage(state, settings, arg, now):
     return f"Usage\n{u['total_tokens']:,} of {u['budget']:,} tokens today ({pct}%). Calls: {u['calls']}."
 
 
-_HANDLERS = {"help": _help, "status": _status, "items": _items, "projects": _projects,
+_HANDLERS = {"help": _help, "status": _status, "items": _items,
              "creations": _creations, "notes": _notes, "emotions": _emotions, "usage": _usage}

@@ -15,10 +15,21 @@ TEXTURES = ("grass", "soil", "cliff", "plaster", "inner", "thatch", "planks", "f
 ARTS = ("reed", "flower", "curlew", "spark", "coin", "note", "carrots")   # small sprites the browser already draws
 CONDITIONS = ("open", "shut", "day", "night", "high-tide", "low-tide", "winter", "not-winter", "resident-home", "resident-away",
               "agent-stall", "no-agent-stall", *(f"booth-{i}" for i in range(1, 9)))          # `when`: a shape shows only while all of its conditions hold
+HAS = re.compile(r"^has:[a-z0-9][a-z0-9-]{0,39}$")    # ... and `has:<anchor id>`: while a module shows something on that anchor (a crop in its bed)
+WORD = re.compile(r"^[a-z][a-z-]{0,23}$")
+ANCHOR_WORDS = 12
 HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 SHAPES_MAX, ANCHORS_MAX, REACH, SIZE_MAX = 400, 24, 60.0, 60.0
 ANCHOR_TYPES = ("wall", "surface", "floor", "ground", "hang")
 ANIMATIONS = ("flow", "tide", "spin", "wander")         # flowing water; the sea with the tide; turning (a lighthouse beam); a sprite wandering
+
+
+CONDITION_LIST = ", ".join(CONDITIONS) + ", has:<anchor id>"
+
+
+def condition(w) -> bool:
+    """A `when` condition the renderer works out."""
+    return w in CONDITIONS or (isinstance(w, str) and bool(HAS.match(w)))
 
 
 class Bad(ValueError):
@@ -139,8 +150,8 @@ def shape(s, i: int) -> dict:
         out["speed"] = _num(s.get("speed", 0.02), f"{what}: speed", 0, 1)
     if "when" in s:
         when = s["when"] if isinstance(s["when"], list) else [s["when"]]
-        if not when or any(w not in CONDITIONS for w in when):
-            raise Bad(f"{what}: `when` is one or more of {', '.join(CONDITIONS)}")
+        if not when or not all(condition(w) for w in when):
+            raise Bad(f"{what}: `when` is one or more of {CONDITION_LIST}")
         out["when"] = list(dict.fromkeys(when))
     if kind == "sprite" and "frame" in s:
         out["frame"] = int(_num(s["frame"], f"{what}: frame", 0, 9))
@@ -168,9 +179,17 @@ def anchor(a, i: int) -> dict:
     if not isinstance(tags, list) or not 1 <= len(tags) <= 6 or not all(isinstance(t, str) and t for t in tags):
         raise Bad(f"{what}: `tags` is a list of 1 to 6 words")
     normal = [0.0, 1.0, 0.0] if a["type"] != "wall" else _vec(a.get("normal", [0, 0, 1]), f"{what}: normal", 3, -1, 1)
-    return {"id": a["id"], "type": a["type"], "tags": [t.strip().lower()[:24] for t in tags], "at": _vec(a.get("at"), f"{what}: at"),
-            "normal": normal, "extent": _vec(a.get("extent", [1.0, 1.0] if a["type"] == "wall" else [2.0, 1.0]),
-                                             f"{what}: extent [width, height or depth]", 2, 0.05, SIZE_MAX)}
+    out = {"id": a["id"], "type": a["type"], "tags": [t.strip().lower()[:24] for t in tags], "at": _vec(a.get("at"), f"{what}: at"),
+           "normal": normal, "extent": _vec(a.get("extent", [1.0, 1.0] if a["type"] == "wall" else [2.0, 1.0]),
+                                            f"{what}: extent [width, height or depth]", 2, 0.05, SIZE_MAX)}
+    if "words" in a:                                        # the agent goes here while what it is doing says one ("garden", "harvest")
+        words = a["words"]
+        if not isinstance(words, list) or not 1 <= len(words) <= ANCHOR_WORDS \
+                or not all(isinstance(w, str) and WORD.match(w.strip().lower()) for w in words):
+            raise Bad(f"{what}: `words` is a list of 1 to {ANCHOR_WORDS} words (letters, dashes); the agent goes there while what it is "
+                      "doing says one")
+        out["words"] = list(dict.fromkeys(w.strip().lower() for w in words))
+    return out
 
 
 def built(result) -> dict:
@@ -207,7 +226,8 @@ def place(part: dict, at, turn: float, role: str, when=None) -> dict:
         x, z = _turn(x, z, turn)
         rot = list(s.get("rot", [0.0, 0.0, 0.0]))
         rot[1] = rot[1] + turn
-        cond = list(dict.fromkeys(s.get("when", []) + list(when or [])))
+        own = {f"has:{a['id']}": f"has:{role}-{a['id']}" for a in part["anchors"]}       # its own anchors are renamed with it
+        cond = list(dict.fromkeys([own.get(w, w) for w in s.get("when", [])] + list(when or [])))
         shapes.append({**s, "at": [round(x + ax, 4), round(y + ay, 4), round(z + az, 4)], "rot": [round(v, 4) for v in rot], **({"when": cond} if cond else {})})
     anchors = []
     for a in part["anchors"]:

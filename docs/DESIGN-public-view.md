@@ -26,9 +26,11 @@ are the full, owner dashboard, unchanged. One process serves both, so a deployme
 
 ## Endpoints
 Public: `/ui/*`, `/` (redirect), `/mode`, `/healthz`, `/state` (trimmed), `/events` (filtered), `/stream` (filtered), `/notes`, `/items`,
-`/emotions`, `/standing` (what modules show the agent; it was `/garden` before 0.35.0), `/projects`, `/creations`, `/works` (+ `/works/{id}`, `.svg`, `.png`), `/map`, `/places`, `/memory` (no `people`).
+`/emotions`, `/standing` (what modules show the agent; it was `/garden` before 0.35.0), `/published` (what live modules publish; it
+replaced `/projects` in 0.48.0), `/abilities`, `/creations`, `/works` (+ `/works/{id}`, `.svg`, `.png`), `/map`, `/places`, `/memory` (no
+`people`). `/state` carries the agent's `session` (what it is busy with) in both views.
 
-Owner-only: `POST /inbox`, `/items`, `/tick`, `/reflect`; `PATCH`/`DELETE /places/{key}`; `/letters`, `/outreach`, `/recall`,
+Owner-only: `POST /inbox`, `/items`, `/tick`, `/reflect`; `PATCH`/`DELETE /places/{key}`; `/letters`, `/characters`, `/outreach`, `/recall`,
 `/library/*`, the API docs.
 
 Event kinds dropped from the public feed: `say`, `inbox`, `inbox_read`, `gift`, `outreach`, `letter_sent`, `letter_read`, `companion`

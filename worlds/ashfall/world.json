@@ -5,7 +5,15 @@
   "name": "Wren",
   "pronoun": "she",
   "kind": "a survivor",
-  "lives": "lives alone in a shelter under a dead city"
+  "lives": "lives alone in a shelter under a dead city",
+  "look": {
+   "height": "medium",
+   "hair": "auburn",
+   "skin": "olive",
+   "top": "grey",
+   "bottom": "brown",
+   "accessory": "scarf"
+  }
  },
  "modules": [
   "std:cutaway",

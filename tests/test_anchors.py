@@ -140,7 +140,7 @@ async def test_what_a_module_shows_lands_on_the_right_place_or_nowhere(tmp_path)
     await M.call(st, s, agent.runner, older, "on_tick", NOW)
     home = WV.scene_view(st, s, None)["objects"]
     assert [o["key"] for o in home] == ["clock-face:a", "clock-face:c", "older:a"]                # oldest module first; and older:c didn't fit
-    assert set(home[0]) == {"key", "rows", "palette", "frame", "w", "h", "pos", "normal", "upright"}
+    assert set(home[0]) == {"key", "rows", "palette", "frame", "w", "h", "pos", "normal", "upright", "anchor"} and home[0]["anchor"] == "back-wall-by-window"
     assert M.objects_for(st, "workshop", "home")[1] == ["older:c: no room left on any wall anchor"]
     assert [o["key"] for o in WV.scene_view(st, s, None, "woods")["objects"]] == ["clock-face:b", "older:b"]
     assert M.where(st, thing, "subject") == "workshop" and M.where(st, older, "subject") is None and M.where(st, older, "home") == "workshop"
@@ -159,6 +159,26 @@ def test_the_works_read(tmp_path):
     ctx = M.context(st, s, live(st, rule(reads=["works"]), "x"), NOW)
     assert len(ctx["works"]) == M.WORKS_SHOWN and ctx["works"][0]["title"] == f"P{M.WORKS_SHOWN + 1}"
     assert set(ctx["works"][0]) == {"id", "title", "subject", "rows", "palette"} and "stalls" not in M.READS
+
+
+@pytest.mark.asyncio
+async def test_a_place_whose_layout_isnt_built_yet_takes_things_once_it_is(tmp_path):
+    """On a first start the modules are offered before any layout is built: what they show waits for one, and doesn't spoil their trial."""
+    s, st, agent = modular(tmp_path)
+    src = ("def on_install(ctx):\n    return {'show': [{'id': 'a', 'sprite': {'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}},"
+           " 'at': {'type': 'ground', 'place': 'home', 'tags': ['plot']}}]}\n")
+    r = await M.propose(st, s, agent.runner, "world", rule(hooks=["on_install"], proposes=["show"]), src, now=NOW)
+    assert r["report"]["placed"] == ["a: at workshop, once a layout is built there"] and r["report"]["unplaced"] == [] and r["report"]["clean"]
+    clock(st)
+    st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=NOW, heard_at=NOW, hours=[0, 24], daylight_only=0,
+                 walk_minutes=10.0, loot=[], verbs={}, blurb="the square")
+    pic = "'sprite': {'rows': ['kkkk'] * 4, 'palette': {'k': '#000'}}"
+    two = src.replace("'tags': ['plot']}}]}", "'tags': ['plot']}}, {'id': 'b', " + pic + ", 'at': {'type': 'ground', 'place': 'subject'}},"
+                      " {'id': 'c', " + pic + ", 'at': {'type': 'ground', 'place': 'Brygdon'}}]}")
+    r = await M.propose(st, s, agent.runner, "world", rule(kind="thing", name="clock-face", subject="Gear Clock", hooks=["on_install"],
+                                                           proposes=["show"]), two, now=NOW)
+    assert r["report"]["placed"] == ["a: at workshop, once a layout is built there", "b: at workshop, once a layout is built there",
+                                     "c: at Brygdon, once a layout is built there"]
 
 
 @pytest.mark.asyncio
@@ -183,7 +203,7 @@ async def test_the_dry_run_says_where_things_would_go_and_what_wouldnt_fit(tmp_p
 async def test_the_world_proposes_its_rules_once(tmp_path, caplog):
     s, st, agent = modular(tmp_path)
     made = await M.offer_library(st, s, agent.runner, now=NOW)
-    assert [(st.module(i)["name"], st.module(i)["reason"]) for i in made] == [(n, M.library(n)[0]["reason"]) for n in M.RULES]
+    assert [(st.module(i)["name"], st.module(i)["reason"]) for i in made] == [(n, man["reason"]) for n, (man, _) in M.world_modules(s).items()]
     assert all(st.module(i)["report"]["clean"] for i in made)
     M.reject(st, made[0])
     assert await M.offer_library(st, s, agent.runner, now=NOW) == []
@@ -191,13 +211,15 @@ async def test_the_world_proposes_its_rules_once(tmp_path, caplog):
     for m in st.modules():
         st.db.execute("DELETE FROM modules WHERE id = ?", (m["id"],))
     st.db.commit()
-    real = M.library
+    from app import world_pack
+    real, own = M.library, world_pack.Pack.module
     M.library = lambda name: (real(name)[0], "import os")
+    world_pack.Pack.module = lambda pack, name: (own(pack, name)[0], "import os")        # the pack's own modules too
     try:
         with caplog.at_level(logging.WARNING, logger="app.modules"):
             assert await M.offer_library(st, s, agent.runner, now=NOW) == []
     finally:
-        M.library = real
+        M.library, world_pack.Pack.module = real, own
     assert caplog.records[0].getMessage().startswith("library module gallery-wall refused: line 1: `import os`")
 
 

@@ -93,6 +93,20 @@ def place_details(state, settings, key: str, kind: str) -> dict:
             "props": list(dict.fromkeys(scene["props"] + looks.props(known))), **{k: v for k, v in scene.items() if k != "props"}}
 
 
+def stat_list(state, settings) -> list[dict]:
+    """The agent's stats as a page shows them: [{name, label, value}], in the order the world declares them."""
+    vals = stats_mod.values(state)
+    return [{"name": n, "label": d.get("label", n), "value": round(vals[n], 2)} for n, d in stats_mod.declared(settings).items() if n in vals]
+
+
+def agent_look() -> dict:
+    """How a scene draws the agent: the pack's own frames (`sprite`), else a look like a character's (`look`)."""
+    from . import looks
+    pack = world_pack.active()
+    sprite = pack.sprite()
+    return {"sprite": sprite} if sprite else {"look": looks.clean(dict(pack.agent.look), pack.agent.name, pack.persona())}
+
+
 def scene_view(state, settings, library, place: str | None = None, now: float | None = None) -> dict | None:
     """Everything a scene draws from, for one place (where the agent is, by default): the place, who is there, what is for sale, the agent if it is
     there, and the place's own things (at home: the garden, the creations, the belongings). None if there is no such place."""
@@ -112,7 +126,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     if sess:
         session = {k: sess[k] for k in ("kind", "started_at", "ends_at", "target")}
         if sess["kind"] == "module":
-            session.update(label=sess["expect"], working=bool(sess["stage"]), **({"project": sess["about"]} if sess["about"] else {}))
+            session.update(label=sess["expect"], working=bool(sess["stage"]), **({"about": sess["about"]} if sess["about"] else {}))
     from . import looks
     look = lambda c: c.get("look") or looks.fallback(c["name"], c["persona"])           # not chosen yet: drawn from the persona for now
     present = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "look": look(c)} for c in places.company_at(state, key)]
@@ -139,7 +153,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         "lives_here": lives_here,
         "agent": {"name": world_pack.active().agent.name, "here": agent_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
                 "mood": a["mood"], **{n: round(v, 2) for n, v in stats_mod.values(state).items()}, "asleep": a["activity"] == "sleeping",
-                "session": session},
+                "session": session, "stats": stat_list(state, settings), **agent_look()},
         "present": present, "booths": booths,
         "stall": trade.get("stall") or [],
         "objects": modules.scene_objects(state, key, kind),     # what live modules show here, already placed on anchors

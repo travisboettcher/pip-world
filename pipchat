@@ -385,18 +385,20 @@ def cmd_items(pip: Pip, a) -> None:
         print(dim("  (nothing)"))
 
 
+def published(pip: Pip, name: str):
+    """What a live module publishes as `name` (the crafting module's projects, the reading module's bookmarks), or None."""
+    return next((f[name] for f in pip.call("/published").values() if name in f), None)
+
+
 def cmd_garden(pip: Pip, a) -> None:
-    plots = pip.call("/garden")
+    shown = next((s for s in pip.call("/standing") if s["module"] == "garden"), None)    # what the garden module shows Pip
     if JSON_MODE:
-        return out_json(plots)
+        return out_json(shown)
     print(bold("Garden"))
-    for g in plots:
-        if g["state"] == "empty":
-            print(f"  plot {g['plot']}: " + dim("empty"))
-        elif g["state"] == "ready":
-            print(f"  plot {g['plot']}: " + green(f"{g['crop']} - ripe, ready to harvest"))
-        else:
-            print(f"  plot {g['plot']}: {g['crop']} - ready in about {g['ready_in_min']} min")
+    for line in (shown or {}).get("lines", []):
+        print("  " + (green(line) if "RIPE" in line else dim(line) if line.endswith(": empty") else line))
+    if not shown:
+        print(dim("  (no garden)"))
 
 
 def cmd_emotions(pip: Pip, a) -> None:
@@ -464,28 +466,23 @@ def cmd_gallery(pip: Pip, a) -> None:
 
 
 def cmd_projects(pip: Pip, a) -> None:
-    r = pip.call("/projects" + (f"?status={a.status}" if a.status else ""))
+    sess = pip.call("/state")["session"]
+    r = {"projects": [p for p in published(pip, "projects") or [] if not a.status or p["status"] == a.status],
+         "skills": published(pip, "skills") or {}, "abilities": pip.call("/abilities")}
     if JSON_MODE:
         return out_json(r)
     print(bold("Projects"))
     for p in r["projects"]:
         head = f"  #{p['id']} {p['name']} [{p['status']}] {p['craft']}, difficulty {p['difficulty']}/5, {p['percent']}%"
-        if p["working_until"]:
-            head += green(f" - working, ~{max(1, round((p['working_until'] - time.time()) / 60))} min left")
+        if sess and sess["kind"] == "module" and sess["about"] == p["name"]:
+            head += green(f" - working, ~{max(1, round((sess['ends_at'] - time.time()) / 60))} min left")
         print(head)
+        mats = ", ".join(f"{q} {n}" for n, q in (p.get("needs") or {}).items())
         for i, st in enumerate(p["stages"]):
-            mats = ", ".join(f"{q} {n}" for n, q in st["materials"].items())
             mark = "x" if st["progress"] >= st["minutes"] else ">" if i == p["current_stage"] else " "
-            print(dim(f"    [{mark}] {st['name']} ({round(st['progress'])}/{st['minutes']} min" + (f"; {mats}" if mats else "") + ")"))
-        for q in p.get("questions") or []:
-            print(f"    ? {q}")
-        for f in p.get("findings") or []:
-            print(green(f"    found: {f}"))
-        if a.verbose:
-            for h in p.get("hidden") or []:
-                print(dim(f"      hidden ({'found' if h['found'] else 'unseen'}): {h['fact']}"))
-            for h in p["history"]:
-                print(dim(f"      {fmt_time(h['ts'])} {h['result']}: {h['text']}"))
+            print(dim(f"    [{mark}] {st['name']} ({round(st['progress'])}/{st['minutes']} min" + (f"; needs {mats}" if mats and i == p["current_stage"] else "") + ")"))
+        if p.get("last"):
+            print(dim(f"    last: {p['last']['result']} - {p['last']['text']}"))
     if not r["projects"]:
         print(dim("  (none)"))
     if r.get("abilities"):
@@ -633,7 +630,7 @@ def cmd_recall(pip: Pip, a) -> None:
 
 
 def cmd_letters(pip: Pip, a) -> None:
-    r = pip.call(f"/letters?limit={a.n}")
+    r = {"neighbors": [c for c in pip.call("/characters") if c["kind"] == "neighbor"], **pip.call(f"/letters?limit={a.n}")}
     if JSON_MODE:
         return out_json(r)
     for n in r["neighbors"]:
@@ -689,7 +686,7 @@ def cmd_library(pip: Pip, a) -> None:
         if not books:
             print(dim("  nothing matches"))
         return
-    marks = pip.call("/library/bookmarks")
+    marks = published(pip, "bookmarks") or []
     if JSON_MODE:
         return out_json(marks)
     print(bold("Pip's reading"))
@@ -788,8 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("gallery", cmd_gallery, "Pip's drawings and pieces of writing")
     p.add_argument("-n", type=int, default=15)
     p = add("projects", cmd_projects, "Pip's projects, their stages and Pip's skills")
-    p.add_argument("--status", choices=["active", "done", "abandoned"])
-    p.add_argument("-v", "--verbose", action="store_true", help="show each work session's result")
+    p.add_argument("--status", choices=["active", "paused", "done", "abandoned"])
     add("creations", cmd_creations, "things Pip has made, and what they're doing")
     p = add("modules", cmd_modules, "features written as code; approve, reject or switch them off")
     p.add_argument("action", nargs="?", choices=["show", "approve", "reject", "off"])

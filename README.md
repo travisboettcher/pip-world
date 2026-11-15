@@ -34,7 +34,8 @@ pin one in `docker-compose.yml` if you want upgrades to be a choice.
 An install from before 0.44 upgrades through 0.44: start that version once (it moves the old tables into their modules), then the
 latest; a newer version refuses a database that hasn't.
 
-Open <http://localhost:8000/ui/> for the dashboard. Talk to Pip from a terminal with the stdlib-only CLI:
+Open <http://localhost:8000/ui/> for the dashboard (Pip's world's own page, `worlds/pip/web/`; a world pack without a page gets the
+engine's plain one). Talk to Pip from a terminal with the stdlib-only CLI:
 
 ```sh
 ./pipchat "hello there"       # say something and print the reply

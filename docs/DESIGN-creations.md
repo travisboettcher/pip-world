@@ -135,7 +135,7 @@ The spec is **persisted**, so a creation behaves the same forever instead of bei
 ### Visibility
 - Perception gets "Your projects" (stage, progress %, materials needed, current session) and "Your creations"
   (going / stopped and what it needs, time shown, quirks; nothing but description and quirks for art). Recent events include creation chatter.
-- API: `GET /projects`, `GET /creations`; `pipchat projects|creations`; UI panels.
+- API: `GET /published` (the crafting module's `projects`; `/projects` until 0.48.0), `GET /creations`; `pipchat projects|creations`; UI panels.
 
 ## Phase 3: companions (characters)
 A `companion` creation gets a row in `characters` (persona, chatter interval, last spoke). Characters are **not**

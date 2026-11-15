@@ -37,7 +37,7 @@ def api(state=None) -> str:
     return ((DIR / "api.md").read_text().replace("EVENT_KINDS", ", ".join(sorted(pv.EVENT_FIELDS))).replace("ANCHORS", anchor_list(state))
             .replace("PLACE_KINDS", "; ".join(f"{k.name} ({k.help})" for k in place_kinds.KINDS.values()))
             .replace("SETTINGS", ", ".join(SCENE.get("setting", []))).replace("TEXTURES", ", ".join(geometry.TEXTURES))
-            .replace("CONDITIONS", ", ".join(geometry.CONDITIONS))
+            .replace("CONDITIONS", geometry.CONDITION_LIST)
             .replace("AGENT_POSS", world_pack.active().agent.possessive).replace("AGENT_NAME", world_pack.active().agent.name)
             .replace("HOME_KEY", places.HOME)
             .replace("PARTS", parts_list(state)).strip())

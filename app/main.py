@@ -20,6 +20,7 @@ from . import happenings
 from . import modules
 from . import places
 from . import stakes
+from . import world_pack
 from . import public_view as pv
 from . import projects as proj
 from . import worldmap
@@ -50,13 +51,25 @@ class Gift(BaseModel):
 
 
 class NoCacheStaticFiles(StaticFiles):
-    """The UI is three small files that change together; make browsers revalidate (cheap, ETag) instead of
+    """The UI is a few small files that change together; make browsers revalidate (cheap, ETag) instead of
     pairing a stale stylesheet with new markup."""
 
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+class PageFiles(NoCacheStaticFiles):
+    """The page at /ui (docs/DESIGN-engine-audit.md, B5): the engine's shared files first (the scene and map renderer, three.js, the
+    fonts), so a pack can't replace them, then the page itself: the world pack's `web/`, or the engine's plain page when it has none."""
+
+    def __init__(self, dirs: list[Path]):
+        self.dirs = dirs
+        super().__init__(html=True)                         # its directories are `dirs` (get_directories)
+
+    def get_directories(self, directory=None, packages=None):
+        return self.dirs
 
 
 logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request (every 30 s for Matrix sync) is just noise
@@ -143,6 +156,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             "pacing": agent.pacing.name,
             "tools": list(agent.tools),
             "condition": stakes.condition(agent.state),             # a stat that ran out: knocked out, or weak (stakes.py)
+            "session": _session(agent.state),
         }
         return pv.public_state(full) if request.state.public else full
 
@@ -179,15 +193,24 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         """What live modules show the agent every time (the garden's plots, say): [{title, lines, ready, next_at?, module}]."""
         return modules.standing(app.state.agent.state)
 
-    @app.get("/projects")
-    def get_projects(status: str | None = None):
-        st = app.state.agent.state
-        sess = st.session()
-        said = proj.published(st)                               # the crafting module's projects and crafts
-        out = [{**p, "working_until": sess["ends_at"] if sess and sess["kind"] == "module" and sess["about"] == p["name"] else None}
-               for p in said["projects"] if status is None or p["status"] == status]
-        return {"projects": out, "skills": said["skills"],
-                "abilities": {a: {"xp": xp, "level": proj.level(xp)} for a, xp in st.abilities().items()}}
+    @app.get("/published")
+    def get_published():
+        """What each live module publishes ({module: {name: value}}): a pack's page reads its modules' data here (the crafting
+        module's projects, the reading module's bookmarks), with no route of their own."""
+        return {m["name"]: m["facts"] for m in app.state.agent.state.modules("live") if m["facts"]}
+
+    @app.get("/abilities")
+    def get_abilities():
+        """What the agent has practised (minutes) and the level that makes."""
+        return {a: {"xp": xp, "level": proj.level(xp)} for a, xp in app.state.agent.state.abilities().items()}
+
+    @app.get("/characters")
+    def get_characters():
+        """Everyone the agent knows of, whatever role a module gave them: who they are to the agent, never their persona."""
+        from . import neighbors as nb
+        return [{**{k: c[k] for k in ("name", "kind", "about", "life", "place")},
+                 "next_chatter_at": c["next_chatter_at"] if c["next_chatter_at"] < nb.NOT_YET else None}   # None: when a module asks
+                for c in app.state.agent.state.characters()]
 
     @app.get("/creations")
     def get_creations():
@@ -295,12 +318,8 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/letters")
     def get_letters(limit: int = 50):
-        st = app.state.agent.state
-        from . import neighbors as nb
-        return {"neighbors": [{**{k: c[k] for k in ("name", "about", "life")},
-                               "next_chatter_at": c["next_chatter_at"] if c["next_chatter_at"] < nb.NOT_YET else None}   # None: when a module asks
-                              for c in st.characters("neighbor")],
-                "letters": st.letters(limit=min(limit, 500))}
+        """Letters between the agent and anyone, oldest first (who they are: /characters)."""
+        return {"letters": app.state.agent.state.letters(limit=min(limit, 500))}
 
     @app.get("/map")
     def get_map():
@@ -360,11 +379,6 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         return [{k: b[k] for k in ("id", "title", "authors", "tags", "series", "description", "formats", "format")}
                 for b in agent.library.search(q, min(limit, 50))]
 
-    @app.get("/library/bookmarks")
-    def library_bookmarks():
-        """The books the agent has read in, most recent first: what live modules publish as `bookmarks` (the reading module)."""
-        return [b for m in app.state.agent.state.modules("live") for b in ((m["facts"] or {}).get("bookmarks") or []) if isinstance(b, dict)]
-
     # --- modules (docs/DESIGN-modules.md): anyone sees what's live; only the owner sees proposals and decides ---------------------
     @app.get("/modules")
     def get_modules(request: Request):
@@ -416,13 +430,21 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     web_dir = Path(os.environ.get("WEB_DIR") or Path(__file__).resolve().parent.parent / "web")
     if web_dir.is_dir():
-        app.mount("/ui", NoCacheStaticFiles(directory=web_dir, html=True), name="ui")
+        page = world_pack.load(settings).dir / "web"
+        app.mount("/ui", PageFiles([web_dir, page if page.is_dir() else web_dir / "plain"]), name="ui")
 
         @app.get("/", include_in_schema=False)
         def root():
             return RedirectResponse("/ui/")
 
     return app
+
+
+def _session(state) -> dict | None:
+    """What the agent is busy with in real time (a walk, a module's session), for a page to show."""
+    s = state.session()
+    return {"kind": s["kind"], "about": s["about"], "label": s["expect"], "target": s["target"], "started_at": s["started_at"],
+            "ends_at": s["ends_at"]} if s else None
 
 
 app = create_app()

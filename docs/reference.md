@@ -77,10 +77,11 @@ goes; a "game master" LLM call (same backend and budget) only writes flavor and 
 - A `companion` creation talks: it chatters now and then and answers `say(text, to=<name>)`, capped at
   `COMPANION_REPLIES_PER_HOUR`.
 ```sh
-./pipchat projects [-v] [--status active|done|abandoned]   # stages, progress, skills; -v shows each session
+./pipchat projects [--status active|paused|done|abandoned]  # stages, progress, what's needed, the last session, skills
 ./pipchat creations                                         # what Pip has made and what it's doing
 ```
-HTTP: `GET /projects`, `GET /creations`. New tools must be listed in `TOOLS` in `.env` (see `.env.tpl`).
+HTTP: `GET /published` (the crafting module's `projects` and `skills`, among what every live module publishes), `GET /abilities`,
+`GET /creations`; `GET /state` says what Pip is busy with (`session`). New tools must be listed in `TOOLS` in `.env` (see `.env.tpl`).
 
 ## Long-term memory
 Design: [DESIGN-memory.md](DESIGN-memory.md).
@@ -110,15 +111,17 @@ that don't exist yet (below).
 ```sh
 ./pipchat letters      # the neighbor, what's new with them, and every letter (in transit too)
 ```
-HTTP: `GET /letters`.
+HTTP: `GET /letters` (every letter), `GET /characters` (everyone Pip knows of, whatever their role: the neighbor, residents, talking
+creations).
 
 ## Emotion state
 Design: [DESIGN-emotions.md](DESIGN-emotions.md). Eight emotions (0-100) that rise and fall with what happens to Pip and settle on their own; Pip is shown the ones that
 stand out plus an overall tone, and can `settle` a strong one. `EMOTIONS=on|quiet|off`. `./pipchat emotions` shows the numbers and what moved them; HTTP `GET /emotions`.
 
 ## Matrix commands
-In the Matrix room, `/help`, `/status`, `/items`, `/projects`, `/creations`, `/notes`, `/emotions` and `/usage` return information straight from the engine
-(no LLM, not a reply from Pip, nothing reaches Pip). Anything else is a message to Pip. See [DESIGN-outreach.md](DESIGN-outreach.md).
+In the Matrix room, `/help`, `/status`, `/items`, `/creations`, `/notes`, `/emotions` and `/usage` return information straight from the engine
+(no LLM, not a reply from Pip, nothing reaches Pip), and so does each live module that shows Pip something, by its name: `/garden`,
+`/crafting` (its projects; `/projects` until 0.48.0), `/reading`. Anything else is a message to Pip. See [DESIGN-outreach.md](DESIGN-outreach.md).
 
 ## Places and the library
 Design: [DESIGN-library.md](DESIGN-library.md). Pip lives in its `workshop` (projects and garden happen there) and
@@ -132,7 +135,7 @@ reflection. No library mounted = no library place and no library tools. To add a
 ./pipchat library                 # what Pip is reading, and how far in
 ./pipchat library numenera        # search the catalogue
 ```
-HTTP: `GET /library/search?q=`, `GET /library/bookmarks`.
+HTTP: `GET /library/search?q=`; the reading module's `bookmarks` in `GET /published`.
 
 ## Day, night and sleep
 See [DESIGN-sleep.md](DESIGN-sleep.md). Pip perceives the period of day and which day of its life it is. At night (`BEDTIME_HOUR`-`WAKE_HOUR`)

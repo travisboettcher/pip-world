@@ -129,7 +129,10 @@ def test_a_pack_names_the_engines_modules_and_its_own(tmp_path):
     p = W.load(Settings(world_pack=str(d)))
     assert p.modules == (("std", "sky", {}), ("pack", "still", {"rate": 2}), ("std", "gathering", {"speed": 3}))
     assert p.module("still")[0]["name"] == "still" and "def on_install" in p.module("still")[1]
-    assert W.load(Settings()).modules is None                                       # Pip's world names none: everything the engine ships
+    pips = W.load(Settings()).modules                                               # Pip's world names its own: the engine's and its three
+    assert [n for w, n, _ in pips if w == "pack"] == ["gallery-wall", "stall-pictures", "home"] and len(pips) == len(M.RULES) + 3
+    bare = pack(tmp_path / "bare", None, [])
+    assert W.load(Settings(world_pack=str(bare))).modules is None                    # a pack that names none: everything the engine ships
     try:
         W.set_active(p)
         got = M.world_modules(Settings(world_pack=str(d), work_speed=5.0, hemisphere="south"))

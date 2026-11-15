@@ -38,7 +38,8 @@ Return any of:
   "size": 0.6, "frame": false, "at": {"type": "wall"|"surface"|"floor"|"ground", "place": "home" or a place key, "tags": [...]},
   "motion": "bob"|"sway"|"spin", "tip": {"title": "...", "text": "..."}}]. Rows are 4 to 32 letters long, all the same length, 4 to 32
   rows; "." is empty; each letter is a colour in the palette. "place" is "home" (AGENT_POSS home) or a place's key. Ask only for anchors
-  that exist; tags must all match (leave them out to take any of that type). A "show" stays until you send another; [] clears it.
+  that exist; tags must all match (leave them out to take any of that type); "near": an anchor's id puts that one first. A tip may say
+  "{in:<a time>}" for how long until then ("ripe in about {in:1794711497}"). A "show" stays until you send another; [] clears it.
   The anchors, by kind of place:
 ANCHORS
 Event kinds you can listen for: EVENT_KINDS.
@@ -72,10 +73,12 @@ standing on it has its base at y 0. Add ground anchors tagged "agent" (where AGE
 like {"id": "agent", "type": "ground", "tags": ["outside", "agent"], "at": [0, 0, 0], "extent": [8, 2]} (extent: width along x, depth along z).
 A shop or market also needs a counter: a box to stand at, and a surface anchor tagged "counter" on top of it (its goods are set out there
 and the keeper stands just behind), inside the building if there is one. Add "reserved" to the tags of the anchors the scene itself
-draws on (agent, people, counter), so things modules show stay off them.
+draws on (agent, people, counter), so things modules show stay off them. An anchor may carry "words": AGENT_NAME paces along it while
+what AGENT_NAME is doing starts a word with one of them (["fish", "net"] on a jetty: fishing, mending nets).
 Shapes: box (size), plane (size), cylinder (radius, top, height), cone, sphere, ico, dodeca, torus (radius, tube), gable (width, height),
 sprite (pixels or art), light (color, strength, range, lamp); each with at, rot (degrees), and a material {texture, repeat, color}; textures:
-TEXTURES. A shape (or a part entry) with "when": [...] shows only while all of those hold: CONDITIONS.
+TEXTURES. A shape (or a part entry) with "when": [...] shows only while all of those hold: CONDITIONS (the last: while a module shows
+something on that anchor).
 The parts you can use:
 PARTS
 When AGENT_NAME first gets there, it is as you described it; until someone tells AGENT_NAME about it, nobody knows it is there.

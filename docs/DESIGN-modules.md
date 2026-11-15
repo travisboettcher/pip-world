@@ -5,6 +5,18 @@ both Pip and the world write code, and every module needs the owner's approval a
 
 **Names (0.47.0):** the agent is `agent` everywhere in the engine. Below, the `pip` read, the `"pip"` author (the agent's own programs, named `-by-pip`), the `pip` anchor and tag, `pip-stall`/`no-pip-stall` and `speak`'s `to_pip` are, since 0.47.0, `agent`, `"agent"` (`-by-agent`), `agent`, `agent-stall`/`no-agent-stall` and `to_agent`, with no aliases (docs/DESIGN-engine-audit.md, A4).
 
+**Scenes and pages (0.48.0):** the renderer draws no world's feature of its own (docs/DESIGN-engine-audit.md, B5). The `plot` and
+`garden-path` live elements below are gone: the garden module shows each plot's crop itself (`show`, on a ground anchor tagged `plot`,
+`near: "plot-<n>"`), and the agent paces along any anchor whose `words` say what it is doing (`"words": ["garden", "harvest", ...]` on
+Pip's garden path; a word matches the start of one: "tend" says "tending"). A shape may show `when` `has:<anchor id>`, while a module
+shows something on that anchor (a bed's soil; inside a part, its own anchor's id, renamed with the part). An object in the scene says
+which `anchor` it is on, and a tip's `{in:<time>}` reads as how long until then. A sitting agent thinks of something shown in its scene
+whose tip's title names what it is doing (a bubble with its picture). The tip token `$project` is `$busy`, from the scene session's
+`about`. The agent is drawn from its world pack (`sprite.json`, or its `look`). Something shown at a place with no layout built yet
+waits for one and doesn't spoil a trial ("at <place>, once a layout is built there"). A live module that shows a standing is a chat
+command by its name (`/garden`); `/published` is every live module's facts, for a pack's page. `home`, `gallery-wall` and
+`stall-pictures` are Pip's world's own modules (`worlds/pip/modules/`).
+
 ## Why
 Until now every feature has been written by hand in the engine: the gear clock is a `timekeeper` capability, pictures on the workshop wall are a
 template slot, a market is a `PlaceKind`, and its scene is a hand-written three.js template. The owner never meant the world to be a list of

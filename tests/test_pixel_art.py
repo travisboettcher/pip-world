@@ -120,7 +120,8 @@ async def test_starting_a_project_mentions_sketching_it_when_draw_is_on(tmp_path
 # --- in the world: the gallery-wall and stall-pictures modules (docs/DESIGN-modules.md, step 2) --------------------------------
 async def rule_live(st, s, agent, name, now=None):
     from app import modules as M
-    man, src = M.library(name)
+    from tests.test_modules import shipped
+    man, src = shipped(name)
     r = await M.propose(st, s, agent.runner, "world", man, src, now=now)
     await M.approve(st, s, agent.runner, r["id"], now=now)
     return st.module(r["id"])

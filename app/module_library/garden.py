@@ -1,12 +1,19 @@
 # The garden (docs/DESIGN-world-packs.md, phase 4b): plots in this module's store, the `plant` and `harvest` tools, the weather's effect on
 # growing, a status section the agent sees every time, and what other modules may ask of it: `hurry` (a creation that helps it along),
-# `crop` (a happening's turn for one crop, sized by its severity) and `add_plot` (a lasting change the agent made). The engine knows none
-# of this: it only checks what this module proposes.
+# `crop` (a happening's turn for one crop, sized by its severity) and `add_plot` (a lasting change the agent made). It draws itself too:
+# each plot's crop, growing, as a picture on the bed of the same number in a scene (a ground anchor tagged `plot`, `plot-<n>` by id), and
+# looks again at each tenth of a crop's growing to draw it taller. The engine knows none of this: it only checks what this module proposes.
+import math
+
 WEATHER = {"sunny": 0.95, "cloudy": 1.03, "rainy": 0.85, "pouring": 0.85, "lightning-rainy": 0.85, "snowy": 1.15, "snowy-rainy": 1.1,
            "fog": 1.05, "hail": 1.1}                            # growing-time multipliers: rain helps, cold and snow hinder (+-15%)
 SHIFT = {"minor": 0.05, "medium": 0.15, "major": 0.30}          # a happening's share of a crop's time left
 YIELD = {"minor": 1, "medium": 2, "major": 3}                   # a happening's change to what a crop gives
 HURRY = (0.01, 0.2)                                             # the share of growing time a helper may take off
+FRUIT = ("#d8432f", "#e0782a", "#e8c040", "#9a4a8a", "#c8d860", "#e86a8a")    # a crop's own fruit colour, by its name
+LETTERS = "abcdefghijklmnop"
+MARKER = ([".bbbb.", ".bccb.", ".bccb.", ".bbbb.", "..a...", "..a...", "..a...", "..a...", "..a...", ".aaa.."],
+          {"a": "#8a6a45", "b": "#5a3d27", "c": "#efe6cf"})     # an empty bed: a stake with a label, ready for a seed
 
 
 def _singular(word):
@@ -58,15 +65,91 @@ def _view(ctx, plots, store=None):
         else:
             lines.append("plot " + str(p["plot"]) + ": " + p["crop"] + " growing, ready in about {in:" + str(p["ready_at"]) + "}")   # the engine says how long
     growing = [p["ready_at"] for p in plots if p["state"] == "growing"]
+    redraw = [p["planted_at"] + (_tenths(p, now) + 1) / 10 * (p["ready_at"] - p["planted_at"]) for p in plots if p["state"] == "growing"]
     out = {"status": {"title": "Your garden", "lines": lines, "ready": any(p["state"] == "ready" for p in plots)},
            "publish": {"plots": [{k: p[k] for k in ("plot", "crop", "planted_at", "ready_at") if k in p} for p in plots],
                        "names": sorted({p["crop"] for p in plots if p["state"] != "empty"})},
-           "schedule": min(growing) if growing else None}
+           "show": [_shown(p, now) for p in plots],
+           "schedule": min(redraw) if redraw else None}
     if growing:
         out["status"]["next_at"] = min(growing)
     if store:
         out["store"] = store
     return out
+
+
+def _tenths(p, now):
+    """How far a growing crop has come, in whole tenths (0 to 9)."""
+    span = p["ready_at"] - p["planted_at"]
+    return min(9, max(0, int((now - p["planted_at"]) / span * 10))) if span > 0 else 9
+
+
+def _shown(p, now):
+    """One plot as a scene draws it: its crop at its growth (or a marked, empty bed), on the bed of its number."""
+    n = str(p["plot"])
+    at = {"type": "ground", "place": "home", "tags": ["plot"], "near": "plot-" + n}
+    if p["state"] == "empty":
+        return {"id": "plot-" + n, "sprite": {"rows": MARKER[0], "palette": MARKER[1]}, "size": 0.5, "at": at,
+                "tip": {"title": "Plot " + n, "text": "Empty, ready to plant."}}
+    ripe = p["state"] == "ready"
+    step = 10 if ripe else _tenths(p, now)
+    rows, palette = _picture(p["crop"], step / 10, ripe)
+    text = "Ripe now, ready to harvest." if ripe else (("Just planted" if step == 0 else str(step * 10) + "% grown")
+                                                       + "; ripe in about {in:" + str(p["ready_at"]) + "}.")
+    return {"id": "plot-" + n, "sprite": {"rows": rows, "palette": palette}, "size": 1.5, "at": at,
+            "tip": {"title": "Plot " + n + ": " + p["crop"], "text": text}}
+
+
+def _hash(s):
+    """FNV-1a over a name's characters (as the scene's art hashes names)."""
+    h = 2166136261
+    for ch in s:
+        h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return h
+
+
+BED = [(0, 0), (12, 0), (0, 9), (12, 9)]                        # a bed's four plants: the back pair, then the front pair lower down
+W, H = 28, 29
+
+
+def _picture(name, p, ripe=False):
+    """A bed's picture, four plants `p` of the way grown (the back pair drawn first, the front pair over them and lower, so the bed has
+    depth standing up): peas and beans climb canes, tomatoes redden, anything else is a leafy plant with fruit in a colour of its own.
+    (rows, palette)."""
+    n = str(name).lower()
+    grid, palette = [["."] * W for _ in range(H)], {}
+    hgt = math.floor(3 + min(1, p) * 15 + 0.5)
+    fruit = "#d8432f" if "tomato" in n else FRUIT[_hash(n) % len(FRUIT)]
+    for o, down in BED:
+        def px(x, y, w, h, col):
+            k = palette.setdefault(col, LETTERS[len(palette)])
+            for yy in range(max(0, y + down), min(H, y + down + h)):
+                for xx in range(max(0, x), min(W, x + w)):
+                    grid[yy][xx] = k
+
+        if p < 0.1:
+            px(o + 7, 17, 2, 3, "#6fa047")
+        elif "pea" in n or "bean" in n:
+            px(o + 3, 20 - hgt - 1, 1, hgt + 1, "#8a6a45")
+            px(o + 12, 20 - hgt - 1, 1, hgt + 1, "#8a6a45")
+            for i in range(hgt):
+                px(o + 5 + i % 2, 19 - i, 2, 1, "#5f9a3e")
+                px(o + 9 - i % 2, 19 - i, 2, 1, "#6aa847")
+                if i % 3 == 1:
+                    px(o + 4, 19 - i, 2, 1, "#8cc06a")
+                    px(o + 10, 19 - i, 2, 1, "#8cc06a")
+            if p > 0.6 or ripe:
+                for i in range(4, hgt, 4):
+                    px(o + 7, 19 - i, 1, 3, "#b9e08e")
+        else:
+            for r in range(hgt):
+                ww = max(2, math.floor((5 + p * 6) * math.sin(r / hgt * math.pi) + 0.5) + 2)
+                px(o + 8 - ww // 2, 19 - r, ww, 1, "#5f9a3e" if r % 3 == 0 else "#4e8a36")
+            if p > 0.35 or ripe:
+                for x, y in [(5, 14), (10, 12), (7, 9), (11, 16)][:4 if ripe else math.floor(p * 4 + 0.5)]:
+                    px(o + x, y, 2, 2, fruit if ripe or p > 0.85 else "#a8c04a")
+                    px(o + x, y, 1, 1, "#fff2c4")
+    return ["".join(r) for r in grid], {k: c for c, k in palette.items()}
 
 
 def _after(ctx, changes):

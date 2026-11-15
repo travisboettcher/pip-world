@@ -1,1 +1,38 @@
-{"name": "Pip's world", "api": 1, "agent": {"name": "Pip", "pronoun": "it", "kind": "a small creature", "lives": "lives alone in a workshop with a garden"}}
+{
+ "name": "Pip's world",
+ "api": 1,
+ "agent": {
+  "name": "Pip",
+  "pronoun": "it",
+  "kind": "a small creature",
+  "lives": "lives alone in a workshop with a garden"
+ },
+ "modules": [
+  "pip:gallery-wall",
+  "pip:stall-pictures",
+  "std:round-tree",
+  "std:pine-tree",
+  "std:well",
+  "std:stall",
+  "std:cutaway",
+  "std:scrap-heap",
+  "std:shed",
+  "std:bench",
+  "std:standing-stones",
+  "std:lighthouse",
+  "std:outdoors",
+  "pip:home",
+  "std:neighbor",
+  "std:market",
+  "std:shop",
+  "std:library",
+  "std:garden",
+  "std:gathering",
+  "std:neighborhood",
+  "std:trade",
+  "std:reading",
+  "std:sky",
+  "std:crafting",
+  "std:happenings"
+ ]
+}

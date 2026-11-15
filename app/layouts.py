@@ -68,8 +68,8 @@ def _plan(spec) -> dict:
         role = str(p.get("role") or f"{p['part']}-{i}").lower()
         when = p.get("when", [])
         when = when if isinstance(when, list) else [when]
-        if any(w not in geometry.CONDITIONS for w in when):
-            raise Bad(f"part entry {i}: `when` is one or more of {', '.join(geometry.CONDITIONS)}")
+        if not all(geometry.condition(w) for w in when):
+            raise Bad(f"part entry {i}: `when` is one or more of {geometry.CONDITION_LIST}")
         out.append({**({"when": when} if when else {}), "part": p["part"], "params": params, "at": geometry._vec(p.get("at"), f"part entry {i}: at"),
                     "turn": geometry._num(p.get("turn", 0), f"part entry {i}: turn", -360, 360), "role": geometry.re.sub(r"[^a-z0-9-]", "-", role)[:40]})
     camera = spec.get("camera")

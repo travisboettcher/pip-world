@@ -19,7 +19,8 @@ Before writing anything, know what you don't have to:
 - **People and talk**: visitors (the owner and friends, through the web chat or Matrix), `say`, voices modules own, conversation memory.
 - **Happenings**: the dice's checks, the words, and how the agent takes them in.
 - **Belongings and a purse**: items by kind, and a currency.
-- **The world view**: a map and a scene for every place, drawn from layouts.
+- **The world view**: a map and a scene for every place, drawn from layouts, and a plain page to watch it on (the agent's state, its
+  scene, what its modules show it, what happened lately) until the pack brings its own.
 - **The builder**: a night-time role that proposes rules and places within your bible, for the owner to approve.
 
 `worlds/ashfall` is this guide's world built (0.44.0): a shelter, the ruins and the river flats to scavenge and forage, health and
@@ -172,8 +173,20 @@ water). The browser draws only the values it knows (see `worlds/pip/scene.json`)
 textures or sprites (below).
 
 **Layouts** (works today): every place kind needs a layout module (`kinds: ["ruins"]`) built from parts. Start from the shipped
-`outdoors`, `market` and `home` layouts in `app/module_library/` and change the parts and textures; the shapes, anchors and live elements
-are the same in any world.
+`outdoors` and `market` layouts in `app/module_library/`, Pip's `home` (`worlds/pip/modules/home.py`) or Ashfall's `shelter`, and change
+the parts and textures; the shapes, anchors and live elements are the same in any world. An anchor with `words` is where the agent paces
+while what it is doing says one of them (Pip's garden path: "garden", "harvest"...); a shape with `when: ["has:<anchor>"]` shows only
+while a module shows something on that anchor.
+
+**The agent** (0.48.0): how a scene draws the agent. `sprite.json` is its own pixel frames, `{"palette": {...}, "frames": [...]}`,
+ten of them in order: 0-1 standing, 2-5 walking, 6 asleep, 7-8 working (a tool up, then down), 9 sitting (Pip's is
+`worlds/pip/sprite.json`). Without one, it is drawn like a person, from `"look"` in `world.json`'s agent (words from `scene.json`'s
+`look` lists: Ashfall gives Wren auburn hair and a scarf), or from its name and persona.
+
+**The page** (0.48.0): a pack's `web/` folder is its page, served at `/ui/` (Pip's dashboard is `worlds/pip/web/`). It may load the
+engine's scene and map renderer (`./world/scene.js`, `./world/map.js`), which a pack can't replace, and read `/state`, `/standing`,
+`/events`, `/published` (what each live module publishes), `/characters`, `/world/scene` and the rest. A pack without one gets the
+engine's plain page.
 
 **Textures** (later): a pack can add textures as small generator functions or images in `scene/`.
 
@@ -206,4 +219,6 @@ the first happening of each kind is called. See `worlds/pip/content.json`.
 - [ ] Features: `std:` modules included and configured, or the pack's own
 - [ ] `tone.json`: what the world allows (without it, the engine's sizes and only its floor's words)
 - [ ] `bible.md` and `guide/*.md`
+- [ ] How the agent looks: `sprite.json`, or a `look` in `world.json`
+- [ ] Optionally `web/`: a page of its own (otherwise the engine's plain page)
 - [ ] Run a day: the scene draws, the journal fills, nothing in the log says "refused" or "failed"

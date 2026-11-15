@@ -22,7 +22,6 @@ def test_help_text(tmp_path):
         "/help: this list\n"
         "/status: what Pip is doing and how it is\n"
         "/items: what Pip owns\n"
-        "/projects: projects in progress\n"
         "/creations: what Pip has made\n"
         "/notes: open to-dos, wishes and ambitions (or /notes diary|learned|todo|wishlist|ambitions)\n"
         "/emotions: Pip's emotion state\n"
@@ -58,14 +57,14 @@ def test_items_text(tmp_path):
     assert commands.answer(st, s, "/items") == "Items\nbrass wire x3 (material)\nneedle file x1 (tool)"
 
 
-async def test_projects_text(tmp_path):
+def test_a_modules_command_text(tmp_path):
+    from tests.test_garden import garden
     s, st, *_ = make(tmp_path)
-    assert commands.answer(st, s, "/projects") == "Projects\nNo projects right now."
-    old = {"name": "old clock", "status": "done", "stages": [{"name": "a", "minutes": 30, "progress": 30}]}   # finished ones aren't listed
-    await given(st, old, {"name": "gear clock", "stages": [{"name": "cut", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60}]})
-    assert commands.answer(st, s, "/projects") == "Projects\ngear clock: 50%, next: fit it"
-    await given(st, old, {"name": "gear clock", "stages": [{"name": "cut", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60, "progress": 60}]})
-    assert commands.answer(st, s, "/projects") == "Projects\ngear clock: 100%, next: all the planned steps are done"
+    m = garden(st)
+    st.update_module(m["id"], standing={"title": "Your garden", "lines": ["plot 1: empty", "plot 2: peas growing, ready in about {in:%d}" % (at(9) + 7200)],
+                                        "ready": False})
+    assert commands.answer(st, s, "/garden", now=at(9)) == "Your garden\nplot 1: empty\nplot 2: peas growing, ready in about 2 hours"
+    assert commands.answer(st, s, "/help").endswith("/usage: today's token use against the budget\n/garden: your garden")
 
 
 def test_creations_text(tmp_path):
@@ -114,8 +113,6 @@ def test_arguments_are_ignored_by_commands_that_take_none(tmp_path):
 
 async def test_lists_put_each_entry_on_its_own_line(tmp_path):
     s, st, *_ = make(tmp_path, daily_token_budget=5000)
-    await given(st, {"name": "clock", "stages": [{"name": "cut", "minutes": 60}]}, {"name": "walker", "stages": [{"name": "bend", "minutes": 60, "progress": 30}]})
-    assert commands.answer(st, s, "/projects") == "Projects\nclock: 0%, next: cut\nwalker: 50%, next: bend"
     st.add_creation("Gear Clock", "keeps even time", None, "sound", {}, {})
     st.add_creation("Lamp", "glows at dusk", None, "fine", {}, {})
     assert commands.answer(st, s, "/creations") == "Creations\nGear Clock (sound): keeps even time\nLamp (fine): glows at dusk"

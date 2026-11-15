@@ -39,7 +39,7 @@ def on_build(ctx):
     for i, (c, w, h) in enumerate([("#a33b2a", 0.3, 0.36), ("#6b7b5a", 0.34, 0.3), ("#b0a070", 0.26, 0.4), ("#6b7b5a", 0.34, 0.3)]):
         s.append(_box([w, h, w], [-9.6 + i * 0.7, 2.15 + h / 2, WZ0 + 0.45], {"color": c, "rough": 0.6}))
     s += [_box([3.2, 1.6, 0.6], [-8.4, 1.7, WZ0 + 0.45], None, hitbox=True, tip={"title": "Belongings", "text": "$belongings"}),
-          _box([3.6, 0.2, 1.2], [-6.4, 1.0, WZ0 + 1.3], {"color": "#6a5a44", "rough": 0.8}, tip={"title": "The bench", "text": "$project"})]
+          _box([3.6, 0.2, 1.2], [-6.4, 1.0, WZ0 + 1.3], {"color": "#6a5a44", "rough": 0.8}, tip={"title": "The bench", "text": "$busy"})]
     s += [_box([0.16, 0.9, 0.16], [x, 0.45, WZ0 + 1.3 + dz], steel) for x, dz in ((-7.9, -0.4), (-4.9, -0.4), (-7.9, 0.4), (-4.9, 0.4))]
     s += [_box([0.9, 0.35, 2.0], [-9.6, 0.3, WZ1 - 1.2], {"color": "#4f5a48", "rough": 0.9}, tip={"title": "The cot", "text": "Army surplus, and better than the floor."}),
           _box([0.04, 0.9, 0.04], [-6.2, WH - 0.45, WZ0 + 2.2], steel),

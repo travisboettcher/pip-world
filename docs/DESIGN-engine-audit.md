@@ -1,6 +1,6 @@
 # Engine audit: what still assumes Pip's world (2026-11-14)
 
-Status: **audit, decisions taken (2026-11-14), nothing built yet.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
+Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0) and 2 (0.48.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
 The owner asked whether one more pass was needed: over the module architecture (the hooks it offers) and over engine code that still
 expects a workflow specific to Pip. This is that pass: what was checked, what was found, the owner's decisions, and the order of releases.
 
@@ -90,7 +90,7 @@ identity, places and walking, the map, creations as things, the module runtime a
   not a suffix.
 - **B4. Tool scopes by place key.** `browse` is scoped to `junkyard` (0.44.1 added the place-kind verbs as a way round). *Fix:* engine
   tools scope by role (`home`, `anywhere`, `offered`: where a place's kind lists the verb), never by a place's key.
-- **B5. The dashboard and feature endpoints.** `/projects` (crafting), `/letters` (neighbours) and `/library/bookmarks` (reading) are
+- **B5. The dashboard and feature endpoints** — *built (0.48.0)*. `/projects` (crafting), `/letters` (neighbours) and `/library/bookmarks` (reading) are
   endpoints of one feature each; the dashboard's Work tab renders projects and the World tab letters; `/projects` is a chat command. The
   generic mechanism exists: `/standing` shows every module's status. *Fix (decided):* the dashboard page (`web/index.html`, `app.js`,
   `style.css`) moves into Pip's pack (`worlds/pip/web/`), and the engine serves the active pack's `web/` at `/ui` (a pack without one gets
@@ -161,7 +161,19 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    `tests/test_engine_neutral.py` fails on any `pip` in the engine (code, comments, shipped modules, the builder's page, the
    renderer) but the project's own names and the default pack.
 2. **The dashboard into Pip's pack** (B5): the engine serves the pack's page and the shared renderer, `/published` replaces the feature
-   endpoints, `/<module>` the feature commands; Ashfall gets the plain page.
+   endpoints, `/<module>` the feature commands; Ashfall gets the plain page. *Built (0.48.0):* `/ui/` is the pack's `web/` over the
+   engine's `web/` (the renderer, three.js and the fonts can't be replaced; `web/plain/` when the pack has no page: the agent's state, its
+   scene, what modules show it, what happened lately, a box to talk); Pip's dashboard is `worlds/pip/web/`. `/published` (every live
+   module's facts), `/characters` (anyone of any role, never a persona) and `/abilities` replace `/projects`, `/library/bookmarks` and
+   the neighbours in `/letters`; `/state` says what the agent is busy with (`session`). A live module with a standing is a chat command by
+   its name (`/crafting` for `/projects`). The renderer draws no garden: the garden module shows each plot's crop on a bed anchor
+   (`show`, redrawn each tenth of its growing), the bed's soil shows `when` `has:<anchor>`, and the agent paces along any anchor whose
+   `words` say what it is doing; a sitting agent thinks of something shown whose tip names what it's doing. The agent is drawn from its
+   pack: `sprite.json` (Pip's own frames, from the old `art.agent`) or a person from `world.json`'s `look` (Wren's), people having the
+   agent's ten frames now; its tip lists the world's stats. `$project` is `$busy`. `home`, `gallery-wall` and `stall-pictures` moved to
+   `worlds/pip/modules/`, and Pip's `world.json` names its modules. Found on the way: the Work tab had read stage materials and history
+   the crafting module stopped publishing in 0.42.0; it publishes `needs` and `last` for what is still going, and the page and `pipchat`
+   read those. Something a module shows where no layout is built yet waits for one instead of spoiling its trial.
 3. **The night pass and the guide** (B1, B2): plans any module offers, tidied overnight; guide pages that say when they apply.
 4. **People, part one** (B3, B4, C1): place kinds and scopes from the pack; characters of any role with a home place they own; talk
    scenes with whoever is present; Ashfall's villagers to talk to at the village.

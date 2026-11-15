@@ -1,7 +1,8 @@
-# The agent's workshop and its garden: the workshop opened like a dollhouse (a shelf, the bench and its tools, a stool, a hanging lamp, a window),
+# Pip's workshop and its garden: the workshop opened like a dollhouse (a shelf, the bench and its tools, a stool, a hanging lamp, a window),
 # the garden behind its fence, the terrace, the stream and the bridge, a hill of pines behind and flowers along the edge. What changes with
-# the world has anchors: the plots, the agent's creations (clocks on the wall, things on the shelf, walking things on the floor), and where the agent
-# sits, sleeps, works, gardens and stands.
+# the world has anchors: the beds (the garden module shows each plot's crop on the bed of its number, and a bed's soil shows while it does),
+# the agent's creations (clocks on the wall, things on the shelf, walking things on the floor), and where the agent sits, sleeps, works and
+# stands; the garden path names the words that bring it out to the beds (gardening, planting, harvesting...).
 import random
 
 WX0, WX1, WZ0, WZ1, WH = -10.5, -1.5, -7.0, -1.6, 3.4
@@ -52,7 +53,7 @@ def on_build(ctx):
     for i, (c, w, h) in enumerate([("#7fb3a8", 0.24, 0.42), ("#c9a24a", 0.3, 0.34), ("#9b6b9e", 0.24, 0.5), ("#7fb3a8", 0.32, 0.3), ("#b85c38", 0.24, 0.4), ("#cfcfcf", 0.3, 0.45)]):
         s.append(_box([w, h, w], [-9.6 + i * 0.5, 2.31 + h / 2, WZ0 + 0.4], {"color": c, "rough": 0.4}))
     s += [_box([3.2, 1.0, 0.6], [-8.4, 2.6, WZ0 + 0.4], None, hitbox=True, tip={"title": "Belongings", "text": "$belongings"}),
-          _box([3.6, 0.2, 1.2], [-6.4, 1.1, WZ0 + 1.3], wood, tip={"title": "The bench", "text": "$project"})]
+          _box([3.6, 0.2, 1.2], [-6.4, 1.1, WZ0 + 1.3], wood, tip={"title": "The bench", "text": "$busy"})]
     s += [_box([0.18, 1.0, 0.18], [x, 0.5, WZ0 + 1.3 + dz], wood) for x, dz in ((-7.9, -0.4), (-4.9, -0.4), (-7.9, 0.4), (-4.9, 0.4))]
     s += [_box([0.6, 0.06, 0.12], [-7.2, 1.23, WZ0 + 1.2], {"color": "#b8b8b8", "metal": 0.7, "rough": 0.3}),
           _box([0.7, 0.12, 0.7], [-3.6, 0.75, WZ0 + 2.3], wood), _box([0.1, 0.7, 0.1], [-3.85, 0.35, WZ0 + 2.3], wood), _box([0.1, 0.7, 0.1], [-3.35, 0.35, WZ0 + 2.3], wood),
@@ -80,14 +81,17 @@ def on_build(ctx):
     parts = [{"part": "round-tree", "params": {"scale": 1.15}, "at": [11.2, 0, -4.5], "role": "tree"}]
     for i in range(14):
         parts.append({"part": "pine-tree", "params": {"scale": round(1.2 + r.random() * 0.8, 1)}, "at": [round(-15 + i * 2.3 + r.random(), 2), 3.2, round(-12.5 - r.random() * 2, 2)], "role": f"pine-{i}"})
-    anchors = [{"id": f"plot-{i + 1}", "type": "ground", "tags": ["outside", "plot"], "at": [round(1.4 + i * 2.4, 2), 0.12, -5.2], "extent": [1.9, 2.8]} for i in range(4)]
-    anchors += [{"id": "clock-1", "type": "wall", "tags": ["inside", "clock"], "at": [-2.4, 1.9, WZ0 + 0.22], "extent": [0.9, 1.5]},
+    beds = [{"id": f"plot-{i + 1}", "type": "ground", "tags": ["outside", "plot"], "at": [round(1.4 + i * 2.4, 2), 0.24, -4.6], "extent": [1.5, 2.8]} for i in range(4)]
+    s += [_ground([1.9, 0.25, 2.8], [b["at"][0], 0.12, -5.2], {"texture": "soil", "repeat": [1, 2]}, planks([1, 1], "#5a3d27"), when=[f"has:{b['id']}"])
+          for b in beds]                                    # a bed's soil; its crop stands on the soil at the front row, as wide as the anchor
+    anchors = [{"id": "clock-1", "type": "wall", "tags": ["inside", "clock"], "at": [-2.4, 1.9, WZ0 + 0.22], "extent": [0.9, 1.5]},
                 {"id": "clock-2", "type": "wall", "tags": ["inside", "clock"], "at": [-3.6, 1.9, WZ0 + 0.22], "extent": [0.9, 1.5]},
                 {"id": "shelf", "type": "surface", "tags": ["inside", "shelf"], "at": [-8.1, 2.3, WZ0 + 0.45], "extent": [3.2, 0.4]},
                 {"id": "walkers", "type": "floor", "tags": ["inside", "walkers"], "at": [-7.8, 0.12, -2.9], "extent": [3.2, 1.2]},
                 {"id": "seat", "type": "surface", "tags": ["inside", "seat"], "at": [-3.6, 0.76, WZ0 + 2.35], "extent": [0.7, 0.7]},
                 {"id": "workbench", "type": "floor", "tags": ["inside", "workbench"], "at": [-6.6, 0.06, WZ0 + 2.25], "extent": [1.0, 0.6]},
-                {"id": "garden-path", "type": "ground", "tags": ["outside", "garden-path"], "at": [3.8, 0.03, -3.4], "extent": [4.8, 0.5]},
+                {"id": "garden-path", "type": "ground", "tags": ["outside", "garden-path"], "at": [3.8, 0.03, -3.4], "extent": [4.8, 0.5],
+                 "words": ["garden", "plot", "plant", "harvest", "water", "weed", "tend"]},
                 {"id": "agent", "type": "floor", "tags": ["inside", "agent"], "at": [-4.6, 0.06, WZ0 + 2.9], "extent": [1.0, 0.6]},
                 # where module objects go (as the hand-written scene published): the back wall, the bench, the floor, the yard
                 {"id": "back-wall-by-window", "type": "wall", "tags": ["inside", "back"], "at": [-5.25, 2.3, -6.83], "normal": [0, 0, 1], "extent": [0.9, 0.9]},
@@ -96,7 +100,7 @@ def on_build(ctx):
                 {"id": "bench", "type": "surface", "tags": ["inside", "bench"], "at": [-5.6, 1.2, -5.8], "extent": [1.8, 0.6]},
                 {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-6.0, 0.12, -3.4], "extent": [4.0, 1.2]},
                 {"id": "yard", "type": "ground", "tags": ["outside", "yard"], "at": [3.6, 0.04, -1.2], "extent": [5.0, 1.5]}]
-    for a in anchors[:-6]:                                  # where the scene draws the agent, its garden and its creations: not for modules
+    for a in anchors[:-6]:                                  # where the scene draws the agent and its creations: not for modules
         a["tags"].append("reserved")
-    anchors = anchors[-6:] + anchors[:-6]
+    anchors = anchors[-6:] + beds + anchors[:-6]            # the beds after the yard, so "somewhere outside" is the yard first
     return {"parts": parts, "shapes": s, "anchors": anchors, "camera": {"at": [0, 13, 22], "look": [0, 0.2, -1.5]}}

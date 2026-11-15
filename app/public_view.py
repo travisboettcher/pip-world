@@ -10,7 +10,7 @@ MAX_PUBLIC_STREAMS = 50
 CACHE_SECONDS = 5
 
 PUBLIC_PATHS = frozenset({
-    "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/standing", "/projects",
+    "/", "/mode", "/healthz", "/state", "/events", "/stream", "/notes", "/items", "/emotions", "/standing", "/published", "/abilities",
     "/creations", "/works", "/map", "/world/map", "/world/scene", "/places", "/memory", "/happenings", "/modules",
 })
 PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png)?"), re.compile(r"/modules/\d+"))
@@ -120,4 +120,5 @@ def public_events(state, settings):
 
 
 def public_state(state_json: dict) -> dict:
-    return {"agent": state_json["agent"], "ticks": state_json["ticks"], "coins": state_json["coins"], "condition": state_json.get("condition")}
+    return {"agent": state_json["agent"], "ticks": state_json["ticks"], "coins": state_json["coins"], "condition": state_json.get("condition"),
+            "session": state_json.get("session")}

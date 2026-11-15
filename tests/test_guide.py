@@ -28,7 +28,7 @@ SPLIT = "If a visitor left a message, answer them with the say tool (it is the o
 SPLIT_GUIDE_HALF = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you)."
 SPLIT_CHARACTER_HALF = "Answer visitors in character."
 
-ALL = Settings.from_env().tools + [t["name"] for m in M.RULES for t in M.library(m)[0].get("tools", [])]   # every tool the world has:
+ALL = Settings.from_env().tools + [t["name"] for man, _ in M.world_modules(Settings()).values() for t in man.get("tools", [])]   # every tool the world has:
 #                                                     the engine's (the default list) and its shipped modules' (offered as they're live)
 EVERYTHING = Settings(tools=ALL, neighbor=True, sleep=True, emotions="on", night_pass="apply", reflect_hour=3)
 

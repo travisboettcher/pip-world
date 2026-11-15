@@ -322,6 +322,10 @@ async def test_what_the_agent_sees_and_the_dashboard_reads(tmp_path):
     assert lines[1] == "you don't know yet: will it keep time?"
     said = M.published(st, "projects")
     assert said[0]["name"] == "Clock" and said[0]["percent"] == 0 and said[0]["current_stage"] == 0 and M.published(st, "skills") == {}
+    assert said[0]["needs"] == {"brass wire": 2} and said[0]["last"] is None             # for a page: what the stage still needs, what happened last
+    await call(agent, "abandon_project", project="Clock", reason="bored")
+    gone = M.published(st, "projects")[0]
+    assert gone["status"] == "abandoned" and "needs" not in gone and "last" not in gone    # only what's still going carries them
 
 
 def test_a_finished_project_is_kept_small_and_the_oldest_let_go():

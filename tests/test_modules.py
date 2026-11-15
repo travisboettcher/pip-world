@@ -39,11 +39,17 @@ def live(st, manifest, source, author="world", state=None):
     return st.module(mid)
 
 
+def shipped(name):
+    """A module Pip's world runs: one the engine ships (module_library/), or one of the pack's own (worlds/pip/modules/)."""
+    from app import world_pack
+    return M.library(name) if (M.LIBRARY / f"{name}.json").is_file() else world_pack.load(Settings()).module(name)
+
+
 async def shipped_layouts(st, s, *places, now=NOW):
     """The shipped layouts for these kinds of place (and the parts they use) put straight in as live, and built: a scene's anchors."""
     from app import layouts as L
     for name in ("round-tree", "pine-tree", "well", "stall", "cutaway", *places):
-        man, src = M.library(name)
+        man, src = shipped(name)
         live(st, man, src, author=M.SHIPPED)
     await L.step(st, s, None, now)
 
@@ -500,7 +506,7 @@ async def test_the_world_offers_a_clock_its_workings_once(tmp_path):
     c = clock(st)
     st.add_creation("Paperweight", "a stone", None, "sound", {"capabilities": {}, "quirks": []}, {})
     made = await M.offer_library(st, s, None, now=NOW)                                                  # the engine's own need no runner
-    assert [st.module(i)["name"] for i in made] == [*M.RULES, "gear-clock-workings"]
+    assert [st.module(i)["name"] for i in made] == [*M.world_modules(s), "gear-clock-workings"]
     m = st.module(made[-1])
     assert (m["name"], m["author"], m["subject"], m["status"]) == ("gear-clock-workings", "library", "Gear Clock", "live")   # shipped: live
     assert m["report"]["clean"] and m["report"]["offers"] == ["tend", "set"] and m["reason"] == "Your Gear Clock's workings as code: it keeps time, and can be set; it stops when it runs down, and can be tended."

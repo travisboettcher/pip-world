@@ -91,6 +91,32 @@ def test_anchors_and_whole_parts_are_checked():
     assert bad(G.built, {"shapes": [BOX], "anchors": [a, a]}) == "each anchor needs its own id"
 
 
+
+def test_an_anchor_may_name_the_words_that_send_the_agent_there():
+    a = {"id": "beds", "type": "ground", "tags": ["outside"], "at": [0, 0, 0], "extent": [4, 0.5]}
+    assert G.anchor({**a, "words": ["Garden ", "harvest", "garden"]}, 0)["words"] == ["garden", "harvest"]
+    assert "words" not in G.anchor(a, 0)
+    assert G.anchor({**a, "words": ["tend"]}, 0)["words"] == ["tend"] and len(G.anchor({**a, "words": [f"w{c}" for c in "abcdefghijkl"]}, 0)["words"]) == 12
+    assert G.anchor({**a, "tags": ["x" * 30]}, 0)["tags"] == ["x" * 24]
+    assert bad(G.anchor, {**a, "at": [0, 0]}, 3) == "anchor 3: at is a list of 3 numbers"
+    assert bad(G.anchor, {**a, "extent": [1]}, 3) == "anchor 3: extent [width, height or depth] is a list of 2 numbers"
+    for words in ([], ["two words"], ["x" * 25], "garden", [1], ["w"] * 13):
+        assert bad(G.anchor, {**a, "words": words}, 3) == ("anchor 3: `words` is a list of 1 to 12 words (letters, dashes); the agent goes "
+                                                         "there while what it is doing says one")
+
+
+def test_a_shape_may_show_only_while_a_module_shows_something_on_an_anchor():
+    assert G.shape({**BOX, "when": ["has:plot-2", "day"]}, 0)["when"] == ["has:plot-2", "day"]
+    for cond in ("has:", "has:Plot", "has:-x", "plot-2", "had:plot-2"):
+        assert bad(G.shape, {**BOX, "when": [cond]}, 0).startswith("shape 0 (box): `when` is one or more of open, shut"), cond
+    assert "has:<anchor id>" in bad(G.shape, {**BOX, "when": ["x"]}, 0)
+    part = {"shapes": [G.shape({**BOX, "when": ["has:bed", "day"]}, 0), G.shape({**BOX, "when": ["has:elsewhere"]}, 1)],
+            "anchors": [G.anchor({"id": "bed", "type": "ground", "tags": ["x"], "at": [0, 0, 0]}, 0)]}
+    moved = G.place(part, [0, 0, 0], 0, "garden", ["open"])
+    assert [s["when"] for s in moved["shapes"]] == [["has:garden-bed", "day", "open"], ["has:elsewhere", "open"]]   # its own anchor, renamed with it
+    assert L._plan({"parts": [{"part": "stall", "at": [0, 0, 0], "when": "has:plot-1"}]})["parts"][0]["when"] == ["has:plot-1"]
+
+
 def test_a_part_is_moved_and_turned_into_place():
     part = G.built({"shapes": [{**BOX, "at": [1, 0.5, 0]}, {**BOX, "at": [0, 0, 2], "rot": [10, 5, 0]}],
                     "anchors": [{"id": "front", "type": "wall", "tags": ["inside"], "at": [0, 1, 1], "normal": [0, 0, 1], "extent": [1, 1]}]})
@@ -192,9 +218,11 @@ async def test_objects_go_on_a_layouts_anchors(tmp_path):
     await L.step(st, s, agent.runner, NOW)
     shower = live(st, {"name": "mushrooms", "kind": "rule", "api": 1, "hooks": ["on_tick"], "proposes": ["show"]}, "x")
     st.update_module(shower["id"], show=[{"id": "m", "sprite": {"rows": ["kkkk"] * 4, "palette": {"k": "#c33"}}, "size": 0.5, "frame": False,
-                                          "at": {"type": "ground", "place": "woods", "tags": ["shade"], "near": "big-shade"}}])
+                                          "at": {"type": "ground", "place": "woods", "tags": ["shade"], "near": "big-shade"},
+                                          "tip": {"title": "Mushrooms", "text": "Ready in about {in:%d}." % (time.time() + 7200)}}])
     [o] = WV.scene_view(st, s, None, "woods")["objects"]
     assert o["pos"][0] == pytest.approx(4.0 - 0.5 + 0.25) and o["pos"][2] == 4.0 - 8.0          # in the big tree's shade
+    assert o["anchor"] == "big-shade" and o["tip"] == {"title": "Mushrooms", "text": "Ready in about 2 hours."}   # a tip reads as it does now
 
 
 @pytest.mark.asyncio
@@ -660,22 +688,28 @@ async def test_the_shipped_layouts_build_every_kind_of_place_from_its_details(tm
     assert {"reading", "browse", "table"} <= {a["id"] for a in lib["anchors"]} and lib["camera"]["at"] == [0, 13, 21]
     home = await build("home")
     ids = [a["id"] for a in home["anchors"]]
-    assert ids[:6] == ["back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf", "bench", "floor", "yard"]
-    assert {"plot-1", "plot-4", "clock-1", "shelf", "walkers", "seat", "workbench", "garden-path", "agent"} <= set(ids)
-    assert all(("reserved" in a["tags"]) == (a["id"] not in ids[:6] and not a["id"].startswith("tree")) for a in home["anchors"])
+    assert ids[:10] == ["back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf", "bench", "floor", "yard", "plot-1", "plot-2", "plot-3", "plot-4"]
+    assert {"clock-1", "shelf", "walkers", "seat", "workbench", "garden-path", "agent"} <= set(ids)
+    assert all(("reserved" in a["tags"]) == (a["id"] not in ids[:10] and not a["id"].startswith("tree")) for a in home["anchors"])
+    path = next(a for a in home["anchors"] if a["id"] == "garden-path")
+    assert "garden" in path["words"] and "harvest" in path["words"]                     # out to the beds to garden
+    beds = [sh for sh in home["shapes"] if sh.get("faces", {}).get("top", {}).get("texture") == "soil"]
+    assert [sh["when"] for sh in beds] == [["has:plot-1"], ["has:plot-2"], ["has:plot-3"], ["has:plot-4"]]   # soil where the garden shows a plot
 
 
 def test_the_renderer_draws_live_elements_on_tagged_anchors():
     from pathlib import Path
+    import re
     web = Path(M.__file__).resolve().parent.parent / "web" / "world"
     js = (web / "layout.js").read_text()
-    for tag in ("finds", "counter", "stock", "booth", "agent-stall", "wares", "plot", "clock", "shelf", "walkers", "resident", "resident-evening",
-                "resident-walk", "people", "crowd", "seat", "bed", "workbench", "reading", "garden-path", "browse", "visitor"):
+    for tag in ("finds", "counter", "stock", "booth", "agent-stall", "wares", "clock", "shelf", "walkers", "resident", "resident-evening",
+                "resident-walk", "people", "crowd", "seat", "bed", "workbench", "reading", "browse", "visitor"):
         assert f'"{tag}"' in js, tag
-    import re
+    assert 'w.startsWith("has:")' in js and "a.words?.length" in js and 'pose === "pace"' in js        # has:<anchor>; an anchor's words
+    assert not re.search(r"garden|crop|\bplot", js) and "art.agent" not in js                             # the garden draws itself
     for cond in (c for c in G.CONDITIONS if not c.startswith("booth-")):                       # each one the renderer works out
         assert re.search(r'[\s{"]' + re.escape(cond) + r'"?[:,]', js), cond
     assert "`booth-${i + 1}`" in js and 'case "torus"' in js
-    for token in ("$label", "$description", "$blurb", "$belongings", "$project", "$hours", "$note", "$resident", "$wares", "$stock", "$stall"):
+    for token in ("$label", "$description", "$blurb", "$belongings", "$busy", "$hours", "$note", "$resident", "$wares", "$stock", "$stall"):
         assert f'"{token}"' in js, token
     assert not (web / "templates").exists() and not (web / "anchors").exists()

@@ -31,7 +31,7 @@ def test_help_lists_every_command(tmp_path):
     r = ask(st, s, "/help")
     for name in commands.NAMES:
         assert f"/{name}" in r
-    assert set(commands.NAMES) >= {"help", "status", "items", "projects", "creations", "notes", "emotions", "usage"}
+    assert set(commands.NAMES) == {"help", "status", "items", "creations", "notes", "emotions", "usage"}     # and each module's, by its name
 
 
 def test_status_reports_the_agent_and_the_day(tmp_path):
@@ -68,18 +68,16 @@ def test_status_carries_what_modules_show(tmp_path):
     st.update_module(m["id"], standing={"title": "Your garden", "lines": ["plot 1: tomatoes growing, ready in about {in:%d}" % (time.time() + 600)],
                                         "ready": False})
     assert ask(st, s, "/status").splitlines()[-2:] == ["Your garden:", "- plot 1: tomatoes growing, ready in about 10 min"]
-    assert "/garden" not in ask(st, s, "/help")
+    assert "/garden: your garden" in ask(st, s, "/help")
 
 
 @pytest.mark.asyncio
-async def test_projects_shows_progress(tmp_path):
+async def test_crafting_shows_its_projects_as_the_agent_sees_them(tmp_path):
     s, st, gm, agent = make(tmp_path)
-    assert "no projects" in ask(st, s, "/projects").lower()
-    steps = [{"name": "cut the wheels", "minutes": 60}, {"name": "fit it", "minutes": 60}]
-    await call(agent, "start_project", name="gear clock", steps=steps)
+    assert ask(st, s, "/crafting").startswith("I don't know /crafting")             # until the module is live
     await given(st, {"name": "gear clock", "stages": [{"name": "cut the wheels", "minutes": 60, "progress": 60}, {"name": "fit it", "minutes": 60}]})
-    r = ask(st, s, "/projects")
-    assert "gear clock" in r and "50%" in r and "fit it" in r
+    r = ask(st, s, "/crafting")
+    assert r.startswith("Your projects\n") and "gear clock" in r and "50% done" in r and "'fit it'" in r
 
 
 def test_creations_lists_what_pip_made(tmp_path):
