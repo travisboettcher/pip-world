@@ -17,6 +17,10 @@ waits for one and doesn't spoil a trial ("at <place>, once a layout is built the
 command by its name (`/garden`); `/published` is every live module's facts, for a pack's page. `home`, `gallery-wall` and
 `stall-pictures` are Pip's world's own modules (`worlds/pip/modules/`).
 
+**Plans (0.49.0):** a module may publish `plans` (and `plan_limit`): what the agent has going that the night pass may put on hold or
+take back up, by asking the module (`pause`, `resume`, with `{"plan": id}`) if it answers them (docs/DESIGN-nightpass.md). Crafting's
+projects are its plans.
+
 ## Why
 Until now every feature has been written by hand in the engine: the gear clock is a `timekeeper` capability, pictures on the workshop wall are a
 template slot, a market is a `PlaceKind`, and its scene is a hand-written three.js template. The owner never meant the world to be a list of

@@ -7,6 +7,15 @@ goal changes; BDI intention history and reconsideration; AIMA's learning agent: 
 performance element, and the problem generator; Sleep-time Compute's precomputed "tomorrow brief"; Ricoeur's *ipse*:
 what Pip committed to and whether it kept it).
 
+**Plans, not projects (0.49.0).** Below, "projects" and `pause_project` / `resume_project` are, since 0.49.0, any module's *plans*
+(docs/DESIGN-engine-audit.md, B1). A live module publishes `plans` (`[{id, name, status, progress?, last_touched, about?}]`, ids
+whole numbers from 1) and may publish `plan_limit` (the most it lets go at once); it answers `pause` and `resume` (asked with
+`{"plan": id}`) if the pass may put its plans on hold. The crafting module publishes its projects so (those going or on hold, and
+the last five finished). The pass shows "Your plans" as `[crafting:2] kite (active): 40% done, last worked on 3 days ago`, cites them
+as `crafting:2`, and decides `pause_plan` / `resume_plan` with `plan`; a decision's target is `plan:<module>`, a focus can name a
+plan the same way (kept when it moved or finished), and an undo asks the module the opposite, refusing if the module doesn't answer
+it or (to take one back up) has no room. A one-time migration renamed the stored decisions and focus.
+
 ## Why
 The nightly reflection is a critic and learning element that can only *describe*: a summary, beliefs, a portrait. It
 cannot act on what it understands, so Pip's to-do list, wishes and projects drift (near-duplicate to-dos, stale wishes,

@@ -1,6 +1,6 @@
 # Engine audit: what still assumes Pip's world (2026-11-14)
 
-Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0) and 2 (0.48.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
+Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0), 2 (0.48.0) and 3 (0.49.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
 The owner asked whether one more pass was needed: over the module architecture (the hooks it offers) and over engine code that still
 expects a workflow specific to Pip. This is that pass: what was checked, what was found, the owner's decisions, and the order of releases.
 
@@ -74,12 +74,12 @@ identity, places and walking, the map, creations as things, the module runtime a
   refused anyway).
 
 ### B. Plumbing that knows one feature by name
-- **B1. The night pass is crafting's.** Its facts list crafting's published projects (`nightpass.py`, `_projects`, `_limit`), its ops
+- **B1. The night pass is crafting's** — *built (0.49.0)*. Its facts list crafting's published projects (`nightpass.py`, `_projects`, `_limit`), its ops
   include `pause_project` and `resume_project`, citations use `p<id>`, and a focus can refer to a project. A world whose plans are
   something else (repairs, expeditions) can't have them tidied overnight. *Fix:* a module publishes the things the pass may look after
   (`plans`: `{id, label, status, last_touched}`) and answers what may be done to them (`pause`, `resume`); the pass's ops become
   "ask module M to do X to its item I", cited as `m:<module>:<id>`, and undone by asking the opposite.
-- **B2. The guide's pages are registered in the engine.** `app/guide/__init__.py` lists every page by name and gates each on engine tool
+- **B2. The guide's pages are registered in the engine** — *built (0.49.0)*. `app/guide/__init__.py` lists every page by name and gates each on engine tool
   names (`projects` on `start_project`, `market` on `buy`/`sell`/`pay`, `library` on `browse`/`read`). A pack page the list doesn't name
   is never shown: Ashfall's `stakes` page needed an engine change. *Fix:* each page says when it applies (a front-matter line: the tools,
   settings or stats it needs, and its place in the order), and the engine keeps only the gate predicates.
@@ -175,6 +175,14 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    the crafting module stopped publishing in 0.42.0; it publishes `needs` and `last` for what is still going, and the page and `pipchat`
    read those. Something a module shows where no layout is built yet waits for one instead of spoiling its trial.
 3. **The night pass and the guide** (B1, B2): plans any module offers, tidied overnight; guide pages that say when they apply.
+   *Built (0.49.0):* a live module's `plans` (`[{id, name, status, progress?, last_touched, about?}]`, and `plan_limit`) are what the
+   night pass sees, cited `<module>:<id>`; `pause_plan` / `resume_plan` ask that module (`pause` / `resume` with `{"plan": id}`), only
+   if it answers them, and an undo asks the opposite (refused where the module can't, or has no room). Crafting publishes its projects
+   so, and the engine reads nothing of crafting's own any more (`projects.published` is gone). Old decisions and focus were migrated
+   (`pause_project` is `pause_plan` on `plan:crafting`). Every guide page has a front matter (`order`, `when`, `bullet`); the engine
+   keeps only the conditions (`always`, `tool`, `setting`, `library`, `stakes`, `reflection`), and a pack's page it has never heard of
+   is told when its front matter says (checked when the pack loads). Rendered for both worlds in 3,072 combinations of tools and
+   settings, the guide reads exactly as before.
 4. **People, part one** (B3, B4, C1): place kinds and scopes from the pack; characters of any role with a home place they own; talk
    scenes with whoever is present; Ashfall's villagers to talk to at the village.
 5. **People, part two** (C1): correspondence for any character; the neighbourhood module drives the neighbour's letters, parcels and

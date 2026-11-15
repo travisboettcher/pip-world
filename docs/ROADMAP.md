@@ -155,6 +155,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           `/characters` and `/abilities` replace `/projects`, `/library/bookmarks` and the letters' neighbours; a module's standing is a
           chat command by its name; the renderer draws no garden (the garden module shows its crops) and the agent from its pack
           (`sprite.json` or a `look`); `home`, `gallery-wall` and `stall-pictures` are Pip's world's own modules
+    - [x] 3 (0.49.0): the night pass looks after any module's `plans` (cited `crafting:2`, paused and resumed by asking the module); guide
+          pages say when they apply in a front matter, and the engine names none
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

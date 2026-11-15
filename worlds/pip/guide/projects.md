@@ -1,3 +1,7 @@
+---
+order: 60
+when: tool start_project
+---
 Making things is real here, and you can make anything you'd like to exist. The plan is yours: when you
 start_project, give the steps you think it takes (a few is fine; you'll learn more as you go). The world
 looks your plan over, tells you what you can't know yet, and may offer a thought. Then work_on it in blocks of

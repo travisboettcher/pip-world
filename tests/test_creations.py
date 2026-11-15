@@ -132,7 +132,7 @@ async def test_finishing_a_bed_adds_a_plot_up_to_the_cap(tmp_path):
 
 # --- the world-effect registry is generic: a new kind of change is one entry ------------------------------
 async def test_a_workbench_raises_the_number_of_projects_pip_can_keep_going(tmp_path):
-    from app import projects as proj
+    from app import modules as M
     from tests.test_projects import given
     s, st, gm, agent = make(tmp_path, [], max_active_projects=1, max_active_projects_cap=2)
     await given(st, {"name": "kite", "craft": "kitemaking", "stages": [{"name": "frame", "minutes": 60}]})
@@ -141,7 +141,7 @@ async def test_a_workbench_raises_the_number_of_projects_pip_can_keep_going(tmp_
     bench = _project(name="Build a proper workbench", goal="a bench and shelves so I can keep more going", stages=("frame the bench",))
     c = await cr.made(st, {"name": "Workbench", "description": "a sturdy bench with shelves", "quirks": [],
                            "capabilities": [{"type": "world", "effect": "workbench"}]}, bench, "sound", [], random.Random(1))
-    assert c["spec"]["capabilities"] == {"world": {"effect": "workbench"}} and proj.published(st)["projects"] and st.store("crafting")["meta"]["all"]["extra_slots"] == 1
+    assert c["spec"]["capabilities"] == {"world": {"effect": "workbench"}} and M.published(st, "projects") and st.store("crafting")["meta"]["all"]["extra_slots"] == 1
     gm.script[:] = [LLMResponse("...")]                                                                     # the review fails: the steps stand
     assert "started project" in (await call(agent, "start_project", name="boat", steps=steps)).text         # room for a second
     ev = [e for e in st.events(20) if e["kind"] == "world_changed"][0]["data"]

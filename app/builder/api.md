@@ -17,7 +17,10 @@ Each gets ctx and returns a dict (or nothing). ctx holds:
   [{name, running, tended}]. happenings: {recent: [{category, tone, severity, ts, status}], today, room ("" when one can happen now,
   else why not), can_remember}.
 Return any of:
-- "state": a dict to keep. "publish": facts other modules may read. "schedule": when to call on_time next (a time, like ctx["now"] + 3600).
+- "state": a dict to keep. "publish": facts other modules may read; "plans" among them ([{"id": 1, "name": ..., "status": "active" or
+  "paused" or "done", "progress": 0-100, "last_touched": a time, "about": ...}], with "plan_limit") are things AGENT_NAME has going that
+  AGENT_POSS sleeping self may put on hold: answer "pause" and "resume" ({"plan": id}) to let it. "schedule": when to call on_time next
+  (a time, like ctx["now"] + 3600).
 - "perceive": one line AGENT_NAME will notice (rare: a few a day at most). "log": one line for the day's record. "wake": true to wake AGENT_NAME (rarer).
 - "voices": someone or something AGENT_NAME can talk to, that your code speaks for: [{"name": "the Ferryman", "at": a place's key or "home",
   "about": "who AGENT_NAME sees"}] (up to 4; never a name already in the world). AGENT_NAME talks to them with say(to=...) when AGENT_NAME is there; you hear

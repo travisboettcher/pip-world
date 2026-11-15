@@ -286,6 +286,7 @@ class State:
             self._from_before_modules()
             self._backfill_reads()
             self._name_the_agent()
+            self._plans_named()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -755,6 +756,16 @@ class State:
         self.db.execute("UPDATE events SET data = json_set(data, '$.author', 'agent') WHERE json_extract(data, '$.author') = 'pip'")
         self.db.execute("UPDATE events SET data = json_set(data, '$.ended', 'agent') WHERE kind = 'talk' AND json_extract(data, '$.ended') = 'pip'")
         self.set_meta(agent_named="1")
+
+    def _plans_named(self) -> None:
+        """Once (0.49.0): the night pass's decisions about projects and the focus that named one are about the crafting module's plans
+        (docs/DESIGN-engine-audit.md, B1), so they read and undo as plans do now."""
+        if self.meta("plans_named") == "1":
+            return
+        for old, new in (("pause_project", "pause_plan"), ("resume_project", "resume_plan")):
+            self.db.execute("UPDATE night_decisions SET op = ?, target_kind = 'plan:crafting' WHERE op = ?", (new, old))
+        self.db.execute("UPDATE focus SET ref_kind = 'plan:crafting' WHERE ref_kind = 'project'")
+        self.set_meta(plans_named="1")
 
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""

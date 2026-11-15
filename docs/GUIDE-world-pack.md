@@ -195,9 +195,24 @@ engine's plain page.
 and what doesn't, so its nightly proposals fit. Ashfall's might allow danger and loss but not cruelty, and ask for rules that make the
 world feel lived in: a curfew bell, a trader's caravan every few days, the reservoir's level after rain.
 
-**The guide** (works today: the engine reads the topics it knows, `app/guide/__init__.py`; phase 5 lets features bring their own):
-`guide/*.md` tells Wren how her world works, in the second person, a few lines a page: home, her needs, the
-places, the people. Features bring their own pages (`std:market` brings the market's); the pack adds what's particular to it.
+**The guide** (works today; since 0.49.0 every page says when it applies): `guide/*.md` tells Wren how her world works, in the second
+person, a few lines a page: home, her needs, the places, the people. Each page starts with a front matter saying where it goes and
+what it needs, and the engine names no page:
+
+```
+---
+order: 60
+when: tool start_project
+---
+```
+
+`when` is conditions joined by "and": `always`, `tool a|b` (any of those tools is enabled), `setting name` (on) or `setting name=value`,
+`library` (books are mounted), `stakes` (a stat can run out), `reflection` (the agent reflects at night). `bullet: yes` puts a page
+in the closing "Guidelines" list. A page without front matter is always told, after the rest. A page that can't be read stops the
+pack from loading, with what's wrong with it (`app/guide/__init__.py`).
+
+**Plans** (0.49.0): what the agent has going that its sleeping self may put on hold (crafting's projects, a world's repairs) is
+whatever a module publishes as `plans`, with `pause` and `resume` among its answers (docs/DESIGN-nightpass.md).
 
 **Real-world sources** (works today for the books and the weather): decide whether the world touches the real one. Pip's world uses the
 shipped `sky` module, which asks the `weather` source and publishes the world's `weather` and `season`. Ashfall probably wants its own

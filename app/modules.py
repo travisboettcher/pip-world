@@ -1020,6 +1020,34 @@ def published(state, key: str, default=None):
     return default
 
 
+def plans(state) -> list[dict]:
+    """What live modules publish as the agent's `plans` (the crafting module's projects; a world's repairs or expeditions), for the night
+    pass to look after: [{module, id, name, status, last_touched, progress, about, can, limit}]. `can` is which of pause and resume the
+    module answers (asked with {"plan": id}); `limit` the most it lets go at once (its `plan_limit`), or None. Malformed ones are left out."""
+    out = []
+    for m in state.modules("live"):
+        facts = m.get("facts") or {}
+        raw = facts.get("plans")
+        if not isinstance(raw, list):
+            continue
+        can = [w for w in ("pause", "resume") if w in (m["manifest"].get("answers") or {})]
+        limit = facts.get("plan_limit") if isinstance(facts.get("plan_limit"), int) and not isinstance(facts.get("plan_limit"), bool) else None
+        for p in raw:
+            if not (isinstance(p, dict) and _plan_id(p.get("id")) and isinstance(p.get("name"), str) and p["name"].strip()
+                    and isinstance(p.get("status"), str) and KIND_WORD.match(p["status"])):
+                continue
+            touched, progress = p.get("last_touched"), p.get("progress")
+            out.append({"module": m["name"], "id": p["id"], "name": p["name"].strip()[:60], "status": p["status"],
+                        "last_touched": float(touched) if _number(touched, 0, 1e11) else 0.0,
+                        "progress": round(progress) if _number(progress, 0, 100) else None,
+                        "about": p["about"][:TEXT_MAX] if isinstance(p.get("about"), str) else "", "can": can, "limit": limit})
+    return out
+
+
+def _plan_id(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 1
+
+
 def world_season(state, settings=None, now: float | None = None) -> str:
     """The world's season: what a live module publishes (the sky's), or "" in a world where nothing does."""
     s = published(state, "season")

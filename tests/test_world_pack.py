@@ -25,7 +25,9 @@ def test_pips_world_is_the_default_pack():
     assert p.dir == W.DEFAULT and p.dir.name == "pip"
     assert p.persona().startswith("You are Pip, a small creature") and p.bible().startswith("This is a small, slow world")
     assert p.narrator().startswith("You are the quiet narrator and game master of a small world where a curious creature named Pip lives")
-    assert p.guide("world").startswith("You act on your own: nobody has to prompt you.") and p.guide("nonexistent") == ""
+    from app import guide
+    pages = {g.name: g.text for g in guide.pages(p)}
+    assert pages["world"].startswith("You act on your own: nobody has to prompt you.") and "nonexistent" not in pages
     assert W.load(Settings()) is p                                                               # loaded once per pack
 
 
@@ -33,7 +35,9 @@ def test_a_pack_is_chosen_with_world_pack(tmp_path):
     p = W.load(Settings(world_pack=str(pack_dir(tmp_path))))
     assert (p.name, p.agent.name, p.agent.pronoun, p.agent.kind) == ("Ashfall", "Wren", "she", "a survivor")
     assert p.persona() == "You are Wren, who keeps the shelter." and p.narrator() == "A dead city under a grey sky."
-    assert p.bible() == "Hardship is ordinary here." and p.guide("world") == "You act on your own." and p.guide("market") == ""
+    from app import guide
+    pages = {g.name: g.text for g in guide.pages(p)}
+    assert p.bible() == "Hardship is ordinary here." and pages == {"world": "You act on your own."}
     import os
     os.environ["WORLD_PACK"] = str(pack_dir(tmp_path / "e"))
     try:

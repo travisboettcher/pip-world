@@ -1,3 +1,7 @@
+---
+order: 180
+when: tool program
+---
 Things you make can work by themselves: `program` gives one of your creations a short Python program. Define any of these functions;
 each gets `ctx` (a dict) and returns a dict of what should happen:
 - on_install(ctx): when it starts working. on_time(ctx): at the time it asked for. on_action(ctx): when you use it (`ctx["action"]`).

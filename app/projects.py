@@ -1,6 +1,7 @@
 """What the engine still knows of crafting (docs/DESIGN-world-packs.md, 5f): the agent's abilities (the world's: its pack's content.json
 `crafting`), how practice becomes a level, and the qualities a made thing can have. Projects themselves are the shipped `crafting` module's
-(module_library/crafting.py), which publishes them as `projects` (and its crafts as `skills`) for the dashboard and the night pass.
+(module_library/crafting.py), which publishes them as `projects` (and its crafts as `skills`) for a page, and as `plans` for the night
+pass; the engine reads neither.
 """
 import math
 
@@ -28,10 +29,3 @@ def __getattr__(name):            # the old constant names, from the active worl
 
 def level(xp: float) -> int:
     return min(5, int(math.sqrt(max(0.0, xp) / 60)))
-
-
-def published(state) -> dict:
-    """What live modules publish of the agent's projects and crafts (the crafting module's): {projects, skills}."""
-    from .modules import published as said
-    ps, sk = said(state, "projects"), said(state, "skills")
-    return {"projects": ps if isinstance(ps, list) else [], "skills": sk if isinstance(sk, dict) else {}}

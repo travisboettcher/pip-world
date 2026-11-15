@@ -566,7 +566,8 @@ def status(ctx):
 
 
 def published(ctx, store):
-    """For the dashboard and the night pass: each project as it stands, and the crafts' experience."""
+    """For a page: each project as it stands, and the crafts' experience; for the night pass, the projects as plans (those going or on
+    hold, and the last few finished) and how many may go at once."""
     ps = dict(projects(ctx))
     for k, v in (store.get("projects") or {}).items():
         if v is None:
@@ -586,8 +587,11 @@ def published(ctx, store):
             out[-1].update(needs=dict(st["materials"]) if st and not st["started"] else {},
                            last={"result": last["result"], "text": clip(last["text"], 160)} if last else None)
     extra = {**meta(ctx), **((store.get("meta") or {}).get("all") or {})}.get("extra_slots", 0)
+    going = [p for p in out if p["status"] in ("active", "paused")]
+    plans = [{"id": p["id"], "name": p["name"], "status": p["status"], "progress": p["percent"], "last_touched": p["last_worked"],
+              "about": clip(p["goal"], 160)} for p in going + [p for p in out if p not in going][-5:]]
     return {"projects": out[-40:], "skills": {c: {"xp": round(x, 1), "level": level(x)} for c, x in sk.items()},
-            "project_limit": min(ctx["params"]["cap"], ctx["params"]["most"] + extra)}
+            "plans": plans, "plan_limit": min(ctx["params"]["cap"], ctx["params"]["most"] + extra)}
 
 
 def finish(ctx, out, store=None):
@@ -1131,7 +1135,8 @@ def on_request(ctx):
         out = finish(ctx, {}, {"meta": {"all": {**meta(ctx), "extra_slots": n}}})
         out["reply"] = "You can keep " + str(min(ctx["params"]["cap"], ctx["params"]["most"] + n)) + " projects going at once now."
         return out
-    p, err = find(ctx, r["args"].get("project"), status="active" if r["what"] == "pause" else "paused")
+    which = r["args"].get("project") or ("#" + str(r["args"]["plan"]) if "plan" in r["args"] else None)    # the night pass names the plan
+    p, err = find(ctx, which, status="active" if r["what"] == "pause" else "paused")
     if not p:
         return {"refuse": err}
     if r["what"] == "resume" and len(by_status(ctx, "active")) >= limit(ctx):

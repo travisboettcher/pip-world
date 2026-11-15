@@ -101,11 +101,6 @@ class Pack:
         """One of the pack's data files (`<name>.json`: scene, items, places...), or {} if it has none."""
         return _data(str(self.dir / f"{name}.json"))
 
-    def guide(self, page: str) -> str:
-        """One page of the agent's guide ('' if the pack has none by that name)."""
-        f = self.dir / "guide" / f"{page}.md"
-        return f.read_text().strip("\n") if f.is_file() else ""
-
     def sprite(self) -> dict | None:
         """The agent's own pixel frames (sprite.json, checked when the pack loads): {w, h, palette, frames}, or None."""
         return _sprite(str(self.dir / "sprite.json"))
@@ -160,8 +155,14 @@ def _load(path: str, changed: float = 0.0) -> Pack:
         _sprite(str(d / "sprite.json"))
     except ValueError as e:
         raise bad(f"sprite.json: {e}") from None
-    return Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""),
+    pack = Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""),
                                                        tuple(look.items())), _modules(d, w.get("modules"), bad))
+    from . import guide
+    try:
+        guide.pages(pack)                                   # each page says when it applies: checked once, here
+    except ValueError as e:
+        raise bad(str(e)) from None
+    return pack
 
 
 @lru_cache(maxsize=8)

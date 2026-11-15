@@ -305,7 +305,7 @@ async def test_the_night_pass_and_a_world_effect_ask_the_module(tmp_path):
     assert project(st)["status"] == "paused"
     assert (await call(agent, "resume_project", project="kite")).text == "you pick Kite back up"
     assert await M.ask_module(st, s, None, "crafting", "add_slot", {}, True) == "You can keep 4 projects going at once now."
-    assert store(st)["meta"]["all"]["extra_slots"] == 1 and M.published(st, "project_limit") == 4
+    assert store(st)["meta"]["all"]["extra_slots"] == 1 and M.published(st, "plan_limit") == 4
     assert M.queue_request(st, "crafting", "pause", {"project": "#1"}) and not M.queue_request(st, "crafting", "fly", {})
     await M.step(st, s, None)
     assert project(st)["status"] == "paused"
@@ -426,15 +426,20 @@ def test_a_status_line_may_be_long_enough_for_a_project(tmp_path):
         M._status({"title": "T", "lines": [line + "x"]})
 
 
-def test_the_engine_reads_only_well_shaped_projects_and_skills(tmp_path):
+async def test_crafting_publishes_its_projects_as_plans_for_the_night_pass(tmp_path):
     from app import projects as proj
+    from tests.test_projects import given
     s, st, gm, agent = make(tmp_path)
-    assert proj.published(st) == {"projects": [], "skills": {}}
-    m = crafting(st)
-    st.update_module(m["id"], facts={"projects": {"a": 1}, "skills": ["x"]})
-    assert proj.published(st) == {"projects": [], "skills": {}}
-    st.update_module(m["id"], facts={"projects": [{"id": 1}], "skills": {"kites": {"xp": 1, "level": 0}}})
-    assert proj.published(st) == {"projects": [{"id": 1}], "skills": {"kites": {"xp": 1, "level": 0}}}
+    assert not hasattr(proj, "published")                                          # the engine reads none of crafting's own projects
+    stage = [{"name": "cut", "minutes": 60, "progress": 60}]
+    done = [{"name": f"old {i}", "status": "done" if i % 2 else "abandoned", "stages": stage} for i in range(7)]
+    await given(st, *done, {"name": "kite", "goal": "fly high", "stages": [{"name": "cut", "minutes": 60, "progress": 30}]},
+                {"name": "clock", "status": "paused", "stages": stage})
+    plans = M.published(st, "plans")
+    assert [(p["name"], p["status"]) for p in plans] == [("kite", "active"), ("clock", "paused")] + [(f"old {i}", "done" if i % 2 else "abandoned")
+                                                                                                     for i in range(2, 7)]
+    assert (plans[0]["id"], plans[0]["progress"], plans[0]["about"]) == (8, 50, "fly high") and plans[0]["last_touched"] > 0
+    assert M.published(st, "plan_limit") == 3 and [p["id"] for p in M.plans(st)][:2] == [8, 9]
 
 
 

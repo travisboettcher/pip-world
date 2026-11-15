@@ -1,9 +1,13 @@
 """The night pass: after the nightly reflection, the agent's sleeping self may adjust its own goals (DESIGN-nightpass.md).
 
 A second call, once per sleep, in the agent's voice. It decides a few things from a fixed vocabulary about the agent's own to-dos,
-wishes, ambitions and projects, and sets a short focus for tomorrow. The engine validates every decision (known ops,
+wishes, ambitions and plans, and sets a short focus for tomorrow. The engine validates every decision (known ops,
 age floors, a cap, cited evidence), applies it reversibly (archive and pause, never delete) and records it so the agent can
 `undo_decision`. Facts in, decisions out: the engine never tells the agent what to want.
+
+Plans are whatever live modules publish as `plans` (modules.plans: the crafting module's projects, a world's repairs or expeditions),
+cited as `<module>:<id>`; putting one on hold or taking it back up is asking that module (`pause`, `resume`), and undoing it is asking
+the opposite (docs/DESIGN-engine-audit.md, B1).
 """
 import difflib
 import re
@@ -13,43 +17,44 @@ from datetime import datetime
 from . import memory as mem
 from . import modules
 from . import places
-from . import projects as proj
 from . import tools as tools_mod
 from .text import clip
 
 SECTIONS = ("todo", "wishlist", "ambitions")
-OPS = ("archive_note", "merge_notes", "resolve_note", "pause_project", "resume_project", "adopt")
+OPS = ("archive_note", "merge_notes", "resolve_note", "pause_plan", "resume_plan", "adopt")
 MIN_AGE = {"todo": 24 * 3600, "wishlist": 3 * 86400, "ambitions": 3 * 86400}
 EDIT_COOLDOWN = 24 * 3600
 MIN_BETWEEN_PASSES = 6 * 3600
 MAX_FOCUS = 3
-IDLE_PROJECT_DAYS = 3
+IDLE_PLAN_DAYS = 3
 UNUSED_TOOL_DAYS = 7
 UNSEEN_PERSON_DAYS = 7
 SHOWN_DECISIONS = 3          # ticks a decision is announced for
 DECISION_MAX_AGE_HOURS = 24
-REF = re.compile(r"^\s*\[?([einp])\s*#?(\d+)\]?\s*$", re.I)
+REF = re.compile(r"^\s*\[?(?:([ein])\s*#?(\d+)|([a-z][a-z0-9-]*):#?(\d+))\]?\s*$", re.I)
 
 
-def _ref(raw) -> tuple[str, int] | None:
+def _ref(raw) -> tuple[str, int | str] | None:
+    """A cited id: ("e", 12), ("i", 3), ("n", 4), or a plan ("plan", "crafting:2")."""
     m = REF.match(str(raw))
-    return (m.group(1).lower(), int(m.group(2))) if m else None
+    if not m:
+        return None
+    return (m.group(1).lower(), int(m.group(2))) if m.group(1) else ("plan", f"{m.group(3).lower()}:{int(m.group(4))}")
 
 
 # --- the facts the pass is given --------------------------------------------------------------
-def _last_worked(p: dict) -> float:
-    return p.get("last_worked") or 0.0
+def _plans(state) -> dict:
+    """Every plan live modules publish, by its ref (`crafting:2`)."""
+    return {f"{p['module']}:{p['id']}": p for p in modules.plans(state)}
 
 
-def _projects(state) -> dict:
-    """The agent's projects as the crafting module publishes them, by id."""
-    return {p["id"]: p for p in proj.published(state)["projects"]}
+def _going(plans: dict, module: str) -> int:
+    return sum(1 for p in plans.values() if p["module"] == module and p["status"] == "active")
 
 
-def _limit(state) -> int:
-    from .modules import published
-    n = published(state, "project_limit")
-    return n if isinstance(n, int) else 0
+def _no_room(plans: dict, p: dict) -> bool:
+    """Taking `p` back up would be more than its module lets go at once."""
+    return p["limit"] is not None and _going(plans, p["module"]) >= p["limit"]
 
 
 def facts(state, settings, now: float, tool_names=()) -> dict:
@@ -60,17 +65,17 @@ def facts(state, settings, now: float, tool_names=()) -> dict:
             notes[m["id"]] = m
             edited = f", edited {mem.ago(m['edited_at'], now)}" if m["edited_at"] else ""
             lines.append(f"[n{m['id']}] ({section}, written {mem.ago(m['ts'], now)}{edited}) {clip(m['text'], 170)}")
-    projects, plines = {}, []
-    everything = _projects(state)
+    plans, plines = {}, []
+    everything = _plans(state)
     for status in ("active", "paused"):
-        for p in (q for q in everything.values() if q["status"] == status):
-            projects[p["id"]] = p
-            plines.append(f"[p{p['id']}] {p['name']} ({status}): {p['percent']}% done, last worked "
-                          f"{mem.ago(_last_worked(p), now)}")
+        for ref, p in ((r, q) for r, q in everything.items() if q["status"] == status):
+            plans[ref] = p
+            done = f"{p['progress']}% done, " if p["progress"] is not None else ""
+            plines.append(f"[{ref}] {p['name']} ({status}): {done}last worked on {mem.ago(p['last_touched'], now)}")
     quiet = []
     for p in (q for q in everything.values() if q["status"] == "active"):
-        days = (now - _last_worked(p)) / 86400
-        if days >= IDLE_PROJECT_DAYS:
+        days = (now - p["last_touched"]) / 86400
+        if days >= IDLE_PLAN_DAYS:
             quiet.append(f"you haven't worked on {p['name']} for {round(days)} days")
     for person in state.people():
         days = (now - person["last_seen"]) / 86400
@@ -88,7 +93,7 @@ def facts(state, settings, now: float, tool_names=()) -> dict:
     for t in sorted(tool_names):
         if t in used and (now - used[t]) / 86400 >= UNUSED_TOOL_DAYS and t not in ("say", "set_activity"):
             quiet.append(f"you haven't used {t} for {round((now - used[t]) / 86400)} days")
-    return {"notes": notes, "note_lines": lines, "projects": projects, "project_lines": plines, "quiet": quiet[:8]}
+    return {"notes": notes, "note_lines": lines, "plans": plans, "plan_lines": plines, "quiet": quiet[:8]}
 
 
 def review_focus(state, now: float) -> tuple[list[dict], int]:
@@ -99,9 +104,9 @@ def review_focus(state, now: float) -> tuple[list[dict], int]:
         if f["ref_kind"] == "note" and f["ref_id"]:
             m = state.memory(f["ref_id"])
             kept = bool(m and m["status"] == "done")
-        elif f["ref_kind"] == "project" and f["ref_id"]:
-            p = _projects(state).get(f["ref_id"])
-            kept = bool(p and (p["status"] == "done" or _last_worked(p) > f["decided_at"]))
+        elif f["ref_kind"].startswith("plan:") and f["ref_id"]:
+            p = _plans(state).get(f"{f['ref_kind'][5:]}:{f['ref_id']}")
+            kept = bool(p and (p["status"] == "done" or p["last_touched"] > f["decided_at"]))
         if kept:
             state.close_focus(f["id"], "kept", "the log shows it moved")
             kept_n += 1
@@ -111,7 +116,7 @@ def review_focus(state, now: float) -> tuple[list[dict], int]:
 
 
 # --- validation -----------------------------------------------------------------------------
-def _cites(because, shown: dict, state, notes: dict, projects: dict) -> list[str]:
+def _cites(because, shown: dict, state, notes: dict, plans: dict) -> list[str]:
     out = []
     for raw in because if isinstance(because, list) else []:
         r = _ref(raw)
@@ -119,9 +124,10 @@ def _cites(because, shown: dict, state, notes: dict, projects: dict) -> list[str
             continue
         kind, n = r
         ok = (n in shown if kind == "e" else state.reflection_text(n) is not None if kind == "i"
-              else n in notes if kind == "n" else n in projects)
-        if ok and f"{kind}{n}" not in out:
-            out.append(f"{kind}{n}")
+              else n in notes if kind == "n" else n in plans)
+        cite = n if kind == "plan" else f"{kind}{n}"
+        if ok and cite not in out:
+            out.append(cite)
     return out[:6]
 
 
@@ -136,8 +142,7 @@ def _old_enough(m: dict, now: float) -> str:
 def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tuple[list[dict], list[str]]:
     """(accepted ops, reasons others were rejected). Accepted ops carry everything `apply` needs."""
     ok, rejected, adopted = [], [], 0
-    notes, projects = f["notes"], f["projects"]
-    active = sum(1 for p in projects.values() if p["status"] == "active")
+    notes, plans = f["notes"], dict(f["plans"])
     for raw in (raw_ops if isinstance(raw_ops, list) else []):
         if len(ok) >= settings.max_night_ops:
             rejected.append("more decisions than allowed in a night")
@@ -146,7 +151,7 @@ def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tupl
             rejected.append(f"unknown decision {raw.get('op') if isinstance(raw, dict) else raw!r}")
             continue
         op, reason = raw["op"], clip(raw.get("reason"), 200)
-        cites = _cites(raw.get("because"), shown, state, notes, projects)
+        cites = _cites(raw.get("because"), shown, state, notes, plans)
         if not cites:
             rejected.append(f"{op}: nothing cited")
             continue
@@ -181,24 +186,20 @@ def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tupl
                 ok.append({"op": op, "target_kind": "note", "target_id": ids[0], "args": {"ids": ids, "text": text},
                            "reason": reason, "cites": cites,
                            "summary": f"merged your {ms[0]['section']} " + ", ".join(f"#{i}" for i in ids) + f" into #{ids[0]}"})
-        elif op == "pause_project":
-            p = projects.get(raw.get("id"))
-            if not p or p["status"] != "active":
-                reject("no such active project")
+        elif op in ("pause_plan", "resume_plan"):
+            pausing = op == "pause_plan"
+            r = _ref(raw.get("plan"))
+            p = plans.get(r[1]) if r and r[0] == "plan" else None
+            if not p or p["status"] != ("active" if pausing else "paused"):
+                reject(f"no such plan {'going' if pausing else 'on hold'} ({raw.get('plan')!r})")
+            elif ("pause" if pausing else "resume") not in p["can"]:
+                reject(f"{p['module']} can't {'put its plans on hold' if pausing else 'take its plans back up'}")
+            elif not pausing and _no_room(plans, p):
+                reject(f"as many going as {p['module']} allows")
             else:
-                ok.append({"op": op, "target_kind": "project", "target_id": p["id"], "args": {}, "reason": reason,
-                           "cites": cites, "summary": f"put {p['name']} on hold"})
-                active -= 1
-        elif op == "resume_project":
-            p = projects.get(raw.get("id"))
-            if not p or p["status"] != "paused":
-                reject("no such project on hold")
-            elif active >= _limit(state):
-                reject("too many projects going")
-            else:
-                ok.append({"op": op, "target_kind": "project", "target_id": p["id"], "args": {}, "reason": reason,
-                           "cites": cites, "summary": f"took {p['name']} off hold"})
-                active += 1
+                ok.append({"op": op, "target_kind": f"plan:{p['module']}", "target_id": p["id"], "args": {}, "reason": reason,
+                           "cites": cites, "summary": f"put {p['name']} on hold" if pausing else f"took {p['name']} off hold"})
+                plans[r[1]] = {**p, "status": "paused" if pausing else "active"}     # what the next decision sees
         elif op == "adopt":
             section, text = raw.get("section"), clip(raw.get("text"), 300)
             if adopted or section not in ("todo", "ambitions") or len(text) < 8:
@@ -234,9 +235,9 @@ def apply(state, settings, op: dict, applied: bool = True) -> int:
             state.edit_memory(first, args["text"])
             for i in rest:
                 state.set_memory_status(i, "archived")
-        elif kind in ("pause_project", "resume_project"):            # the crafting module's to do, on its next step
-            before = {"status": "active" if kind == "pause_project" else "paused"}
-            modules.queue_request(state, "crafting", "pause" if kind == "pause_project" else "resume", {"project": f"#{tid}"}, by="night pass")
+        elif kind in ("pause_plan", "resume_plan"):                  # the plan's module's to do, on its next step
+            before = {"status": "active" if kind == "pause_plan" else "paused"}
+            modules.queue_request(state, op["target_kind"][5:], "pause" if kind == "pause_plan" else "resume", {"plan": tid}, by="night pass")
         elif kind == "adopt":
             new_id = state.add_memory(args["text"], args["section"])
             before = {"memory_id": new_id}
@@ -258,12 +259,16 @@ def undo(state, settings, decision_id: int) -> str:
         state.edit_memory(tid, before["first_text"])
         for i in before["archived"]:
             state.set_memory_status(i, "open")
-    elif op == "pause_project":
-        if sum(1 for p in _projects(state).values() if p["status"] == "active") >= _limit(state):
-            return "you already have as many projects going as you can; finish or pause one first"
-        modules.queue_request(state, "crafting", "resume", {"project": f"#{tid}"}, by="night pass")
-    elif op == "resume_project":
-        modules.queue_request(state, "crafting", "pause", {"project": f"#{tid}"}, by="night pass")
+    elif op in ("pause_plan", "resume_plan"):
+        module, plans = d["target_kind"][5:], _plans(state)
+        p = plans.get(f"{module}:{tid}")
+        if not p:
+            return f"#{decision_id}'s plan is gone"
+        if ("resume" if op == "pause_plan" else "pause") not in p["can"]:
+            return f"{module} can't {'take its plans back up' if op == 'pause_plan' else 'put its plans on hold'}"
+        if op == "pause_plan" and _no_room(plans, p):
+            return "you already have as many going as you can; finish or pause one first"
+        modules.queue_request(state, module, "resume" if op == "pause_plan" else "pause", {"plan": tid}, by="night pass")
     elif op == "adopt":
         state.set_memory_status(before["memory_id"], "archived")
     state.mark_decision_undone(decision_id)
@@ -276,7 +281,7 @@ def _schema() -> dict:
     op = {"type": "object", "properties": {
         "op": {"type": "string", "enum": list(OPS)}, "id": {"type": "integer"},
         "ids": {"type": "array", "items": {"type": "integer"}}, "text": {"type": "string"},
-        "outcome": {"type": "string"}, "section": {"type": "string", "enum": ["todo", "ambitions"]},
+        "outcome": {"type": "string"}, "section": {"type": "string", "enum": ["todo", "ambitions"]}, "plan": {"type": "string"},
         "because": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}}, "required": ["op"]}
     focus = {"type": "object", "properties": {"text": {"type": "string"}, "ref": {"type": "string"}}, "required": ["text"]}
     review = {"type": "object", "properties": {"id": {"type": "integer"}, "status": {"type": "string", "enum": ["carried", "dropped"]},
@@ -291,23 +296,24 @@ def _task(state, settings, now, reflection: dict, f: dict, leftover: list[dict],
                  + "".join(f"\n[i{r['id']}] ({r['kind']}) {r['text']}" for r in recent))
     if f["note_lines"]:
         parts.append("Your open notes:\n" + "\n".join(f["note_lines"]))
-    if f["project_lines"]:
-        parts.append("Your projects:\n" + "\n".join(f["project_lines"]))
+    if f["plan_lines"]:
+        parts.append("Your plans:\n" + "\n".join(f["plan_lines"]))
     if leftover:
         parts.append("You meant to focus on these, and nothing in the log shows they moved:\n"
                      + "\n".join(f"[f{x['id']}] {x['text']}" for x in leftover))
     if f["quiet"]:
         parts.append("Things you haven't done in a while (just facts):\n" + "\n".join(f"- {q}" for q in f["quiet"]))
+    ex = next(iter(f["plans"]), "")                                    # a plan's id as it is cited, from what is shown
     parts.append(
         "You can decide, using only what is above. Most nights you'll change little or nothing - leave `decisions` empty "
         "unless the evidence is there. Allowed decisions: archive_note (id: an old note you've outgrown or that "
         "something else replaced), merge_notes (ids, text: near-duplicates into one), resolve_note (id, outcome: it is "
-        "already done), pause_project / resume_project (id), adopt (section todo|ambitions, text: one new goal that "
-        "tonight's evidence points to). Every decision needs `because` (ids like e12, i3, n4, p2 from above) and a "
+        f"already done), pause_plan / resume_plan (plan: its id{f', like {ex}' if ex else ''}), adopt (section todo|ambitions, text: one new "
+        f"goal that tonight's evidence points to). Every decision needs `because` (ids like e12, i3, n4{f', {ex}' if ex else ''} from above) and a "
         f"one-line `reason`; at most {settings.max_night_ops}. An unmet wish is not a reason to drop it. Nothing is "
         "deleted, and you can undo any of this later.\n"
-        f"`focus`: up to {MAX_FOCUS} things you want to give your attention to tomorrow (`text`, and `ref` like n4 or "
-        "p2 if it is about a note or project). `review`: for each [f#] above, say whether you are carrying it on "
+        f"`focus`: up to {MAX_FOCUS} things you want to give your attention to tomorrow (`text`, and `ref` like n4"
+        f"{f' or {ex}' if ex else ''} if it is about a note or plan). `review`: for each [f#] above, say whether you are carrying it on "
         "(`carried`) or letting it go (`dropped`)."
     )
     return "\n\n".join(parts)
@@ -324,7 +330,7 @@ async def run(state, settings, gm, persona: str, reflection: dict, shown: dict, 
     apply_it = settings.night_pass == "apply"
     f = facts(state, settings, now, tool_names)
     leftover, kept = review_focus(state, now) if apply_it else ([x for x in state.focus("open")], 0)
-    if not (f["notes"] or f["projects"] or leftover):
+    if not (f["notes"] or f["plans"] or leftover):
         return None
     recent = [r for kind in ("insight", "change", "turning") for r in state.reflections(kind, limit=6)
               if r["ts"] >= since_ts]
@@ -361,8 +367,8 @@ async def run(state, settings, gm, persona: str, reflection: dict, shown: dict, 
         for item in (out.get("focus") if isinstance(out.get("focus"), list) else [])[:MAX_FOCUS]:
             text = clip(item.get("text") if isinstance(item, dict) else item, 160)
             r = _ref(item.get("ref")) if isinstance(item, dict) else None
-            ref_kind = {"n": "note", "p": "project"}.get(r[0], "") if r else ""
-            ref_id = r[1] if ref_kind else None
+            ref_kind = "note" if r and r[0] == "n" else f"plan:{r[1].split(':')[0]}" if r and r[0] == "plan" else ""
+            ref_id = (r[1] if r[0] == "n" else int(r[1].split(":")[1])) if ref_kind else None
             if text:
                 state.add_focus(day, text, ref_kind, ref_id)
                 new_focus.append(text)
@@ -386,8 +392,8 @@ def _evidence(state, cite: str, shown: dict, f: dict) -> str:
         return state.reflection_text(n) or ""
     if kind == "n":
         return (f["notes"].get(n) or {}).get("text", "")
-    p = f["projects"].get(n)
-    return f"{p['name']}: {p['goal']}" if p else ""
+    p = f["plans"].get(n)
+    return f"{p['name']}: {p['about']}" if p else ""
 
 
 # --- what the agent sees ---------------------------------------------------------------------------

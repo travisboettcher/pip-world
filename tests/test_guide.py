@@ -1,5 +1,4 @@
 """The world manual (the guide) is engine-owned and built from what is enabled; the character is a separate, optional file (DESIGN-extract.md)."""
-import re
 from pathlib import Path
 
 import pytest
@@ -145,11 +144,61 @@ def test_sections_are_paragraphs_and_the_guidelines_are_one_list():
     assert render() == render()                                     # the same every time
 
 
-def test_every_section_in_the_registry_has_its_text_and_every_text_is_in_the_registry():
-    files = {p.stem for p in (W.DEFAULT / "guide").glob("*.md")}
-    ashfall = {p.stem for p in (W.DEFAULT.parent / "ashfall" / "guide").glob("*.md")}
-    assert files | ashfall == {s.name for s in G.SECTIONS} and len(G.SECTIONS) == len({s.name for s in G.SECTIONS})
-    assert {s.name for s in G.SECTIONS} - files == {"stakes"}                         # Pip's world has nothing that can run out
+def test_every_page_says_when_it_applies_and_the_engine_names_none():
+    for pack in (W.DEFAULT, W.DEFAULT.parent / "ashfall"):
+        pages = G.pages(W.load(Settings(world_pack=str(pack))))
+        assert len(pages) == len(list((pack / "guide").glob("*.md"))) and all(p.order < G.LAST and p.text for p in pages)
+        assert [p.order for p in pages] == sorted(p.order for p in pages)
+    src = (Path(G.__file__)).read_text()
+    for name in ("projects", "market", "neighbor", "library.md", "start_project", "write_letter"):     # what each page needs is its own
+        assert f'"{name}"' not in src, name
+
+
+def test_a_packs_own_page_is_told_when_its_front_matter_says(tmp_path):
+    from tests.test_world_pack import pack_dir
+    d = pack_dir(tmp_path)
+    (d / "guide" / "radio.md").write_text("---\norder: 5\nwhen: tool say and setting emotions=on\n---\nThe radio crackles at dusk.\n")
+    (d / "guide" / "geiger.md").write_text("---\norder: 7\nwhen: stakes\nbullet: yes\n---\n- Mind the clicks.")
+    (d / "guide" / "loose.md").write_text("No front matter: always, last.")
+    s = Settings(world_pack=str(d), emotions="on", stats={"health": {"at_zero": "knocked_out"}})
+    assert G.render(["say"], s, False) == "The radio crackles at dusk.\n\nNo front matter: always, last.\n\nYou act on your own.\n\nGuidelines:\n- Mind the clicks."
+    assert G.render([], Settings(world_pack=str(d), emotions="off"), False) == "No front matter: always, last.\n\nYou act on your own."   # by name
+
+
+@pytest.mark.parametrize("front,why", [
+    ("order: soon", "`order` is a number"),
+    ("bullet: maybe", "`bullet` is yes or no"),
+    ("colour: red", "its front matter is lines of order, when and bullet, not 'colour: red'"),
+    ("when: tool say or setting x", "not 'tool say or setting x'"),
+    ("when: setting no_such_setting", "not 'setting no_such_setting'"),
+    ("when: tool Say", "not 'tool Say'"),
+    ("when: library books", "not 'library books'"),
+    ("when: setting reminders=on extra", "not 'setting reminders=on extra'"),
+])
+def test_a_page_that_cant_be_read_stops_the_pack(tmp_path, front, why):
+    from tests.test_world_pack import pack_dir
+    d = pack_dir(tmp_path)
+    (d / "guide" / "bad.md").write_text(f"---\n{front}\n---\nText.")
+    with pytest.raises(W.PackError) as e:
+        W.load(Settings(world_pack=str(d)))
+    assert "guide/bad.md: " in str(e.value) and why in str(e.value)
+
+
+def test_each_condition(tmp_path):
+    page = lambda when: G.parse("p", f"---\nwhen: {when}\n---\nx")          # noqa: E731
+    s = Settings(reflect_hour=3, reminders="on", night_pass="off", sleep=True)
+    assert G.applies(page("tool a|b"), {"b"}, s, False) and not G.applies(page("tool a|b"), {"c"}, s, False)
+    assert G.applies(page("setting reminders=on"), set(), s, False) and not G.applies(page("setting reminders=off"), set(), s, False)
+    assert G.applies(page("setting sleep"), set(), s, False) and not G.applies(page("setting night_pass"), set(), s, False)
+    assert not G.applies(page("setting world_pack"), set(), Settings(world_pack=""), False) and G.applies(page("setting world_pack"), set(), Settings(world_pack="x"), False)
+    assert G.applies(page("library"), set(), s, True) and not G.applies(page("library"), set(), s, False)
+    assert G.applies(page("reflection"), set(), s, False) and not G.applies(page("reflection"), set(), Settings(reflect_hour=24), False)
+    assert G.applies(page("always and tool a"), {"a"}, s, False) and not G.applies(page("always and tool a"), set(), s, False)
+    assert G.parse("p", "---\norder: 3\n---\n\nBody.\n") == G.Page("p", "Body.", 3.0, G.ALWAYS, False)
+    assert G.parse("p", "---\nwhen: library and setting world_pack=a:b\n---\n  - indented  \n").when == (("library", ""), ("setting", "world_pack=a:b"))
+    assert G.parse("p", "---\nbullet: yes\n---\n  - indented  \n").text == "  - indented  "        # only blank lines go
+    assert G.parse("p", "X marks it.\nX") == G.Page("p", "X marks it.\nX") and G.parse("p", "---\norder: 1\n---\nX it.X").text == "X it.X"
+    assert G.parse("p", "\n  plain  \n\n").text == "  plain  " and G.pages(type("P", (), {"dir": tmp_path})()) == ()
 
 
 # --- how the agent puts it together -----------------------------------------------------------------------------------------

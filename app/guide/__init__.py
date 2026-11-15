@@ -1,76 +1,120 @@
 """The guide: how this world works, told to the agent at every wake (see DESIGN-extract.md, "Persona: ship a world manual, not a character").
 
-The pages are the world pack's (`guide/<name>.md`, docs/DESIGN-world-packs.md); the engine puts together only those whose topic is enabled, so
-the agent is never told about something it cannot do and a smaller setup costs fewer tokens. A pack without a page simply leaves it out.
-It is a manual in a neutral voice; it never says who the agent is, how it feels or how it should behave towards people. That is the
-*persona* (the pack's `persona.md`, or the deployment's `PERSONA_PATH`), put in front of the guide.
+The pages are the world pack's (`guide/<name>.md`, docs/DESIGN-world-packs.md), and each says when it applies and where it goes, in a
+front matter of its own (docs/DESIGN-engine-audit.md, B2), so the agent is never told about something it cannot do and a smaller setup
+costs fewer tokens:
 
-To add a topic: write `<name>.md` in the pack's guide and one `Section` below saying when it applies.
+    ---
+    order: 60
+    when: tool start_project
+    ---
+
+`when` is one or more conditions joined by "and": `always`; `tool a|b` (any of those tools is enabled); `setting name` (that setting is
+on: set, and not "off") or `setting name=value`; `library` (books are mounted); `stakes` (one of the world's stats can run out);
+`reflection` (the agent reflects at night). Pages go in `order` (a page without front matter applies always, after the rest), and
+`bullet: yes` puts one in the closing "Guidelines" list instead of a paragraph. The engine keeps only the conditions; which page needs
+what is the page's. It is a manual in a neutral voice; it never says who the agent is, how it feels or how it should behave towards
+people. That is the *persona* (the pack's `persona.md`, or the deployment's `PERSONA_PATH`), put in front of the guide.
 """
+import dataclasses
+import re
 from dataclasses import dataclass
-from typing import Callable
+from functools import lru_cache
+from pathlib import Path
 
 from .. import stats
 from .. import world_pack
 
+FRONT = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
+LAST = 10_000                                                  # where a page that doesn't say goes: after the rest
+ALWAYS = (("always", ""),)
+PREDICATES = {
+    "always": lambda s, lib: True,
+    "library": lambda s, lib: lib,
+    "stakes": lambda s, lib: any(d.get("at_zero") for d in stats.declared(s).values()),   # a stat that can run out
+    "reflection": lambda s, lib: s.reflect_hour < 24,
+}
+
 
 @dataclass(frozen=True)
-class Section:
+class Page:
     name: str
-    needs: Callable    # (tools: set[str], settings, library: bool) -> bool
-    bullet: bool = False   # a line of the closing "Guidelines" list rather than a paragraph
+    text: str
+    order: float = LAST
+    when: tuple = ALWAYS          # ((kind, argument), ...), all of which must hold
+    bullet: bool = False          # a line of the closing "Guidelines" list rather than a paragraph
 
 
-def tool(*names: str) -> Callable:
-    return lambda tools, s, lib: any(n in tools for n in names)
+def _settings() -> set:
+    from ..config import Settings
+    return {f.name for f in dataclasses.fields(Settings)}
 
 
-always = lambda tools, s, lib: True  # noqa: E731
+def _condition(c: str) -> tuple[str, str]:
+    kind, _, arg = c.strip().partition(" ")
+    arg = arg.strip()
+    if kind in PREDICATES and not arg:
+        return kind, ""
+    if kind == "tool" and re.fullmatch(r"[a-z_]+(\|[a-z_]+)*", arg):
+        return kind, arg
+    if kind == "setting" and arg.partition("=")[0] in _settings() and " " not in arg:
+        return kind, arg
+    raise ValueError(f"`when` is conditions joined by \"and\": always, tool a|b, setting name (or name=value: one of the engine's "
+                     f"settings), library, stakes, reflection; not {c.strip()!r}")
 
-# In the order the agent reads them. A topic that mentions a tool is told only when that tool is enabled.
-SECTIONS = (
-    Section("world", always),
-    Section("visitors", tool("say")),
-    Section("journal", tool("note_to_self", "edit_note", "resolve_note")),
-    Section("belongings", tool("use_item")),
-    Section("market", tool("buy", "sell", "pay")),   # right after belongings; the old manual is one run from "projects" to the guidelines
-    Section("projects", tool("start_project")),
-    Section("creations", tool("start_project")),
-    Section("memory", lambda tools, s, lib: s.reflect_hour < 24),
-    Section("recall", tool("recall")),
-    Section("reminders", lambda tools, s, lib: s.reminders == "on"),
-    Section("neighbor", lambda tools, s, lib: "write_letter" in tools and s.neighbor),
-    Section("home", tool("go_to")),
-    Section("library", lambda tools, s, lib: lib and any(n in tools for n in ("browse", "read"))),
-    Section("places", tool("gather", "where_to")),
-    Section("outreach", tool("send_postcard")),
-    Section("building", tool("start_project")),
-    Section("art", tool("draw", "write_piece")),
-    Section("programs", tool("program")),
-    Section("emotions", lambda tools, s, lib: s.emotions == "on"),
-    Section("settle", lambda tools, s, lib: s.emotions == "on" and "settle" in tools),
-    Section("sleep", lambda tools, s, lib: "sleep" in tools and s.sleep),
-    Section("stakes", lambda tools, s, lib: any(d.get("at_zero") for d in stats.declared(s).values())),   # a stat that can run out
-    Section("nightpass", lambda tools, s, lib: s.night_pass != "off"),
-    Section("care", tool("eat", "rest"), bullet=True),
-    Section("activity", tool("set_activity"), bullet=True),
-    Section("answering", tool("say"), bullet=True),
-    Section("search", tool("web_search"), bullet=True),
-    Section("brevity", always, bullet=True),
-    Section("waiting", tool("set_activity"), bullet=True),
-    Section("happenings", lambda tools, s, lib: s.happenings != "off" and "feel" in tools, bullet=True),
-    Section("conversation", tool("say"), bullet=True),
-    Section("wishes", tool("note_to_self"), bullet=True),
-    Section("wishes_shared", lambda tools, s, lib: "note_to_self" in tools and s.wish_share == "on", bullet=True),
-    Section("handover", lambda tools, s, lib: "write_letter" in tools and s.neighbor, bullet=True),
-)
+
+def parse(name: str, raw: str) -> Page:
+    """A page and its front matter. Raises ValueError saying what's wrong with it."""
+    m = FRONT.match(raw)
+    if not m:
+        return Page(name, raw.strip("\n"))
+    meta = {}
+    for line in m.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if not sep or key.strip() not in ("order", "when", "bullet"):
+            raise ValueError(f"guide/{name}.md: its front matter is lines of order, when and bullet, not {line.strip()!r}")
+        meta[key.strip()] = value.strip()
+    try:
+        order = float(meta.get("order", LAST))
+    except ValueError:
+        raise ValueError(f"guide/{name}.md: `order` is a number") from None
+    if meta.get("bullet", "no") not in ("yes", "no"):
+        raise ValueError(f"guide/{name}.md: `bullet` is yes or no")
+    try:
+        when = tuple(_condition(c) for c in meta["when"].split(" and ")) if "when" in meta else ALWAYS
+    except ValueError as e:
+        raise ValueError(f"guide/{name}.md: {e}") from None
+    return Page(name, raw[m.end():].strip("\n"), order, when, meta.get("bullet") == "yes")
+
+
+def applies(page: Page, tools: set, settings, library: bool) -> bool:
+    def holds(kind, arg):
+        if kind == "tool":
+            return any(t in tools for t in arg.split("|"))
+        if kind == "setting":
+            name, eq, want = arg.partition("=")
+            value = getattr(settings, name)
+            return str(value) == want if eq else bool(value) and value != "off"
+        return PREDICATES[kind](settings, library)
+    return all(holds(k, a) for k, a in page.when)
+
+
+def pages(pack) -> tuple:
+    """The pack's guide pages, in order (checked: a page that can't be read raises ValueError)."""
+    files = sorted((pack.dir / "guide").glob("*.md"))         # none, if the pack has no guide
+    return _pages(tuple((str(f), f.stat().st_mtime) for f in files))
+
+
+@lru_cache(maxsize=8)
+def _pages(files: tuple) -> tuple:
+    return tuple(sorted((parse(Path(f).stem, Path(f).read_text()) for f, _ in files), key=lambda p: (p.order, p.name)))
 
 
 def render(tools, settings, library: bool) -> str:
     """The manual for what is enabled: paragraphs, then the Guidelines list."""
     tools, pack = set(tools), world_pack.load(settings)
     paragraphs, bullets = [], []
-    for section in SECTIONS:
-        if section.needs(tools, settings, library) and (page := pack.guide(section.name)):
-            (bullets if section.bullet else paragraphs).append(page)
+    for page in pages(pack):
+        if page.text and applies(page, tools, settings, library):
+            (bullets if page.bullet else paragraphs).append(page.text)
     return "\n\n".join(paragraphs + (["Guidelines:\n" + "\n".join(bullets)] if bullets else []))

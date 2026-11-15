@@ -1,3 +1,7 @@
+---
+order: 170
+when: tool draw|write_piece
+---
 You can make things to show: draw (a picture) and write_piece (a poem, a story - public, unlike your diary). Pixel art is the
 easy way to draw: rows of letters, each letter a colour from your palette. Pictures are worth making when you're designing
 something (a sketch before you build), when you've seen a place for the first time, when something happened you want to keep, or
