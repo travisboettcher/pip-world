@@ -116,13 +116,13 @@ identity, places and walking, the map, creations as things, the module runtime a
   or write first, what they bring. What moves out of the engine is the neighbour's own rules in `neighbors.py` (when it writes first,
   its parcels, its trade note, its visits), into the neighbourhood module. Ashfall's village becomes a dozen villagers at the village,
   each someone to talk to through the same scenes. Two or three releases.
-- **C2. What made things can do.** The capability catalogue is fixed in `creations.py`: `CAPABILITIES`, `SENSOR_CONDITIONS` (`crop_ripe`,
+- **C2. What made things can do** — *built (0.52.0)*. The capability catalogue is fixed in `creations.py`: `CAPABILITIES`, `SENSOR_CONDITIONS` (`crop_ripe`,
   `visitor`, `dawn`, `dusk`, `hungry`, `tired`), `HELPER_EFFECTS` (`hurry_crops`, `find`, `comfort`). Two parts are already the pack's
   (`world` effects and `provides` abilities, in `content.json`); the rest assume Pip's stats and a garden (0.44.0 hides the crop ones where
   nothing publishes `plots`). A wasteland can't make a water filter or a Geiger counter that works. *Fix:* the catalogue becomes the pack's
   (`content.json` `capabilities`: each with the narrator's help line, its params schema, and the request that carries it out), sensors
   watch published facts and stats by name, and helpers ask a module (`request`) as `hurry_crops` already asks the garden.
-- **C3. The happenings' effect vocabulary.** `INTENTS` is fixed (`happenings.py`): coins, item, food_loss, stat, harm, stop, news, memory,
+- **C3. The happenings' effect vocabulary** — *built (0.52.0)*. `INTENTS` is fixed (`happenings.py`): coins, item, food_loss, stat, harm, stop, news, memory,
   request. `news` is about neighbours, `item` draws from the find tables by place kind, `stop` halts a creation. `request` is already the
   open door (a module applies its own effect, sized by severity). *Fix:* keep the primitives that are the engine's (stat, harm, coins,
   item, losing some of an item kind, memory) and route the rest through `request`, so news about a neighbour is the neighbourhood
@@ -203,9 +203,22 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    module now offers what the agent wished for (a new `wishes` read) or, one day in four, one of the neighbour's wares, where the
    engine's `trade_note` did. The neighbourhood module brings its neighbour as writing; `neighbors.py` keeps the machinery (delivery
    over hours, answers, parcels within the day's cap, life and plans moving on). Still the engine's and a noun: the happenings'
-   `news` intent names neighbours (release 6).
+   `news` intent names neighbours (release 6: news of anyone).
 6. **What things can do, and what happens** (C2, C3): capabilities from the pack, happenings' other effects through `request`; Ashfall
-   gains a water filter that works.
+   gains a water filter that works. *Built (0.52.0):* a sensor's `condition` and a helper's `effect` are the engine's own (`visitor`,
+   `dawn`, `dusk`; `find`) or the pack's (`content.json` `sensors` and `helpers`), each saying in the engine's few words what it
+   `watches` (`ready:<module>`, `next:<module>`, `low:<stat>`) or `does` (`request:<module>:<what>`, `affect:<stat>:<amount>`), with
+   `every` and an optional `when`. The engine works the watch out for the workings (the subject read's `on`, `does` and `can`), so the
+   workings name no condition, and the narrator is offered only what the world can run just now (the module live and answering, the
+   stat declared). Pip's `crop_ripe`, `hungry`, `tired`, `hurry_crops` and `comfort` moved to its pack (`hungry` and `tired` now follow
+   the stats' `low_at`); Ashfall's sensors notice hurt, a dose of radiation and hunger, and its water filter (`purify`) takes radiation
+   down. The capability types themselves (`timekeeper`, `upkeep`, `periodic`, `sensor`, `helper`, `companion`) stay the engine's: they
+   are how a thing runs, not what it is about. The happenings' intents are `coins`, `item`, `loss` (some of the biggest stack of any
+   kind of thing: `food_loss` was food only), `stat`, `harm`, `news`, `memory` and `request`: a creation stopping is its workings'
+   answer to `stop` (a major turn may leave it needing a part, from what the world mends with: items.json `mending`), so the
+   happenings module asks the creation's workings, whose name the `creations` read now gives. *Decided while building:* `news` stays
+   the engine's intent, for anyone the agent knows of any role, not a request to the neighbourhood module: people are the engine's
+   machinery (C1's decision), and someone's life moving on is part of them, as letters are.
 7. **The API consolidated** (D, `api: 2`), last, once the releases above have shown which proposals are really needed.
 
 Later, not in this plan: the engine's abstract dashboard, with components worlds reuse and panels they plug in.

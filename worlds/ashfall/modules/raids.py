@@ -39,7 +39,7 @@ def _plan(ctx, cat, tone, severity, rng):
     if cat == "raid":
         if not me["at_home"]:
             return {"effects": [{"kind": "harm", "stat": "health"}]}
-        return {"effects": [{"kind": "food_loss"}]} if foods and foods[0]["qty"] >= 5 else None
+        return {"effects": [{"kind": "loss", "item_kind": "food"}]} if foods and foods[0]["qty"] >= 5 else None
     if cat == "salvage":
         return {"effects": [{"kind": "item"}]}
     if cat == "ashfall":

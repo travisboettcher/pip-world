@@ -185,9 +185,8 @@ def test_a_world_without_seeds_gathers_none_and_designs_nothing_for_crops(ashfal
     from app import creations as cr
     got = M.world_modules(Settings(world_pack=str(ASHFALL)))
     assert got["gathering"][0]["belongings"] == {"takes": [], "gives": ["tool", "material", "food"], "most": 20}
-    no_crops = "\n".join(cr.menu(False, crops=False))
-    assert "crop_ripe" not in no_crops and "hurry_crops" not in no_crops and "visitor (someone comes to talk to Wren)" in no_crops
-    assert "crop_ripe (a crop in Wren's garden is ripe), " in "\n".join(cr.menu(False))
+    menu = "\n".join(cr.menu(False))
+    assert "crop_ripe" not in menu and "hurry_crops" not in menu and "visitor (someone comes to talk to Wren)" in menu   # Pip's world's, not this one's
 
 
 def test_a_stat_can_change_faster_away_from_home(tmp_path, ashfall):
@@ -281,12 +280,31 @@ def test_without_a_home_named_the_agent_is_home_at_home(tmp_path):
         W.set_active(W.load(Settings()))
 
 
-def test_the_menu_without_crops_word_for_word(ashfall):
+def test_the_menu_of_this_worlds_sensors_and_helpers_word_for_word(ashfall):
     from app import creations as cr
-    m = cr.menu(False, crops=False)
+    m = cr.menu(False)
     assert m[3] == ("sensor: it notices something and reacts; `condition` is one of visitor (someone comes to talk to Wren), dawn, dusk, "
-                    "hungry (Wren is hungry), tired (Wren is tired); `alert` is a short line describing how it reacts")
-    assert m[4].startswith("helper: it regularly helps in one of these ways (`effect`): find (it turns up")
+                    "hurt (Wren is badly hurt), dosed (Wren has taken in too much radiation), hungry (Wren is hungry); `alert` is a short line "
+                    "describing how it reacts")
+    assert m[4] == ("helper: it regularly helps in one of these ways (`effect`): find (it turns up small useful things; give `finds`: 2-4 kinds "
+                    "of thing it would find), purify (it cleans water or air, so Wren takes in less radiation), mend (Wren feels a little patched "
+                    "up); give `line` (one sentence describing what it does) and `every_minutes`")
+
+
+@pytest.mark.asyncio
+async def test_a_water_filter_wren_makes_keeps_the_radiation_down(tmp_path, ashfall):
+    from app import creations as cr
+    from tests.test_workings import NOW, workings
+    caps = {"helper": {"effect": "purify", "line": "The filter drips clean water into the can.", "every_minutes": 240}}
+    import random
+    raw = {"name": "Water Filter", "description": "a filter", "capabilities": [{"type": "helper", **caps["helper"]}]}
+    spec = cr.sanitize_spec(raw, {"name": "x"}, "sound", [], random.Random(1))[2]
+    assert spec["capabilities"]["helper"] == {"effect": "purify", "line": "The filter drips clean water into the can.", "every_minutes": 240}
+    s, st, agent, c, m = await workings(tmp_path, caps, world_pack=str(ASHFALL))
+    st.update_agent(radiation=0.5)
+    assert await M.step(st, s, None, NOW + 241 * 60) is False
+    assert round(st.agent()["radiation"], 3) == 0.47 and M.perception(st) == ["Things in the world:", "- The filter drips clean water into the can."]
+    assert cr.at_work(st, caps, NOW)["helper"] == {**caps["helper"], "does": "affect:radiation:-0.03", "can": True}
 
 
 def test_what_a_happening_finds_or_needs_mending_is_this_worlds(tmp_path, ashfall):
@@ -296,13 +314,14 @@ def test_what_a_happening_finds_or_needs_mending_is_this_worlds(tmp_path, ashfal
     s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "a.db"), persona_path="/x")
     st = State(s)
     flats = {e[0] for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["flats"]}
-    ruins = {e[0] for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["ruins"]}
     for seed in range(20):
         (found,) = H.decide(st, s, {"category": "salvage", "tone": "good", "severity": "medium", "effects": [{"kind": "item"}]},
                             time.time(), random.Random(seed))["effects"]
         assert found["name"] in flats                                                  # what turns up is what the wild places have
-        part = H._mending_part(random.Random(seed))["name"]
-        assert part in ruins and next(e for e in json.loads((ASHFALL / "items.json").read_text())["finds"]["ruins"] if e[0] == part)[1] == "material"
+    from app import finds
+    materials = {e[0] for table in json.loads((ASHFALL / "items.json").read_text())["finds"].values() for e in table if e[1] == "material"}
+    mend = finds.mending()                                                             # what a thing that broke may need: this world's materials
+    assert mend["things"] and set(mend["things"]) <= materials and "brass wire" not in mend["things"] and mend["qty"][0] >= 1
     named = H.decide(st, s, {"category": "salvage", "tone": "good", "effects": [{"kind": "item", "name": "copper wire"}]}, time.time(), random.Random(1))
     assert named["effects"][0]["name"] == "copper wire"
     with pytest.raises(ValueError, match="nothing called brass wire is found in this world"):

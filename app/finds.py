@@ -23,6 +23,15 @@ def loot() -> dict:
     return world_content.finds()
 
 
+def mending() -> dict:
+    """What could mend a made thing that broke, for its workings to ask for: {things: the names in the world's find tables of the kinds
+    the world mends with (items.json `mending`), qty: [fewest, most]} (docs/DESIGN-engine-audit.md, C3)."""
+    from . import tone, world_pack
+    kinds_ = set(world_pack.active().data("items").get("mending") or [])
+    things = sorted({e[0] for table in loot().values() for e in table if e[1] in kinds_})
+    return {"things": things[:12], "qty": list(tone.size("mending_qty"))}
+
+
 def _meta_key(place: str) -> tuple[str, str]:
     return f"stock:{place}", f"stock_at:{place}"
 

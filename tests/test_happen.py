@@ -42,16 +42,18 @@ def test_a_good_turn_gives_by_its_size():
 def test_a_bad_turn_takes_and_the_engine_picks_how_much():
     loss = decide({"category": "found", "tone": "bad", "severity": "major", "effects": [{"kind": "coins"}]})["effects"][0]
     assert loss == {"kind": "coins", "delta": -H.coin_loss(78, "major")}
-    stop = decide({"category": "mishap", "tone": "bad", "severity": "major", "effects": [{"kind": "stop", "creation": "gear clock", "mend": True}]})
-    assert stop["effects"][0]["name"] == "Gear Clock" and stop["effects"][0]["part"]["qty"] >= 1 and "Gear Clock" in stop["names"]
-    medium = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock", "mend": True}]})
-    assert medium["effects"][0]["part"] is None                                                   # only a major one needs mending
+    stop = decide({"category": "mishap", "tone": "bad", "severity": "major", "effects": [{"kind": "request", "module": "clock", "what": "stop",
+                                                                                          "args": {"mend": True}}]}, answers={"clock": ["stop"]})
+    assert stop["effects"] == [{"kind": "request", "module": "clock", "what": "stop", "args": {"mend": True}}]    # its workings answer it
+    assert refused({"category": "mishap", "tone": "bad", "effects": [{"kind": "stop", "creation": "Gear Clock"}]}).startswith("an effect's kind is one of")
     assert refused({"category": "market", "tone": "bad", "effects": [{"kind": "price", "place": "Saltholm"}]}).startswith("an effect's kind is one of")  # trade's (0.38.0)
     assert decide({"category": "body", "tone": "bad", "severity": "minor", "effects": [{"kind": "energy"}]})["effects"][0] == {"kind": "stat", "stat": "energy", "delta": -H.ENERGY["minor"]}
     assert decide({"category": "body", "tone": "good", "severity": "minor", "effects": [{"kind": "hunger"}]})["effects"][0] == {"kind": "stat", "stat": "hunger", "delta": -H.ENERGY["minor"]}
-    assert decide({"category": "pantry", "tone": "bad", "severity": "medium", "effects": [{"kind": "food_loss"}]})["effects"][0]["name"] == "tomatoes"
+    assert decide({"category": "pantry", "tone": "bad", "severity": "medium", "effects": [{"kind": "loss", "item_kind": "food"}]})["effects"][0]["name"] == "tomatoes"
     news = decide({"category": "neighbor", "tone": "good", "effects": [{"kind": "news", "name": "oriel vantosh"}]})
     assert news["effects"] == [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}]
+    jun = decide({"category": "gate", "tone": "bad", "effects": [{"kind": "news", "name": "Jun"}]}, people=["Jun"])   # anyone, of any role
+    assert jun["effects"] == [{"kind": "news", "name": "Jun", "tone": "bad"}] and jun["names"] == ["Jun"]
 
 
 def test_a_neutral_moment_changes_nothing_but_may_bring_back_a_memory():
@@ -74,13 +76,13 @@ def test_a_neutral_moment_changes_nothing_but_may_bring_back_a_memory():
     ({"category": "found", "tone": "good", "names": ["Bartholomew"]}, "no one and nothing called Bartholomew is in Pip's world"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "gold"}]}, "an effect's kind is one of coins, item"),
     ({"category": "found", "tone": "neutral", "effects": [{"kind": "coins"}]}, "a neutral happening changes nothing"),
-    ({"category": "found", "tone": "good", "effects": [{"kind": "stop", "creation": "Gear Clock"}]}, "a good turn can't bring stop"),
+    ({"category": "found", "tone": "good", "effects": [{"kind": "harm", "stat": "energy"}]}, "a good turn can't bring harm"),
     ({"category": "found", "tone": "bad", "effects": [{"kind": "item"}]}, "a bad turn can't bring item"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "item", "name": "a diamond"}]}, "nothing called a diamond is found in this world"),
     ({"category": "found", "tone": "good", "effects": [{"kind": "coins"}, {"kind": "coins"}]}, "one effect of each kind"),
-    ({"category": "mishap", "tone": "bad", "severity": "minor", "effects": [{"kind": "stop", "creation": "Gear Clock"}]}, "`creation` is one of Pip's running"),
-    ({"category": "mishap", "tone": "bad", "severity": "major", "effects": [{"kind": "stop", "creation": "Vase"}]}, "`creation` is one of Pip's running"),
-    ({"category": "neighbor", "tone": "good", "effects": [{"kind": "news", "name": "Nobody"}]}, "`name` is one of Pip's neighbors"),
+    ({"category": "mishap", "tone": "bad", "effects": [{"kind": "request", "module": "clock", "what": "stop"}]}, "`module` is a live module"),
+    ({"category": "pantry", "tone": "bad", "effects": [{"kind": "loss", "item_kind": "gold"}]}, "`item_kind` is one of"),
+    ({"category": "neighbor", "tone": "good", "effects": [{"kind": "news", "name": "Nobody"}]}, "`name` is one of the people Pip knows"),
 ])
 def test_what_a_happening_cant_be_is_named(p, why):
     assert refused(p).startswith(why)
@@ -89,7 +91,10 @@ def test_what_a_happening_cant_be_is_named(p, why):
 def test_the_world_as_it_is_limits_what_can_happen():
     assert refused({"category": "found", "tone": "bad", "effects": [{"kind": "coins"}]}, coins=0) == "Pip has no coins to lose"
     assert refused({"category": "body", "tone": "bad", "effects": [{"kind": "energy"}]}, low=True) == "Pip is too low already"
-    assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[]).startswith("there is nothing to lose")
+    assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "loss", "item_kind": "food"}]}, stacks=[]) == \
+        "there is no stack of food big enough to lose some of (or Pip is too low for it)"
+    assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "loss", "item_kind": "food"}]}, low=True).startswith("there is no stack")
+    assert refused({"category": "gate", "tone": "bad", "effects": [{"kind": "news", "name": "Jun"}]}) == "`name` is one of the people Pip knows"
     assert refused({"category": "memory", "tone": "good", "effects": [{"kind": "memory"}]}, diary_count=2) == "Pip has no old thought to come back to it"
 
 
@@ -180,7 +185,8 @@ def test_the_reads_a_happenings_module_needs(tmp_path):
     m = live(st, rule(reads=["people", "creations", "happenings", "agent"], params={"chance": 0.1, "severity": [50, 45, 5]}), "x")
     ctx = M.context(st, s, m, time.time())
     assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor", "about": "", "home": "Oriel Vantosh's home", "writes": False}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
-    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock"}] and ctx["agent"]["coins"] == st.coins()
+    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock", "workings": None}] \
+        and ctx["agent"]["coins"] == st.coins()                                                                          # no workings installed
     assert ctx["happenings"] == {"recent": [], "today": 0, "room": "", "can_remember": False}
     with pytest.raises(M.Refused):
         M.check_manifest(rule(params={"a": [[1]]}), "world")
@@ -201,16 +207,15 @@ def test_intents_word_for_word_at_their_limits():
     assert kinds == {"food", "seed", "material"}
     assert decide({"category": "found", "tone": "bad", "severity": "minor", "effects": [{"kind": "coins"}]}, coins=10)["effects"] == \
         [{"kind": "coins", "delta": -H.coin_loss(10, "minor")}] and H.coin_loss(10, "minor") == 1          # one coin is something to lose
-    assert decide({"category": "pantry", "tone": "bad", "severity": "minor", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=5)])["effects"][0]["name"] == "tomatoes"
-    assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "food_loss"}]}, foods=[food(qty=4)]).startswith("there is nothing")
+    assert decide({"category": "pantry", "tone": "bad", "severity": "minor", "effects": [{"kind": "loss", "item_kind": "food"}]}, stacks=[food(qty=5)])["effects"] == \
+        [{"kind": "loss", "name": "tomatoes", "qty": 1, "item_kind": "food"}]
+    assert refused({"category": "pantry", "tone": "bad", "effects": [{"kind": "loss", "item_kind": "food"}]}, stacks=[food(qty=4)]).startswith("there is no stack")
     assert decide({"category": "body", "tone": "bad", "severity": "major", "effects": [{"kind": "hunger"}]})["effects"] == [{"kind": "stat", "stat": "hunger", "delta": H.ENERGY["major"]}]
     assert decide({"category": "body", "tone": "good", "severity": "medium", "effects": [{"kind": "energy"}]})["effects"] == [{"kind": "stat", "stat": "energy", "delta": H.ENERGY["medium"]}]
-    stop = decide({"category": "mishap", "tone": "bad", "severity": "medium", "effects": [{"kind": "stop", "creation": "Gear Clock"}]})
-    assert stop["effects"] == [{"kind": "creation_stop", "id": 1, "name": "Gear Clock", "part": None}] and stop["names"] == ["Gear Clock"]
     assert decide({"category": "neighbor", "tone": "bad", "effects": [{"kind": "news", "name": "Oriel Vantosh"}]})["names"] == ["Oriel Vantosh"]
     assert decide({"category": "memory", "tone": "good", "effects": [{"kind": "memory"}]}, diary_count=H.MIN_DIARY)["effects"] == []
     assert refused({"category": "found", "tone": "bad", "effects": [{"kind": "item"}]}) == "a bad turn can't bring item"
-    assert refused({"category": "found", "tone": "good", "effects": [{"kind": "food_loss"}]}) == "a good turn can't bring food loss"
+    assert refused({"category": "found", "tone": "good", "effects": [{"kind": "loss", "item_kind": "food"}]}) == "a good turn can't bring loss"
     assert refused({"category": "found", "tone": "good", "effects": [{"kind": "x"}]}) == "an effect's kind is one of " + ", ".join(H.INTENTS) + " (or a stat's own name: hunger, energy)"
 
 

@@ -8,6 +8,7 @@ pass without any LLM: a creation's capabilities run in its shipped `workings` mo
 entry in `sanitize_spec` and `describe`, and its behaviour in the workings.
 """
 import random
+import re
 import time
 
 from . import abilities
@@ -18,8 +19,15 @@ from . import world_pack
 from . import stats as stats_mod
 
 CAPABILITIES = ("timekeeper", "upkeep", "periodic", "sensor", "helper", "companion", "world", "provides")
-SENSOR_CONDITIONS = ("crop_ripe", "visitor", "dawn", "dusk", "hungry", "tired")
-HELPER_EFFECTS = {"hurry_crops": 60, "find": 360, "comfort": 240}  # effect -> minimum minutes between runs
+# What a sensor can notice and a helper can do (docs/DESIGN-engine-audit.md, C2): the engine's own, which any world has, and the world
+# pack's (content.json `sensors` and `helpers`), each saying what it `watches` or `does` in the engine's few words:
+#   watches  ready:<module> (it shows something ready), next:<module> (it expects something later), low:<stat> (on its bad side)
+#   does     request:<module>:<what> (asks it, as a world effect does), affect:<stat>:<amount>
+# `when` (a watch) is when a helper is any use; `every` the fewest minutes between its turns.
+ENGINE_SENSORS = {"visitor": {"help": "someone comes to talk to {name}"}, "dawn": {"help": "dawn"}, "dusk": {"help": "dusk"}}
+ENGINE_HELPERS = {"find": {"help": "it turns up small useful things; give `finds`: 2-4 kinds of thing it would find", "every": 360}}
+WATCH = re.compile(r"^(ready|next):([a-z][a-z0-9-]*)$|^low:([a-z_]+)$")
+DOES = re.compile(r"^request:([a-z][a-z0-9-]*):([a-z_]+)$|^affect:([a-z_]+):(-?\d+(?:\.\d+)?)$")
 MAX_CAPABILITIES = 3
 COMPANION_MIN_DIFFICULTY = 3  # small, simple pieces don't get a mind of their own
 DRIFT_MIN_PER_DAY = {"rough": 15, "sound": 5, "fine": 1.5, "masterwork": 0.3}
@@ -62,13 +70,13 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
             if lines:
                 caps[t] = {"lines": lines, "every_minutes": _num(c.get("every_minutes"), 20, 720, 120)}
         elif t == "sensor":
-            if c.get("condition") in SENSOR_CONDITIONS and _line(c.get("alert")):
+            if c.get("condition") in sensors() and _line(c.get("alert")):
                 caps[t] = {"condition": c["condition"], "alert": _line(c["alert"])}
         elif t == "helper":
             effect, line = c.get("effect"), _line(c.get("line"))
             finds = _lines(c.get("finds"), 4, 40)
-            if effect in HELPER_EFFECTS and line and (effect != "find" or finds):
-                low = HELPER_EFFECTS[effect]
+            if effect in helpers() and line and (effect != "find" or finds):
+                low = helpers()[effect].get("every", 60)
                 caps[t] = {"effect": effect, "line": line, "every_minutes": _num(c.get("every_minutes"), low, 1440, low * 2),
                            **({"finds": [f.lower() for f in finds]} if effect == "find" else {})}
         elif t == "world":
@@ -90,10 +98,98 @@ def sanitize_spec(raw: dict | None, project: dict, quality: str, scars: list[str
     return name, description, {"capabilities": caps, "quirks": quirks, "scars": [_line(s, 200) for s in scars[:3]]}
 
 
-def menu(allow_companion: bool, crops: bool = True) -> list[str]:
-    """What a made thing can do, as the narrator is told when it designs one: the capabilities `sanitize_spec` keeps, worded (what
-    works on crops only where something grows them: `crops`)."""
+def sensors() -> dict:
+    """{name: {help, watches?}}: what a sensor may notice in this world (the engine's, then the pack's)."""
+    return {**ENGINE_SENSORS, **(world_pack.active().data("content").get("sensors") or {})}
+
+
+def helpers() -> dict:
+    """{name: {help, every?, does?, when?}}: how a helper may help in this world (the engine's, then the pack's)."""
+    return {**ENGINE_HELPERS, **(world_pack.active().data("content").get("helpers") or {})}
+
+
+NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+WATCH_SAYS, DOES_SAYS = "ready:<module>, next:<module> or low:<stat>", "request:<module>:<what> or affect:<stat>:<amount>"
+
+
+def check_catalogue(content: dict) -> None:
+    """A pack's `sensors` and `helpers` (content.json), checked when it loads: each needs a `help` line and, unless it only words one of
+    the engine's own anew, what it watches or does; raises ValueError saying what is wrong."""
+    for key, word, pattern, says, own in (("sensors", "watches", WATCH, WATCH_SAYS, ENGINE_SENSORS),
+                                          ("helpers", "does", DOES, DOES_SAYS, ENGINE_HELPERS)):
+        entries = content.get(key, {})
+        if not isinstance(entries, dict):
+            raise ValueError(f"content.json `{key}` maps a name to {{help, {word}, ...}}")
+        for name, e in entries.items():
+            where = f"content.json {key} {name!r}"
+            if not NAME.match(name):
+                raise ValueError(f"{where}: a name is a word in lower case")
+            if not isinstance(e, dict) or not str(e.get("help") or "").strip():
+                raise ValueError(f"{where}: needs a `help` line for the narrator")
+            if (word in e or name not in own) and not pattern.match(str(e.get(word) or "")):
+                raise ValueError(f"{where}: `{word}` is {says}")
+            if "when" in e and not WATCH.match(str(e["when"])):
+                raise ValueError(f"{where}: `when` is {WATCH_SAYS}")
+            if "every" in e and not (type(e["every"]) is int and 1 <= e["every"] <= 1440):
+                raise ValueError(f"{where}: `every` is a whole number of minutes, 1 to 1440")
+
+
+def _live(state) -> dict:
+    return {m["name"]: m for m in state.modules("live")}
+
+
+def usable(state, entry: dict) -> bool:
+    """Whether a sensor or helper makes sense in the world as it is: what it watches and asks is there (a live module, a stat)."""
+    live, stats = _live(state), stats_mod.declared(state.s)
+    for spec in (entry.get("watches"), entry.get("when"), entry.get("does")):
+        if not spec:
+            continue
+        w, d = WATCH.match(spec), DOES.match(spec)
+        if w and ((w.group(2) and w.group(2) not in live) or (w.group(3) and w.group(3) not in stats)):
+            return False
+        if d and ((d.group(1) and (d.group(1) not in live or d.group(2) not in (live[d.group(1)]["manifest"].get("answers") or {})))
+                  or (d.group(3) and d.group(3) not in stats)):
+            return False
+        if not w and not d:
+            return False
+    return True
+
+
+def watching(state, watch: str, now: float) -> bool:
+    """Whether a watch holds just now: the engine's own (visitor, dawn, dusk) or one the world named (ready:, next:, low:)."""
+    hour = time.localtime(now).tm_hour
+    if watch in ("visitor", "dawn", "dusk"):
+        return len(state.pending_inbox()) > 0 if watch == "visitor" else hour == (6 if watch == "dawn" else 19)
+    m = WATCH.match(watch or "")
+    if not m:
+        return False
+    if m.group(3):
+        d = stats_mod.declared(state.s).get(m.group(3))
+        return d is not None and stats_mod.is_low(d, stats_mod.values(state).get(m.group(3), 0.5))
+    standing = (_live(state).get(m.group(2)) or {}).get("standing") or {}
+    return bool(standing.get("ready")) if m.group(1) == "ready" else bool(standing.get("next_at"))
+
+
+def at_work(state, caps: dict, now: float) -> dict:
+    """A creation's capabilities as its workings read them: the sensor's watch worked out (`on`), the helper's way of helping (`does`)
+    and whether it is any use just now (`can`)."""
+    out = {k: dict(v) for k, v in caps.items()}
+    if "sensor" in out:
+        cond = out["sensor"]["condition"]
+        out["sensor"]["on"] = watching(state, sensors().get(cond, {}).get("watches") or cond, now)
+    if "helper" in out:
+        entry = helpers().get(out["helper"]["effect"]) or {}
+        out["helper"]["does"] = entry.get("does", "")
+        out["helper"]["can"] = not entry.get("when") or watching(state, entry["when"], now)
+    return out
+
+
+def menu(allow_companion: bool, state=None) -> list[str]:
+    """What a made thing can do, as the narrator is told when it designs one: the capabilities `sanitize_spec` keeps, worded (a sensor
+    or helper of the world's only where what it watches and asks is in the world just now: `state`)."""
     a = world_pack.active().agent
+    say = lambda e: e["help"].replace("{name}", a.name).replace("{possessive}", a.possessive)   # noqa: E731
+    ok = lambda e: state is None or usable(state, e)                                               # noqa: E731
     caps = [
         "timekeeper: it tells the time",
         f"upkeep: it only keeps going if {a.name} tends it regularly; give `verb` (a word or two for how it's tended, "
@@ -101,13 +197,11 @@ def menu(allow_companion: bool, crops: bool = True) -> list[str]:
         "periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences "
         "describing it, in this thing's own manner) and `every_minutes` (20-720)",
         "sensor: it notices something and reacts; `condition` is one of "
-        + (f"crop_ripe (a crop in {a.possessive} garden is ripe), " if crops else "") + f"visitor (someone comes to talk to {a.name}), dawn, dusk, hungry ({a.name} is hungry), tired ({a.name} is tired); "
-        "`alert` is a short line describing how it reacts",
+        + ", ".join(f"{n} ({say(e)})" if n not in ("dawn", "dusk") else n for n, e in sensors().items() if ok(e))
+        + "; `alert` is a short line describing how it reacts",
         "helper: it regularly helps in one of these ways (`effect`): "
-        + ("hurry_crops (anything that helps the garden do better - guarding, watering, warming it - so crops ripen sooner), " if crops else "")
-        + "find "
-        f"(it turns up small useful things; give `finds`: 2-4 kinds of thing it would find), or comfort ({a.name} feels "
-        "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
+        + ", ".join(f"{n} ({say(e)})" for n, e in helpers().items() if ok(e))
+        + "; give `line` (one sentence describing what it does) and `every_minutes`",
         world_effects.gm_lines(), abilities.gm_lines(),
     ]
     if allow_companion:

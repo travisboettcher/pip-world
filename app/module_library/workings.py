@@ -1,6 +1,7 @@
 # A creation's workings, as the engine has always run them: it runs down and stops unless tended (upkeep), keeps time and drifts
-# (timekeeper), says something now and then (periodic), notices a condition and tells the agent (sensor), and helps on its own: finds something,
-# hurries the garden along, or comforts the agent (helper), and, with a mind of its own, talks (companion): it is a voice where it is, chatters
+# (timekeeper), says something now and then (periodic), notices a condition and tells the agent (sensor: whether what it watches holds is
+# the engine's to say, `on`), and helps on its own: finds something, or does what the world says its kind of help does (helper: asks a
+# module, or eases a stat: `does`), and, with a mind of its own, talks (companion): it is a voice where it is, chatters
 # now and then, and answers when the agent talks to it, in words the model writes from who it is and what has been said. What it can do and how
 # often come from the creation's capabilities; the times it last did each, and its conversation, are kept in this module's state. The
 # clock's workings live in the creation's runtime, which the engine reads to show the time. Once it's sold or given away it does nothing.
@@ -71,24 +72,6 @@ def on_time(ctx):
     return {"runtime": {"stop_logged": True}, "log": line, "perceive": line, "wake": True}
 
 
-def _plots(ctx):
-    return ((ctx.get("facts") or {}).get("garden") or {}).get("plots") or []
-
-
-def _condition(ctx, cond):
-    if cond == "crop_ripe":                                  # the garden module's published plots
-        return any("ready_at" in p and p["ready_at"] <= ctx["now"] for p in _plots(ctx))
-    if cond == "visitor":
-        return ctx["visitors"]["waiting"] > 0
-    if cond == "dawn":
-        return ctx["time"]["hour"] == 6
-    if cond == "dusk":
-        return ctx["time"]["hour"] == 19
-    if cond == "hungry":
-        return ctx["agent"]["hunger"] >= 0.6
-    return ctx["agent"]["energy"] <= 0.3  # tired
-
-
 def on_tick(ctx):
     s, now, st = ctx["subject"], ctx["now"], ctx["state"]
     if s is None or _stopped_at(s["runtime"], now) is not None:
@@ -100,23 +83,25 @@ def on_tick(ctx):
         said.append(f"Your {s['name']}: {rng.choice(p['lines'])}")
         last["periodic"] = now
     if "sensor" in caps:
-        was, on = on, _condition(ctx, caps["sensor"]["condition"])
+        was, on = on, bool(caps["sensor"].get("on"))
         if on and not was:
             said.append(caps["sensor"]["alert"])
             out["wake"] = True
     h = caps.get("helper")
     if h and now - last.get("helper", now) >= h["every_minutes"] * 60:
         last["helper"] = now
+        does = h.get("does") or ""
         if h["effect"] == "find":
             item = rng.choice(h["finds"])
             out["find"] = {"item": item, "qty": 1}
             said.append(f"{h['line']} (found: {item})")
-        elif h["effect"] == "hurry_crops":                    # asked of the garden module, which answers `hurry`
-            if any(p.get("ready_at", 0) > now for p in _plots(ctx)):
-                out["request"] = {"module": "garden", "what": "hurry", "args": {"share": 0.1}}
-                said.append(h["line"])
-        else:  # comfort
-            out["affect"] = {"energy": 0.05}
+        elif does.startswith("request:") and h.get("can"):    # asks a module (the garden: `hurry`), when it is any use
+            _, module, what = does.split(":")
+            out["request"] = {"module": module, "what": what, "args": {}}
+            said.append(h["line"])
+        elif does.startswith("affect:") and h.get("can"):     # eases a stat a little
+            _, stat, amount = does.split(":")
+            out["affect"] = {stat: float(amount)}
             said.append(h["line"])
     new = {**st, "last": last, "sensor_on": on}
     comp = caps.get("companion")
@@ -128,6 +113,24 @@ def on_tick(ctx):
     if said:
         out["perceive"] = out["log"] = " ".join(said)
     return out
+
+
+def on_request(ctx):
+    """`stop`: a happening's turn (sized by its severity) stops a thing that needs tending; a major one may leave it needing a part to
+    mend first, one of what the world mends with (`mends_with`), as the engine set out."""
+    s, r, now = ctx["subject"], ctx["request"], ctx["now"]
+    if s is None or "upkeep" not in s["capabilities"] or _stopped_at(s["runtime"], now) is not None:
+        return {"refuse": "it isn't running, or doesn't need tending"}
+    if r.get("severity", "minor") == "minor":
+        return {"refuse": "a minor turn stops nothing"}
+    rng, mend = random.Random(ctx["seed"]), s.get("mends_with") or {}
+    part = None
+    if r.get("severity") == "major" and r["args"].get("mend") and mend.get("things"):
+        part = {"name": rng.choice(mend["things"]), "qty": rng.randint(*mend["qty"])}
+    need = (str(part["qty"]) + " " + part["name"] + " to mend, then " if part else "") + "tending"
+    if not r["apply"]:
+        return {"reply": "Your " + s["name"] + " stops; it needs " + need + "."}
+    return {"runtime": {"halted_at": now, **({"needs_part": part} if part else {})}, "reply": "Your " + s["name"] + " stops; it needs " + need + "."}
 
 
 def on_action(ctx):

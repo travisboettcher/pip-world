@@ -25,15 +25,19 @@ def test_each_effect_is_applied(tmp_path):
     assert (a["qty"], a["kind"], a["description"], a["attrs"]) == (3, "material", "a nut", {"x": 1})
     st.add_item("plums", 5, "food", "")
     st.add_item("plum stones", 9, "material", "")
-    H.apply_effects(st, [{"kind": "food_loss", "name": "plums", "qty": 3}], NOW)
+    H.apply_effects(st, [{"kind": "loss", "name": "plums", "qty": 3, "item_kind": "food"}], NOW)
     assert st.find_item("plums", kind="food")[0]["qty"] == 2
-    H.apply_effects(st, [{"kind": "food_loss", "name": "plums", "qty": 9}], NOW)
+    H.apply_effects(st, [{"kind": "loss", "name": "plums", "qty": 9, "item_kind": "food"}], NOW)
     assert st.find_item("plums", kind="food")[0]["qty"] == 1                    # one always stays
-    H.apply_effects(st, [{"kind": "food_loss", "name": "plums", "qty": 1}, {"kind": "food_loss", "name": "figs", "qty": 1}], NOW)
+    H.apply_effects(st, [{"kind": "loss", "name": "plums", "qty": 1, "item_kind": "food"}, {"kind": "loss", "name": "figs", "qty": 1, "item_kind": "food"}], NOW)
     assert st.find_item("plums", kind="food")[0]["qty"] == 1 and st.find_item("plum stones")[0]["qty"] == 9
     st.add_item("pears", 2, "food", "")
-    H.apply_effects(st, [{"kind": "food_loss", "name": "pears", "qty": 1}], NOW)
+    H.apply_effects(st, [{"kind": "loss", "name": "pears", "qty": 1, "item_kind": "food"}], NOW)
     assert st.find_item("pears")[0]["qty"] == 1
+    H.apply_effects(st, [{"kind": "loss", "name": "plum stones", "qty": 4, "item_kind": "material"}], NOW)     # any kind of thing
+    assert st.find_item("plum stones")[0]["qty"] == 5
+    H.apply_effects(st, [{"kind": "loss", "name": "plum stones", "qty": 4, "item_kind": "food"}], NOW)         # of that kind only
+    assert st.find_item("plum stones")[0]["qty"] == 5
 
 
 def test_a_price_turn_is_no_longer_the_engines(tmp_path):
@@ -42,17 +46,12 @@ def test_a_price_turn_is_no_longer_the_engines(tmp_path):
     assert "price" not in H.INTENTS and st.store("trade") == {}
 
 
-def test_a_creation_stops_only_if_it_needs_tending(tmp_path):
+def test_a_stop_stored_before_the_workings_answered_it_is_not_applied_again(tmp_path):
     from tests.test_world_view import TIMEKEEPER
     s, st, agent = make(tmp_path)
     clock = st.add_creation("Gear Clock", "a clock", None, "sound", TIMEKEEPER, {})
-    vase = st.add_creation("Vase", "a vase", None, "sound", {"capabilities": {}, "quirks": []}, {})
-    H.apply_effects(st, [{"kind": "creation_stop", "id": clock["id"], "part": {"name": "spring", "qty": 1}},
-                         {"kind": "creation_stop", "id": vase["id"]}, {"kind": "creation_stop", "id": 999}], NOW)
-    rt = {c["name"]: c["runtime"] for c in st.creations()}
-    assert rt["Gear Clock"] == {"halted_at": NOW, "needs_part": {"name": "spring", "qty": 1}} and rt["Vase"] == {}
-    H.apply_effects(st, [{"kind": "creation_stop", "id": clock["id"]}], NOW + 5)
-    assert st.creations()[0]["runtime"] == {"halted_at": NOW + 5, "needs_part": {"name": "spring", "qty": 1}}
+    H.apply_effects(st, [{"kind": "creation_stop", "id": clock["id"], "part": {"name": "spring", "qty": 1}}], NOW)
+    assert st.creations()[0]["runtime"] == {}                                    # the workings answer `stop` now (a request)
 
 
 def test_news_of_a_neighbor_goes_into_their_life(tmp_path):
@@ -79,6 +78,7 @@ def test_news_of_a_neighbor_goes_into_their_life(tmp_path):
     ({"kind": "creation_stop", "name": "Gear Clock", "part": None}, "Your Gear Clock stops; it needs tending."),
     ({"kind": "news", "name": "Oriel"}, "You hear news of Oriel."),
     ({"kind": "food_loss", "name": "plums", "qty": 3}, "You lose 3 plums."),
+    ({"kind": "loss", "name": "plum stones", "qty": 1, "item_kind": "material"}, "You lose 1 plum stone."),
     ({"kind": "request", "module": "garden"}, ""),
 ])
 def test_each_effect_in_words(e, text):
@@ -108,8 +108,9 @@ def test_the_world_as_the_dice_see_it(tmp_path):
     b = live(st, rule(name="gone", hooks=["on_request"], answers={"dig": "x"}), "x")
     st.update_module(b["id"], facts={"names": ["moles"]}, status="disabled")
     w = H.world(st, s, now)
-    assert [f["name"] for f in w["foods"]][:2] == ["figs", "plums"] and all(f["kind"] == "food" for f in w["foods"])
-    assert "booths" not in w and w["neighbors"] == ["Oriel"] and "needle file" in w["tools"]
+    qty = [f["qty"] for f in w["stacks"]]
+    assert [f["name"] for f in w["stacks"] if f["name"] in ("plums", "figs", "needle file")] == ["figs", "plums", "needle file"] and qty == sorted(qty, reverse=True)
+    assert "booths" not in w and w["people"] == ["Oriel"] and "needle file" in w["tools"]
     assert "Saltholm" in w["places"] and "Hollin" not in w["places"] and all(isinstance(p, str) for p in w["places"])
     assert w["known"] == ["beans"] and w["answers"] == {"pots": ["grow"]} and w["season"] is None and w["now"] == now
     assert {"beans", "saltholm", "figs", "oriel", "needle file"} <= H.world_names(w)
@@ -121,14 +122,14 @@ def test_the_world_as_the_dice_see_it(tmp_path):
 
 
 def test_world_names_without_the_optional_parts():
-    w = {"neighbors": ["Ann"], "creations": [], "foods": [], "tools": []}
+    w = {"people": ["Ann"], "creations": [], "stacks": [], "tools": []}
     assert H.world_names(w) == {"ann"}
 
 
 # --- what a module can propose, at its edges -----------------------------------------------------------------------------------------------
 def test_intents_at_their_edges(monkeypatch):
     from app import finds as gathering
-    from tests.test_happenings import w
+    from tests.test_happenings import food, w
     monkeypatch.setattr(gathering, "loot", lambda: {"woods": [("acorn", "material", 1, (1, 1), "a nut", {})],
                                                      "junkyard": [("cog", "material", 1, (1, 1), "a cog", {})]})
     rng = random.Random(1)
@@ -140,8 +141,10 @@ def test_intents_at_their_edges(monkeypatch):
     many = {"answers": {"pots": ["grow", "dig"], "bees": ["swarm"]}}
     with pytest.raises(ValueError, match="answers: pots: grow, dig; bees: swarm$"):
         H._intent(many, "good", "minor", {"kind": "request", "module": "x", "what": "y"}, rng)
-    plan = H._intent({**w(), "stoppable": [{"id": 1, "name": "Gear Clock"}]}, "bad", "major", {"kind": "stop", "creation": "gear clock", "mend": True}, rng)
-    assert plan.names == ["Gear Clock", plan.effects[0]["part"]["name"]]
+    with pytest.raises(ValueError, match=r"^`item_kind` is one of tool, material, food, seed: the kind of thing some is lost of$"):
+        H._intent(w(), "bad", "minor", {"kind": "loss"}, rng)
+    plan = H._intent(w(stacks=[{"name": "bark", "kind": "material", "qty": 9}, food(qty=91)]), "bad", "minor", {"kind": "loss", "item_kind": "material"}, rng)
+    assert plan.effects == [{"kind": "loss", "name": "bark", "qty": 1, "item_kind": "material"}] and plan.names == ["bark"]
 
 
 def test_a_happenings_shape_at_its_edges():
@@ -218,5 +221,5 @@ async def test_a_request_line_is_kept_short_and_ends_a_sentence(tmp_path):
 
 
 def test_world_names_include_the_real_places():
-    w = {"neighbors": [], "creations": [], "foods": [], "tools": [], "places": ["the Old Mill"]}
+    w = {"people": [], "creations": [], "stacks": [], "tools": [], "places": ["the Old Mill"]}
     assert H.world_names(w) == {"the old mill"}

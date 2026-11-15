@@ -161,6 +161,10 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           met in person wherever they are; place kinds from the pack; `browse` scoped where a place lists it; Ashfall's villagers
     - [x] 5 (0.51.0): letters with anyone a module brings as writing, of any role; the offer in a neighbour's letter is the trade
           module's (with a `wishes` read); parcels of any kind the world has
+    - [x] 6 (0.52.0): what a made thing can notice and do is the pack's (`content.json` `sensors` and `helpers`, in the engine's
+          words: `ready:`, `next:`, `low:`, `request:`, `affect:`), offered only where the world can run it; a happening loses some of
+          any kind of thing (`loss`), stops a thing through its workings (`request` `stop`) and brings news of anyone; Ashfall's
+          water filter works
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

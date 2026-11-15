@@ -399,9 +399,10 @@ def test_what_crafting_reads_where_things_were_found_and_what_a_made_thing_can_d
     assert ctx["found"] == [{"item": "pine cones", "place": "woods", "label": "the woods"},                # most often, then most lately
                             {"item": "old maps", "place": "library", "label": "the library"},
                             {"item": "brass wire", "place": "junkyard", "label": "the junkyard"}]
-    assert ctx["making"] == {"capabilities": cr.menu(False, crops=False), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
+    assert ctx["making"] == {"capabilities": cr.menu(False, st), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
                              "qualities": ["rough", "sound", "fine", "masterwork"]}
     assert ctx["making"]["companion"].startswith("companion:") and not any(c.startswith("companion:") for c in ctx["making"]["capabilities"])
+    assert "crop_ripe" not in ctx["making"]["capabilities"][3] and "hungry (Pip is hungry)" in ctx["making"]["capabilities"][3]   # no garden here
     assert ctx["agent"]["tiring"] == "energy" and ctx["agent"]["tired"] is False
     from tests.test_garden import garden
     asyncio.run(M.call(st, s, M.LocalRunner(), garden(st), "on_install", NOW))     # with something growing crops, the crop capabilities too

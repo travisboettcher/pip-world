@@ -32,7 +32,7 @@ def ctx(**kw):
             "items": [{"name": "tomatoes", "qty": 91, "kind": "food"}, {"name": "needle file", "qty": 1, "kind": "tool"}],
             "places": [{"key": "Saltholm", "label": "Saltholm", "kind": "shop"}, {"key": "woods", "label": "the woods", "kind": "wild"}],
             "people": [{"name": "Oriel Vantosh", "kind": "neighbor"}],
-            "creations": [{"name": "Gear Clock", "running": True, "tended": True}],
+            "creations": [{"name": "Gear Clock", "running": True, "tended": True, "workings": "gear-clock-workings"}],
             "happenings": {"recent": [], "today": 0, "room": "", "can_remember": True}}
     for k, v in kw.items():
         base[k] = {**base[k], **v} if isinstance(v, dict) and isinstance(base.get(k), dict) and k not in ("state",) else v
@@ -141,7 +141,7 @@ def test_the_garden_shifts_a_crop_ruins_one_only_when_major_and_bad_and_spares_a
 
 def test_creatures_pantry_and_finds():
     assert {p["effects"][0]["kind"] for p in plans("creature", "good", "minor")} == {"item"}
-    assert plans("creature", "bad", "minor")[0] == {"effects": [{"kind": "food_loss"}]}
+    assert plans("creature", "bad", "minor")[0] == {"effects": [{"kind": "loss", "item_kind": "food"}]}
     assert plans("creature", "bad", "minor", ctx(agent={"hunger": 0.85})) == []                              # a low Pip is spared
     assert plans("pantry", "bad", "minor", ctx(items=[{"name": "beans", "qty": 4, "kind": "food"}])) == []  # too small a stack
     assert plans("pantry", "neutral", "minor")[0] == {}
@@ -157,9 +157,10 @@ def test_the_body_a_market_and_a_mishap():
     assert plans("market", "neutral", "minor")[0] == {"names": ["Saltholm"]}
     assert plans("mishap", "neutral", "minor")[0] == {"names": ["needle file"]}
     assert plans("mishap", "bad", "minor")[0] == {"effects": [{"kind": "energy"}], "names": ["needle file"]}
-    assert plans("mishap", "bad", "major")[0] == {"effects": [{"kind": "stop", "creation": "Gear Clock", "mend": True}]}
-    assert plans("mishap", "bad", "medium")[0]["effects"][0]["mend"] is False
-    assert plans("mishap", "bad", "major", ctx(creations=[{"name": "Gear Clock", "running": False, "tended": True}])) == []
+    assert plans("mishap", "bad", "major")[0] == {"effects": [{"kind": "request", "module": "gear-clock-workings", "what": "stop", "args": {"mend": True}}]}
+    assert plans("mishap", "bad", "medium")[0]["effects"][0]["args"]["mend"] is False
+    assert plans("mishap", "bad", "major", ctx(creations=[{"name": "Gear Clock", "running": False, "tended": True, "workings": "w"}])) == []
+    assert plans("mishap", "bad", "major", ctx(creations=[{"name": "Gear Clock", "running": True, "tended": True, "workings": None}])) == []
 
 
 def test_neighbors_memories_kindness_and_the_air():

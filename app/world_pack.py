@@ -157,9 +157,10 @@ def _load(path: str, changed: float = 0.0) -> Pack:
         raise bad(f"sprite.json: {e}") from None
     pack = Pack(d, str(w.get("name") or d.name), Agent(str(a["name"]).strip(), pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""),
                                                        tuple(look.items())), _modules(d, w.get("modules"), bad))
-    from . import guide
+    from . import creations, guide
     try:
         guide.pages(pack)                                   # each page says when it applies: checked once, here
+        creations.check_catalogue(pack.data("content"))     # what a made thing can notice and do, in the engine's words
     except ValueError as e:
         raise bad(str(e)) from None
     return pack

@@ -101,9 +101,16 @@ and every future creation can use it.
 | `timekeeper` | none (drift comes from quality) | Perception shows the time it shows and how far off it is. Drift accumulates per day; `use_item` can set it right |
 | `upkeep` | `verb` (how it's tended, any word), `hours` 4-72 (x quality factor) | When the time runs out it **stops** (every other capability pauses) and Pip is woken. `tend` restarts it |
 | `periodic` | `lines` (1-3 short sentences in the thing's own manner), `every_minutes` 20-720 | Logs one of the lines as a `creation` event now and then. Doesn't wake Pip |
-| `sensor` | `condition` in `crop_ripe, visitor, dawn, dusk, hungry, tired`, `alert` (a line) | Edge-triggered: logs the alert and wakes Pip |
-| `helper` | `effect` in `hurry_crops, find, comfort`, `line`, `every_minutes` (>= 60/360/240), `finds` (2-4 kinds of thing, `find` only) | `hurry_crops`: growing crops lose 10% of remaining time. `find`: 1 of its `finds` becomes a material. `comfort`: +0.05 energy. The `line` is logged each time |
+| `sensor` | `condition`: one of the engine's (`visitor, dawn, dusk`) or the world's (Pip's: `crop_ripe, hungry, tired`), `alert` (a line) | Edge-triggered: logs the alert and wakes Pip. Whether its watch holds is the engine's to say (0.52.0) |
+| `helper` | `effect`: the engine's `find` or one of the world's (Pip's: `hurry_crops, comfort`), `line`, `every_minutes` (>= the entry's `every`), `finds` (2-4 kinds of thing, `find` only) | `find`: 1 of its `finds` becomes a material. A world's helper does what its entry says: `hurry_crops` asks the garden to `hurry` (growing crops lose 10% of remaining time) while something grows; `comfort`: +0.05 energy. The `line` is logged each time |
 | `companion` | `persona` (2-3 sentences), `chatter_minutes` 60-720 | Becomes a character that talks (phase 3); it names itself |
+
+Since 0.52.0 (docs/DESIGN-engine-audit.md, C2) the sensors and helpers beyond the engine's own are the world pack's catalogue
+(`content.json` `sensors` and `helpers`): each says what it watches (`ready:<module>`, `next:<module>`, `low:<stat>`) or does
+(`request:<module>:<what>`, `affect:<stat>:<amount>`), the engine works them out for the workings (`on`, `does`, `can` in the
+subject read), and the narrator is offered only those the world can run just now. `hungry` and `tired` now follow the stats' own
+`low_at` (hunger 0.8, energy 0.25; they were 0.6 and 0.3). A bad turn stops a thing that needs tending by asking its workings
+(`stop`), which pick a part to mend it with from what the world mends with (`mends_with`).
 
 Capabilities compose: `timekeeper + periodic + upkeep` is a cuckoo clock that must be wound, or an hourglass that
 must be turned, depending on what the GM wrote. A creation without `upkeep` keeps going forever.

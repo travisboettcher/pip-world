@@ -89,6 +89,36 @@
  },
  "module_firsts": {
   "garden:ripe": "had a crop ripen",
-  "reading:finished_book": {"as": "book_finished", "said": "finished a book"}
+  "reading:finished_book": {
+   "as": "book_finished",
+   "said": "finished a book"
+  }
+ },
+ "sensors": {
+  "crop_ripe": {
+   "help": "a crop in {possessive} garden is ripe",
+   "watches": "ready:garden"
+  },
+  "hungry": {
+   "help": "{name} is hungry",
+   "watches": "low:hunger"
+  },
+  "tired": {
+   "help": "{name} is tired",
+   "watches": "low:energy"
+  }
+ },
+ "helpers": {
+  "hurry_crops": {
+   "help": "anything that helps the garden do better - guarding, watering, warming it - so crops ripen sooner",
+   "every": 60,
+   "does": "request:garden:hurry",
+   "when": "next:garden"
+  },
+  "comfort": {
+   "help": "{name} feels a little restored",
+   "every": 240,
+   "does": "affect:energy:0.05"
+  }
  }
 }

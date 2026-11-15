@@ -344,5 +344,8 @@
  "gerunds": {
   "woods": "foraging",
   "junkyard": "scavenging"
- }
+ },
+ "mending": [
+  "material"
+ ]
 }

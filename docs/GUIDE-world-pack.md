@@ -129,6 +129,18 @@ with experiments, plan revisions and craft skills; a finished project becomes on
 are the pack's (`content.json` `crafting`); a world that makes things differently (scavenged repairs, rationed parts) copies
 `app/module_library/crafting.py` and changes it.
 
+**What made things can do** (works today, 0.52.0): a made thing may notice something (a `sensor`) or help on its own (a `helper`), from
+the world's catalogue in `content.json` (`sensors` and `helpers`), after the engine's own (the sensors `visitor`, `dawn` and `dusk`; the
+helper `find`). Each entry has a `help` line for the narrator (`{name}` and `{possessive}` are the agent's) and says in the engine's
+few words what it watches or does: a sensor `watches` `ready:<module>` (the module's standing shows something ready), `next:<module>`
+(it expects something later) or `low:<stat>` (the stat past its `low_at`); a helper `does` `request:<module>:<what>` (asks a module,
+which must answer it) or `affect:<stat>:<amount>`, with `every` (the fewest minutes between turns) and, if it is only sometimes any
+use, `when` (a watch); each is checked when the pack loads, and one that only words an engine's own anew (`visitor`, `find`) needs
+just its `help`. The narrator is offered only the entries the world can run just now (the module live and answering, the stat
+declared). Ashfall's: `hurt`, `dosed` and `hungry` sensors, a `purify` helper that takes radiation down and a `mend` that eases health.
+A thing that needs tending can be stopped by a bad turn through its workings; a major one may leave it needing a part to mend first,
+some of what the world's find tables have of the kinds `items.json` `mending` lists.
+
 **Books** (works today; the shipped `reading` module on the engine's `books` source): with a library mounted (`LIBRARY_PATH`), the
 agent reads the owner's real books at the `library` place. Ashfall's version of it (a ruined archive) is a module of its own that asks
 the same source (`"sources": ["books"]`) and words it as salvaged pages, or ships a list of its own and asks nothing.
@@ -159,7 +171,7 @@ sleep, talk and think. Nothing is permanent: no death, no lost memory. The world
 low, but never lands while she is already down) or a module's `affect`.
 
 **Happenings** (works today as `happen`; phase 2 moves the categories to data): include `std:happenings` with params, and give it the
-world's categories: `raid` (bad: `harm`, `food_loss`), `salvage` (good: `item`), `ashfall` (bad: `energy`, `radiation`: any stat by its name), `kindness`
+world's categories: `raid` (bad: `harm`, `loss` of food), `salvage` (good: `item`), `ashfall` (bad: `energy`, `radiation`: any stat by its name), `kindness`
 (good: a gift from someone in the village). Each says its tones and what may change; the engine sizes every effect from `tone.json`.
 
 **Monsters**: a rule module with `happen` (an attack, sized by severity) and, if they should be met, `voices` (things that growl back) and
@@ -228,8 +240,8 @@ weather instead: a module that invents ash days and acid rain and publishes them
 no web search; and maybe the owner's books as a ruined archive.
 
 **Registries** (works today): `content.json` holds the world's lasting effects (what a finished project can change, and the line that
-says so), its abilities (what a working thing can give: the time, news), crafting's abilities (what a stage of work exercises) and what
-the first happening of each kind is called. See `worlds/pip/content.json`.
+says so), its abilities (what a working thing can give: the time, news), what a made thing can notice and do (`sensors`, `helpers`),
+crafting's abilities (what a stage of work exercises) and what the first happening of each kind is called. See `worlds/pip/content.json`.
 
 ## Checklist
 - [ ] `world.json`: name, agent (name, pronoun, kind), home, modules

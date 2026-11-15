@@ -13,8 +13,8 @@ Each gets ctx and returns a dict (or nothing). ctx holds:
 - works: AGENT_POSS newest pixel drawings [{id, title, subject, rows, palette}]. stalls: AGENT_POSS stall lines [{place, item, kind, qty, ask,
   fair (the going price), sold_today, selling (AGENT_NAME is there and it is open)}].
 - facts: what other modules published, by module name (the garden's: {plots: [{plot, crop?, planted_at?, ready_at?}], names}).
-  people: who lives in AGENT_POSS world [{name, kind}]. creations: AGENT_POSS things
-  [{name, running, tended}]. happenings: {recent: [{category, tone, severity, ts, status}], today, room ("" when one can happen now,
+  people: who lives in AGENT_POSS world [{name, kind (their role), about, home, writes}]. creations: AGENT_POSS things
+  [{name, running, tended, workings (the module that runs it: one that is tended answers "stop")}]. happenings: {recent: [{category, tone, severity, ts, status}], today, room ("" when one can happen now,
   else why not), can_remember}.
 Return any of:
 - "state": a dict to keep. "publish": facts other modules may read; "plans" among them ([{"id": 1, "name": ..., "status": "active" or
@@ -30,10 +30,11 @@ Return any of:
   most). A dozen asks and two dozen lines a day.
 - "happen": something happens to AGENT_NAME (twice a day at most): {"category": a word or two ("fog", "lost cat"), "tone": "good" | "bad" |
   "neutral", "severity": "minor" | "medium" | "major", "effects": up to 2 of {"kind": "coins"} (found, or lost), {"kind": "item",
-  "name"?: something found in this world, "gift"?: true}, {"kind": "food_loss"}, {"kind": "request", "module": "garden", "what":
-  "crop", "args": {"plot": n, "how": "time" | "yield" | "ruin"}} (a module changing itself: the garden answers "crop"), {"kind": "energy"} or
-  any of AGENT_POSS stats by name, {"kind": "price", "place": a place that sells, "item"?}, {"kind": "stop", "creation":
-  one of AGENT_POSS things that need tending}, {"kind": "news", "name": a neighbor}, {"kind": "memory"} (an old thought of AGENT_POSS comes back),
+  "name"?: something found in this world, "gift"?: true}, {"kind": "loss", "item_kind": a kind of thing ("food")} (some of AGENT_POSS
+  biggest stack of it), {"kind": "request", "module": "garden", "what": "crop", "args": {"plot": n, "how": "time" | "yield" | "ruin"}} (a
+  module changing itself: the garden answers "crop"; a tended thing's workings answer "stop", "args": {"mend": true} on a major turn),
+  {"kind": "energy"} or any of AGENT_POSS stats by name, {"kind": "harm", "stat": one that can run out}, {"kind": "news", "name": anyone
+  AGENT_NAME knows}, {"kind": "memory"} (an old thought of AGENT_POSS comes back),
   "about": what happened, in a line (the writer keeps to it), "names": who or what it may mention}. You say what kind of thing changes;
   the world decides how much, by the severity. A good turn only gives, a bad one only takes, a neutral one changes nothing. It is written
   later; one that no longer fits is dropped. Only when ctx["happenings"]["room"] is "".

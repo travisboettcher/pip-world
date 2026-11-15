@@ -42,10 +42,8 @@ def food(name="tomatoes", qty=91):
 
 
 def w(**kw):
-    base = {"now": NOW, "coins": 78, "hunger": 0.2, "energy": 0.8, "low": False, "known": ["tomatoes"], "answers": {}, "foods": [food()],
-            "period": "afternoon",
-            "neighbors": ["Oriel Vantosh"], "creations": ["Gear Clock"],
-            "stoppable": [{"id": 1, "name": "Gear Clock"}], "tools": ["needle file"], "diary_count": 9,
+    base = {"now": NOW, "coins": 78, "hunger": 0.2, "energy": 0.8, "low": False, "known": ["tomatoes"], "answers": {}, "stacks": [food()],
+            "period": "afternoon", "people": ["Oriel Vantosh"], "creations": ["Gear Clock"], "tools": ["needle file"], "diary_count": 9,
             "old_notes": [{"id": 4, "text": "Oriel taught me to feel for the round grains in the tin.", "ts": NOW - 5 * 86400}]}
     return {**base, **kw}
 
@@ -577,20 +575,21 @@ def test_the_world_counts_every_diary_note_and_draws_the_two_day_line_exactly(tm
         st.add_memory(f"note {i}", "diary")
     clock(st)
     got = H.world(st, s, now)
-    assert got["diary_count"] == 12 and got["stoppable"] == [{"id": st.creations()[0]["id"], "name": "Gear Clock"}]
+    assert got["diary_count"] == 12 and got["creations"] == ["Gear Clock"]
     st.db.execute("UPDATE memories SET ts = ?", (now - 2 * 86400,))
     assert len(H.world(st, s, now)["old_notes"]) == 0                                          # exactly two days is not yet old
     st.db.execute("UPDATE memories SET ts = ?", (now - 2 * 86400 - 0.5,))
     assert len(H.world(st, s, now)["old_notes"]) == 12
 
 
-def test_news_without_a_title_or_for_a_resident_changes_nothing(tmp_path):
+def test_news_without_a_title_changes_nothing_and_news_of_anyone_goes_into_their_life(tmp_path):
     s, st = fresh(tmp_path)
     st.add_character("Oriel Vantosh", "neighbor", None, "p", 60, NOW + 99 * HOUR, about="x")
     st.add_character("Mr Teague", "resident", None, "p", 60, NOW + 99 * HOUR, about="x", place="Saltholm")
     H.apply_effects(st, [{"kind": "news", "name": "Oriel Vantosh", "tone": "good"}], NOW)                 # no title given
-    H.apply_effects(st, [{"kind": "news", "name": "Mr Teague", "tone": "good"}], NOW, "News")
-    assert [c["life"] for c in st.characters()] == [[], []]
+    H.apply_effects(st, [{"kind": "news", "name": "Mr Teague", "tone": "good"}, {"kind": "news", "name": "Nobody", "tone": "bad"}], NOW, "News")
+    assert [c["life"] for c in st.characters()] == [[], ["News"]]                                       # of any role (people are the engine's)
+    assert H.world(st, s, NOW)["people"] == ["Oriel Vantosh", "Mr Teague"]
 
 
 # --- 0.8.1: the writer's text kept, not thrown away --------------------------------------------------------------------------
@@ -657,13 +656,49 @@ async def _mendable(tmp_path):
     return s, st, c, m
 
 
+async def _stop(st, s, m, severity="major", mend=True, apply=True):
+    """A happening's turn asks the workings to `stop` (as a request effect does)."""
+    return await H._ask(st, s, {"module": m["name"], "what": "stop", "args": {"mend": mend}}, {"tone": "bad", "severity": severity}, apply)
+
+
+@pytest.mark.asyncio
+async def test_a_bad_turn_stops_a_thing_through_its_workings(tmp_path, monkeypatch):
+    from app import finds
+    from app import modules as M
+    monkeypatch.setattr(finds, "mending", lambda: {"things": ["brass wire"], "qty": [2, 2]})
+    s, st, c, m = await _mendable(tmp_path)
+    with pytest.raises(M.Refused, match="a minor turn stops nothing"):
+        await _stop(st, s, m, "minor")
+    assert await _stop(st, s, m, "medium", apply=False) == "Your Gear Clock stops; it needs tending."
+    assert "halted_at" not in st.find_creation("Gear Clock")[0]["runtime"]                         # only said, not done
+    assert await _stop(st, s, m) == "Your Gear Clock stops; it needs 2 brass wire to mend, then tending."
+    rt = st.find_creation("Gear Clock")[0]["runtime"]
+    assert rt["needs_part"] == {"name": "brass wire", "qty": 2} and rt["halted_at"] > 0
+    with pytest.raises(M.Refused, match="it isn't running, or doesn't need tending"):
+        await _stop(st, s, st.module(m["id"]))
+    monkeypatch.setattr(finds, "mending", lambda: {"things": [], "qty": [1, 2]})                  # a world that mends with nothing
+    (tmp_path / "b").mkdir()
+    s2, st2, c2, m2 = await _mendable(tmp_path / "b")
+    assert await _stop(st2, s2, m2) == "Your Gear Clock stops; it needs tending."
+
+
+@pytest.mark.asyncio
+async def test_the_creations_read_names_each_things_workings(tmp_path):
+    from app import modules as M
+    from tests.test_modules import live, rule
+    s, st, c, m = await _mendable(tmp_path)
+    st.add_creation("Vase", "a vase", None, "sound", {"capabilities": {}, "quirks": []}, {})
+    ctx = M.context(st, s, live(st, rule(name="mishaps", reads=["creations"]), "x"), time.time())
+    assert [(x["name"], x["workings"]) for x in ctx["creations"]] == [("Gear Clock", "gear-clock-workings"), ("Vase", None)]
+
+
 @pytest.mark.asyncio
 async def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_is_tended(tmp_path):
     from app import creations as cr
     from app import modules as M
     s, st, c, m = await _mendable(tmp_path)
     t = time.time()
-    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "brass wire", "qty": 2}}], t)
+    st.set_runtime(c["id"], {**st.find_creation("Gear Clock")[0]["runtime"], "halted_at": t, "needs_part": {"name": "brass wire", "qty": 2}})
     stopped = st.find_creation("Gear Clock")[0]
     assert cr._needs(stopped) == "it needs 2 brass wire to mend it, then tending (wound)"
     assert "STOPPED - it needs 2 brass wire to mend it, then tending (wound)" in cr.describe(stopped, t + 10)
@@ -682,7 +717,7 @@ async def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_i
 async def test_a_part_must_be_a_material(tmp_path):
     from app import modules as M
     s, st, c, m = await _mendable(tmp_path)
-    H.apply_effects(st, [{"kind": "creation_stop", "id": c["id"], "name": "Gear Clock", "part": {"name": "springs", "qty": 1}}], time.time())
+    st.set_runtime(c["id"], {**st.find_creation("Gear Clock")[0]["runtime"], "halted_at": time.time(), "needs_part": {"name": "springs", "qty": 1}})
     st.add_item("springs", 3, "tool", "")                                                   # not a material: it does not count
     assert await M.act(st, s, None, m, "tend", {}) == "that didn't work: you need 1 springs for that"
 

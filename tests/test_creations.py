@@ -253,25 +253,18 @@ async def test_using_a_thing_keeps_to_its_limits(tmp_path):
 
 
 def test_the_menu_a_design_is_told_names_every_behaviour_the_world_can_run():
-    text = "\n".join(cr.menu(True))
-    for words in ("timekeeper: it tells the time", "whatever fits this thing) and `hours` (4-72) it lasts between tendings",
-                  "periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences ",
-                  "describing it, in this thing's own manner) and `every_minutes` (20-720)", "`alert` is a short line describing how it reacts",
-                  "helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden ",
-                  "do better - guarding, watering, warming it - so crops ripen sooner), find ",
-                  "a little restored); give `line` (one sentence describing what it does) and `every_minutes`",
-                  "companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: ",
-                  "who it is, how it expresses itself) and `chatter_minutes` (60-720) for how often it speaks up"):
-        assert words in text, words
-    assert cr.menu(False) == cr.menu(True)[:-1]
     m = cr.menu(True)
+    assert cr.menu(False) == m[:-1]
     assert m[0] == "timekeeper: it tells the time" and m[1].startswith("upkeep: it only keeps going if Pip tends it regularly; give `verb`")
     assert m[1].endswith("(a word or two for how it's tended, whatever fits this thing) and `hours` (4-72) it lasts between tendings")
     assert m[2] == ("periodic: now and then it does something noticeable on its own; give 1-3 `lines` (short sentences describing it, in this "
                     "thing's own manner) and `every_minutes` (20-720)")
-    assert m[3].startswith("sensor: it notices something and reacts;") and m[3].endswith(" is tired); `alert` is a short line describing how it reacts")
-    assert m[4] == ("helper: it regularly helps in one of these ways (`effect`): hurry_crops (anything that helps the garden do better - guarding, "
-                    "watering, warming it - so crops ripen sooner), find (it turns up small useful things; give `finds`: 2-4 kinds of thing it "
-                    "would find), or comfort (Pip feels a little restored); give `line` (one sentence describing what it does) and `every_minutes`")
+    assert m[3] == ("sensor: it notices something and reacts; `condition` is one of visitor (someone comes to talk to Pip), dawn, dusk, "
+                    "crop_ripe (a crop in Pip's garden is ripe), hungry (Pip is hungry), tired (Pip is tired); `alert` is a short line "
+                    "describing how it reacts")                                     # the engine's, then the world's (content.json)
+    assert m[4] == ("helper: it regularly helps in one of these ways (`effect`): find (it turns up small useful things; give `finds`: 2-4 "
+                    "kinds of thing it would find), hurry_crops (anything that helps the garden do better - guarding, watering, warming it - "
+                    "so crops ripen sooner), comfort (Pip feels a little restored); give `line` (one sentence describing what it does) and "
+                    "`every_minutes`")
     assert m[-1] == ("companion: it has a mind of its own and can communicate; give a `persona` (2-3 sentences: who it is, how it expresses "
                      "itself) and `chatter_minutes` (60-720) for how often it speaks up")

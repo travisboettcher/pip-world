@@ -379,8 +379,10 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["agent"] = me
     if "subject" in reads:
         c = _creation(state, man["subject"])
+        from . import creations as cr, finds
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
-                                              "capabilities": c["spec"]["capabilities"], "runtime": c["runtime"], "quirks": c["spec"]["quirks"]}
+                                              "capabilities": cr.at_work(state, c["spec"]["capabilities"], now), "runtime": c["runtime"],
+                                              "quirks": c["spec"]["quirks"], "mends_with": finds.mending()}
     if "items" in reads:
         ctx["items"] = [{"name": i["name"], "qty": i["qty"], "kind": i["kind"], "description": i["description"], "attrs": i["attrs"]} for i in state.items()]
     if "works" in reads:
@@ -400,16 +402,16 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                          for c in state.characters() if c["place"]]                  # a made thing that talks lives nowhere
     if "creations" in reads:
         from . import creations as cr
+        things = bound(state)                                   # a creation's workings, by its name: what to ask of it (`stop`)
         ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"], "quality": c["quality"],
-                             "description": c["description"]} for c in state.creations()]
+                             "description": c["description"], "workings": (things.get(c["name"].lower()) or {}).get("name")} for c in state.creations()]
     if "found" in reads:                                    # where things have turned up for the agent, most often first
         from . import places
         ctx["found"] = [{"item": r["item"], "place": r["place"], "label": places.label(r["place"])}
                         for r in state.db.execute("SELECT item, place FROM place_finds ORDER BY times DESC, last_ts DESC LIMIT 60")]
     if "making" in reads:                                   # what a made thing can do: the engine's menu, as it checks a `creation`
         from . import creations as cr
-        crops = published(state, "plots") is not None                   # something grows crops (the garden module publishes its plots)
-        ctx["making"] = {"capabilities": cr.menu(False, crops), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
+        ctx["making"] = {"capabilities": cr.menu(False, state), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
                          "qualities": list(QUALITIES_MADE)}
     if "answers" in reads:                                  # what each live module can be asked to do (a `request` to one that can't is refused)
         ctx["answers"] = {x["name"]: sorted(x["manifest"].get("answers") or {}) for x in state.modules("live") if x["manifest"].get("answers")}
@@ -2087,7 +2089,7 @@ def workings_manifest(c: dict) -> tuple[dict, str]:
     talks, news = "companion" in caps, caps.get("provides", {}).get("ability") == "news"
     hooks = ["on_install"] + (["on_time"] if "upkeep" in caps else []) + (["on_tick"] if {"periodic", "sensor", "helper", "companion"} & set(caps) else []) \
         + (["on_action"] if "upkeep" in caps or "timekeeper" in caps or news else []) + (["on_message"] if talks else []) \
-        + (["on_answer"] if talks or news else [])
+        + (["on_answer"] if talks or news else []) + (["on_request"] if "upkeep" in caps else [])     # a thing that needs tending can be stopped
     finds = caps.get("helper", {}).get("finds") or []
     out = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"], "hooks": hooks,
            "reads": man["reads"] + (["weather"] if news else []),
@@ -2095,6 +2097,7 @@ def workings_manifest(c: dict) -> tuple[dict, str]:
            **({"finds": finds} if finds else {})}
     if "upkeep" not in caps:
         out.pop("tends")
+        out.pop("answers")
     return out, source
 
 

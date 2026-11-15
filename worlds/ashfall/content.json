@@ -58,5 +58,31 @@
   "kindness": "were helped by someone from the village",
   "quiet": "noticed something in the air"
  },
- "module_firsts": {}
+ "module_firsts": {},
+ "sensors": {
+  "hurt": {
+   "help": "{name} is badly hurt",
+   "watches": "low:health"
+  },
+  "dosed": {
+   "help": "{name} has taken in too much radiation",
+   "watches": "low:radiation"
+  },
+  "hungry": {
+   "help": "{name} is hungry",
+   "watches": "low:hunger"
+  }
+ },
+ "helpers": {
+  "purify": {
+   "help": "it cleans water or air, so {name} takes in less radiation",
+   "every": 240,
+   "does": "affect:radiation:-0.03"
+  },
+  "mend": {
+   "help": "{name} feels a little patched up",
+   "every": 360,
+   "does": "affect:health:0.03"
+  }
+ }
 }

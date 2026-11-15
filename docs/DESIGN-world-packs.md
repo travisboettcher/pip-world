@@ -149,7 +149,7 @@ Pip health). Pip's world marks none, so nothing changes there. The `happen` inte
 ### Tone: what the world allows
 `tone.json` holds what was code (built, 0.34.0; `app/tone.py`): `deny`, the words a happening may not use; `big_words`, the words too
 big for a minor or neutral turn; `text`, a happening's length (`min`, `max`, `title_max`); and `sizes`, every effect's size by severity
-(`stat`, `lens`, `crop_shift`, `crop_yield_good`/`_bad`, `price_units`, `coin_caps`, `found_coins`, `found_items`, `food_loss`,
+(`stat`, `lens`, `crop_shift`, `crop_yield_good`/`_bad`, `price_units`, `coin_caps`, `found_coins`, `found_items`, `loss` (`food_loss` before 0.52.0),
 `mending_qty`). Words are regular expressions matched as whole words. Pip's pack carries the old values exactly; a pack without the file
 gets the engine's sizes and no words of its own. A happening's `stat` effect moves any declared stat (`{"kind": "radiation"}` or
 `{"kind": "stat", "stat": "radiation"}`), its way set by the tone and the stat's `good`.

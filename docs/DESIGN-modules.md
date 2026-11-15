@@ -471,7 +471,10 @@ Built on them, in the shipped `workings`:
 - **`happen`** (any author but Pip; 2 a day for the world's modules, 8 for the engine's): `{category, tone, severity, effects?, about?,
   names?, fallback?, night?}`. A module says *what kind* of thing changes, as intents: `coins`, `item` (a find from this world, or a
   gift), `food_loss`, `crop` (time, yield, or ruin), `energy`, `hunger`, `price`, `stop` (a creation that needs tending), `news` (a
-  neighbor), `memory` (an old thought of Pip's comes back: the diary stays with the engine). The engine makes them real by the severity
+  neighbor), `memory` (an old thought of Pip's comes back: the diary stays with the engine). Since 0.52.0 (DESIGN-engine-audit.md,
+  C3) the intents are `coins`, `item`, `loss` (some of the biggest stack of an `item_kind`), `stat` (or a stat by its name), `harm`,
+  `news` (anyone the agent knows), `memory` and `request`; a crop's turn, a price and a creation stopping are requests to the
+  modules that answer them (the garden's `crop`, trade's `price`, a workings' `stop`). The engine makes them real by the severity
   with the same tables and caps its own happenings use, checks every target, and that the tone fits: a good turn only gives, a bad one
   only takes, a neutral one changes nothing. The referee checks only the shape and the day's room (`happenings.room_for`: switched on,
   nothing waiting to be taken in, the day's limit, Pip awake and not walking); the world is checked when it is written, and a happening

@@ -8,7 +8,7 @@
     "coin_caps": {"minor": [3, 0.10], "medium": [10, 0.20], "major": [25, 0.35]},
     "found_coins": {"minor": [1, 3], "medium": [3, 10], "major": [8, 25]},
     "found_items": {"minor": [1, 1], "medium": [2, 4], "major": [4, 6]},
-    "food_loss": {"medium": [0.10, 0.25, 10], "major": [0.25, 0.50, 25]},
+    "loss": {"medium": [0.10, 0.25, 10], "major": [0.25, 0.50, 25]},
     "mending_qty": [1, 3]
   }
 }

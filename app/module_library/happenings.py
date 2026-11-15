@@ -91,7 +91,7 @@ def _plan(ctx, cat, tone, severity, rng):
     neighbors = [p["name"] for p in ctx["people"] if p["kind"] == "neighbor"]
     tools = [i["name"] for i in ctx["items"] if i["kind"] == "tool"]
     booths = [p["key"] for p in ctx["places"] if p["kind"] in ("shop", "market")]
-    stoppable = [c["name"] for c in ctx["creations"] if c["tended"] and c["running"]]
+    stoppable = [c["workings"] for c in ctx["creations"] if c["tended"] and c["running"] and c.get("workings")]    # their workings answer `stop`
     if cat == "garden":
         g = rng.choice(garden)
         if tone == "neutral":
@@ -107,7 +107,7 @@ def _plan(ctx, cat, tone, severity, rng):
             return {}
         if tone == "good":
             return {"effects": [{"kind": "item"}]}
-        return {"effects": [{"kind": "food_loss"}]} if not _low(me) and foods and foods[0]["qty"] >= 5 else None
+        return {"effects": [{"kind": "loss", "item_kind": "food"}]} if not _low(me) and foods and foods[0]["qty"] >= 5 else None
     if cat == "found":
         if tone == "neutral":
             return {}
@@ -132,7 +132,7 @@ def _plan(ctx, cat, tone, severity, rng):
             return None if _low(me) else {"effects": [{"kind": "energy"}], "names": tools[:1]}
         if not stoppable:
             return None
-        return {"effects": [{"kind": "stop", "creation": rng.choice(stoppable), "mend": severity == "major"}]}
+        return {"effects": [{"kind": "request", "module": rng.choice(stoppable), "what": "stop", "args": {"mend": severity == "major"}}]}
     if cat == "neighbor":
         name = rng.choice(neighbors)
         return {"names": [name]} if tone == "neutral" else {"effects": [{"kind": "news", "name": name}]}

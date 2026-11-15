@@ -43,7 +43,7 @@ MIN_DIARY = 7
 # names still answer, from the active world.
 _OLD_SIZES = {"LENS_AMOUNT": "lens", "ENERGY": "stat", "COIN_CAPS": "coin_caps",
               "FOUND_COINS": "found_coins", "FOUND_ITEMS": "found_items",
-              "MENDING_QTY": "mending_qty", "LOSS_SHARE": "food_loss"}
+              "MENDING_QTY": "mending_qty", "LOSS_SHARE": "loss"}
 _OLD_TEXT = {"MAX_TEXT": "max", "MIN_TEXT": "min", "TITLE_MAX": "title_max"}
 
 
@@ -90,13 +90,13 @@ def coin_loss(purse: int, severity: str) -> int:
     return min(cap, int(purse * share))
 
 
-def food_loss(stack: int, severity: str, u: float) -> int:
+def stack_loss(stack: int, severity: str, u: float) -> int:
     """Units of a stack lost: a minor loss is 1; medium and major take a share (u in 0-1 picks where in the range) up to a cap; one always stays."""
     if stack < 2:
         return 0
     if severity == "minor":
         return 1
-    low, high, most = tone_mod.size("food_loss", severity)
+    low, high, most = tone_mod.size("loss", severity)
     return max(1, min(most, round(stack * (low + (high - low) * u))))      # a share of at most half, so one always stays
 
 
@@ -104,7 +104,7 @@ def food_loss(stack: int, severity: str, u: float) -> int:
 def world(state, settings, now: float) -> dict:
     """The facts the categories and the author may use."""
     from . import places  # places imports sleep, and this module is imported by the loop: keep the import local
-    foods = sorted((i for i in state.items() if i["kind"] == "food"), key=lambda i: -i["qty"])
+    stacks = sorted(state.items(), key=lambda i: -i["qty"])          # biggest first, of every kind
     creations = state.creations()
     diary = state.memories("diary", limit=500)
     return {"now": now, "coins": state.coins(),
@@ -112,10 +112,9 @@ def world(state, settings, now: float) -> dict:
             "low": stats_mod.low(state), "stats": stats_mod.declared(settings), "down": stakes.condition(state) is not None,
             "answers": {m["name"]: list(m["manifest"]["answers"]) for m in state.modules("live") if m["manifest"].get("answers")},
             "known": [n for m in state.modules("live") for n in (m["facts"].get("names") or []) if isinstance(n, str)],
-            "foods": foods, "period": sleepmod.period(settings, now),
-            "neighbors": [c["name"] for c in state.characters("neighbor")],
+            "stacks": stacks, "period": sleepmod.period(settings, now),
+            "people": [c["name"] for c in state.characters() if c["place"] or c["writes"]],    # anyone the agent knows, of any role
             "creations": [c["name"] for c in creations],
-            "stoppable": [{"id": c["id"], "name": c["name"]} for c in creations if "upkeep" in c["spec"]["capabilities"] and cr.running(c, now)],
             "tools": [i["name"] for i in state.items() if i["kind"] == "tool"],
             "places": [places.label(r["key"]) for r in state.place_rows() if r["status"] == "real"],
             "old_notes": [m for m in diary if m["ts"] < now - OLD_NOTE_DAYS * 86400], "diary_count": len(diary)}
@@ -150,18 +149,14 @@ def _found_item(rng, severity, kinds):
     return {"kind": "item", "name": entry[0], "qty": rng.randint(lo, hi), "item_kind": entry[1], "description": entry[4], "attrs": entry[5]}
 
 
-def _pest_loss(w, severity, rng, smallest):
-    stacks = [i for i in w["foods"] if i["qty"] >= smallest]
+def _loss(w, item_kind, severity, rng, smallest):
+    """Losing some of the biggest stack of a kind of thing (a pantry raided, a crate gone missing): None if there's none big enough."""
+    stacks = [i for i in w["stacks"] if i["kind"] == item_kind and i["qty"] >= smallest]
     if w["low"] or not stacks:
         return None
     stack = stacks[0]
-    return Plan([{"kind": "food_loss", "name": stack["name"], "qty": food_loss(stack["qty"], severity, rng.random())}], [stack["name"]])
-
-
-def _mending_part(rng):
-    pool = [e for e in _tables("yard") if e[1] == "material"]
-    entry = rng.choices(pool, weights=[e[2] for e in pool])[0]
-    return {"name": entry[0], "qty": rng.randint(*tone_mod.size("mending_qty"))}
+    return Plan([{"kind": "loss", "name": stack["name"], "qty": stack_loss(stack["qty"], severity, rng.random()), "item_kind": item_kind}],
+                [stack["name"]])
 
 
 def _proper_nouns(text: str) -> list[str]:
@@ -194,12 +189,12 @@ def describe(e: dict) -> str:
         return f"You {('are given' if e.get('gift') else 'find') if e['delta'] > 0 else 'lose'} {coins_text(abs(e['delta']))}."
     if kind == "item":
         return f"You {'are given' if e.get('gift') else 'find'} {_count(e['qty'], e['name'])}."
-    if kind == "creation_stop":
+    if kind == "creation_stop":                                 # before 0.52.0: the workings answer `stop` now (a request)
         mend = f"{e['part']['qty']} {e['part']['name']} to mend, then " if e.get("part") else ""
         return f"Your {e['name']} stops; it needs {mend}tending."
     if kind == "news":
         return f"You hear news of {e['name']}."
-    if kind == "food_loss":
+    if kind in ("loss", "food_loss"):                           # food_loss: stored before 0.52.0
         return f"You lose {_count(e['qty'], e['name'])}."
     if kind == "request":                                       # in the module's own words, once it has said them (from_module)
         return e.get("line", "")
@@ -222,8 +217,8 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
             state.add_coins("agent", max(e["delta"], -state.coins()))
         elif kind == "item":
             state.add_item(e["name"], e["qty"], e["item_kind"], e["description"], e["attrs"])
-        elif kind == "food_loss":
-            have, _ = state.find_item(e["name"], kind="food")
+        elif kind == "loss":
+            have, _ = state.find_item(e["name"], kind=e["item_kind"])
             if have and have["qty"] > 1:
                 state.take_item(have["id"], min(e["qty"], have["qty"] - 1))
         elif kind in ("stat", "energy", "hunger"):
@@ -231,17 +226,9 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
             d = stats_mod.declared(state.s).get(name)
             if d is not None:
                 state.update_agent(**{name: stats_mod.bounded(d, state.agent()[name] + e["delta"])})
-        elif kind == "creation_stop":
-            c = next((c for c in state.creations() if c["id"] == e["id"]), None)
-            if c and "upkeep" in c["spec"]["capabilities"]:
-                rt = dict(c["runtime"])
-                rt["halted_at"] = now
-                if e.get("part"):
-                    rt["needs_part"] = e["part"]
-                state.set_runtime(c["id"], rt)
-        elif kind == "news":
+        elif kind == "news":                                   # about anyone the agent knows: their life moves on (people are the engine's)
             from . import neighbors
-            ch = next((c for c in state.characters("neighbor") if c["name"] == e["name"]), None)
+            ch = next((c for c in state.characters() if c["name"] == e["name"]), None)
             if ch and title:
                 state.update_character(ch["id"], life=(ch["life"] + [clip(title, 200)])[-neighbors.LIFE_KEPT:])
 
@@ -318,7 +305,7 @@ def _today_start(now: float) -> float:
 async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, night: bool = False, by: str = "") -> dict:
     """A decided happening (category, tone, severity, lens, effects): written, stored, applied (unless HAPPENINGS=log) and logged."""
     recent = [h["title"] for h in state.happenings(5)]
-    facts = {"period": w["period"], "names": list(w["neighbors"]) + list(w["creations"]) + list(w["known"]), **c["facts"],
+    facts = {"period": w["period"], "names": list(w["people"]) + list(w["creations"]) + list(w["known"]), **c["facts"],
              **({"season": w["season"]} if w.get("season") else {}), **({"night": True} if night else {})}
     title, text, who = await author(gm, c, facts, recent,
                                     lambda why, n: state.log("happening_rejected", category=c["category"], reason=why, attempt=n))
@@ -353,10 +340,10 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
 # day's limits. The words are written and checked as for any happening, and the agent takes it the same way.
-INTENTS = ("coins", "item", "food_loss", "stat", "harm", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat;
+INTENTS = ("coins", "item", "loss", "stat", "harm", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat;
 #                                                                                     `harm` one that can run out (stakes.py)
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
-GAINS, LOSSES = {"coins", "item", "stat", "news", "request"}, {"coins", "food_loss", "stat", "harm", "stop", "news", "request"}
+GAINS, LOSSES = {"coins", "item", "stat", "news", "request"}, {"coins", "loss", "stat", "harm", "news", "request"}
 
 
 def _kinds() -> str:
@@ -364,8 +351,8 @@ def _kinds() -> str:
 
 
 def world_names(w: dict) -> set:
-    """Every name a happening may mention: neighbors, creations, belongings, tools, places, and what live modules publish as `names`."""
-    return {n.lower() for n in [*w["neighbors"], *w["creations"], *w.get("known", []), *(f["name"] for f in w["foods"]), *w["tools"],
+    """Every name a happening may mention: people, creations, belongings, tools, places, and what live modules publish as `names`."""
+    return {n.lower() for n in [*w["people"], *w["creations"], *w.get("known", []), *(f["name"] for f in w["stacks"]), *w["tools"],
                                 *w.get("places", [])]}
 
 
@@ -403,10 +390,13 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         item = _found_item(rng, severity, ("food", "seed", "material")) if not name else \
             {"kind": "item", "name": name, "qty": rng.randint(*tone_mod.size("found_items", severity)), "item_kind": pool[name][1], "description": pool[name][4], "attrs": pool[name][5]}
         return Plan([{**item, **({"gift": True} if i.get("gift") else {})}], [item["name"]])
-    if kind == "food_loss":
-        plan = _pest_loss(w, severity, rng, 5)
+    if kind == "loss":
+        from . import world as world_content
+        if i.get("item_kind") not in world_content.kinds():
+            raise ValueError(f"`item_kind` is one of {', '.join(world_content.kinds())}: the kind of thing some is lost of")
+        plan = _loss(w, i["item_kind"], severity, rng, 5)
         if plan is None:
-            raise ValueError(f"there is nothing to lose from the pantry (or {world_pack.active().agent.name} is too low for it)")
+            raise ValueError(f"there is no stack of {i['item_kind']} big enough to lose some of (or {world_pack.active().agent.name} is too low for it)")
         return plan
     if kind == "request":                     # a change another module makes to itself, sized by the severity it is given (modules.py)
         from . import modules
@@ -432,15 +422,9 @@ def _intent(w, tone, severity, i: dict, rng) -> Plan:
         if w["down"]:
             raise ValueError(f"{world_pack.active().agent.name} is down already")
         return Plan([{"kind": "stat", "stat": name, "delta": -stats_mod.good_sign(declared[name]) * tone_mod.size("harm", severity)}])
-    if kind == "stop":
-        c = next((c for c in w["stoppable"] if c["name"].lower() == str(i.get("creation") or "").strip().lower()), None)
-        if not c or severity == "minor":
-            raise ValueError(f"`creation` is one of {world_pack.active().agent.possessive} running things that need tending, and a minor turn stops nothing")
-        part = _mending_part(rng) if severity == "major" and i.get("mend") else None
-        return Plan([{"kind": "creation_stop", "id": c["id"], "name": c["name"], "part": part}], [c["name"]] + ([part["name"]] if part else []))
-    name = next((n for n in w["neighbors"] if n.lower() == str(i.get("name") or "").strip().lower()), None)   # news
+    name = next((n for n in w["people"] if n.lower() == str(i.get("name") or "").strip().lower()), None)   # news
     if not name:
-        raise ValueError(f"`name` is one of {world_pack.active().agent.possessive} neighbors")
+        raise ValueError(f"`name` is one of the people {world_pack.active().agent.name} knows")
     return Plan([{"kind": "news", "name": name, "tone": tone}], [name])
 
 

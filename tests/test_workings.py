@@ -115,7 +115,9 @@ async def test_every_creation_that_does_something_gets_its_workings(tmp_path):
     mods = {st.module(i)["subject"]: st.module(i) for i in ids}
     assert set(mods) == {"Sandy", "Bell", "Ferret", "Clock", "Lamp"}                             # nothing to run in a sundial or a vase
     assert all(m["status"] == "live" and m["author"] == M.SHIPPED and m["name"].endswith("-workings") for m in mods.values())
-    assert mods["Sandy"]["manifest"]["hooks"] == ["on_install", "on_tick"] and mods["Clock"]["manifest"]["hooks"] == ["on_install", "on_time", "on_action"]
+    assert mods["Sandy"]["manifest"]["hooks"] == ["on_install", "on_tick"]
+    assert mods["Clock"]["manifest"]["hooks"] == ["on_install", "on_time", "on_action", "on_request"] and "stop" in mods["Clock"]["manifest"]["answers"]
+    assert "answers" not in mods["Sandy"]["manifest"]                                              # only a thing that needs tending can be stopped
     assert mods["Ferret"]["manifest"]["finds"] == ["acorn", "snail shell"] and "finds" not in mods["Sandy"]["manifest"]
     assert mods["Clock"]["manifest"]["tends"] == "tend" and "tends" not in mods["Bell"]["manifest"]
     assert mods["Clock"]["offers"] == [{"name": "tend", "help": "wound: keeps it going about 12 hours"}, {"name": "set", "help": "set it to the right time"}]
@@ -153,7 +155,7 @@ async def test_a_sensor_wakes_pip_once_each_time_it_comes_on(tmp_path):
 
 @pytest.mark.parametrize("cond,setup,hour", [
     ("crop_ripe", lambda st: planted(st, st.s, 1, "peas", 1), None),
-    ("hungry", lambda st: st.update_agent(hunger=0.7), None),
+    ("hungry", lambda st: st.update_agent(hunger=0.85), None),       # low:hunger: past the world's own low_at
     ("tired", lambda st: st.update_agent(energy=0.2), None),
     ("dawn", lambda st: None, 6),
     ("dusk", lambda st: None, 19),
@@ -241,7 +243,7 @@ async def test_effects_at_their_limits_add_up_and_say_where_they_came_from(tmp_p
 
 def test_a_creations_workings_have_only_the_hooks_it_needs():
     hooks = lambda caps: M.workings_manifest({"name": "X", "spec": {"capabilities": caps}})[0]["hooks"]
-    assert hooks({"upkeep": {"verb": "w", "hours": 1}}) == ["on_install", "on_time", "on_action"]
+    assert hooks({"upkeep": {"verb": "w", "hours": 1}}) == ["on_install", "on_time", "on_action", "on_request"]
     assert hooks({"timekeeper": {"drift_per_day": 1}, **PERIODIC}) == ["on_install", "on_tick", "on_action"]
     assert hooks(SENSOR) == ["on_install", "on_tick"]
 
