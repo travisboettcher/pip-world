@@ -33,7 +33,8 @@ EVENT_FIELDS = {
     "reflection": ("summary", "insights", "changes", "turning"),
     "night_pass": ("decisions", "focus", "kept", "carried", "dropped", "applied"),
     "heard_of_place": ("place", "distance"),
-    "resident": ("name", "place", "about"),
+    "character": ("name", "role", "about", "place"),                # someone the world brought (0.50.0)
+    "resident": ("name", "place", "about"),                          # ...as it was logged before
     "neighbor": ("name", "about"),
     "alert": ("stat",),
     "wished": ("id", "wish", "text"),

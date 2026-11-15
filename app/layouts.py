@@ -16,7 +16,16 @@ from . import geometry
 from .geometry import Bad
 
 PLACE_SHAPES_MAX = 3000
-KINDS = ("home", "neighbor", "library", "wild", "yard", "shop", "market", "sight")     # every kind of place a layout can cover
+
+
+def kinds() -> tuple:
+    """Every kind of place a layout can cover, all of them the world's (docs/DESIGN-engine-audit.md, B3): the agent's home, the homes the
+    engine makes for people (places.json `dwellings`), the library's, the places the world starts with, and the kinds it can grow."""
+    from . import place_kinds, places, world_pack
+    d = world_pack.active().data("places")
+    out = ["home", places.dwelling_kind()] + ([places.library_kind()] if d.get("library") else [])
+    out += [p.get("kind", "") for p in d.get("start", [])] + list(place_kinds.registry())
+    return tuple(dict.fromkeys(k for k in out if k))
 PARTS_MAX = 80
 
 

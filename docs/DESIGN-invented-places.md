@@ -283,7 +283,8 @@ the prompt seams), `place_kinds.py` (the kind registry), the `places` table in `
   the new `place` column: name and persona required, clipped like a neighbor (40/800, `about` 160), never Pip or a name
   any character already has (case-insensitive); a `resident` event is logged. Only a successful design makes one, so a
   place gets at most one, at the moment it becomes real. Being met in person is generalised: `places.place_of(state,
-  ch)` (a neighbor's home, a resident's place while it is real, else None) and `places.company_at`; `neighbors._visits`
+  ch)` (where they live, as their record says, while it is real; somewhere else if a module says so; else None; since 0.50.0
+  for anyone of any role) and `places.company_at`; `neighbors._visits`
   runs over everyone met in person, so a resident greets once per visit, answers `say(to=...)` under
   `COMPANION_REPLIES_PER_HOUR`, keeps `gist`/`told` exactly as a neighbor does, and their lines are `companion` events
   with `visit: true` (so memory, recall, people notes and firsts cover them unchanged). Differences from a neighbor: the

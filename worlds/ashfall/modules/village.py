@@ -1,7 +1,18 @@
-# The village by the reservoir, as voices: the radio in the shelter reads the evening notices (the model writes them, a few lines, once a
-# day around `broadcast_hour`), and Marta keeps the village gate and answers whoever comes to talk to her there.
-RADIO, GATE = "the radio", "Marta"
-HEARD = 6
+# The village by the reservoir: the radio in the shelter reads the evening notices (the model writes them, a few lines, once a day around
+# `broadcast_hour`), and the villagers live at the village, where Wren can talk with whoever is about in person (the engine's talk
+# scenes: docs/DESIGN-engine-audit.md, C1). They come into the world one a day, Marta when it starts and the rest with the broadcasts.
+RADIO = "the radio"
+VILLAGERS = [
+    {"name": "Marta", "about": "keeps the village gate; blunt, fair, and knows everyone's business",
+     "persona": "Marta keeps the gate of a walled village of survivors by a reservoir, twenty years after the ash. Blunt, fair and tired; "
+                "she knows everyone's business and trades news for news, and she has no patience for waste."},
+    {"name": "Ezra", "about": "minds the village's water pumps; slow-spoken and careful with every drop",
+     "persona": "Ezra keeps the pumps that bring the reservoir's water into the village. Slow-spoken, patient, a little deaf from the "
+                "engines; he measures everything in buckets and remembers every dry summer."},
+    {"name": "Jun", "about": "scavenges the east blocks and trades salvage at the gate; quick, cheerful, owed favours everywhere",
+     "persona": "Jun goes out into the east blocks for salvage and trades it at the gate. Quick, cheerful and a little reckless; she is "
+                "owed favours by half the village and knows where the dogs run."},
+]
 
 
 def _next_broadcast(ctx):
@@ -11,37 +22,42 @@ def _next_broadcast(ctx):
     return at if at > now + 60 else at + 86400
 
 
+def _villager(v):
+    return {"name": v["name"], "kind": "villager", "persona": v["persona"], "about": v["about"], "home": "village"}
+
+
+def _arrivals(ctx, out, st):
+    """The next villager not yet in the world (or brought already: remembered here), and the next broadcast to look again at."""
+    brought = list(st.get("brought", []))
+    here = {p["name"] for p in ctx["people"]} | set(brought)
+    missing = [v for v in VILLAGERS if v["name"] not in here]
+    if missing:
+        out["character"] = _villager(missing[0])
+        st["brought"] = brought + [missing[0]["name"]]
+    out["schedule"] = st["next"]
+    out["state"] = st
+    return out
+
+
 def on_install(ctx):
-    return {"voices": [{"name": RADIO, "at": "home", "about": "a crackling receiver tuned to the village's evening broadcast"},
-                       {"name": GATE, "at": "village", "about": "keeps the village gate; blunt, fair, and knows everyone's business"}],
-            "state": {"heard": []}, "schedule": _next_broadcast(ctx)}
+    st = dict(ctx["state"], next=_next_broadcast(ctx))
+    return _arrivals(ctx, {"voices": [{"name": RADIO, "at": "home", "about": "a crackling receiver tuned to the village's evening broadcast"}]}, st)
 
 
 def on_time(ctx):
-    me = ctx["agent"]
-    prompt = ("Write tonight's broadcast from a walled village of survivors by a reservoir in a dead city, twenty years after the ash: "
-              "two or three short notices read over the radio (the water ration, a work party, a warning about dogs in the east blocks, a "
-              "birth, a trade). Plain and calm, in the voice of whoever reads them. "
-              + (f"It is {ctx['time']['season']}. " if ctx["time"]["season"] else "") + me["name"] + " is listening in her shelter.")
-    return {"ask": {"prompt": prompt, "purpose": "broadcast", "most": 400}, "schedule": _next_broadcast(ctx)}
-
-
-def on_message(ctx):
-    m, st = ctx["message"], dict(ctx["state"])
-    if m["to"].lower() != GATE.lower():
-        return {}
-    st["heard"] = (st.get("heard", []) + [{"who": m["from"], "text": m["text"]}])[-HEARD:]
-    lines = "\n".join(h["who"] + ": " + h["text"] for h in st["heard"])
-    prompt = ("You are Marta, who keeps the gate of a walled village of survivors by a reservoir, twenty years after the ash. You are "
-              "blunt, fair and tired, and you know everyone's business. Answer in a sentence or two, as Marta, to what was just said.\n" + lines)
-    return {"state": st, "ask": {"prompt": prompt, "purpose": "reply", "most": 300}}
+    st, out = dict(ctx["state"]), {}
+    st.setdefault("next", _next_broadcast(ctx))
+    if ctx["now"] >= st["next"]:
+        me = ctx["agent"]
+        prompt = ("Write tonight's broadcast from a walled village of survivors by a reservoir in a dead city, twenty years after the ash: "
+                  "two or three short notices read over the radio (the water ration, a work party, a warning about dogs in the east "
+                  "blocks, a birth, a trade). Plain and calm, in the voice of whoever reads them. "
+                  + (f"It is {ctx['time']['season']}. " if ctx["time"]["season"] else "") + me["name"] + " is listening in her shelter.")
+        out["ask"] = {"prompt": prompt, "purpose": "broadcast", "most": 400}
+        st["next"] = _next_broadcast(ctx)
+    return _arrivals(ctx, out, st)
 
 
 def on_answer(ctx):
-    a, st = ctx["answer"], dict(ctx["state"])
-    if not a["text"]:
-        return {}
-    if a["purpose"] == "broadcast":
-        return {"speak": {"as": RADIO, "text": a["text"]}}
-    st["heard"] = (st.get("heard", []) + [{"who": GATE, "text": a["text"]}])[-HEARD:]
-    return {"state": st, "speak": {"as": GATE, "text": a["text"], "to_agent": True}}
+    a = ctx["answer"]
+    return {"speak": {"as": RADIO, "text": a["text"]}} if a["text"] else {}

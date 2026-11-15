@@ -87,6 +87,7 @@ REGISTRY: dict[str, tuple[ToolSpec, Handler]] = {}
 
 
 ANYWHERE = "anywhere"
+OFFERED = "offered"           # a tool for wherever a place's kind lists it (browse: a yard), never a place by its key
 SCOPES: dict[str, tuple[str, ...]] = {}   # tool name -> where it can be used: 'anywhere', 'home', or place keys
 
 
@@ -118,6 +119,9 @@ def out_of_place(ctx, name: str, scope: tuple[str, ...] | None = None) -> str:
     if not is_here(scope, here) and not listed:
         if scope[0] == "home":
             return f"you're at {places.label(here)}; go_to home first"
+        if scope[0] == OFFERED:                                  # where a place's kind lists it: say where
+            where = [k for k, p in places.registry(ctx.state, ctx.settings, ctx.library).items() if listed_here(name, p)]
+            return f"you can't {name} here" + (f"; {', '.join(where[:3])} {'has' if len(where) == 1 else 'have'} it" if where else "")
         return f"you're not at {places.label(scope[0])}; go_to {scope[0]} first"
     if ANYWHERE not in scope and (place.scope in scope or listed) and not places.open_now(place, ctx.settings):
         if place.hours:
@@ -163,17 +167,17 @@ def _scopes(t: dict) -> list:
 
 def _module_tool_here(state, t: dict, location: str, place, open_: bool) -> str | None:
     """A module's tool's description where `location` is (None if it doesn't apply there): wherever its scopes reach, of the kinds of
-    place it names (none: any), and not at a closed place unless it works anywhere. Offered where a place lists it, it is worded the
-    place's own way."""
+    place it names (none: any; `anywhere` with kinds is any place of those kinds: trade at shops, markets and where people live), and
+    not at a closed place unless it works anywhere. Offered where a place lists it, it is worded the place's own way."""
     scopes = _scopes(t)
-    if ANYWHERE in scopes:
+    if ANYWHERE in scopes and not t.get("kinds"):
         return t["help"]
     if not location or not open_ or (t.get("kinds") and places.kind_of(state, location) not in t["kinds"]):
         return None
-    if "offered" in scopes and place is not None and t["name"] in place.verbs:
+    if OFFERED in scopes and place is not None and t["name"] in place.verbs:
         return place.verbs[t["name"]][1] or t["help"]
-    others = tuple(w for w in scopes if w != "offered")
-    return t["help"] if others and is_here(others, location) else None
+    others = tuple(w for w in scopes if w != OFFERED)
+    return t["help"] if others and (ANYWHERE in others or is_here(others, location)) else None
 
 
 def module_specs(state, location: str, place=None, open_: bool = True) -> list[ToolSpec]:
@@ -303,14 +307,14 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
         ch = ctx.state.find_character(args["to"])
         ch = ch if ch and ch["kind"] != "creation" else None   # a thing that talks does so through its workings (a voice)
         where = places.place_of(ctx.state, ch) if ch else None
-        if ch and ch["kind"] in places.IN_PERSON and (not where or places.present_at(ctx.state) != where):
+        if ch and (not where or places.present_at(ctx.state) != where):
             return ToolResult(f"{ch['name']} can't hear you from here" + (
                 "; write_letter, or go_to their home to visit" if ch["kind"] == "neighbor" else
                 f"; go_to {where} to talk with them" if where else ""), followup=True)
         if ch:
             comp.hear(ctx.state, ch, text)
             ctx.state.log("say", text=text, to=[], to_name=ch["name"], **({"goodbye": True} if args.get("goodbye") is True else {}))
-            if args.get("goodbye") is True and ch["kind"] in places.IN_PERSON:
+            if args.get("goodbye") is True:
                 ctx.state.set_meta(talk_done=ctx.state.meta("arrived_at") or "")     # this visit's talk is over
             return ToolResult(f"said it to {ch['name']}; it will answer in a moment")
     ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
@@ -631,7 +635,7 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("browse", "Look over what is lying about where you are, to see what's worth digging for (nothing is taken).",
-      _obj({}, []), where=("junkyard",))
+      _obj({}, []), where=("offered",))
 async def browse(ctx: ToolContext, args: dict) -> ToolResult:
     here = ctx.state.agent()["location"]
     table = finds.loot_for(ctx.state, here)

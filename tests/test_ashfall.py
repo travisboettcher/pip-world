@@ -105,6 +105,11 @@ async def test_a_day_in_ashfall_has_nothing_of_pips_world_in_it(tmp_path, ashfal
     assert {m["name"]: m["status"] for m in st.modules()} == {n: "live" for n in MODULES}
     did = {e["data"]["tool"] for e in st.events(1000) if e["kind"] == "tool"}
     assert {"go_to", "gather", "eat", "start_project", "work_on", "rest", "note_to_self"} <= did
+    people = {c["name"]: (c["kind"], c["place"]) for c in st.characters()}
+    assert people["Marta"] == ("villager", "village") and len(people) >= 1                 # villagers live at the village (one a day)
+    said_to = [e["data"] for e in st.events(1000) if e["kind"] == "say" and e["data"].get("to_name") == "Marta"]
+    results = [e["data"]["result"] for e in st.events(1000) if e["kind"] == "tool" and e["data"]["tool"] == "say"]
+    assert said_to and any(r.startswith("said it to Marta") for r in results)               # in person, at the village
     assert len(agent_llm.texts) > 30 and narrator.texts
     said = agent_llm.texts + narrator.texts + [commands.answer(st, s, "/" + c) for c in commands._HANDLERS]
     leaks = sorted({PIPS_WORLD.search(t).group(0) + ": ..." + t[max(0, PIPS_WORLD.search(t).start() - 60): PIPS_WORLD.search(t).end() + 60]

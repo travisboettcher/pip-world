@@ -66,7 +66,7 @@ async def ensure(state, settings, gm, now: float) -> None:
     if settings.character_looks != "on":
         return
     for ch in state.characters():
-        if ch["kind"] not in ("neighbor", "resident") or ch.get("look"):
+        if ch["kind"] == "creation" or ch.get("look"):
             continue
         tries = int(state.meta(f"look_tries:{ch['id']}") or 0)
         raw = await gm.invent_look(ch["name"], ch["persona"], ch["about"]) if gm and tries < 2 else None
@@ -132,7 +132,7 @@ def place_text(state, key: str) -> str:
     rec = state.place_row(key)
     if rec:
         return " ".join([rec.get("description") or "", rec.get("blurb") or "", *[m.get("there", "") for m in rec.get("mentions") or []]])
-    ch = places.neighbor_at(state, key)
+    ch = places.resident_of(state, key)
     if ch:
         return " ".join([ch["about"], ch["persona"], " ".join(ch["told"]), " ".join(notes_on(state, ch["name"]))])
     d = world_pack.active().data("places")

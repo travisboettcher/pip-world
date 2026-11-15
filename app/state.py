@@ -287,6 +287,7 @@ class State:
             self._backfill_reads()
             self._name_the_agent()
             self._plans_named()
+            self._homes_named()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -767,6 +768,16 @@ class State:
         self.db.execute("UPDATE focus SET ref_kind = 'plan:crafting' WHERE ref_kind = 'project'")
         self.set_meta(plans_named="1")
 
+    def _homes_named(self) -> None:
+        """Once (0.50.0): a character's home is the place their record names (docs/DESIGN-engine-audit.md, B3), where a neighbour's was a
+        name ending in "'s home"; those with none are given that home."""
+        if self.meta("homes_named") == "1":
+            return
+        from . import places
+        for r in self.db.execute("SELECT id, name FROM characters WHERE place = '' AND creation_id IS NULL AND kind != 'creation'").fetchall():
+            self.db.execute("UPDATE characters SET place = ? WHERE id = ?", (places.dwelling_called(r["name"], self.s), r["id"]))
+        self.set_meta(homes_named="1")
+
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
         with self.lock:
@@ -883,6 +894,11 @@ class State:
 
     def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
                       next_chatter_at: float, about: str = "", place: str = "") -> dict:
+        """Someone in the world. `place` is where they live; someone who isn't a made thing and has none gets a home of their own, as
+        the world words it (places.json `dwellings`: "Marigold's home")."""
+        if not place and creation_id is None and kind != "creation":
+            from . import places
+            place = places.dwelling_called(name, self.s)
         with self.lock:
             cur = self.db.execute(
                 "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts, about, "

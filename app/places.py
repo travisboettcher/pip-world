@@ -1,10 +1,12 @@
-"""Places the agent can be. The home, the library and the places a world starts with are the world pack's (places.json), and each
-neighbor's home is a walk away.
+"""Places the agent can be. The home, the library and the places a world starts with are the world pack's (places.json), and so is
+every kind of place (docs/DESIGN-engine-audit.md, B3).
 
 `go_to` uses the same real-time session as work (kind `walk`): The agent is walking until it arrives, then wakes there.
-Each place gets a description written once by the GM the first time the agent arrives, and kept. A neighbor's home is
-the place called "<Name>'s home"; while the agent is there, the neighbor greets it and talks with it in person (see
-neighbors.py), as does a resident at an invented place. See DESIGN-library.md and DESIGN-neighbor.md.
+Each place gets a description written once by the GM the first time the agent arrives, and kept. A character lives at the place their
+record names (`place`): somewhere in the world (a villager at the village, a resident at the place someone told the agent of), or a
+home of their own the engine makes for them, worded and of the kind the world says (places.json `dwellings`: "Marigold's home", of
+kind `neighbor` in Pip's world). Whoever is at a place greets the agent and talks with it in person there (see neighbors.py and
+talk.py). See DESIGN-library.md and DESIGN-neighbor.md.
 """
 import time
 from dataclasses import dataclass, field
@@ -31,29 +33,54 @@ def __getattr__(name):            # the old constant name, from the active world
 
 
 WALKS = {"near": "a short walk", "far": "a long walk"}
-HOME_SUFFIX = "'s home"
+DWELLING_KIND = "dwelling"            # a home the engine makes for someone, when the world doesn't say what kind of place it is
+DWELLING_CALLED = "{name}'s home"
 
 
-def home_of(neighbor: dict) -> str:
-    return f"{neighbor['name']}{HOME_SUFFIX}"
+def _dwellings(settings=None) -> dict:
+    pack = world_pack.load(settings) if settings is not None else world_pack.active()
+    return pack.data("places").get("dwellings") or {}
 
 
-def neighbor_at(state, place: str) -> dict | None:
-    """The neighbor whose home `place` is, if any."""
-    return next((c for c in state.characters("neighbor") if home_of(c) == place), None)
+def dwelling_called(name: str, settings=None) -> str:
+    """What a home of their own is called, for someone the world brings without one."""
+    return str(_dwellings(settings).get("called") or DWELLING_CALLED).replace("{name}", name)
 
 
-IN_PERSON = ("neighbor", "resident")
+def home_of(ch: dict) -> str:
+    """Where a character lives ('' for a made thing that talks)."""
+    return ch["place"]
+
+
+def _dwelling_of(state, key: str) -> dict | None:
+    """The character whose own home `key` is: a place the engine made for them, not one of the world's or one someone mentioned."""
+    if not key or key == home_key() or key in _start_keys() or state.place_row(key):
+        return None
+    return next((c for c in state.characters() if c["place"] == key), None)
+
+
+def _start_keys() -> set:
+    d = _data()
+    return {p["key"] for p in d.get("start", [])} | ({d["library"]["key"]} if d.get("library") else set())
+
+
+def resident_of(state, place: str) -> dict | None:
+    """Who lives at `place` as their own home (a neighbour at hers), if anyone."""
+    return _dwelling_of(state, place)
 
 
 def place_of(state, ch: dict) -> str | None:
-    """Where a character can be met in person: a neighbor at home, a resident at their place while it's in the world.
-    None for a companion, or for a resident whose place the owner removed (they're kept, but out of reach)."""
-    if ch["kind"] == "neighbor":
-        from .modules import whereabouts     # somewhere else just now, if a live module says so (trade: a stall on market day)
-        return (whereabouts(state, ch["name"]) or {}).get("at") or home_of(ch)
-    rec = state.place_row(ch["place"]) if ch["kind"] == "resident" else None
-    return rec["key"] if rec and rec["status"] == "real" else None
+    """Where a character can be met in person: somewhere else just now if a live module says so (a stall on market day), else where
+    they live while it's in the world. None for a made thing that talks, or for someone whose place the owner removed (they're kept,
+    but out of reach)."""
+    if not ch["place"]:                                     # a made thing that talks lives nowhere
+        return None
+    from .modules import whereabouts
+    away = (whereabouts(state, ch["name"]) or {}).get("at")
+    if away:
+        return away
+    rec = state.place_row(ch["place"])
+    return ch["place"] if not rec or rec["status"] == "real" else None
 
 
 def company_at(state, place: str | None) -> list[dict]:
@@ -68,25 +95,37 @@ def present_at(state) -> str | None:
 
 
 def kind_of(state, key: str) -> str:
-    """What kind of place a key is: "home", "neighbor" (someone's home), a built-in place's kind from the pack, or an invented place's."""
+    """What kind of place a key is, all of them the world's: "home", an invented place's kind, a built-in place's (places.json), or a
+    home of someone's own (places.json `dwellings`)."""
     if key == home_key():
         return "home"
-    if key.endswith(HOME_SUFFIX):
-        return "neighbor"
     row = state.place_row(key)
     if row:
         return row["kind"]
-    return next((p.get("kind", "") for p in _data().get("start", []) if p["key"] == key), "")
+    d = _data()
+    built_in = {p["key"]: p.get("kind", "") for p in d.get("start", [])} | ({d["library"]["key"]: library_kind()} if d.get("library") else {})
+    if key in built_in:
+        return built_in[key]
+    return dwelling_kind() if _dwelling_of(state, key) else ""
+
+
+def library_kind() -> str:
+    lib = _data().get("library") or {}
+    return lib.get("kind") or _data().get("fallback_kind") or "sight"
+
+
+def dwelling_kind() -> str:
+    return _dwellings().get("kind") or DWELLING_KIND
 
 
 def scope_of(location: str) -> str:
-    """The scope key tools use for a location: 'home', 'neighbor' (any neighbor's home), or the place itself."""
-    return "home" if location == home_key() else "neighbor" if location.endswith(HOME_SUFFIX) else location
+    """The scope key tools use for a location: 'home', or the place itself (a tool is scoped by a role, docs/DESIGN-engine-audit.md, B4)."""
+    return "home" if location == home_key() else location
 
 
 def label(place: str) -> str:
     """How to say it: 'home', 'the library', "Marigold's home", 'Saltholm' (a proper name takes no article)."""
-    return "home" if place == home_key() else place if place.endswith(HOME_SUFFIX) or place[:1].isupper() else f"the {place}"
+    return "home" if place == home_key() else place if place[:1].isupper() else f"the {place}"
 
 
 @dataclass
@@ -135,14 +174,15 @@ def registry(state, settings, library) -> dict[str, Place]:
     out = {home_key(): Place(home_key(), home.get("description", "your home"), walk, offers=tuple(home.get("offers", ("sleep",))))}
     lib_place = d.get("library")
     if library and library.available() and lib_place:          # the world's library, when there are books to read
-        out[lib_place["key"]] = _built_in(lib_place, walk)
+        out[lib_place["key"]] = _built_in({**lib_place, "kind": library_kind()}, walk)
     wild = settings.wild_places if settings and settings.wild_places is not None else [p["key"] for p in d.get("start", [])]
     for p in d.get("start", []):                               # the places the world starts with (WILD_PLACES may leave some out)
         if p["key"] in wild:
             out[p["key"]] = _built_in(p, walk)
-    for c in state.characters("neighbor"):
-        out[home_of(c)] = Place(home_of(c), f"where your neighbor {c['name']} lives" + (f" ({c['about']})" if c["about"] else ""),
-                                walk, offers=("talk",))
+    for c in state.characters():                               # a home of their own, for whoever the world gave one
+        if c["place"] and c["place"] not in out and not state.place_row(c["place"]):
+            out[c["place"]] = Place(c["place"], f"where {c['name']} lives" + (f" ({c['about']})" if c["about"] else ""), walk,
+                                    offers=("talk",), kind=dwelling_kind())
     for rec in invented.records(state):
         if rec["walk_minutes"] is not None and rec["key"] not in out:
             out[rec["key"]] = invented_place(rec)
@@ -211,9 +251,9 @@ def find(state, library, query) -> str | None:
     names = [(p, p.lower()) for p in places] + [(r["key"], a) for r in invented.records(state) if r["key"] in places
                                                 for a in r["aliases"]]
     hit = list(dict.fromkeys([p for p, n in names if n == q] or [p for p, n in names if q and (q in n or n in q)]))
-    if not hit:  # "marigold", "marigold's", "visit marigold thistlewick"
-        hit = [home_of(c) for c in state.characters("neighbor")
-               if any(w in q.replace("'s", " ").split() for w in c["name"].lower().split() if len(w) > 2)]
+    if not hit:  # "marigold", "marigold's", "visit marigold thistlewick": where someone lives
+        hit = list(dict.fromkeys(c["place"] for c in state.characters() if c["place"] in places
+                                 and any(w in q.replace("'s", " ").split() for w in c["name"].lower().split() if len(w) > 2)))
     return hit[0] if len(hit) == 1 else None
 
 
@@ -243,7 +283,7 @@ async def arrive(state, settings, gm, library, rng=None) -> dict | None:
     elif first:
         desc = None
         if gm:
-            host = neighbor_at(state, place)
+            host = resident_of(state, place)
             hints = (f"this is where {host['name']} lives. Who they are: {host['persona']}" if host else
                      library.overview() if place == "library" and library else here_record.blurb if here_record else "")
             desc = await gm.describe_place(label(place), hints)
@@ -291,7 +331,7 @@ def perception(state, settings, library) -> list[str]:
     lines = [f"You are at: {where}{closed}" + (f" - {desc}" if desc else "")]
     for host in company_at(state, present_at(state)):
         lines.append(f"You're visiting {host['name']}. Talk with them in person using say with to: {host['name']}."
-                     if host["kind"] == "neighbor" else
+                     if host["place"] == here_key and _dwelling_of(state, here_key) else
                      f"{host['name']} is here" + (f" ({host['about']})" if host["about"] else "")
                      + f"; talk with them in person using say with to: {host['name']}.")
         if host["heard"]:

@@ -17,7 +17,7 @@ def dist(p, q):
 
 
 def neighbor(st, name="Marigold"):
-    return st.add_character(name, "neighbor", "a beekeeper", "persona", 60, "", 0)
+    return st.add_character(name, "neighbor", None, "persona", 60, 0, about="a beekeeper")
 
 
 def saltholm(st, status="heard", **kw):
@@ -176,7 +176,7 @@ def test_the_map_endpoint_returns_the_snapshot_and_grows_the_map(tmp_path):
         assert body["home"] == "workshop" and {p["key"] for p in body["places"]} >= {"workshop", "woods", "junkyard"}
         assert body["agent"]["at"] == "workshop" and set(body["agent"]) == {"name", "x", "y", "at", "walking"}
         before = {p["key"]: (p["x"], p["y"]) for p in body["places"]}
-        c.app.state.agent.state.add_character("Marigold", "neighbor", "a beekeeper", "persona", 60, "", 0)
+        c.app.state.agent.state.add_character("Marigold", "neighbor", None, "persona", 60, 0, about="a beekeeper")
         after = {p["key"]: (p["x"], p["y"]) for p in c.get("/map").json()["places"]}
         assert "Marigold's home" in after and {k: after[k] for k in before} == before
 

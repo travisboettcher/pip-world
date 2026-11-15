@@ -69,7 +69,7 @@ async def use(agent, name, **args):
     ({"tools": []}, "`tools` is a list of up to 6"),
     ({"tools": [{"name": "dig", "help": "x", "params": {"type": "object", "properties": {"n": {"type": "list"}}}}]}, "`dig`'s `params` is"),
     ({"tools": [{"name": "dig", "help": "x", "params": {"type": "object", "properties": {}, "required": ["n"]}}]}, "`dig`'s `params` is"),
-    ({"tools": [{"name": "dig", "help": "x", "where": ""}]}, "`dig`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)"),
+    ({"tools": [{"name": "dig", "help": "x", "where": ""}]}, "`dig`'s `where` is anywhere, home, offered, or a place's key (or a list of them)"),
     ({"tools": [{"name": "dig"}]}, "`dig.help` is a line of text"),
 ])
 def test_a_modules_tools_are_checked(extra, why):

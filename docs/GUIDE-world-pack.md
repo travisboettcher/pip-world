@@ -195,6 +195,13 @@ engine's plain page.
 and what doesn't, so its nightly proposals fit. Ashfall's might allow danger and loss but not cruelty, and ask for rules that make the
 world feel lived in: a curfew bell, a trader's caravan every few days, the reservoir's level after rain.
 
+**People** (0.50.0): a module brings someone into the world with `character` (a name, a word for their role, who they are, what the
+agent would know of them, and `home`: where they live). Whoever is at a place is met in person there, through the engine's talk scenes:
+Ashfall's `village` module brings Marta, Ezra and Jun to the village, one a day. Someone brought without a home gets one of their own,
+as `places.json` `dwellings` says (`{"kind": "neighbor", "called": "{name}'s home"}` in Pip's world; a `dwelling` otherwise). Every
+kind of place is the world's: the agent's `home`, the dwellings', the library's (`library.kind`), the places it starts with and the
+kinds it can grow, and a layout module may cover only those.
+
 **The guide** (works today; since 0.49.0 every page says when it applies): `guide/*.md` tells Wren how her world works, in the second
 person, a few lines a page: home, her needs, the places, the people. Each page starts with a front matter saying where it goes and
 what it needs, and the engine names no page:

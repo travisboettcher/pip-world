@@ -34,7 +34,8 @@
    ]
   },
   "about": "a library of tall shelves",
-  "tag": "books"
+  "tag": "books",
+  "kind": "library"
  },
  "start": [
   {
@@ -351,5 +352,9 @@
    "wharf",
    "quay"
   ]
+ },
+ "dwellings": {
+  "kind": "neighbor",
+  "called": "{name}'s home"
  }
 }

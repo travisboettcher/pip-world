@@ -55,7 +55,7 @@ def anchor_list(state=None) -> str:
     from . import anchors, layouts
     spots = lambda rows: "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in rows if anchors.RESERVED not in a["tags"]))
     laid = {}
-    for kind in layouts.KINDS:
+    for kind in layouts.kinds():
         m = layouts.kind_module(state, kind) if state is not None else None
         built = next(iter((m or {}).get("built", {}).get("places", {}).values()), None) if m else None
         laid.setdefault(spots(built["anchors"]) if built and built.get("anchors") else "ground tagged outside (once its layout is built)", []).append(kind)

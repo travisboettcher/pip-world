@@ -62,8 +62,8 @@ def exists(state, label: str) -> bool:
 
 
 def teller(state, key: str) -> str:
-    """Who mentions it: one of the characters the agent has met (a neighbor or a resident), the same one for the same place."""
-    people = sorted(c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident"))
+    """Who mentions it: one of the people the agent has met (anyone but a made thing that talks), the same one for the same place."""
+    people = sorted(c["name"] for c in state.characters() if c["kind"] != "creation")
     return people[zlib.crc32(key.encode()) % len(people)] if people else "a passing traveller"
 
 

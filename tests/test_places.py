@@ -14,7 +14,7 @@ from tests.test_outreach import daytime
 
 
 def neighbor(st, s):
-    return st.add_character("Marigold", "neighbor", "a beekeeper", "persona", 60, "", 0)
+    return st.add_character("Marigold", "neighbor", None, "persona", 60, 0, about="a beekeeper")
 
 
 def test_the_registry_lists_home_the_library_and_neighbors_as_records(tmp_path):
@@ -24,7 +24,7 @@ def test_the_registry_lists_home_the_library_and_neighbors_as_records(tmp_path):
     reg = P.registry(st, s, FakeLibrary())
     assert list(reg) == ["workshop", "library", "Marigold's home"]
     assert reg["library"].offers == ("browse", "read") and set(reg["library"].verbs) == {"browse", "read"}
-    assert reg["Marigold's home"].offers == ("talk",) and reg["Marigold's home"].scope == "neighbor"
+    assert reg["Marigold's home"].offers == ("talk",) and reg["Marigold's home"].scope == "Marigold's home" and reg["Marigold's home"].kind == "neighbor"
     assert reg["library"].label == "the library" and reg["workshop"].scope == "home"
     assert P.available(st, FakeLibrary())["library"].startswith("a library a short walk away")
 
@@ -35,7 +35,7 @@ def test_the_directory_says_where_to_go_and_what_each_place_is_for(tmp_path):
     lines = P.directory(st, s, FakeLibrary())
     assert lines[0] == "Places you can go (go_to):"
     assert lines[1].startswith("- library, 10 min - a library a short walk away") and lines[1].endswith("[browse, read]")
-    assert lines[2].startswith("- Marigold's home, 10 min - where your neighbor Marigold lives") and lines[2].endswith("[talk]")
+    assert lines[2] == "- Marigold's home, 10 min - where Marigold lives (a beekeeper) [talk]"
     st.update_agent(location="library")
     away = P.directory(st, s, FakeLibrary())
     assert away[1] == "- workshop, 10 min - your home: your workshop and garden [projects, garden, sleep]"   # the way home
@@ -66,9 +66,9 @@ def test_a_closed_place_is_marked_in_the_directory(tmp_path, monkeypatch):
 
 def test_a_place_can_describe_a_verb_its_own_way(tmp_path):
     spec_tools = {n: T.REGISTRY[n] for n in ("browse", "say")}
-    plain = {sp.name: sp.description for sp in T.specs_for(spec_tools, "junkyard")}
+    plain = {sp.name: sp.description for sp in T.specs_for(spec_tools, "junkyard", P.Place("junkyard", "x", 10, verbs={"browse": ("short", None)}, kind="yard"))}
     assert plain["browse"].startswith("Look over what is lying about where you are")
-    place = P.Place("junkyard", "x", 10, verbs={"browse": ("short", "Pick over the heaps.")})
+    place = P.Place("junkyard", "x", 10, verbs={"browse": ("short", "Pick over the heaps.")}, kind="yard")
     over = {sp.name: sp.description for sp in T.specs_for(spec_tools, "junkyard", place)}
     assert over["browse"] == "Pick over the heaps." and over["say"] == plain["say"]
     assert T.REGISTRY["browse"][0].description == plain["browse"]             # the registered spec is not mutated
@@ -190,8 +190,8 @@ def test_the_built_in_places_are_exactly_these_records(tmp_path):
     st.add_character("Marigold", "neighbor", None, "persona", 60, 0, about="a beekeeper")
     st.add_character("Briar", "neighbor", None, "persona", 60, 0)
     reg = P.registry(st, s, None)
-    assert reg["Marigold's home"].blurb == "where your neighbor Marigold lives (a beekeeper)"
-    assert reg["Briar's home"].blurb == "where your neighbor Briar lives"
+    assert reg["Marigold's home"].blurb == "where Marigold lives (a beekeeper)"
+    assert reg["Briar's home"].blurb == "where Briar lives"
 
 
 def test_said_about_gives_the_last_two_things_said_or_who_mentioned_it():

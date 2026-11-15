@@ -108,11 +108,13 @@ def test_old_neighbors_and_letters_read_with_empty_memory(tmp_path, clock):
     assert st.characters()[0]["upcoming"] == [{"what": "a tide", "due_at": 9}]
 
 
-def test_a_resident_keeps_their_place_and_older_characters_have_none(tmp_path, clock):
+def test_a_resident_keeps_their_place_and_someone_without_one_gets_a_home_of_their_own(tmp_path, clock):
     st = mk(tmp_path)
     old = st.add_character("Briar", "neighbor", None, "A shore warden.", 60, 0)
     ch = st.add_character("Mr Teague", "resident", None, "An ironmonger.", 0, 0, about="keeps the shop", place="Saltholm")
-    assert old["place"] == "" and ch["place"] == "Saltholm" and ch["kind"] == "resident" and ch["about"] == "keeps the shop"
+    made = st.add_character("Tick", "companion", 3, "A clock.", 60, 0)                     # a made thing that talks lives nowhere
+    assert old["place"] == "Briar's home" and ch["place"] == "Saltholm" and ch["kind"] == "resident" and ch["about"] == "keeps the shop"
+    assert made["place"] == ""
     assert st.characters("resident") == [ch]
 
 

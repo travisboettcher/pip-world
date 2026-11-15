@@ -39,7 +39,8 @@ async def test_the_neighbour_is_invented_once_and_writes_first(tmp_path):
     (first,) = st.letters()
     assert first["sender"] == "Marigold" and first["recipient"] == "Pip" and first["text"] == INVENTED["letter"]
     assert now + 0.25 * 0.7 * 120 * 60 <= first["deliver_at"] <= now + 0.25 * 1.3 * 120 * 60          # soon-ish
-    assert next(e["data"] for e in st.events(limit=5) if e["kind"] == "neighbor") == {"name": "Marigold", "about": ch["about"]}
+    assert next(e["data"] for e in st.events(limit=5) if e["kind"] == "character") == {"name": "Marigold", "role": "neighbor", "about": ch["about"],
+                                                                                         "place": "Marigold's home"}
     assert ch["chatter_minutes"] == s.neighbor_writes_every_hours * 60 and ch["next_chatter_at"] == nb.NOT_YET
     await invent(st, s, agent, now + 60)
     assert len(gm.calls) == 1 and len(st.characters("neighbor")) == 1

@@ -126,8 +126,8 @@ def check_manifest(m, author: str, state=None) -> dict:
         elif m.get("kinds") is not None:                     # every place of these kinds that has no layout of its own
             from . import layouts
             ks = m["kinds"]
-            if not isinstance(ks, list) or not ks or any(k not in layouts.KINDS for k in ks):
-                raise Refused(f"`kinds` is a list drawn from: {', '.join(layouts.KINDS)}")
+            if not isinstance(ks, list) or not ks or any(k not in layouts.kinds() for k in ks):
+                raise Refused(f"`kinds` is a list drawn from: {', '.join(layouts.kinds())}")
             out["kinds"] = list(dict.fromkeys(ks))
         elif m.get("new") is not None:                       # a place that doesn't exist yet (step 6): it enters the world when approved
             from . import invented_places, module_places
@@ -244,7 +244,7 @@ def _tools(tools, author: str) -> list:
         where = t.get("where", "anywhere")
         wheres = where if isinstance(where, list) else [where]
         if not 1 <= len(wheres) <= 4 or not all(isinstance(w, str) and w.strip() and len(w) <= 60 for w in wheres):
-            raise Refused(f"`{name}`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)")
+            raise Refused(f"`{name}`'s `where` is anywhere, home, offered, or a place's key (or a list of them)")
         kinds = t.get("kinds")
         if kinds is not None and (not isinstance(kinds, list) or not 1 <= len(kinds) <= 8 or not all(isinstance(k, str) and KIND_WORD.match(k) for k in kinds)):
             raise Refused(f"`{name}`'s `kinds` is a list of the kinds of place it works at")
@@ -394,10 +394,9 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                           "goods": [{"name": e[0], "kind": e[1], "weight": e[2], "span": list(e[3]), "attrs": e[5]} for e in finds.goods(state, p["key"])]
                           if kinds.KINDS.get(p["kind"]) and kinds.KINDS[p["kind"]].trades else []}
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
-    if "people" in reads:                                   # who lives in Pip's world (not what they're like)
-        from . import places
-        ctx["people"] = [{"name": c["name"], "kind": c["kind"], "about": c["about"], **({"home": places.home_of(c)} if c["kind"] == "neighbor" else {})}
-                         for c in state.characters() if c["kind"] != "creation"]
+    if "people" in reads:                                   # who lives in the world (not what they're like), and where
+        ctx["people"] = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "home": c["place"]}
+                         for c in state.characters() if c["place"]]                  # a made thing that talks lives nowhere
     if "creations" in reads:
         from . import creations as cr
         ctx["creations"] = [{"name": c["name"], "running": cr.running(c, now), "tended": "upkeep" in c["spec"]["capabilities"], "quality": c["quality"],
@@ -830,14 +829,20 @@ def _doing(v) -> dict:
     return {"activity": v["activity"], "description": _text(v.get("description"), "doing.description")}
 
 
-CHARACTER_KINDS = ("neighbor",)
-
-
 def _character(state, v) -> dict:
-    """Someone new in the world: a name nobody has (and not the agent's), who they are (private to the engine and this module), what
-    the agent would know of them, and perhaps a first letter."""
-    if not isinstance(v, dict) or set(v) - {"name", "kind", "persona", "about", "letter", "mentions_place"} or v.get("kind") not in CHARACTER_KINDS:
-        raise Refused(f"`character` is {{name, kind ({', '.join(CHARACTER_KINDS)}), persona, about, letter?, mentions_place?}}")
+    """Someone new in the world: a name nobody has (and not the agent's), a word for their role (the module's: villager, neighbor), who
+    they are (private to the engine and this module), what the agent would know of them, where they live (`home`: a place in the
+    world; without one they get a home of their own, places.py), and perhaps a first letter."""
+    if not isinstance(v, dict) or set(v) - {"name", "kind", "persona", "about", "home", "letter", "mentions_place"}:
+        raise Refused("`character` is {name, kind (a word for their role), persona, about, home?, letter?, mentions_place?}")
+    if not isinstance(v.get("kind"), str) or not KIND_WORD.match(v["kind"]) or v["kind"] == "creation":
+        raise Refused("`character.kind` is a word for their role (villager, neighbor...), not creation")
+    home = v.get("home")
+    if home is not None:
+        from . import places
+        home = places.home_key() if home == "home" else home
+        if not isinstance(home, str) or not (home == places.home_key() or home in places._start_keys() or state.place_row(home)):
+            raise Refused(f"`character.home` is a place in the world, not {v.get('home')!r}")
     name = _text(v.get("name"), "character.name")
     if len(name) > 40:
         raise Refused("`character.name` is at most 40 characters")
@@ -848,7 +853,7 @@ def _character(state, v) -> dict:
             raise Refused(f"`character.{key}` is a line of text of at most {most} characters")
     if v.get("mentions_place") is not None and not isinstance(v["mentions_place"], dict):
         raise Refused("`character.mentions_place` is the place their words point to, as an ask with `mentions` gave it")
-    return {"name": name, "kind": v["kind"], "persona": v["persona"].strip(), "about": v["about"].strip(),
+    return {"name": name, "kind": v["kind"], "persona": v["persona"].strip(), "about": v["about"].strip(), **({"home": home} if home else {}),
             **({"letter": v["letter"].strip()} if v.get("letter") else {}), **({"mentions_place": v["mentions_place"]} if v.get("mentions_place") else {})}
 
 
@@ -884,7 +889,7 @@ def _part_with(state, v) -> dict:
 
 def _whereabouts(state, v) -> dict:
     """Where the characters it speaks for are just now, if not where they live (a neighbour at a market stall): {name: {at, doing}}."""
-    names = {c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident")}
+    names = {c["name"] for c in state.characters() if c["kind"] != "creation"}
     if not isinstance(v, dict) or len(v) > 8 or not all(
             k in names and isinstance(x, dict) and set(x) <= {"at", "doing"} and isinstance(x.get("at"), str) and x["at"].strip()
             and isinstance(x.get("doing", ""), str) and len(x.get("doing", "")) <= TEXT_MAX for k, x in v.items()):
@@ -992,7 +997,7 @@ def _source(man: dict, v) -> dict:
 
 def _notes(state, v) -> dict:
     """A line about each of some people, which the agent sees beside their name and which they may bring up when they write or talk."""
-    names = {c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident")}
+    names = {c["name"] for c in state.characters() if c["kind"] != "creation"}
     if not isinstance(v, dict) or len(v) > 8 or not all(k in names and isinstance(x, str) and x.strip() and len(x) <= 300 for k, x in v.items()):
         raise Refused("`notes` maps people in the world to a line (at most 300 characters); {} clears them")
     return {k: " ".join(x.split()) for k, x in v.items()}

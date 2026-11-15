@@ -92,7 +92,7 @@ def test_who_tells_and_what_counts_as_existing(tmp_path):
     assert P.teller(st, "Mill") == "a passing traveller"
     st.add_character("Oriel", "neighbor", None, "x", 0, 0)
     st.add_character("Bran", "resident", None, "y", 0, 0, place="Saltholm")
-    st.add_character("Gearwhistle", "companion", None, "z", 0, 0)
+    st.add_character("Gearwhistle", "creation", None, "z", 0, 0)             # a made thing that talks tells nobody of places
     names = {P.teller(st, k) for k in ("a", "b", "c", "d", "e", "f", "g", "h")}
     assert names == {"Oriel", "Bran"} and P.teller(st, "Mill") == P.teller(st, "Mill")
     assert P.exists(st, "the woods") and P.exists(st, "the garden") and not P.exists(st, "the old mill")

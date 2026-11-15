@@ -440,9 +440,8 @@ class Agent:
     def _talk(self, inbox: list[dict]) -> list[str]:
         """The conversations the agent is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
         now, lines = time.time(), []
-        here = self.state.agent()["location"]
-        for ch in self.state.characters("neighbor"):
-            if places.place_of(self.state, ch) == here and (said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0))):
+        for ch in places.company_at(self.state, places.present_at(self.state)):         # whoever is here, of any role
+            if said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0)):
                 lines += [f"Talking with {ch['name']} (this visit, oldest first):"] + [f"  {l}" for l in said]
         waiting = {m["id"] for m in inbox}
         for sender in dict.fromkeys(m["sender"] for m in inbox if not m["gift"]):
@@ -594,8 +593,8 @@ class Agent:
                 note += f"  [you could try: {'; '.join(where)}]"
             return fmt(m) + note
 
-        visits = [(c["name"], ts) for c in self.state.characters("neighbor")
-                  if (ts := self.state.last_arrived(places.home_of(c)))]
+        visits = [(c["name"], ts) for c in self.state.characters() if c["place"]
+                  and (ts := self.state.last_arrived(places.home_of(c)))]                  # going where someone lives
 
         heard_of = [r for r in invented.records(self.state) if r["status"] == "heard"]
 

@@ -157,6 +157,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           (`sprite.json` or a `look`); `home`, `gallery-wall` and `stall-pictures` are Pip's world's own modules
     - [x] 3 (0.49.0): the night pass looks after any module's `plans` (cited `crafting:2`, paused and resumed by asking the module); guide
           pages say when they apply in a front matter, and the engine names none
+    - [x] 4 (0.50.0): people of any role, living at the place their record names (a home of their own where the world gives none),
+          met in person wherever they are; place kinds from the pack; `browse` scoped where a place lists it; Ashfall's villagers
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

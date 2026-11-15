@@ -544,7 +544,11 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
   module, 5c). A tool's `where` may be `offered`: wherever a place's verbs list the tool, worded the place's own way. `log` may carry `items`
   (what came of the moment: each a first, "found X") and `tool` (the agent's sense of what its tools are good for reads it); a moment is
   shown among recent events and can be recalled. The agent read carries its `name`.
-- **People (0.37.0, phase 5b)**: an `ask` may carry a `schema` (`{properties, required?}`, up to 12 answers of the tool-argument types)
+- **People (0.37.0, phase 5b; since 0.50.0 any role, docs/DESIGN-engine-audit.md, C1)**: `character`'s `kind` is any word for the
+  role (`villager`, `neighbor`; not `creation`), with an optional `home` (a place in the world: the module's choice; without one the
+  engine makes a home of their own, as places.json `dwellings` words it), and the `people` read gives each person's `home`. Whoever is at
+  a place is met in person there, two greeting at a time.
+- **People, as first built (0.37.0)**: an `ask` may carry a `schema` (`{properties, required?}`, up to 12 answers of the tool-argument types)
   and comes back as `ctx["answer"]["data"]`, checked (none if what came back didn't fit; a dry run stands in none); with `mentions: true`
   the engine adds how a character tells the agent about a place and passes back `mentions_place`. `character` (`{name, kind: "neighbor",
   persona, about, letter?, mentions_place?}`, once a day) brings someone new into the world, their first letter on its way; `letter`

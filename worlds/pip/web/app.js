@@ -118,7 +118,8 @@ function describe(e) {
     case 'arrived': return { group: 'world', cls: 'world', text: d.place === 'workshop' ? 'Pip gets home' : `Pip arrives at ${d.label || d.place}` + (d.first_time && d.description ? ` — ${d.description}` : '') };
     case 'reading': return { group: 'world', cls: 'world', text: `Pip reads ${d.title}${d.finished ? ' (finished!)' : ` (${d.percent}%)`}: ${d.summary}` };
     case 'letter_sent': return { group: 'world', cls: 'world', text: `Pip wrote to ${d.to}: ${d.text}` + (d.enclosed ? ` (enclosed: ${d.enclosed})` : '') };
-    case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };
+    case 'neighbor': return { group: 'world', cls: 'world', text: `A neighbor: ${d.name} — ${d.about}` };   // before 0.50.0
+    case 'character': return { group: 'world', cls: 'world', text: `${d.role === 'neighbor' ? 'A neighbor' : `Someone new (${d.role})`}: ${d.name} — ${d.about}` };
     case 'gift': return { group: 'world', cls: 'world', text: `${d.sender} gave Pip ${d.qty} × ${d.item}` };
     case 'garden': return { group: 'world', cls: 'world', text: `Pip's ${d.crop} in plot ${d.plot} are ripe` };   // before the garden was a module
     case 'stall_sale': return { group: 'world', cls: 'world', text: `Pip sold ${d.qty} ${d.item} at its stall for ${d.coins} coin${d.coins === 1 ? '' : 's'}${d.left ? ` (${d.left} left)` : ' (sold out)'}` };

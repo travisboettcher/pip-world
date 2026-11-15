@@ -38,7 +38,7 @@ def test_tools_declare_where_they_work():
     assert T.SCOPES["say"] == ("anywhere",) and T.SCOPES["eat"] == ("anywhere",)
     assert T.SCOPES["sleep"] == ("home",) and "plant" not in T.SCOPES                          # planting is the garden module's
     assert T.SCOPES["tend"] == ("home",) and not {"start_project", "work_on", "experiment"} & set(T.SCOPES)      # crafting is a module's (0.42.0)
-    assert T.SCOPES["browse"] == ("junkyard",) and "read" not in T.SCOPES                     # reading is a module's (0.39.0)
+    assert T.SCOPES["browse"] == ("offered",) and "read" not in T.SCOPES                      # where a place lists it; reading is a module's
     assert not {"buy", "sell", "pay"} & set(T.SCOPES)                               # trade is a module's (0.38.0)
     assert "gather" not in T.SCOPES                                                 # gathering is a module's (0.36.0)
 
@@ -46,7 +46,7 @@ def test_tools_declare_where_they_work():
 def test_is_here():
     assert T.is_here(("anywhere",), "library") and T.is_here(("home",), "workshop")
     assert not T.is_here(("home",), "library") and T.is_here(("library", "junkyard"), "junkyard")
-    assert T.is_here(("neighbor",), "Ada's home") and not T.is_here(("home",), "Ada's home")
+    assert T.is_here(("Ada's home",), "Ada's home") and not T.is_here(("home",), "Ada's home") and not T.is_here(("offered",), "junkyard")
 
 
 async def test_a_tool_used_from_the_wrong_place_says_where_to_go(tmp_path, clock):
@@ -56,7 +56,7 @@ async def test_a_tool_used_from_the_wrong_place_says_where_to_go(tmp_path, clock
     assert r.text == "you're at the library; go_to home first" and r.followup is True
     st.update_agent(location="workshop")
     r = await run(ctx, "browse")
-    assert r.text == "you're not at the junkyard; go_to junkyard first" and r.followup is True
+    assert r.text == "you can't browse here; junkyard has it" and r.followup is True
 
 
 def test_out_of_place_for_unscoped_names_is_always_fine(tmp_path, clock):
@@ -85,7 +85,7 @@ def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     names = lambda loc, **kw: sorted(s.name for s in T.specs_for(tools, loc, **kw))
     assert names("workshop") == ["say", "tend"]
     assert names("woods") == ["say"]
-    assert names("junkyard") == ["browse", "say"]
+    assert names("junkyard") == ["say"]                                        # browse is where a place lists it: below
 
     class P:
         scope, invented, kind = "junkyard", False, "yard"
@@ -96,8 +96,8 @@ def test_specs_for_offers_what_belongs_to_the_place(tmp_path, clock):
     assert sorted(s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=False)) == ["say"]     # closed: nothing of its own
 
     class Q:
-        scope = "junkyard"
-        verbs = {}
+        scope, invented, kind = "junkyard", False, "yard"
+        verbs = {"browse": ("short", None)}                                    # listed, with no words of its own: the tool's
     assert {s.name: s for s in T.specs_for(tools, "junkyard", place=Q())}["browse"].description == T.REGISTRY["browse"][0].description
     assert sorted(s.name for s in T.specs_for(tools, "workshop", place=P(), open_=False)) == ["say", "tend"]
 

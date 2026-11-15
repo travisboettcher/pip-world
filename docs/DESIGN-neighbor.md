@@ -5,6 +5,11 @@ asked to write first, by the shipped `neighborhood` module (structured asks, the
 stay the engine's, as below. Phase 4 of
 DESIGN-creations.md, made concrete.
 
+**Since 0.50.0** (docs/DESIGN-engine-audit.md, C1) the neighbour is one role among any a module names: whoever the world brings lives at
+the place their record names, here a home of their own the engine makes (places.json `dwellings`: "<Name>'s home", of kind
+`neighbor`), and is met in person there through the same scenes as anyone else. "<Name>'s home" below is that record, not a name the
+engine looks for. Arrivals are logged as `character` events (with their `role`).
+
 ## Why
 Every person Pip knows is Morgan: every people note, belief and diary entry about someone else. All of its materials
 and seeds come from him. A second character gives the new people memory something to work with (Pip forming its own

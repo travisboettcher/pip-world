@@ -39,11 +39,11 @@ def seed(state) -> int:
 
 
 def _words(state, key: str, rows: dict) -> str:
-    """What is known about a place, for spotting water: its record, or for a neighbor's home who lives there."""
+    """What is known about a place, for spotting water: its record, or for someone's own home who lives there."""
     rec = rows.get(key)
     if rec:
         return " ".join([rec.get("description") or "", rec.get("blurb") or "", *[m.get("there", "") for m in rec.get("mentions") or []]])
-    ch = places.neighbor_at(state, key)
+    ch = places.resident_of(state, key)
     return f"{ch['about']} {ch['persona']}" if ch else ""
 
 
@@ -134,7 +134,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     for m in state.modules("live"):
         mine = ((m["facts"] or {}).get("scene") or {}).get(key) if isinstance((m["facts"] or {}).get("scene"), dict) else None
         trade.update(mine if isinstance(mine, dict) else {})
-    owner = places.neighbor_at(state, key)
+    owner = places.resident_of(state, key)
     lives_here = None
     if owner:
         lives_here = {"name": owner["name"], "about": owner["about"], "look": look(owner), "wares": [], "market_day": None, "away_at": None,

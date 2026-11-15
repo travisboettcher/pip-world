@@ -549,8 +549,8 @@ def test_a_design_with_a_resident_makes_them_a_character_of_the_place(tmp_path):
     assert ch["kind"] == "resident" and ch["place"] == "Saltholm" and ch["name"] == "Mr Teague"
     assert ch["persona"] == TEAGUE["persona"] and ch["about"] == TEAGUE["about"]
     ev = st.events(limit=1)[0]
-    assert ev["kind"] == "resident" and ev["data"] == {"name": "Mr Teague", "place": "Saltholm",
-                                                      "about": TEAGUE["about"]}
+    assert ev["kind"] == "character" and ev["data"] == {"name": "Mr Teague", "role": "resident", "place": "Saltholm",
+                                                       "about": TEAGUE["about"]}
 
 
 def test_a_residents_words_are_clipped_like_a_neighbors(tmp_path):

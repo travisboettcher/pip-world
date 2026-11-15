@@ -55,9 +55,11 @@ def test_a_character_brought_into_the_world(tmp_path):
     full = M._character(st, {**ok, "letter": " Hi. ", "mentions_place": {"place": "Fen"}})
     assert full["letter"] == "Hi." and full["mentions_place"] == {"place": "Fen"}
     assert M._character(st, {**ok, "name": "N" * 40, "persona": "p" * 800, "about": "a" * 160, "letter": "l" * 1200})["name"] == "N" * 40
-    shape = "`character` is {name, kind (neighbor), persona, about, letter?, mentions_place?}"
-    for bad in ({**ok, "kind": "resident"}, {**ok, "x": 1}, []):
+    assert M._character(st, {**ok, "kind": "resident"})["kind"] == "resident"           # any role a module names (0.50.0)
+    shape = "`character` is {name, kind (a word for their role), persona, about, home?, letter?, mentions_place?}"
+    for bad in ({**ok, "x": 1}, []):
         assert refused(M._character, st, bad) == shape
+    assert refused(M._character, st, {**ok, "kind": None}) == "`character.kind` is a word for their role (villager, neighbor...), not creation"
     assert refused(M._character, st, {**ok, "name": "N" * 41}) == "`character.name` is at most 40 characters"
     assert refused(M._character, st, {**ok, "name": ""}) == "`character.name` is a line of text"
     for name in ("oriel", "PIP"):

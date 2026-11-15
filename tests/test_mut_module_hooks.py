@@ -33,7 +33,7 @@ def test_tools_at_their_limits():
     for bad in (params(9), {"type": "array", "properties": {}}, {"type": "object", "properties": {}, "required": "a"}, [1], {"properties": {}}):
         assert refused(M._tools, [tool(params=bad)], "world") == why
     assert M._tools([tool(where="x" * 60)], "world")[0]["where"] == "x" * 60
-    assert refused(M._tools, [tool(where="x" * 61)], "world") == "`dig`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)"
+    assert refused(M._tools, [tool(where="x" * 61)], "world") == "`dig`'s `where` is anywhere, home, offered, or a place's key (or a list of them)"
     assert M._tools([tool(first=" x" * 30)], "world")[0]["first"] == ("x " * 30).strip()
     first = "`dig`'s `first` is a few words for the first time it's used (\"planted something\")"
     for bad in ("x" * 61, " ", 3):

@@ -184,8 +184,8 @@ def format_event(e: dict, verbose: bool = False) -> str | None:
         return green(f"  ~ Pip reads {d['title']}{tail}") + dim(f" - {d['summary']}")
     if k == "letter_sent":
         return dim(f"  @ Pip writes to {d['to']}: {d['text']}") + (dim(f" (enclosed: {d['enclosed']})") if d.get("enclosed") else "")
-    if k == "neighbor":
-        return green(f"  + A neighbor: {d['name']} - {d['about']}")
+    if k in ("neighbor", "character"):
+        return green(f"  + {'A neighbor' if d.get('role', 'neighbor') == 'neighbor' else 'Someone new (' + d['role'] + ')'}: {d['name']} - {d['about']}")
     if k == "world_changed":
         return green(f"  + {d['text']}")
     if k == "reflection":

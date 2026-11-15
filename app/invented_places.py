@@ -608,7 +608,7 @@ def settle(state, key: str, raw) -> dict | None:
     if not name or not persona or name.lower() in {world_pack.active().agent.name.lower()} | {c["name"].lower() for c in state.characters()}:
         return None
     ch = state.add_character(name, "resident", None, persona, 0, 0, about=clip(raw.get("about"), 160), place=key)
-    state.log("resident", name=name, place=key, about=ch["about"])
+    state.log("character", name=name, role="resident", about=ch["about"], place=key)
     return ch
 
 
@@ -677,7 +677,7 @@ def places_line(state, name: str, settings=None, library=None) -> str:
     tags = {p["key"]: p["tag"] for p in [d.get("library", {}), *d.get("start", [])] if p.get("tag")}
     built = [places.label(k) + (f" ({tags[k]})" if k in tags else "")
              for k, p in places.registry(state, settings, library).items()
-             if k != places.HOME and not p.invented and k != f"{name}{places.HOME_SUFFIX}"]
+             if k != places.HOME and not p.invented and k not in {c["place"] for c in state.characters() if c["name"] == name}]
     parts = ([_line_for(state, r, name) for r in mine] + built
              + [_line_for(state, r, name) for r in recs if r not in mine])[:PLACES_SHOWN]
     return f"Places in {world_pack.active().agent.possessive} world: " + "; ".join(parts) if parts else ""

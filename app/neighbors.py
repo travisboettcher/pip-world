@@ -5,8 +5,9 @@ parcel (capped per day), and has a little life of their own that moves on betwee
 in the inbox with the neighbor as sender, so perception, diary moments, recall and reflection treat them like any
 other visit. See DESIGN-neighbor.md.
 
-Residents (someone who lives or works at a place a character told the agent about, DESIGN-invented-places.md) are met in
-person the same way, but only at their place, and they don't write.
+Anyone the world brings (a module's `character`, of any role: a neighbour, a villager) or who settles at a place a character told
+the agent about (a resident, DESIGN-invented-places.md) is met in person where they are: whoever is there greets the agent, a few at a
+time (GREETERS), and answers what it says to them (docs/DESIGN-engine-audit.md, C1).
 """
 import math
 import random
@@ -34,6 +35,7 @@ OVERDUE_GRACE = 3 * 86400  # a plan never brought up this long after it was due 
 MAX_ATTEMPTS = 3
 RETRY_AFTER = 3600
 DAY = 86400
+GREETERS = 2               # how many of those at a place greet the agent when it arrives; the rest answer when spoken to
 
 
 def _delay(settings, rng: random.Random) -> float:
@@ -110,15 +112,16 @@ NOT_YET = 1e18             # a neighbour writes first only when a module asks (m
 
 
 def arrive(state, settings, new: dict, now: float | None = None, rng: random.Random | None = None) -> dict:
-    """Someone a module brought into the world (modules.py, `character`): their record, and their first letter on its way, soon."""
+    """Someone a module brought into the world (modules.py, `character`): their record, living where it says (or in a home of their own),
+    and their first letter on its way, soon, if they wrote one."""
     now = now or time.time()
     rng = rng or random.Random()
     ch = state.add_character(new["name"], new["kind"], None, clip(new["persona"], 800), settings.neighbor_writes_every_hours * 60, NOT_YET,
-                             about=clip(new["about"], 160))
+                             about=clip(new["about"], 160), place=new.get("home", ""))
     if new.get("letter"):
         lt = state.add_letter(new["name"], world_pack.active().agent.name, clip(new["letter"], 1200), now + _delay(settings, rng) / 4)
         invented.accept(state, new["name"], lt["text"], new.get("mentions_place"), now)
-    state.log("neighbor", name=new["name"], about=ch["about"])
+    state.log("character", name=new["name"], role=new["kind"], about=ch["about"], place=ch["place"])
     return ch
 
 
@@ -254,11 +257,11 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     recent = [t for t in ch["replies"] if now - t < 3600]
     a = state.agent()
     situation = f"{world_pack.active().agent.name} seems {a['mood']}."
-    if ch["kind"] == "neighbor" and where != places.home_of(ch):
+    if where != places.home_of(ch):                       # somewhere else just now, as a module says (a stall on market day)
         from .modules import whereabouts
         doing = (whereabouts(state, ch["name"]) or {}).get("doing")
         situation += f" {ch['name']} is {doing}." if doing else f" {ch['name']} is at {places.label(where)}."
-    at = "" if ch["kind"] == "neighbor" and where == places.home_of(ch) else places.label(where)  # a resident at their place; a neighbor at her stall
+    at = "" if where == places.home_of(ch) and places.resident_of(state, where) else places.label(where)    # in a home of their own: no place to name
     talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
     talk = talk[-CORRESPONDENCE_SHOWN * 2:]
     can_give = _can_give(state, settings, now)
@@ -272,7 +275,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     state.set_meta(**{f"greeted:{ch['id']}": visit})
     fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
               **({**_told(ch, out), **_happened(ch, now)} if out else {})}
-    if out and at and ch["kind"] != "neighbor":  # no letters: a resident's life moves on in talk
+    if out and at:                              # met out in the world, their life moves on in talk
         fields.update(_news(fields.get("life", ch["life"]), out))
     if fields:
         state.update_character(ch["id"], **fields)
@@ -287,13 +290,14 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
 
 
 async def _visits(state, settings, gm, now: float, library=None) -> bool:
-    """In person: whoever the agent finds where it is (a neighbor at home, a resident at their place) greets it once per
-    visit and answers what it says (capped per hour)."""
+    """In person: whoever the agent finds where it is greets it once per visit, a few at most (GREETERS), and answers what it says
+    (capped per hour)."""
     here = places.present_at(state)
-    wake = False
+    visit = state.meta("arrived_at") or ""
+    wake, greeted = False, sum(1 for c in places.company_at(state, here) if visit and state.meta(f"greeted:{c['id']}") == visit)
     for ch in state.characters():
-        if ch["kind"] not in places.IN_PERSON:
-            continue
+        if not ch["place"]:
+            continue                                            # a thing that talks lives nowhere: it talks through its workings
         where = places.place_of(state, ch)
         if not where or here != where:
             if ch["heard"]:
@@ -302,11 +306,12 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
         visit = state.meta("arrived_at") or ""
         if visit and state.meta("talk_scene") == visit:
             continue                                            # a talk scene is answering for them (talk.py)
-        greeting = state.meta(f"greeted:{ch['id']}") != visit
+        greeting = state.meta(f"greeted:{ch['id']}") != visit and greeted < GREETERS
         recent = [t for t in ch["replies"] if now - t < 3600]
         answering = bool(ch["heard"]) and len(recent) < settings.companion_replies_per_hour
         if not greeting and not answering:
             continue
+        greeted += state.meta(f"greeted:{ch['id']}") != visit
         if not answering and ch["heard"]:
             ch = {**ch, "heard": []}                            # over the hour's limit: a greeting only
         if await reply(state, settings, gm, ch, now, library):

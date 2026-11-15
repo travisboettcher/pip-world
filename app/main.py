@@ -349,7 +349,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         agent: Agent = app.state.agent
         st = agent.state
         built = [k for k, p in places.registry(st, settings, agent.library).items() if not p.invented]
-        residents = st.characters("resident")
+        residents = [c for c in st.characters() if c["kind"] != "creation"]            # whoever lives at one of them, of any role
         return {"places": [{**r, "residents": [{k: c[k] for k in ("name", "about", "life")} for c in residents
                                                if c["place"] == r["key"]]} for r in st.place_rows()],
                 "built_in": built}

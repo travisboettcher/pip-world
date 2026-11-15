@@ -17,8 +17,8 @@ def test_a_closed_place_hides_its_own_tools_even_when_they_come_first():
     tools = {n: T.REGISTRY[n] for n in ("browse", "say")}
 
     class P:
-        scope = "junkyard"
-        verbs = {}
+        scope, invented, kind = "junkyard", False, "yard"
+        verbs = {"browse": ("look over the heaps", None)}
     assert [s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=False)] == ["say"]
     assert [s.name for s in T.specs_for(tools, "junkyard", place=P(), open_=True)] == ["browse", "say"]
 

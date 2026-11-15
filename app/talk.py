@@ -1,6 +1,6 @@
 """The conversation scene (docs/DESIGN-conversation.md, part 2).
 
-When someone the agent is with in person (a neighbor at home, a resident at their place) has spoken this visit, the talk runs as its own short scene instead of
+When someone the agent is with in person (whoever is where it is: someone at home, a villager at the village) has spoken this visit, the talk runs as its own short scene instead of
 through Pip's world turn: The agent's turns get a small prompt (who it is with, why it came, what it has with it, the date, and the talk so far) and only
 `say` and `feel`; the other side answers at once; it goes on until either says goodbye, the agent falls silent, or SCENE_TURNS of the agent's lines. Then the agent's
 world turn picks up with the whole talk in view.
@@ -23,11 +23,8 @@ SAY = ToolSpec("say", "Say your next line to the one you are with: one to three 
 
 
 def partner(state) -> dict | None:
-    """Who the agent is with in person, if anyone: the neighbor whose home it is in, or a resident of the place it is at."""
-    here = places.present_at(state)
-    if not here:
-        return None
-    return next((ch for ch in state.characters() if ch["kind"] in places.IN_PERSON and places.place_of(state, ch) == here), None)
+    """Who the agent is with in person, if anyone: the first of whoever is where it is (company_at)."""
+    return next(iter(places.company_at(state, places.present_at(state))), None)
 
 
 def waiting(state) -> dict | None:

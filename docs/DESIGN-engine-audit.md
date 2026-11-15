@@ -1,6 +1,6 @@
 # Engine audit: what still assumes Pip's world (2026-11-14)
 
-Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0), 2 (0.48.0) and 3 (0.49.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
+Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0) to 4 (0.50.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
 The owner asked whether one more pass was needed: over the module architecture (the hooks it offers) and over engine code that still
 expects a workflow specific to Pip. This is that pass: what was checked, what was found, the owner's decisions, and the order of releases.
 
@@ -83,12 +83,12 @@ identity, places and walking, the map, creations as things, the module runtime a
   names (`projects` on `start_project`, `market` on `buy`/`sell`/`pay`, `library` on `browse`/`read`). A pack page the list doesn't name
   is never shown: Ashfall's `stakes` page needed an engine change. *Fix:* each page says when it applies (a front-matter line: the tools,
   settings or stats it needs, and its place in the order), and the engine keeps only the gate predicates.
-- **B3. Special places.** `home`, `library` and neighbours' homes are special-cased: the map's kind (`worldmap.py`), the layouts' kinds
+- **B3. Special places** — *built (0.50.0)*. `home`, `library` and neighbours' homes are special-cased: the map's kind (`worldmap.py`), the layouts' kinds
   (`layouts.KINDS` includes `library`, `neighbor`, `shop`, `market`), the library place from `places.json` plus `LIBRARY_PATH`
   (`places.py`), and a neighbour's home as a name ending in "'s home" (`HOME_SUFFIX`). *Fix:* every place kind comes from the pack; the
   library is a place of a kind whose availability the `books` source says; a character's home is a place the character record points to,
   not a suffix.
-- **B4. Tool scopes by place key.** `browse` is scoped to `junkyard` (0.44.1 added the place-kind verbs as a way round). *Fix:* engine
+- **B4. Tool scopes by place key** — *built (0.50.0)*. `browse` is scoped to `junkyard` (0.44.1 added the place-kind verbs as a way round). *Fix:* engine
   tools scope by role (`home`, `anywhere`, `offered`: where a place's kind lists the verb), never by a place's key.
 - **B5. The dashboard and feature endpoints** — *built (0.48.0)*. `/projects` (crafting), `/letters` (neighbours) and `/library/bookmarks` (reading) are
   endpoints of one feature each; the dashboard's Work tab renders projects and the World tab letters; `/projects` is a chat command. The
@@ -184,7 +184,16 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    is told when its front matter says (checked when the pack loads). Rendered for both worlds in 3,072 combinations of tools and
    settings, the guide reads exactly as before.
 4. **People, part one** (B3, B4, C1): place kinds and scopes from the pack; characters of any role with a home place they own; talk
-   scenes with whoever is present; Ashfall's villagers to talk to at the village.
+   scenes with whoever is present; Ashfall's villagers to talk to at the village. *Built (0.50.0):* a character's home is the place
+   their record names (`place`), not a name ending in "'s home": a module's `character` may be of any role (`villager`, `neighbor`;
+   not `creation`) and name its `home` (a place in the world), and someone without one gets a home of their own, worded and of the
+   kind the pack says (places.json `dwellings`; a one-time migration gave the old neighbours theirs). Whoever is at a place is met in
+   person there (talk scenes, greetings, answers) whatever their role, two greeting at a time; arrivals are `character` events with a
+   `role`. Every kind of place is the pack's (`layouts.kinds()`: home, dwellings, the library's `kind`, the starting places', the
+   kinds it can grow), the map draws each place by its own kind, and `browse` is scoped `offered` (wherever a place's kind lists
+   it), telling the agent where it can be used. Ashfall's village brings Marta, Ezra and Jun to live there, one a day, and the
+   Ashfall day talks with Marta in person. Left for release 5: letters (`write_letter`, `letter`) and the neighbour's own rules are
+   still the `neighbor` role's.
 5. **People, part two** (C1): correspondence for any character; the neighbourhood module drives the neighbour's letters, parcels and
    visits; `neighbors.py` keeps only the machinery.
 6. **What things can do, and what happens** (C2, C3): capabilities from the pack, happenings' other effects through `request`; Ashfall

@@ -142,7 +142,7 @@ def test_the_reads_trade_added(tmp_path):
     ctx = M.context(st, s, live(st, rule(name="eye", reads=["answers", "people", "places"]), "x"), now)
     assert ctx["answers"] == {"aaa": ["dig", "grow"], "bbb": ["sow"]} and a["id"]
     assert ctx["people"] == [{"name": "Oriel", "kind": "neighbor", "about": "reads tides", "home": "Oriel's home"},
-                             {"name": "Ann", "kind": "resident", "about": ""}]
+                             {"name": "Ann", "kind": "resident", "about": "", "home": "Ann's home"}]               # given none: a home of her own
     by = {p["key"]: p for p in ctx["places"]}
     assert by["Brygdon"] == {"key": "Brygdon", "label": "Brygdon", "kind": "market", "trades": True, "stalls": True, "hours": [9, 17],
                              "goods": [{"name": "awl", "kind": "tool", "weight": 3, "span": [1, 2], "attrs": {"x": 1}}]}
@@ -162,7 +162,7 @@ def test_where_a_tool_works_may_be_a_list_and_kinds_of_place(tmp_path):
     assert tool(where=" home ")["where"] == "home" and "kinds" not in tool() and tool()["where"] == "anywhere"
     assert tool(where=["a", "b", "c", "d"])["where"] == ["a", "b", "c", "d"] and tool(where=["x" * 60])["where"] == ["x" * 60]
     assert tool(kinds=list("abcdefgh"))["kinds"] == list("abcdefgh")
-    where = "`dig`'s `where` is anywhere, home, neighbor, offered, or a place's key (or a list of them)"
+    where = "`dig`'s `where` is anywhere, home, offered, or a place's key (or a list of them)"
     for bad in ([], ["a", "b", "c", "d", "e"], [" "], [3], ["x" * 61], 3, "x" * 61, " "):
         with pytest.raises(M.Refused) as e:
             tool(where=bad)
@@ -275,7 +275,9 @@ def test_a_neighbours_notes_and_wares_each_bring_a_trade_note(tmp_path):
 def test_the_kind_of_a_place(tmp_path):
     from app import places as P
     s, st, agent = modular(tmp_path)
-    assert P.kind_of(st, P.HOME) == "home" and P.kind_of(st, "Marigold's home") == "neighbor" and P.kind_of(st, "Nowhere") == ""
+    assert P.kind_of(st, P.HOME) == "home" and P.kind_of(st, "Marigold's home") == "" and P.kind_of(st, "Nowhere") == ""   # nobody lives there
+    st.add_character("Marigold", "neighbor", None, "x", 60, 0)
+    assert P.kind_of(st, "Marigold's home") == "neighbor"                                  # now someone does: the world's kind for it
     assert P.kind_of(st, "woods") == "wild" and P.kind_of(st, "junkyard") == "yard"
     st.add_place("Brygdon", "brygdon", kind="market", status="real", created_at=0, heard_at=0)
     assert P.kind_of(st, "Brygdon") == "market"
@@ -317,7 +319,7 @@ async def test_a_module_tool_says_why_it_cant_be_used_here(tmp_path):
     from tests.test_projects import make
     s, st, gm, agent = make(tmp_path, modules="on", module_runner="local")
     src = "def on_action(ctx):\n    return {'reply': 'done'}\n"
-    live(st, rule(name="aaa", hooks=["on_action"], tools=[{"name": "dig_deep", "help": "dig", "where": ["neighbor"], "kinds": ["market"], "params": SHOP},
+    live(st, rule(name="aaa", hooks=["on_action"], tools=[{"name": "dig_deep", "help": "dig", "where": ["anywhere"], "kinds": ["market"], "params": SHOP},
                                                             {"name": "haggle", "help": "haggle", "where": "offered", "params": SHOP},
                                                             {"name": "wave", "help": "wave", "where": "library", "params": SHOP}]), src)
     run = lambda name: T.module_tool(agent.ctx, name, {})  # noqa: E731
@@ -325,7 +327,7 @@ async def test_a_module_tool_says_why_it_cant_be_used_here(tmp_path):
     r = await run("dig_deep")
     assert (r.text, r.followup) == ("there's nothing to dig deep at Marigold's home", True)
     st.update_agent(location="woods")
-    assert (await run("dig_deep")).text == "you're not at the neighbor; go_to neighbor first"
+    assert (await run("dig_deep")).text == "there's nothing to dig deep at the woods"
     assert (await run("haggle")).text == "there's nothing to haggle at the woods"
     assert (await run("wave")).text == "you're not at the library; go_to library first"
     st.update_agent(location="library")
@@ -343,8 +345,9 @@ async def test_where_no_module_tool_applies_the_engines_own_answers(tmp_path):
     s, st, gm, agent = make(tmp_path, modules="on", module_runner="local")
     daytime(s)
     agent.tools["browse"] = T.REGISTRY["browse"]
-    live(st, rule(name="aaa", hooks=["on_action"], tools=[{"name": "browse", "help": "look at the stalls", "where": "neighbor", "params": SHOP}]),
-         "def on_action(ctx):\n    return {'reply': 'stalls'}\n")
+    live(st, rule(name="aaa", hooks=["on_action"], tools=[{"name": "browse", "help": "look at the stalls", "where": "anywhere", "kinds": ["neighbor"],
+                                                           "params": SHOP}]), "def on_action(ctx):\n    return {'reply': 'stalls'}\n")
+    st.add_character("Marigold", "neighbor", None, "x", 60, 0)                       # someone at home, where her wares are
     st.update_agent(location="junkyard")
     r = (await agent._run_tool(ToolCall(id="1", name="browse", arguments={}), 0))["content"]
     assert r.startswith("Looking over the junkyard")
