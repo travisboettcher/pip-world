@@ -170,6 +170,11 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Drop `api: 1` a few releases after 0.53.0 (once nothing live is written in it): `_from_api1`, the `log` path and its `module`
       moments in firsts, memory and the day go, and the `weather` read with them
+- [ ] Multiple agents in one world (owner, 2026-11-15): more than one agent living in the same world, each with its own persona, loop,
+      memory, stats, belongings and diary, meeting in person and writing through the same people machinery the characters use. Today
+      the engine has one agent row and one loop, so this needs an agent id carried through state, the loop, tools, the narrator and
+      modules (the `agent` read becomes "this agent", `people` gains the other agents), and a token budget per agent. To be designed
+      (a DESIGN doc) before anything is built.
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
