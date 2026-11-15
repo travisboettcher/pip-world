@@ -35,7 +35,7 @@ PARCEL = {"type": "object", "properties": {"name": {"type": "string"}, "kind": {
           "required": ["name", "kind"]}
 
 LETTER_BARE = (
-    "Write as Briar, Pip's neighbor. Who Briar is: An owl.\n"
+    "Write as Briar, who writes letters with Pip. Who Briar is: An owl.\n"
     "\n"
     "No letter is waiting; Briar decides to write to Pip anyway.\n"
     "\n"
@@ -55,7 +55,7 @@ LETTER_BARE = (
 )
 
 LETTER_FULL = (
-    "Write as Briar, Pip's neighbor. Who Briar is: An owl.\n"
+    "Write as Briar, who writes letters with Pip. Who Briar is: An owl.\n"
     "What's already happening in Briar's life (not news any more): The roof leaks. Rain came.\n"
     "Coming up for Briar:\n"
     "- market in 2 days\n"
@@ -86,13 +86,13 @@ LETTER_FULL = (
     "something above\n"
     "- `upcoming`: only if something is coming up for Briar in the next two weeks that isn't listed above: "
     "`what` (a few words) and `in_days` (1-14)\n"
-    "- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food or "
-    "tool, `qty` 1-3, `description`). Most letters have no parcel.\n"
+    "- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: tool, material, food or "
+    "seed, `qty` 1-3, `description`). Most letters have no parcel.\n"
     "- Only if your words point Pip somewhere new, give `mentions_place`.\n"
 )
 
 GREETING_BARE = (
-    "Voice Briar, Pip's neighbor. Who Briar is: An owl.\n"
+    "Voice Briar, whom Pip is visiting at home. Who Briar is: An owl.\n"
     "Right now Pip is visiting Briar at home. It is raining.\n"
     "Pip has just arrived at the door; greet it as Briar would. One or two short sentences, spoken aloud, in character. Most lines need no action; if one helps, a few words in "
     "*asterisks*, never a gesture already used in this talk. Talk like a person, not a teacher: you may ask Pip something, tell your own news "
@@ -107,7 +107,7 @@ GREETING_BARE = (
 )
 
 TALK_FULL = (
-    "Voice Briar, Pip's neighbor. Who Briar is: An owl.\n"
+    "Voice Briar, whom Pip is visiting at home. Who Briar is: An owl.\n"
     "Lately in Briar's life: The roof leaks. Rain came.\n"
     "Coming up for Briar:\n"
     "- market in 2 days\n"
@@ -189,7 +189,7 @@ RESIDENT_TALK = (
 LIFE_PROPS = {"life_update": {"type": "string"}, "life_update_new": {"type": "boolean"}}
 
 RECALL = (
-    "Briar is Pip's neighbor. Who Briar is: An owl.\n"
+    "Briar knows Pip. Who Briar is: An owl.\n"
     "Everything Briar and Pip have said to each other so far (letters and talk, oldest first):\n"
     "Pip: hi\n"
     "Briar: I have a lamp\n"
@@ -202,7 +202,7 @@ RECALL = (
 @pytest.mark.asyncio
 async def test_letter_prompt_with_nothing_yet(tmp_path):
     gm, b, _ = master(tmp_path, report(text="Hello!"))
-    assert await gm.neighbor_letter("Briar", "An owl.", [], [], None, "", False) == {"text": "Hello!"}
+    assert await gm.letter("Briar", "An owl.", [], [], None, "", False, home="home") == {"text": "Hello!"}
     assert task(b) == LETTER_BARE
     assert b.schemas == [{"type": "object", "properties": LETTER_PROPS, "required": ["text"]}]
 
@@ -210,21 +210,33 @@ async def test_letter_prompt_with_nothing_yet(tmp_path):
 @pytest.mark.asyncio
 async def test_letter_prompt_with_everything(tmp_path):
     gm, b, _ = master(tmp_path)
-    await gm.neighbor_letter("Briar", "An owl.", ["The roof leaks.", "Rain came."],
-                             ["Pip: hi", "Briar (in brief): said hello"], "Dear Briar, hi.", "a cup", True,
-                             told=["has a lamp", "likes tea"], agenda=["market in 2 days", "a storm tomorrow"],
-                             places=PLACES, mention=MENTION)
+    await gm.letter("Briar", "An owl.", ["The roof leaks.", "Rain came."],
+                    ["Pip: hi", "Briar (in brief): said hello"], "Dear Briar, hi.", "a cup", True,
+                    told=["has a lamp", "likes tea"], agenda=["market in 2 days", "a storm tomorrow"],
+                    places=PLACES, mention=MENTION, home="home")
     assert task(b) == LETTER_FULL
     assert b.schemas == [{"type": "object", "properties": {**LETTER_PROPS, "parcel": PARCEL, **MENTIONS},
                           "required": ["text"]}]
 
 
 @pytest.mark.asyncio
-async def test_a_failed_letter_is_logged_as_neighbor_letter(tmp_path):
+async def test_a_failed_letter_is_logged_as_a_letter(tmp_path):
     gm, b, st = master(tmp_path)  # the fake answers "..." with no report
-    assert await gm.neighbor_letter("Briar", "An owl.", [], [], None, "", False) is None
+    assert await gm.letter("Briar", "An owl.", [], [], None, "", False) is None
     (e,) = [e for e in st.events(5) if e["kind"] == "gm_error"]
-    assert e["data"]["purpose"] == "neighbor_letter"
+    assert e["data"]["purpose"] == "letter"
+
+
+@pytest.mark.asyncio
+async def test_a_letter_says_who_writes_and_where_they_live_or_that_letters_are_all(tmp_path):
+    gm, b, _ = master(tmp_path)
+    await gm.letter("Jun", "A scavenger.", [], [], None, "", False, role="villager")
+    assert task(b).startswith("Write as Jun (villager), who writes letters with Pip. Who Jun is: A scavenger.\n")
+    assert " Letters and the occasional small parcel are all there is between you. Also report:" in task(b)
+    await gm.letter("Jun", "A scavenger.", [], [], None, "", False, home="the village", notes="Jun trades salvage at the gate.")
+    assert "Pip can walk over to visit Jun at the village (you can invite it), and Jun trades salvage at the gate. Also report:" in task(b, 1)
+    await gm.letter("Jun", "A scavenger.", [], [], None, "", False, notes="Jun trades salvage at the gate.")
+    assert "tell something new. Jun trades salvage at the gate. Also report:" in task(b, 2)
 
 
 @pytest.mark.asyncio
@@ -364,7 +376,7 @@ async def test_a_neighbor_may_hand_pip_something_only_through_give(tmp_path):
     t = task(b)
     assert "hands Pip nothing" not in t and "could. Report the line as `text`, and:\n" in t
     assert ("- `give`: only if Briar really hands Pip something small right now "
-            "(`name`, `kind`: material, seed, food or tool, `qty` 1-3, `description`). Pip receives exactly this and nothing "
+            "(`name`, `kind`: tool, material, food or seed, `qty` 1-3, `description`). Pip receives exactly this and nothing "
             "else, so never describe handing over, offering a pinch of, letting Pip take or help themselves to, or giving anything you do not "
             "report here\n") in t
     assert "give" in b.schemas[0]["properties"] and b.schemas[0]["properties"]["give"]["type"] == "object"

@@ -312,6 +312,21 @@ class Market:
         there = [e[0] + " (" + str(self.sell_price(booth, e)) + " coins)" for e in table if self.stock_left(booth, e)]
         return (whose + " has for sale: " + ", ".join(there) + "." if there else whose + " has sold out of everything today.")
 
+    def offer(self, name, for_sale):
+        """Something of theirs to offer the agent when they write: what it wished for, first; else, one day in four, one of their wares."""
+        rows = [r for r in for_sale if r[3] == name]
+        if not rows:
+            return ""
+        agent = self.ctx["agent"]["name"]
+        wished = [r for r in rows if any(key(r[1]) in key(w["text"]) or key(r[1]).split()[-1] in key(w["text"]).split() for w in self.ctx["wishes"])]
+        if wished:
+            return " " + name + " has " + wished[0][1] + ", which " + agent + " wished for (" + coins_text(wished[0][2]) + " each)."
+        day = day_of(self.ctx["now"])
+        if crc32(name + "|" + str(day)) % 4:
+            return ""
+        r = rows[crc32(name + "|offer|" + str(day)) % len(rows)]
+        return " If it fits, " + name + " could offer " + agent + " " + r[1] + " (" + coins_text(r[2]) + " each)."
+
     def selling_where(self, name):
         if not self.wares(name):
             return ""
@@ -332,10 +347,11 @@ class Market:
                     lines.append(self.wares_line(b, who + (" (at a stall here today)" if b.endswith(STALL_SUFFIX) else ""), table))
         out["status"] = {"title": "Trade here", "lines": [fit(x) for x in lines[:8]]} if lines else {}
         where, notes = {}, {}
+        for_sale = self.facts()["for_sale"]
         for n in self.neighbours():
             sells = self.selling_where(n["name"])
             if sells:
-                notes[n["name"]] = fit(sells + "; " + self.ctx["agent"]["name"] + " can buy there.", 300)
+                notes[n["name"]] = fit(sells + "; " + self.ctx["agent"]["name"] + " can buy there." + self.offer(n["name"], for_sale), 300)
             away = self.away_at(n["name"])
             if away:
                 where[n["name"]] = {"at": away, "doing": fit("minding a stall at " + label(away) + " today (" + sells + ")")}

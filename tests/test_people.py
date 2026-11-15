@@ -46,7 +46,7 @@ def test_someone_of_any_role_lives_where_their_module_says(tmp_path):
     ({"kind": "Two Words"}, "`character.kind` is a word for their role (villager, neighbor...), not creation"),
     ({"kind": "villager", "home": "Atlantis"}, "`character.home` is a place in the world, not 'Atlantis'"),
     ({"kind": "villager", "home": 3}, "`character.home` is a place in the world, not 3"),
-    ({"kind": "villager", "colour": "red"}, "`character` is {name, kind (a word for their role), persona, about, home?, letter?, mentions_place?}"),
+    ({"kind": "villager", "colour": "red"}, "`character` is {name, kind (a word for their role), persona, about, home?, writes?, letter?, mentions_place?}"),
 ])
 def test_a_character_is_checked(tmp_path, v, why):
     s, st, *_ = make(tmp_path)

@@ -1,9 +1,10 @@
-"""The neighbor: a GM-invented character who lives nearby and exchanges slow letters with the agent.
+"""People: the engine's machinery for anyone a module brings into the world (docs/DESIGN-engine-audit.md, C1).
 
-Letters take hours each way. The neighbor answers what the agent sends, writes first now and then, may tuck in a small
-parcel (capped per day), and has a little life of their own that moves on between letters. Letters for the agent arrive
-in the inbox with the neighbor as sender, so perception, diary moments, recall and reflection treat them like any
-other visit. See DESIGN-neighbor.md.
+Correspondence: letters go between the agent and whoever a module brought as writing (`writes`: a neighbour, anyone a world
+says). Letters take hours each way. They answer what the agent sends, write first when their module asks (`letter`), may tuck in a
+small parcel (capped per day), and have a little life of their own that moves on between letters; what live modules note about them
+(`notes`: a trade's wares, say) is theirs to bring up. Letters for the agent arrive in the inbox with the writer as sender, so
+perception, diary moments, recall and reflection treat them like any other visit. See DESIGN-neighbor.md.
 
 Anyone the world brings (a module's `character`, of any role: a neighbour, a villager) or who settles at a place a character told
 the agent about (a resident, DESIGN-invented-places.md) is met in person where they are: whoever is there greets the agent, a few at a
@@ -18,7 +19,6 @@ from . import places
 from . import conversation as conv
 from .companions import conversation as talk_lines
 from .memory import ago
-from .state import State
 from .text import brief, clip
 from . import world as world_content
 from . import world_pack
@@ -99,7 +99,7 @@ def clean_parcel(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
     name = clip(raw.get("name"), 40).strip(" .")
-    if not name or raw.get("kind") not in tuple(k for k in world_content.kinds() if k in ("material", "seed", "food", "tool")):
+    if not name or raw.get("kind") not in world_content.kinds():                      # any kind of thing the world has
         return None
     try:
         qty = max(1, min(3, int(raw.get("qty") or 1)))
@@ -117,7 +117,7 @@ def arrive(state, settings, new: dict, now: float | None = None, rng: random.Ran
     now = now or time.time()
     rng = rng or random.Random()
     ch = state.add_character(new["name"], new["kind"], None, clip(new["persona"], 800), settings.neighbor_writes_every_hours * 60, NOT_YET,
-                             about=clip(new["about"], 160), place=new.get("home", ""))
+                             about=clip(new["about"], 160), place=new.get("home", ""), writes=new.get("writes", False))
     if new.get("letter"):
         lt = state.add_letter(new["name"], world_pack.active().agent.name, clip(new["letter"], 1200), now + _delay(settings, rng) / 4)
         invented.accept(state, new["name"], lt["text"], new.get("mentions_place"), now)
@@ -126,9 +126,9 @@ def arrive(state, settings, new: dict, now: float | None = None, rng: random.Ran
 
 
 async def recall_told(state, gm, tries: dict) -> None:
-    """One-time backfill: a neighbor who knows nothing of what they've told the agent has it recalled from everything said
+    """One-time backfill: someone the agent writes to who knows nothing of what they've told the agent has it recalled from everything said
     so far. Done for good once it succeeds; after two failures it waits for the next start (`tries` lives that long)."""
-    for ch in state.characters("neighbor") if gm else []:
+    for ch in state.correspondents() if gm else []:
         done = f"told_recalled:{ch['id']}"
         if ch["told"] or state.meta(done) or tries.get(ch["id"], 0) >= 2:
             continue
@@ -136,8 +136,8 @@ async def recall_told(state, gm, tries: dict) -> None:
                 for lt in state.letters(between=ch["name"], limit=50)
                 if lt["delivered_at"] is not None or lt["sender"] == world_pack.active().agent.name] + talk_lines(state, ch["name"])
         if not said:
-            continue  # nothing yet (a neighbor just invented): their first letter is recalled once it arrives
-        got = await gm.recall_told(ch["name"], ch["persona"], said)
+            continue  # nothing yet (someone just brought in): their first letter is recalled once it arrives
+        got = await gm.recall_told(ch["name"], ch["persona"], said, role=ch["kind"])
         if got is None:
             tries[ch["id"]] = tries.get(ch["id"], 0) + 1
             continue
@@ -157,40 +157,24 @@ def _deliver_to_agent(state, lt: dict, now: float) -> None:
     state.update_letter(lt["id"], delivered_at=now)
 
 
-OFFER_CHANCE = 0.25          # a letter with no wish to answer still offers one of the neighbor's wares this often
-
-
-def trade_note(state, ch: dict, rng) -> str:
-    """What a neighbor's letter is told about their trade (what live modules note about them), and now and then a thing they sell to offer
-    The agent (one it wishes for, first): what modules say they have `for_sale`."""
-    from .modules import for_sale, notes_on
-    notes = notes_on(state, ch["name"])
-    wares = [(item, price) for _, item, price, whose in for_sale(state) if whose == ch["name"]]
-    if not notes and not wares:
-        return ""
-    a = world_pack.active().agent
-    note = " ".join(f"{ch['name']} {n}" for n in notes)
-    wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=30)]
-    wanted = next((w for w in wares if any(State.related(w[0], t) for t in wishes)), None)
-    offer = wanted or (rng.choice(wares) if wares and rng.random() < OFFER_CHANCE else None)
-    if offer:
-        note += (f" {a.name} has wished for something like {offer[0]}; {ch['name']} could offer it ({offer[1]} coins each)." if wanted
-                 else f" If it fits, {ch['name']} could offer {a.name} {offer[0]} ({offer[1]} coins each).")
-        state.log("offered", name=ch["name"], item=offer[0], price=offer[1], wished=bool(wanted))
-    return note.strip()
+def notes_line(state, ch: dict) -> str:
+    """What live modules note about someone, for them to bring up when they write (a trade's wares, and what it has to offer)."""
+    from .modules import notes_on
+    return " ".join(f"{ch['name']} {n}" for n in notes_on(state, ch["name"]))
 
 
 async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict | None, library=None) -> bool:
-    """The neighbor writes a letter (an answer, or out of the blue). Returns False if the GM failed."""
+    """Someone writes the agent a letter (an answer, or out of the blue). Returns False if the GM failed."""
     parcel_ok = state.letters_since_parcel(now - DAY) < settings.parcels_per_day
-    ask = dict(told=ch["told"], agenda=agenda(ch, now), **_places(state, settings, library, ch),
-               **({"trade": t} if (t := trade_note(state, ch, rng)) else {}))
+    home = places.home_of(ch)
+    ask = dict(told=ch["told"], agenda=agenda(ch, now), role=ch["kind"], **_places(state, settings, library, ch),
+               **({"home": places.label(home)} if home else {}), **({"notes": n} if (n := notes_line(state, ch)) else {}))
     args = (ch["name"], ch["persona"], ch["life"], correspondence(state, ch["name"]), answering["text"] if answering else None,
             answering["enclosed"] if answering else "", parcel_ok)
-    out = await gm.neighbor_letter(*args, **ask) if gm else None
+    out = await gm.letter(*args, **ask) if gm else None
     earlier = [lt["text"] for lt in state.letters(between=ch["name"], limit=LETTERS_CHECKED) if lt["sender"] == ch["name"]]
     if out and conv.repeats(out.get("text") or "", earlier):     # the same sentence as an earlier letter: one more try
-        out = await gm.neighbor_letter(*args, again=True, **ask) or out
+        out = await gm.letter(*args, again=True, **ask) or out
     text = clip(out.get("text"), 1200) if out else ""
     if not text:
         return False
@@ -215,13 +199,13 @@ def _places(state, settings, library, ch: dict) -> dict:
 
 
 async def step(state, settings, gm, rng: random.Random, now: float | None = None, library=None) -> bool:
-    """Deliver due letters, let neighbors answer or write first. Returns True if the agent should wake."""
+    """Deliver due letters, let those the agent writes to answer or write first. Returns True if the agent should wake."""
     now = now or time.time()
     wake = False
-    for ch in state.characters("neighbor"):
+    for ch in state.correspondents():
         if moved := _happened(ch, now, OVERDUE_GRACE):
             state.update_character(ch["id"], **moved)
-    neighbors = {c["name"]: c for c in state.characters("neighbor")}
+    writers = {c["name"]: c for c in state.correspondents()}
     for lt in state.letters(undelivered=True, limit=200):
         if lt["deliver_at"] > now:
             continue
@@ -229,7 +213,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
             _deliver_to_agent(state, lt, now)
             wake = True
             continue
-        ch = neighbors.get(lt["recipient"])
+        ch = writers.get(lt["recipient"])
         ok = bool(ch) and await _write(state, settings, gm, rng, ch, now, lt, library)
         if ok or lt["attempts"] + 1 >= MAX_ATTEMPTS or not ch:
             state.update_letter(lt["id"], delivered_at=now, attempts=lt["attempts"] + 1)
@@ -240,7 +224,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
     from . import looks
     await looks.ensure(state, settings, gm, now)
     await looks.ensure_scenes(state, settings, gm, library, now)
-    for ch in state.characters("neighbor"):
+    for ch in state.correspondents():
         in_flight = state.letters(between=ch["name"], undelivered=True, limit=5)
         if not in_flight and now >= ch["next_chatter_at"]:
             if not await _write(state, settings, gm, rng, ch, now, None, library):
@@ -265,7 +249,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     talk = correspondence(state, ch["name"]) + talk_lines(state, ch["name"], verbatim_since=float(visit or 0))
     talk = talk[-CORRESPONDENCE_SHOWN * 2:]
     can_give = _can_give(state, settings, now)
-    ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, **_places(state, settings, library, ch),
+    ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, role=ch["kind"], **_places(state, settings, library, ch),
                **({"closing": True} if closing else {}))
     heard = [h["text"] for h in ch["heard"]] if answering else []
     out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, **ask) if gm else None
@@ -343,15 +327,16 @@ def send(state, settings, rng: random.Random, to: dict, text: str, enclosed: str
 
 def perception(state, now: float | None = None) -> list[str]:
     now = now or time.time()
-    neighbors = state.characters("neighbor")
-    if not neighbors:
+    writers = state.correspondents()
+    if not writers:
         return []
-    lines = ["Your neighbors (they live nearby: visit them with go_to, or write with write_letter):"]
-    for c in neighbors:
+    lines = ["People you write to (write_letter; go_to where they live to visit):"]
+    for c in writers:
         visited = state.last_arrived(places.home_of(c))
         from .modules import notes_on
         sells = "; ".join(notes_on(state, c["name"]))
-        lines.append(f"- {c['name']}: {c['about']}" + (f" ({sells})" if sells else "") + (f" (you last visited {ago(visited, now)})" if visited else ""))
+        lines.append(f"- {c['name']}" + (f" (at {places.label(places.home_of(c))})" if places.home_of(c) else "") + f": {c['about']}"
+                     + (f" ({sells})" if sells else "") + (f" (you last visited {ago(visited, now)})" if visited else ""))
     for lt in state.letters(undelivered=True, limit=20):
         if lt["sender"] == world_pack.active().agent.name:
             lines.append(f"- your letter to {lt['recipient']} (sent {ago(lt['ts'], now)}) is on its way")

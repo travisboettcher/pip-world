@@ -570,29 +570,41 @@ async def test_on_her_market_day_she_keeps_a_stall_at_the_market(tmp_path):
     assert M.whereabouts(st, "Marigold") is None                                               # another day: at home
 
 
+def offers_on(day):
+    """Whether the trade module offers one of Marigold's wares on `day` when nothing she sells is wished for (one day in four)."""
+    return G["crc32"]("Marigold|" + G["day_of"](day)) % 4 == 0
+
+
 def test_her_trade_reads_plainly_in_her_notes_and_the_neighbours_list(tmp_path):
     import app.neighbors as nb
     s, st, agent = world(tmp_path)
     ch = marigold(st, s)
-    asyncio.run(tick(st, s))
+    quiet = next(NOW + k * DAY for k in range(12) if not offers_on(NOW + k * DAY))
+    asyncio.run(tick(st, s, quiet))
     day = G["WEEKDAYS"][G["crc32"]("Marigold") % 7]
     assert M.notes_on(st, "Marigold") == [f"{selling(day)}; Pip can buy there."]
-    assert f"- Marigold: {ch['about']} ({selling(day)}; Pip can buy there.)" in "\n".join(nb.perception(st))
+    assert f"- Marigold (at Marigold's home): {ch['about']} ({selling(day)}; Pip can buy there.)" in "\n".join(nb.perception(st))
+    assert nb.notes_line(st, ch) == f"Marigold {selling(day)}; Pip can buy there."
 
 
-def test_her_letters_offer_what_pip_wished_for_and_now_and_then_something_else(tmp_path):
-    import app.neighbors as nb
+def test_her_notes_offer_what_pip_wished_for_and_some_days_something_else(tmp_path):
+    """The trade module's (it reads the agent's wishes): what Marigold would bring up when she writes."""
     s, st, agent = world(tmp_path)
-    ch = marigold(st, s)
+    marigold(st, s)
     asyncio.run(tick(st, s))
     price = next(p for _, item, p, who in M.for_sale(st) if item == "driftwood" and who == "Marigold")
     st.add_memory("some driftwood for a frame", "wishlist")
-    note = nb.trade_note(st, ch, FixedRng(0.9))
-    assert note.startswith("Marigold sells cork floats") and note.endswith(f"Pip has wished for something like driftwood; Marigold could offer it ({price} coins each).")
-    assert [e["data"] for e in st.events(5) if e["kind"] == "offered"][0] == {"name": "Marigold", "item": "driftwood", "price": price, "wished": True}
+    asyncio.run(tick(st, s, NOW + 60))
+    assert M.notes_on(st, "Marigold")[0].endswith(f"Pip can buy there. Marigold has driftwood, which Pip wished for ({price} coins each).")
     st.db.execute("DELETE FROM memories")
-    assert "could offer Pip" in nb.trade_note(st, ch, FixedRng(0.1)) and "offer" not in nb.trade_note(st, ch, FixedRng(nb.OFFER_CHANCE))
-    assert nb.trade_note(st, {**ch, "name": "Nobody"}, FixedRng(0.1)) == ""
+    st.db.commit()
+    seen = set()
+    for k in range(12):
+        asyncio.run(tick(st, s, NOW + k * DAY))
+        note = M.notes_on(st, "Marigold")[0]
+        assert ("could offer Pip" in note) == offers_on(NOW + k * DAY)
+        seen.add(offers_on(NOW + k * DAY))
+    assert seen == {True, False}                                                          # some days she offers something, some not
 
 
 async def test_a_neighbour_without_wares_is_asked_for_some_once_at_a_time(tmp_path):

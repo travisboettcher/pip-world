@@ -255,6 +255,7 @@ class State:
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
                 ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
                 ("characters", "look", "TEXT NOT NULL DEFAULT '{}'"),
+                ("characters", "writes", "INTEGER NOT NULL DEFAULT 0"),     # letters go between them and the agent (0.51.0)
                 ("works", "pixels", "TEXT NOT NULL DEFAULT ''"),          # a pixel picture: {"rows": [...], "palette": {...}} (art.py)
                 ("works", "subject", "TEXT NOT NULL DEFAULT ''"),         # the creation a picture is of: then it is how that creation looks
                 ("modules", "show", "TEXT NOT NULL DEFAULT '[]'"),        # what a module draws in scenes (anchors.py)
@@ -288,6 +289,7 @@ class State:
             self._name_the_agent()
             self._plans_named()
             self._homes_named()
+            self._letters_named()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -778,6 +780,14 @@ class State:
             self.db.execute("UPDATE characters SET place = ? WHERE id = ?", (places.dwelling_called(r["name"], self.s), r["id"]))
         self.set_meta(homes_named="1")
 
+    def _letters_named(self) -> None:
+        """Once (0.51.0): letters go between the agent and anyone a module says writes (docs/DESIGN-engine-audit.md, C1), where they went
+        only to neighbours; the neighbours write."""
+        if self.meta("letters_named") == "1":
+            return
+        self.db.execute("UPDATE characters SET writes = 1 WHERE kind = 'neighbor'")
+        self.set_meta(letters_named="1")
+
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
         with self.lock:
@@ -893,19 +903,23 @@ class State:
         return {**dict(row), **{k: json.loads(row[k]) for k in cls._CHARACTER_JSON}}
 
     def add_character(self, name: str, kind: str, creation_id: int | None, persona: str, chatter_minutes: float,
-                      next_chatter_at: float, about: str = "", place: str = "") -> dict:
+                      next_chatter_at: float, about: str = "", place: str = "", writes: bool = False) -> dict:
         """Someone in the world. `place` is where they live; someone who isn't a made thing and has none gets a home of their own, as
-        the world words it (places.json `dwellings`: "Marigold's home")."""
+        the world words it (places.json `dwellings`: "Marigold's home"). `writes`: letters go between them and the agent."""
         if not place and creation_id is None and kind != "creation":
             from . import places
             place = places.dwelling_called(name, self.s)
         with self.lock:
             cur = self.db.execute(
                 "INSERT INTO characters (name, kind, creation_id, persona, chatter_minutes, next_chatter_at, ts, about, "
-                "place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes,
-                                                              next_chatter_at, time.time(), about, place))
+                "place, writes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, kind, creation_id, persona, chatter_minutes,
+                                                                         next_chatter_at, time.time(), about, place, int(writes)))
             self.db.commit()
             return self._character(self.db.execute("SELECT * FROM characters WHERE id = ?", (cur.lastrowid,)).fetchone())
+
+    def correspondents(self) -> list[dict]:
+        """Everyone letters go between the agent and (a module brought them as writing)."""
+        return [c for c in self.characters() if c["writes"]]
 
     def characters(self, kind: str | None = None) -> list[dict]:
         with self.lock:

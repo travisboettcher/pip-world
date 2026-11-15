@@ -197,7 +197,8 @@ world feel lived in: a curfew bell, a trader's caravan every few days, the reser
 
 **People** (0.50.0): a module brings someone into the world with `character` (a name, a word for their role, who they are, what the
 agent would know of them, and `home`: where they live). Whoever is at a place is met in person there, through the engine's talk scenes:
-Ashfall's `village` module brings Marta, Ezra and Jun to the village, one a day. Someone brought without a home gets one of their own,
+Ashfall's `village` module brings Marta, Ezra and Jun to the village, one a day. Someone brought with `writes: true` also exchanges
+letters with the agent over hours (a neighbour, a distant cousin, a radio operator), and a module can ask them to write first. Someone brought without a home gets one of their own,
 as `places.json` `dwellings` says (`{"kind": "neighbor", "called": "{name}'s home"}` in Pip's world; a `dwelling` otherwise). Every
 kind of place is the world's: the agent's `home`, the dwellings', the library's (`library.kind`), the places it starts with and the
 kinds it can grow, and a layout module may cover only those.

@@ -309,7 +309,7 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
         where = places.place_of(ctx.state, ch) if ch else None
         if ch and (not where or places.present_at(ctx.state) != where):
             return ToolResult(f"{ch['name']} can't hear you from here" + (
-                "; write_letter, or go_to their home to visit" if ch["kind"] == "neighbor" else
+                f"; write_letter, or go_to {where} to visit" if ch["writes"] and where else
                 f"; go_to {where} to talk with them" if where else ""), followup=True)
         if ch:
             comp.hear(ctx.state, ch, text)
@@ -571,7 +571,7 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult("You remember:\n" + reminders.recall_lines(ctx.state, hits, because, time.time()), followup=True)
 
 
-@tool("write_letter", "Write a letter to one of your neighbors. It takes a few hours to arrive, and they'll write "
+@tool("write_letter", "Write a letter to someone you write to. It takes a few hours to arrive, and they'll write "
       "back in their own time. You can enclose one thing you own or made as a gift (it leaves your belongings).",
       _obj({"to": {"type": "string"}, "text": {"type": "string", "description": "the letter"},
             "enclose": {"type": "string", "description": "optional: one item or creation to send along"}},
@@ -579,9 +579,9 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
 async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
     ch = st.find_character(args["to"])
-    if not ch or ch["kind"] != "neighbor":
-        names = ", ".join(c["name"] for c in st.characters("neighbor")) or "nobody yet"
-        return ToolResult(f"error: you don't have a neighbor called {args['to']!r} (you know: {names})", followup=True)
+    if not ch or not ch["writes"]:
+        names = ", ".join(c["name"] for c in st.correspondents()) or "nobody yet"
+        return ToolResult(f"error: you don't write to anyone called {args['to']!r} (you write to: {names})", followup=True)
     text = str(args.get("text") or "").strip()
     if not text:
         return ToolResult("error: the letter is empty", followup=True)

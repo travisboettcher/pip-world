@@ -28,7 +28,7 @@ API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
 READS = ("time", "weather", "agent", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
-         "answers", "making", "found")
+         "answers", "making", "found", "wishes")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
             "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
             "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
@@ -47,6 +47,7 @@ RULES = (  # the modules the engine ships (module_library/), in the order they a
     "round-tree", "pine-tree", "well", "stall", "cutaway", "scrap-heap", "shed", "bench", "standing-stones", "lighthouse", "outdoors", "neighbor", "market", "shop", "library", "garden", "gathering", "neighborhood", "trade", "reading", "sky", "crafting", "happenings")
 OFFER_NAME = re.compile(r"^[a-z][a-z ]{0,23}$")
 STATE_MAX, FACTS_MAX, TEXT_MAX, OFFERS_MAX, CONSUME_MAX = 16_000, 8_000, 200, 4, 5
+WISHES_READ = 12                                      # the agent's open wishes a module may read
 QUALITIES_MADE = ("rough", "sound", "fine", "masterwork")
 MAP_MOST, LIST_STRING_MAX = 12, 240                  # names in a map argument (materials); a string in a list of them
 SOURCE_DEPTH, SOURCE_ARGS_MAX = 3, 16_000           # sources asked in one go: judged, narrated, designed; a question's size (a narrator's task)
@@ -395,7 +396,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                           if kinds.KINDS.get(p["kind"]) and kinds.KINDS[p["kind"]].trades else []}
                          for p in worldmap.snapshot(state, settings, None, now)["places"] if not p["heard_only"]]
     if "people" in reads:                                   # who lives in the world (not what they're like), and where
-        ctx["people"] = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "home": c["place"]}
+        ctx["people"] = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "home": c["place"], "writes": bool(c["writes"])}
                          for c in state.characters() if c["place"]]                  # a made thing that talks lives nowhere
     if "creations" in reads:
         from . import creations as cr
@@ -428,6 +429,8 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         ctx["abilities"] = {n: proj.level(xp) for n, xp in state.abilities().items()}
     if "visitors" in reads:
         ctx["visitors"] = {"waiting": len(state.pending_inbox())}
+    if "wishes" in reads:                                   # what the agent wishes for, still open: [{id, text}]
+        ctx["wishes"] = [{"id": w["id"], "text": w["text"]} for w in state.memories("wishlist", status="open", limit=WISHES_READ)]
     if "facts" in reads:
         ctx["facts"] = {o["name"]: o["facts"] for o in state.modules("live") if o["id"] != m["id"] and o["facts"]}
     return ctx
@@ -833,8 +836,10 @@ def _character(state, v) -> dict:
     """Someone new in the world: a name nobody has (and not the agent's), a word for their role (the module's: villager, neighbor), who
     they are (private to the engine and this module), what the agent would know of them, where they live (`home`: a place in the
     world; without one they get a home of their own, places.py), and perhaps a first letter."""
-    if not isinstance(v, dict) or set(v) - {"name", "kind", "persona", "about", "home", "letter", "mentions_place"}:
-        raise Refused("`character` is {name, kind (a word for their role), persona, about, home?, letter?, mentions_place?}")
+    if not isinstance(v, dict) or set(v) - {"name", "kind", "persona", "about", "home", "writes", "letter", "mentions_place"}:
+        raise Refused("`character` is {name, kind (a word for their role), persona, about, home?, writes?, letter?, mentions_place?}")
+    if not isinstance(v.get("writes", False), bool) or (v.get("letter") is not None and v.get("writes") is not True):
+        raise Refused("`character.writes` is true for someone letters go between, and a first `letter` needs it")
     if not isinstance(v.get("kind"), str) or not KIND_WORD.match(v["kind"]) or v["kind"] == "creation":
         raise Refused("`character.kind` is a word for their role (villager, neighbor...), not creation")
     home = v.get("home")
@@ -854,16 +859,17 @@ def _character(state, v) -> dict:
     if v.get("mentions_place") is not None and not isinstance(v["mentions_place"], dict):
         raise Refused("`character.mentions_place` is the place their words point to, as an ask with `mentions` gave it")
     return {"name": name, "kind": v["kind"], "persona": v["persona"].strip(), "about": v["about"].strip(), **({"home": home} if home else {}),
+            **({"writes": True} if v.get("writes") else {}),
             **({"letter": v["letter"].strip()} if v.get("letter") else {}), **({"mentions_place": v["mentions_place"]} if v.get("mentions_place") else {})}
 
 
 def _letter(state, v) -> dict:
-    """A neighbour writes to the agent (the engine writes it, as it answers letters), when none of theirs is already on the way."""
+    """Someone the agent writes to writes first (the engine writes it, as it answers letters), when none of theirs is already on the way."""
     if not isinstance(v, dict) or set(v) != {"from"} or not isinstance(v["from"], str):
-        raise Refused("`letter` is {from: a neighbour's name}")
-    ch = next((c for c in state.characters("neighbor") if c["name"].lower() == v["from"].strip().lower()), None)
+        raise Refused("`letter` is {from: the name of someone who writes to the agent}")
+    ch = next((c for c in state.correspondents() if c["name"].lower() == v["from"].strip().lower()), None)
     if not ch:
-        raise Refused(f"there is no neighbour called {v['from']!r}")
+        raise Refused(f"nobody called {v['from']!r} writes to {world_pack.active().agent.name}")
     return {"from": ch["name"]}
 
 
@@ -1256,7 +1262,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             nb.arrive(state, state.s, val, now)
             budget["character"] += 1
         elif kind == "letter":
-            ch = next(c for c in state.characters("neighbor") if c["name"] == val["from"])
+            ch = next(c for c in state.correspondents() if c["name"] == val["from"])
             state.update_character(ch["id"], next_chatter_at=now)            # written on the engine's next step, as letters are answered
             budget["letter"] += 1
         elif kind == "coins":

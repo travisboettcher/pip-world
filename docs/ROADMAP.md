@@ -159,6 +159,8 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           pages say when they apply in a front matter, and the engine names none
     - [x] 4 (0.50.0): people of any role, living at the place their record names (a home of their own where the world gives none),
           met in person wherever they are; place kinds from the pack; `browse` scoped where a place lists it; Ashfall's villagers
+    - [x] 5 (0.51.0): letters with anyone a module brings as writing, of any role; the offer in a neighbour's letter is the trade
+          module's (with a `wishes` read); parcels of any kind the world has
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

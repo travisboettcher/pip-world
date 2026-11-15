@@ -119,13 +119,13 @@ class GameMaster:
         out = await self.ask(task, {"text": {"type": "string"}}, ["text"], "speak")
         return clip(out["text"], 300) if out else None
 
-    # --- the neighbor -----------------------------------------------------------
+    # --- people: letters and talk -----------------------------------------------------------
     def _known(self, name: str, told: list[str]) -> str:
         return (f"Things {self.agent.name} already knows about {name} (refer back to them if it's natural, but don't introduce them "
                 "again as news):\n" + "".join(f"- {t}\n" for t in told) if told else "")
 
     def _remembering(self, name: str, what: str) -> str:
-        """The asks every neighbor call shares, so the engine keeps track of what's been said."""
+        """The asks every call for someone the agent knows shares, so the engine keeps track of what's been said."""
         return (f"- `gist`: one sentence, third person, of what this {what} says (e.g. \"Told {self.agent.name} the tide times for "
                 f"the week and asked how {self.agent.their} walk went\")\n"
                 f"- `told`: 0-3 short phrases for things about {name} or their world that this {what} tells {self.agent.name} for the "
@@ -153,12 +153,20 @@ class GameMaster:
         """The optional `mentions_place` field, asked for whenever the prompt carries its sentence."""
         return {"mentions_place": invented_places.MENTION_PROPERTY} if mention else {}
 
-    async def neighbor_letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
-                              received: str | None, enclosed: str, parcel_allowed: bool,
-                              told: list[str] = (), agenda: list[str] = (), places: str = "",
-                              mention: str = "", again: bool = False, trade: str = "") -> dict | None:
+    @staticmethod
+    def _kinds() -> str:
+        """The kinds of thing the world has, as the narrator is told them: "tool, material, food or seed"."""
+        from . import world as world_content
+        ks = list(world_content.kinds())
+        return ", ".join(ks[:-1]) + (" or " if len(ks) > 1 else "") + ks[-1] if ks else "a thing"
+
+    async def letter(self, name: str, persona: str, life: list[str], correspondence: list[str],
+                     received: str | None, enclosed: str, parcel_allowed: bool,
+                     told: list[str] = (), agenda: list[str] = (), places: str = "",
+                     mention: str = "", again: bool = False, notes: str = "", role: str = "", home: str = "") -> dict | None:
+        """A letter from someone the agent writes to: an answer, or one they write first."""
         task = (
-            f"Write as {name}, {self.agent.possessive} neighbor. Who {name} is: {persona}\n"
+            f"Write as {name}" + (f" ({role})" if role else "") + f", who writes letters with {self.agent.name}. Who {name} is: {persona}\n"
             + (f"What's already happening in {name}'s life (not news any more): {' '.join(life)}\n" if life else "")
             + self._plans(name, agenda) + self._known(name, told) + (f"{places}\n" if places else "")
             + (f"Your letters with {self.agent.name} so far (oldest first; {self.agent.possessive} in full, yours in brief):\n" + "\n".join(correspondence)
@@ -168,13 +176,15 @@ class GameMaster:
             + (f"{self.agent.name} enclosed something with it: {enclosed}. React to it honestly.\n" if enclosed else "")
             + f"\nWrite {name}'s letter: 2-5 sentences in their own voice, answering what {self.agent.name} said if anything, and "
             f"sharing something from their own life. Don't reuse a sentence, image or daily ritual from your earlier letters; tell something new."
-            + (" Your first try repeated an earlier letter; write it afresh." if again else "") + f" {self.agent.name} can walk over to visit {name} at home (you can invite {self.agent.them}), "
-            + (f"and {trade} " if trade else f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. ") + "Also report:\n"
+            + (" Your first try repeated an earlier letter; write it afresh." if again else "")
+            + ((f" {self.agent.name} can walk over to visit {name} at {home} (you can invite {self.agent.them}), "
+                + (f"and {notes} " if notes else f"but {name} doesn't go out visiting; letters and the occasional small parcel are the rest. "))
+               if home else (f" {notes} " if notes else " Letters and the occasional small parcel are all there is between you. ")) + "Also report:\n"
             + self._remembering(name, "letter") + "Optional:\n" + self._news("letters")
             + f"- `upcoming`: only if something is coming up for {name} in the next two weeks that isn't listed above: "
             "`what` (a few words) and `in_days` (1-14)\n"
-            + ("- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: material, seed, food "
-               "or tool, `qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
+            + (f"- `parcel`: only if it's natural, a small thing to send along (`name`, `kind`: {self._kinds()}, "
+               "`qty` 1-3, `description`). Most letters have no parcel.\n" if parcel_allowed else "")
             + (f"- {mention}\n" if mention else "")
         )
         parcel = self._PARCEL
@@ -183,7 +193,7 @@ class GameMaster:
             "upcoming": {"type": "object", "properties": {"what": {"type": "string"}, "in_days": {"type": "integer"}}},
             **self._REMEMBERING,
             **({"parcel": parcel} if parcel_allowed else {}), **self._mentions(mention),
-        }, ["text"], "neighbor_letter")
+        }, ["text"], "letter")
 
     async def invent_scene(self, label: str, kind: str, text: str) -> dict | None:
         from .looks import prop_words, scene_lists, scene_props_max
@@ -201,9 +211,9 @@ class GameMaster:
                 "choosing one value from each list:\n" + "\n".join(f"- `{f}`: {', '.join(v)}" for f, v in LOOK.items()))
         return await self.ask(task, {f: {"type": "string", "enum": list(v)} for f, v in LOOK.items()}, list(LOOK), "invent_look")
 
-    async def recall_told(self, name: str, persona: str, said: list[str]) -> list[str] | None:
+    async def recall_told(self, name: str, persona: str, said: list[str], role: str = "") -> list[str] | None:
         task = (
-            f"{name} is {self.agent.possessive} neighbor. Who {name} is: {persona}\n"
+            f"{name}" + (f" ({role})" if role else "") + f" knows {self.agent.name}. Who {name} is: {persona}\n"
             f"Everything {name} and {self.agent.name} have said to each other so far (letters and talk, oldest first):\n"
             + "\n".join(said) + "\n\n"
             f"List what {name} has told {self.agent.name} about themselves or their world, as `told`: short phrases (under 12 words), "
@@ -294,12 +304,13 @@ class GameMaster:
     async def speak_in_person(self, name: str, persona: str, life: list[str], conversation: list[str],
                               heard: list[str], situation: str, told: list[str] = (), agenda: list[str] = (),
                               places: str = "", mention: str = "", at: str = "", can_give: bool = False, again: bool = False,
-                              closing: bool = False) -> dict | None:
+                              closing: bool = False, role: str = "") -> dict | None:
         """{name}'s line face to face: `text` (clipped), plus the shared `gist`/`told` asks. With nothing `heard`,
-        it's the greeting. A neighbor is at home; a resident (`at` their place) has no letters, so their life moves
+        it's the greeting. Someone in a home of their own is met there (no `at`); met out in the world (`at` a place), their life moves
         on in talk: they may report a `life_update` too."""
         task = (
-            (f"Voice {name}, who {self.agent.name} meets at {at}." if at else f"Voice {name}, {self.agent.possessive} neighbor.")
+            f"Voice {name}" + (f" ({role})" if role else "")
+            + (f", who {self.agent.name} meets at {at}." if at else f", whom {self.agent.name} is visiting at home.")
             + f" Who {name} is: {persona}\n"
             + (f"Lately in {name}'s life: {' '.join(life)}\n" if life else "")
             + self._plans(name, agenda) + self._known(name, told) + (f"{places}\n" if places else "")
@@ -320,7 +331,7 @@ class GameMaster:
             "and:\n"
             + self._remembering(name, "line") + ("Optional:\n" + self._news("talk") if at else "")
             + (f"- `give`: only if {name} really hands {self.agent.name} something small right now "
-               f"(`name`, `kind`: material, seed, food or tool, `qty` 1-3, `description`). {self.agent.name} receives exactly this and "
+               f"(`name`, `kind`: {self._kinds()}, `qty` 1-3, `description`). {self.agent.name} receives exactly this and "
                f"nothing else, so never describe handing over, offering a pinch of, letting {self.agent.name} take or help themselves to, or giving anything "
                "you do not report here\n" if can_give else "")
             + (f"- {mention}\n" if mention else "")

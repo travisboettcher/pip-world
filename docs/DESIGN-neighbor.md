@@ -10,6 +10,13 @@ the place their record names, here a home of their own the engine makes (places.
 `neighbor`), and is met in person there through the same scenes as anyone else. "<Name>'s home" below is that record, not a name the
 engine looks for. Arrivals are logged as `character` events (with their `role`).
 
+**Since 0.51.0** letters go between the agent and anyone a module brought as writing (`character`'s `writes: true`; a first `letter`
+needs it), whatever their role: "the neighbour" below is whoever writes. `write_letter` is to them, a module's `letter` asks one of
+them to write first, the narrator writes as `{name} ({role}), who writes letters with {agent}` and says where they live, and a parcel
+is any kind of thing the world has. What live modules note about someone (`notes`) is theirs to bring up; the trade module notes what
+the neighbour sells and offers what the agent wished for (it reads `wishes`), or one of their wares one day in four, where the engine
+used to.
+
 ## Why
 Every person Pip knows is Morgan: every people note, belief and diary entry about someone else. All of its materials
 and seeds come from him. A second character gives the new people memory something to work with (Pip forming its own

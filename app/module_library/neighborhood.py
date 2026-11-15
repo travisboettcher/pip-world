@@ -61,7 +61,8 @@ def on_answer(ctx):
     if got["purpose"] != "neighbour" or not got.get("data") or _neighbours(ctx):
         return {"schedule": ctx["now"] + RETRY}
     d = got["data"]
-    new = {"name": d["name"][:40].strip(), "kind": "neighbor", "persona": d["persona"][:800], "about": d["about"][:160], "letter": d["letter"][:1200]}
+    new = {"name": d["name"][:40].strip(), "kind": "neighbor", "persona": d["persona"][:800], "about": d["about"][:160], "writes": True,
+           "letter": d["letter"][:1200]}
     if got.get("mentions_place"):
         new["mentions_place"] = got["mentions_place"]
     return {"character": new, "schedule": ctx["now"] + 60}

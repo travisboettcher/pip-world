@@ -141,8 +141,8 @@ def test_the_reads_trade_added(tmp_path):
     st.update_module(live(st, rule(name="ccc", hooks=["on_request"], answers={"hide": "x"}), "x")["id"], status="disabled")
     ctx = M.context(st, s, live(st, rule(name="eye", reads=["answers", "people", "places"]), "x"), now)
     assert ctx["answers"] == {"aaa": ["dig", "grow"], "bbb": ["sow"]} and a["id"]
-    assert ctx["people"] == [{"name": "Oriel", "kind": "neighbor", "about": "reads tides", "home": "Oriel's home"},
-                             {"name": "Ann", "kind": "resident", "about": "", "home": "Ann's home"}]               # given none: a home of her own
+    assert ctx["people"] == [{"name": "Oriel", "kind": "neighbor", "about": "reads tides", "home": "Oriel's home", "writes": False},
+                             {"name": "Ann", "kind": "resident", "about": "", "home": "Ann's home", "writes": False}]               # given none: a home of her own
     by = {p["key"]: p for p in ctx["places"]}
     assert by["Brygdon"] == {"key": "Brygdon", "label": "Brygdon", "kind": "market", "trades": True, "stalls": True, "hours": [9, 17],
                              "goods": [{"name": "awl", "kind": "tool", "weight": 3, "span": [1, 2], "attrs": {"x": 1}}]}
@@ -253,23 +253,18 @@ async def test_meeting_a_neighbour_away_from_home_says_what_they_are_doing(tmp_p
     assert " Marigold is at Brygdon." in gm.calls[-1]["messages"][0]["content"]
 
 
-def test_a_neighbours_notes_and_wares_each_bring_a_trade_note(tmp_path):
+def test_what_modules_note_about_someone_is_theirs_to_bring_up(tmp_path):
     import app.neighbors as nb
     from tests.test_neighbor import neighbor
-    from tests.test_projects import FixedRng
     s, st, agent = modular(tmp_path)
     ch = neighbor(st, s)
+    assert nb.notes_line(st, ch) == ""
     m = live(st, rule(name="aaa"), "x")
     st.update_module(m["id"], notes={"Marigold": "keeps bees"})
-    assert nb.trade_note(st, ch, FixedRng(0.1)) == "Marigold keeps bees"
     live2 = live(st, rule(name="bbb"), "x")
-    st.update_module(live2["id"], notes={"Marigold": "mends nets"})
-    assert nb.trade_note(st, ch, FixedRng(0.9)) == "Marigold keeps bees Marigold mends nets"
-    assert "(keeps bees; mends nets)" in "\n".join(nb.perception(st))
-    st.update_module(m["id"], notes={}, facts={"for_sale": [["Marigold's home", "honey", 4, "Marigold"]]})
-    st.update_module(live2["id"], notes={})
-    assert nb.trade_note(st, ch, FixedRng(0.1)) == "If it fits, Marigold could offer Pip honey (4 coins each)."
-    assert nb.trade_note(st, ch, FixedRng(0.9)) == ""
+    st.update_module(live2["id"], notes={"Marigold": "mends nets", "Oriel": "reads tides"})
+    assert nb.notes_line(st, ch) == "Marigold keeps bees Marigold mends nets"
+    assert "(keeps bees; mends nets)" in "\n".join(nb.perception(st)) and not hasattr(nb, "trade_note")
 
 
 def test_the_kind_of_a_place(tmp_path):

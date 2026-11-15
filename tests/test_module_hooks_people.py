@@ -52,11 +52,14 @@ def test_a_character_brought_into_the_world(tmp_path):
     st.add_character("Oriel", "neighbor", None, "x", 60, 0)
     ok = {"name": " Ann ", "kind": "neighbor", "persona": "p", "about": "a"}
     assert M._character(st, ok) == {"name": "Ann", "kind": "neighbor", "persona": "p", "about": "a"}
-    full = M._character(st, {**ok, "letter": " Hi. ", "mentions_place": {"place": "Fen"}})
-    assert full["letter"] == "Hi." and full["mentions_place"] == {"place": "Fen"}
-    assert M._character(st, {**ok, "name": "N" * 40, "persona": "p" * 800, "about": "a" * 160, "letter": "l" * 1200})["name"] == "N" * 40
+    full = M._character(st, {**ok, "writes": True, "letter": " Hi. ", "mentions_place": {"place": "Fen"}})
+    assert full["letter"] == "Hi." and full["writes"] is True and full["mentions_place"] == {"place": "Fen"}
+    assert M._character(st, {**ok, "name": "N" * 40, "persona": "p" * 800, "about": "a" * 160, "writes": True, "letter": "l" * 1200})["name"] == "N" * 40
+    assert "writes" not in M._character(st, {**ok, "writes": False})
+    for bad in ({**ok, "writes": "yes"}, {**ok, "letter": "Hi."}, {**ok, "writes": False, "letter": "Hi."}):     # a first letter: one who writes
+        assert refused(M._character, st, bad) == "`character.writes` is true for someone letters go between, and a first `letter` needs it"
     assert M._character(st, {**ok, "kind": "resident"})["kind"] == "resident"           # any role a module names (0.50.0)
-    shape = "`character` is {name, kind (a word for their role), persona, about, home?, letter?, mentions_place?}"
+    shape = "`character` is {name, kind (a word for their role), persona, about, home?, writes?, letter?, mentions_place?}"
     for bad in ({**ok, "x": 1}, []):
         assert refused(M._character, st, bad) == shape
     assert refused(M._character, st, {**ok, "kind": None}) == "`character.kind` is a word for their role (villager, neighbor...), not creation"
@@ -65,29 +68,31 @@ def test_a_character_brought_into_the_world(tmp_path):
     for name in ("oriel", "PIP"):
         assert refused(M._character, st, {**ok, "name": name}) == f"someone called {name} is already in the world"
     for key, most in (("persona", 800), ("about", 160), ("letter", 1200)):
-        assert refused(M._character, st, {**ok, key: "x" * (most + 1)}) == f"`character.{key}` is a line of text of at most {most} characters"
-        assert refused(M._character, st, {**ok, key: " "}) == f"`character.{key}` is a line of text of at most {most} characters"
+        assert refused(M._character, st, {**ok, "writes": True, key: "x" * (most + 1)}) == f"`character.{key}` is a line of text of at most {most} characters"
+        assert refused(M._character, st, {**ok, "writes": True, key: " "}) == f"`character.{key}` is a line of text of at most {most} characters"
     assert refused(M._character, st, {**ok, "persona": None}).startswith("`character.persona`")
     assert refused(M._character, st, {**ok, "mentions_place": "Fen"}).startswith("`character.mentions_place` is")
 
 
-def test_asking_a_neighbour_to_write(tmp_path):
+def test_asking_someone_who_writes_to_write(tmp_path):
     s, st, agent = modular(tmp_path)
-    st.add_character("Oriel", "neighbor", None, "x", 60, nb.NOT_YET)
+    st.add_character("Oriel", "neighbor", None, "x", 60, nb.NOT_YET, writes=True)
+    st.add_character("Marta", "villager", None, "x", 60, nb.NOT_YET, place="woods")           # met in person, but no letters
     st.add_character("Tock", "creation", None, "x", 60, 0)
     assert M._letter(st, {"from": " oriel "}) == {"from": "Oriel"}
-    for bad in ({"from": "Tock"}, {"from": "Nobody"}):
-        assert refused(M._letter, st, bad) == f"there is no neighbour called {bad['from']!r}"
+    for bad in ({"from": "Tock"}, {"from": "Nobody"}, {"from": "Marta"}):
+        assert refused(M._letter, st, bad) == f"nobody called {bad['from']!r} writes to Pip"
     for bad in ({}, {"from": "Oriel", "x": 1}, {"from": 3}, []):
-        assert refused(M._letter, st, bad) == "`letter` is {from: a neighbour's name}"
+        assert refused(M._letter, st, bad) == "`letter` is {from: the name of someone who writes to the agent}"
 
 
 def test_characters_and_letters_land_and_count(tmp_path):
     s, st, agent = modular(tmp_path)
     m = live(st, rule(name="town", proposes=["character", "letter"]), "x")
-    M.apply(st, m, M.plan(st, m, {"character": {"name": "Ann", "kind": "neighbor", "persona": "p", "about": "a", "letter": "Hello."}}, NOW, "on_tick"), NOW)
+    M.apply(st, m, M.plan(st, m, {"character": {"name": "Ann", "kind": "neighbor", "persona": "p", "about": "a", "writes": True, "letter": "Hello."}}, NOW, "on_tick"), NOW)
     (ann,) = st.characters("neighbor")
-    assert (ann["name"], ann["persona"], ann["next_chatter_at"]) == ("Ann", "p", nb.NOT_YET) and st.letters()[0]["text"] == "Hello."
+    assert (ann["name"], ann["persona"], ann["next_chatter_at"], ann["writes"]) == ("Ann", "p", nb.NOT_YET, 1) and st.letters()[0]["text"] == "Hello."
+    assert st.correspondents() == [st.characters()[0]]
     m = st.module(m["id"])
     assert M._budget(m, NOW)["character"] == 1
     assert refused(M.plan, st, m, {"character": {"name": "Bo", "kind": "neighbor", "persona": "p", "about": "a"}}, NOW, "on_tick") == "it has used today's 1 `character`"

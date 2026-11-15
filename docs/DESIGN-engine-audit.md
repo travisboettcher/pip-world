@@ -1,6 +1,6 @@
 # Engine audit: what still assumes Pip's world (2026-11-14)
 
-Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0) to 4 (0.50.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
+Status: **audit, decisions taken (2026-11-14); releases 1 (0.47.0) to 5 (0.51.0) built.** Written after the world-packs plan finished (DESIGN-world-packs.md, phases 1-7, 0.31.0 to 0.46.0).
 The owner asked whether one more pass was needed: over the module architecture (the hooks it offers) and over engine code that still
 expects a workflow specific to Pip. This is that pass: what was checked, what was found, the owner's decisions, and the order of releases.
 
@@ -105,7 +105,7 @@ identity, places and walking, the map, creations as things, the module runtime a
   `worlds/pip/modules/` with Pip's `world.json` naming its modules.
 
 ### C. Features still built into the engine
-- **C1. Neighbours and letters.** `neighbors.py` (about 350 lines), `write_letter`, the `letters` table, the narrator's
+- **C1. Neighbours and letters** — *built (0.50.0, 0.51.0)*. `neighbors.py` (about 350 lines), `write_letter`, the `letters` table, the narrator's
   `neighbor_letter` and `speak_in_person`, in-person talk scenes, residents of invented places, and the `neighbor` character kind. 5b moved
   only the neighbour's invention into a module and kept letters as "conversation at a distance". Ashfall's village of survivors had to be
   voices on a radio. *Fix (decided: the machinery stays the engine's, for any character):* the engine keeps people as a service that
@@ -195,7 +195,15 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    Ashfall day talks with Marta in person. Left for release 5: letters (`write_letter`, `letter`) and the neighbour's own rules are
    still the `neighbor` role's.
 5. **People, part two** (C1): correspondence for any character; the neighbourhood module drives the neighbour's letters, parcels and
-   visits; `neighbors.py` keeps only the machinery.
+   visits; `neighbors.py` keeps only the machinery. *Built (0.51.0):* letters go between the agent and anyone a module brings as
+   writing (`character`'s `writes`; a one-time migration made the old neighbours write), of any role: `write_letter` to them, a
+   module's `letter` from them, answers, first letters, recalling what they've told, the perception's "People you write to". The
+   narrator writes as `{name} ({role}), who writes letters with {agent}`, says where they live, and offers parcels of any kind of
+   thing the world has (no fixed four). What live modules note about someone (`notes`) is theirs to bring up in letters; the trade
+   module now offers what the agent wished for (a new `wishes` read) or, one day in four, one of the neighbour's wares, where the
+   engine's `trade_note` did. The neighbourhood module brings its neighbour as writing; `neighbors.py` keeps the machinery (delivery
+   over hours, answers, parcels within the day's cap, life and plans moving on). Still the engine's and a noun: the happenings'
+   `news` intent names neighbours (release 6).
 6. **What things can do, and what happens** (C2, C3): capabilities from the pack, happenings' other effects through `request`; Ashfall
    gains a water filter that works.
 7. **The API consolidated** (D, `api: 2`), last, once the releases above have shown which proposals are really needed.

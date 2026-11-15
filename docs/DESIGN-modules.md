@@ -547,7 +547,9 @@ engine knowing nothing of it, a pack's or the engine's own modules (not the worl
 - **People (0.37.0, phase 5b; since 0.50.0 any role, docs/DESIGN-engine-audit.md, C1)**: `character`'s `kind` is any word for the
   role (`villager`, `neighbor`; not `creation`), with an optional `home` (a place in the world: the module's choice; without one the
   engine makes a home of their own, as places.json `dwellings` words it), and the `people` read gives each person's `home`. Whoever is at
-  a place is met in person there, two greeting at a time.
+  a place is met in person there, two greeting at a time. Since 0.51.0 `writes: true` makes them someone letters go between (a first
+  `letter` needs it), and `letter` asks any of them to write first; the `people` read says who `writes`, and a `wishes` read gives the
+  agent's open wishes ([{id, text}], up to 12).
 - **People, as first built (0.37.0)**: an `ask` may carry a `schema` (`{properties, required?}`, up to 12 answers of the tool-argument types)
   and comes back as `ctx["answer"]["data"]`, checked (none if what came back didn't fit; a dry run stands in none); with `mentions: true`
   the engine adds how a character tells the agent about a place and passes back `mentions_place`. `character` (`{name, kind: "neighbor",

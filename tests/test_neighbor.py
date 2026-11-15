@@ -16,7 +16,7 @@ INVENTED = dict(name="Marigold", persona="A badger who keeps bees and writes lon
 
 def neighbor(st, s, rng=None, now=None):
     return st.add_character("Marigold", "neighbor", None, INVENTED["persona"], s.neighbor_writes_every_hours * 60,
-                            (now or time.time()) + 99 * HOUR, about=INVENTED["about"])
+                            (now or time.time()) + 99 * HOUR, about=INVENTED["about"], writes=True)
 
 
 @pytest.mark.asyncio
@@ -63,7 +63,7 @@ async def test_pip_writes_and_the_neighbor_answers_with_their_life_moving_on(tmp
 @pytest.mark.asyncio
 async def test_write_letter_guards(tmp_path):
     s, st, gm, agent = make(tmp_path, letters_per_day=1)
-    assert "you don't have a neighbor called 'Bob' (you know: nobody yet)" in (
+    assert "you don't write to anyone called 'Bob' (you write to: nobody yet)" in (
         await call(agent, "write_letter", to="Bob", text="hi")).text
     neighbor(st, s)
     assert "empty" in (await call(agent, "write_letter", to="Marigold", text=" ")).text
@@ -72,7 +72,7 @@ async def test_write_letter_guards(tmp_path):
     await call(agent, "write_letter", to="Marigold", text="hi", enclose="twine")
     assert st.find_item("twine")[0]["qty"] == 2 and st.letters()[0]["enclosed"] == "1 x twine"
     assert "plenty of letters today" in (await call(agent, "write_letter", to="Marigold", text="again")).text
-    assert "write_letter, or go_to their home to visit" in (await call(agent, "say", text="hello!", to="Marigold")).text
+    assert "write_letter, or go_to Marigold's home to visit" in (await call(agent, "say", text="hello!", to="Marigold")).text
 
 
 @pytest.mark.asyncio
@@ -260,7 +260,7 @@ async def test_a_visit_is_remembered_against_open_todos(tmp_path):
     assert ("Walk over to Marigold for some beeswax  [you've since visited Marigold - is this done? "
             "resolve_note it, or edit_note it down to what's left]") in p
     assert "Plant the sunflower seeds  [" not in p
-    assert "- Marigold: Lives past the hedge; keeps bees. (you last visited just now)" in p
+    assert "- Marigold (at Marigold's home): Lives past the hedge; keeps bees. (you last visited just now)" in p
 
 
 def _arrived(st, place, ts):
@@ -271,12 +271,12 @@ def _arrived(st, place, ts):
 def test_the_neighbor_line_says_how_long_since_the_last_visit(tmp_path):
     s, st, gm, agent = make(tmp_path)
     neighbor(st, s)
-    st.add_character("Bramble", "neighbor", None, "A hedgehog.", 60, time.time() + 99 * HOUR, about="Bakes.")
+    st.add_character("Bramble", "neighbor", None, "A hedgehog.", 60, time.time() + 99 * HOUR, about="Bakes.", writes=True)
     now = time.time()
     _arrived(st, "Marigold's home", now - 2 * HOUR)
     lines = nb.perception(st, now + 3 * HOUR)
-    assert "- Marigold: Lives past the hedge; keeps bees. (you last visited 5 hours ago)" in lines
-    assert "- Bramble: Bakes." in lines  # never visited: nothing added
+    assert "- Marigold (at Marigold's home): Lives past the hedge; keeps bees. (you last visited 5 hours ago)" in lines
+    assert "- Bramble (at Bramble's home): Bakes." in lines  # never visited: nothing added
 
 
 def test_a_todo_is_flagged_only_for_visits_after_it_was_written(tmp_path):
@@ -617,7 +617,7 @@ async def test_her_answer_is_asked_with_who_she_is_and_what_pip_enclosed(tmp_pat
     st.add_letter("Pip", "Marigold", "Here you go.", now - 1, enclosed="1 x twine")
     await nb.step(st, s, agent.gm, FixedRng(), now)
     task = gm.calls[0]["messages"][0]["content"]
-    assert task.startswith(f"Write as Marigold, Pip's neighbor. Who Marigold is: {INVENTED['persona']}\n")
+    assert task.startswith(f"Write as Marigold (neighbor), who writes letters with Pip. Who Marigold is: {INVENTED['persona']}\n")
     assert "Pip enclosed something with it: 1 x twine. React to it honestly.\n" in task
     assert "- `parcel`: only if it's natural" in task  # none sent today: one may go along
     for lt in st.letters(undelivered=True):
@@ -713,7 +713,7 @@ async def test_in_person_the_one_whose_home_it_is_greets_pip(tmp_path):
     _at_home_of(st, "Bramble")  # no arrival recorded (an older database): still one greeting
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
     task = gm.calls[0]["messages"][0]["content"]
-    assert task.startswith("Voice Bramble, Pip's neighbor. Who Bramble is: A hedgehog.\n"
+    assert task.startswith("Voice Bramble (neighbor), whom Pip is visiting at home. Who Bramble is: A hedgehog.\n"
                            "Lately in Bramble's life: The oven is new.\n")
     assert "Bramble (in brief): Wrote about buns.\n" in task and "bees" not in task
     assert "Right now Pip is visiting Bramble at home. Pip seems curious.\n" in task
@@ -778,8 +778,8 @@ def test_perception_lists_neighbors_and_only_pips_letters_still_on_the_way(tmp_p
         st.add_letter("Pip", "Marigold", f"Letter {i}.", now + HOUR)
     st.update_letter(st.add_letter("Pip", "Bramble", "Arrived too.", now)["id"], delivered_at=now)
     lines = nb.perception(st, now + 3 * HOUR)
-    assert lines[:2] == ["Your neighbors (they live nearby: visit them with go_to, or write with write_letter):",
-                         "- Marigold: Lives past the hedge; keeps bees."]
+    assert lines[:2] == ["People you write to (write_letter; go_to where they live to visit):",
+                         "- Marigold (at Marigold's home): Lives past the hedge; keeps bees."]
     assert lines[2:] == ["- your letter to Marigold (sent 3 hours ago) is on its way"] * 20  # the newest twenty
 
 
@@ -787,7 +787,7 @@ def test_perception_lists_neighbors_and_only_pips_letters_still_on_the_way(tmp_p
 async def test_recall_goes_neighbor_by_neighbor_past_ones_it_cant_do_yet(tmp_path):
     s, st, gm, agent = make(tmp_path, [LLMResponse("no", [], Usage(1, 1)), report(told=["d" * 81, "they sew"])])
     for name in ("Ash", "Birch", "Cedar", "Dahlia"):
-        st.add_character(name, "neighbor", None, f"{name} is a tree.", 60, time.time() + 99 * HOUR)
+        st.add_character(name, "neighbor", None, f"{name} is a tree.", 60, time.time() + 99 * HOUR, writes=True)
     a, b, c, d = st.characters()
     companion(st)
     st.log("companion", name="Clocky", text="Tick.", reply=True)  # a companion has talked, but isn't a neighbor
@@ -799,7 +799,7 @@ async def test_recall_goes_neighbor_by_neighbor_past_ones_it_cant_do_yet(tmp_pat
     await nb.recall_told(st, agent.gm, tries)
     assert len(gm.calls) == 2 and tries == {c["id"]: 1}  # Cedar failed: tried again next time
     task = gm.calls[1]["messages"][0]["content"]
-    assert task.startswith("Dahlia is Pip's neighbor. Who Dahlia is: Dahlia is a tree.\n")
+    assert task.startswith("Dahlia (neighbor) knows Pip. Who Dahlia is: Dahlia is a tree.\n")
     assert "so far (letters and talk, oldest first):\nDahlia: Hello from Dahlia.\nPip: Hello Dahlia!\n\n" in task
     assert st.characters()[3]["told"] == ["d" * 80 + "...", "they sew"]
     assert await nb.recall_told(st, None, {}) is None  # no GM: nothing to do, even for Cedar
@@ -927,7 +927,7 @@ async def test_a_resident_greets_pip_once_per_visit_and_only_at_their_place(tmp_
     st.set_meta(arrived_at="5")
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
     task = gm.calls[0]["messages"][0]["content"]
-    assert task.startswith(f"Voice Mr Teague, who Pip meets at Saltholm. Who Mr Teague is: {TEAGUE['persona']}\n")
+    assert task.startswith(f"Voice Mr Teague (resident), who Pip meets at Saltholm. Who Mr Teague is: {TEAGUE['persona']}\n")
     assert "Right now Pip is at Saltholm, with Mr Teague. Pip seems curious.\nPip has just arrived; greet it" in task
     assert "Places in Pip's world: the woods (foraging); the junkyard (scrap); Saltholm, a long walk (Pip has been)\n" in task
     assert {k: v for k, v in st.events(1)[0]["data"].items() if k != "firsts"} == {
@@ -1010,7 +1010,7 @@ async def test_residents_dont_write_letters(tmp_path):
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time() + 99 * 24 * HOUR) is False and gm.calls == []
     assert st.letters() == []
     r = await call(agent, "write_letter", to="Mr Teague", text="Dear Mr Teague")
-    assert "you don't have a neighbor called 'Mr Teague'" in r.text and st.letters() == []
+    assert "you don't write to anyone called 'Mr Teague'" in r.text and st.letters() == []
 
 
 @pytest.mark.asyncio
@@ -1042,7 +1042,7 @@ async def test_arriving_somewhere_new_pip_meets_whoever_the_design_says_is_there
     await agent.finish_work()
     assert st.agent()["location"] == "Saltholm" and HERE in agent._perception("timer", [])
     assert await nb.step(st, s, agent.gm, FixedRng(), time.time()) is True
-    assert gm.calls[1]["messages"][0]["content"].startswith("Voice Mr Teague, who Pip meets at Saltholm.")
+    assert gm.calls[1]["messages"][0]["content"].startswith("Voice Mr Teague (resident), who Pip meets at Saltholm.")
 
 
 # --- exact edges (pinned by mutation testing) ------------------------------------------------------------------

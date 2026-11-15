@@ -179,7 +179,7 @@ def test_the_reads_a_happenings_module_needs(tmp_path):
     clock(st)
     m = live(st, rule(reads=["people", "creations", "happenings", "agent"], params={"chance": 0.1, "severity": [50, 45, 5]}), "x")
     ctx = M.context(st, s, m, time.time())
-    assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor", "about": "", "home": "Oriel Vantosh's home"}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
+    assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor", "about": "", "home": "Oriel Vantosh's home", "writes": False}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
     assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock"}] and ctx["agent"]["coins"] == st.coins()
     assert ctx["happenings"] == {"recent": [], "today": 0, "room": "", "can_remember": False}
     with pytest.raises(M.Refused):
