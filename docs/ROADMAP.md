@@ -173,8 +173,9 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 - [ ] Multiple agents in one world (owner, 2026-11-15): more than one agent living in the same world, each with its own persona, loop,
       memory, stats, belongings and diary, meeting in person and writing through the same people machinery the characters use. Today
       the engine has one agent row and one loop, so this needs an agent id carried through state, the loop, tools, the narrator and
-      modules (the `agent` read becomes "this agent", `people` gains the other agents), and a token budget per agent. To be designed
-      (a DESIGN doc) before anything is built.
+      modules (the `agent` read becomes "this agent", `people` gains the other agents), and a token budget per agent. Designed:
+      [DESIGN-multi-agent.md](DESIGN-multi-agent.md) (a world database and one per agent; one process, supervisor and actors; four
+      releases, tried on Ashfall with a second survivor first)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
