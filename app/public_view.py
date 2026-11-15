@@ -1,7 +1,7 @@
 """The public, read-only view (docs/DESIGN-public-view.md).
 
 A request whose Host is one of PUBLIC_HOSTS is public. Public requests are default-deny: only the GET paths below answer, every
-response is scrubbed here, and nothing a viewer does calls the model, wakes Pip or writes. Anything not listed is a 404, so a new
+response is scrubbed here, and nothing a viewer does calls the model, wakes the agent or writes. Anything not listed is a 404, so a new
 endpoint is owner-only until someone classifies it.
 """
 import re
@@ -19,7 +19,6 @@ PUBLIC_PATTERNS = (re.compile(r"/ui(/.*)?"), re.compile(r"/works/\d+(\.svg|\.png
 # companion, errors, start...) is dropped. `firsts` and `returns` are facts the engine computes about an event.
 EVENT_FIELDS = {
     "tick": ("step", "text", "tools"),
-    "garden": ("plot", "crop"),                       # events from before the garden was a module (0.35.0)
     "woke": ("hours", "early"),
     "emotion": ("emotion", "value", "cause"),
     "settled": ("emotion", "from", "to", "how"),
@@ -72,7 +71,7 @@ def allowed(method: str, path: str) -> bool:
 
 
 def names_to_hide(state, settings) -> list[str]:
-    """Everyone who has written to Pip or that Pip keeps notes on, plus PUBLIC_REDACT, longest first (so "Ann Lee" beats "Ann")."""
+    """Everyone who has written to the agent or that the agent keeps notes on, plus PUBLIC_REDACT, longest first (so "Ann Lee" beats "Ann")."""
     names = {*settings.public_redact, *state.senders(), *(p["name"] for p in state.people())}
     return sorted((n for n in names if len(n.strip()) >= 3 and n.strip().lower() not in GENERIC_NAMES), key=len, reverse=True)
 

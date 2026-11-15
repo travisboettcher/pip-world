@@ -3,6 +3,8 @@
 Status (2026-11-10): designed; **step 1 (the runner, the protocol, the dry run, approval, and the clock's workings as a module) built (0.17.0)**; **step 2 (show and anchors; the wall and stall pictures as modules) built (0.18.0)**; **step 3 (Pip programs its creations; the owner is told of anything waiting) built (0.19.0)**; **step 4 (the builder, for rules) built (0.20.0)**; **step 5 (parts and layouts; the woods as a layout) built (0.21.0)**; **step 6 (the builder proposes places) built (0.22.0)**; **moving features into modules under way (0.23.0: the outdoors scene)**. It replaces the roadmap item "Sandboxed code execution". The owner chose this direction on 2026-11-09:
 both Pip and the world write code, and every module needs the owner's approval at first.
 
+**Names (0.47.0):** the agent is `agent` everywhere in the engine. Below, the `pip` read, the `"pip"` author (the agent's own programs, named `-by-pip`), the `pip` anchor and tag, `pip-stall`/`no-pip-stall` and `speak`'s `to_pip` are, since 0.47.0, `agent`, `"agent"` (`-by-agent`), `agent`, `agent-stall`/`no-agent-stall` and `to_agent`, with no aliases (docs/DESIGN-engine-audit.md, A4).
+
 ## Why
 Until now every feature has been written by hand in the engine: the gear clock is a `timekeeper` capability, pictures on the workshop wall are a
 template slot, a market is a `PlaceKind`, and its scene is a hand-written three.js template. The owner never meant the world to be a list of
@@ -210,12 +212,12 @@ failed calls in a row disable it, and its author is told why.
   preview, with Approve and Reject, and an optional note. The same is available from `pipchat modules`. A note goes back to the author:
   Pip sees it in perception as a fact ("Your program for the Gear Clock wasn't taken up: ..."); the builder sees it in its next night's input.
 - While Pip's program waits, Pip is told it's "waiting to be tried". How that's framed in-world is open (see Open questions).
-- Approval stays **on for both authors** until the owner turns it off per author (`MODULES_APPROVAL=world,pip` → `pip` → none).
+- Approval stays **on for both authors** until the owner turns it off per author (`MODULES_APPROVAL=world,agent` → `agent` → none).
 - **Live modules** are listed on a **Modules** page (public: name, author, what it does, and the code for Pip's own; the builder's code is
   public too once live, like the gallery). Each one has a call log and a switch.
 
 ## Settings
-`MODULES` (off by default in bare `Settings()`, on from env once built), `MODULES_APPROVAL` (`world,pip`), `MODULE_BUILDER_PER_NIGHT` (1),
+`MODULES` (off by default in bare `Settings()`, on from env once built), `MODULES_APPROVAL` (`world,agent`), `MODULE_BUILDER_PER_NIGHT` (1),
 `MODULE_RUNNER_URL`, and per-call and per-day budgets.
 
 ## Step 1 as built (0.17.0)

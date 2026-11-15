@@ -1,6 +1,6 @@
-# Pip's workshop and its garden: the workshop opened like a dollhouse (a shelf, the bench and its tools, a stool, a hanging lamp, a window),
+# The agent's workshop and its garden: the workshop opened like a dollhouse (a shelf, the bench and its tools, a stool, a hanging lamp, a window),
 # the garden behind its fence, the terrace, the stream and the bridge, a hill of pines behind and flowers along the edge. What changes with
-# the world has anchors: the plots, Pip's creations (clocks on the wall, things on the shelf, walking things on the floor), and where Pip
+# the world has anchors: the plots, the agent's creations (clocks on the wall, things on the shelf, walking things on the floor), and where the agent
 # sits, sleeps, works, gardens and stands.
 import random
 
@@ -31,7 +31,7 @@ def on_build(ctx):
          _box([2.2, 0.25, 3.4], [6, -1.55, 5.6], planks([1, 4], "#8a6440"), tip={"title": "The bridge", "text": "Over the stream, and on to everywhere else."}),
          # the workshop
          _ground([WX1 - WX0, 0.12, WZ1 - WZ0], [WMID, 0.06, RZ], {"texture": "floor", "repeat": [5, 3]}, planks([5, 1], "#5a3d27"),
-                 tip={"title": "The workshop", "text": "Pip's home: a bench, a stool, a shelf, and whatever is being made."}),
+                 tip={"title": "The workshop", "text": "$name's home: a bench, a stool, a shelf, and whatever is being made."}),
          _box([WX1 - WX0, WH, 0.3], [WMID, WH / 2, WZ0], outer),
          {"shape": "plane", "size": [WX1 - WX0 - 0.3, WH], "at": [WMID, WH / 2, WZ0 + 0.16], "material": inner},
          _box([0.3, WH, WZ1 - WZ0], [WX0, WH / 2, RZ], outer),
@@ -88,7 +88,7 @@ def on_build(ctx):
                 {"id": "seat", "type": "surface", "tags": ["inside", "seat"], "at": [-3.6, 0.76, WZ0 + 2.35], "extent": [0.7, 0.7]},
                 {"id": "workbench", "type": "floor", "tags": ["inside", "workbench"], "at": [-6.6, 0.06, WZ0 + 2.25], "extent": [1.0, 0.6]},
                 {"id": "garden-path", "type": "ground", "tags": ["outside", "garden-path"], "at": [3.8, 0.03, -3.4], "extent": [4.8, 0.5]},
-                {"id": "pip", "type": "floor", "tags": ["inside", "pip"], "at": [-4.6, 0.06, WZ0 + 2.9], "extent": [1.0, 0.6]},
+                {"id": "agent", "type": "floor", "tags": ["inside", "agent"], "at": [-4.6, 0.06, WZ0 + 2.9], "extent": [1.0, 0.6]},
                 # where module objects go (as the hand-written scene published): the back wall, the bench, the floor, the yard
                 {"id": "back-wall-by-window", "type": "wall", "tags": ["inside", "back"], "at": [-5.25, 2.3, -6.83], "normal": [0, 0, 1], "extent": [0.9, 0.9]},
                 {"id": "back-wall-over-bench", "type": "wall", "tags": ["inside", "back"], "at": [-7.15, 1.6, -6.83], "normal": [0, 0, 1], "extent": [0.7, 0.7]},
@@ -96,7 +96,7 @@ def on_build(ctx):
                 {"id": "bench", "type": "surface", "tags": ["inside", "bench"], "at": [-5.6, 1.2, -5.8], "extent": [1.8, 0.6]},
                 {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-6.0, 0.12, -3.4], "extent": [4.0, 1.2]},
                 {"id": "yard", "type": "ground", "tags": ["outside", "yard"], "at": [3.6, 0.04, -1.2], "extent": [5.0, 1.5]}]
-    for a in anchors[:-6]:                                  # where the scene draws Pip, its garden and its creations: not for modules
+    for a in anchors[:-6]:                                  # where the scene draws the agent, its garden and its creations: not for modules
         a["tags"].append("reserved")
     anchors = anchors[-6:] + anchors[:-6]
     return {"parts": parts, "shapes": s, "anchors": anchors, "camera": {"at": [0, 13, 22], "look": [0, 0.2, -1.5]}}

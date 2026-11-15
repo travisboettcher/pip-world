@@ -1,7 +1,7 @@
 """Anchors: where things modules show can go in a scene (docs/DESIGN-modules.md, "Places and anchors").
 
 Every place's layout (app/layouts.py) has anchors: walls, surfaces, floors, ground and points to hang from, each with a centre, the way
-it faces, its size and tags (free words: inside, back, counter, pip...). A module never names a position; it
+it faces, its size and tags (free words: inside, back, counter, agent...). A module never names a position; it
 asks for an anchor by what it is ({"type": "wall", "tags": ["inside"], "place": "home"}), and this module answers on the server, the same
 way every time: matching anchors in their published order (the one named by `near` first), objects packed along each in turn, and what
 doesn't fit left out. The browser only draws what it is given.

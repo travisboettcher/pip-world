@@ -87,11 +87,11 @@ def test_events_keep_only_listed_kinds_and_fields(client):
     st.log("say", text="hello Dana", to=[1])
     st.log("letter_sent", id=1, to="Mina", text="dear", enclosed="")
     st.log("error", error="Traceback: /data/agent.db")
-    st.log("garden", plot=1, crop="beans", surprise_field="x")
+    st.log("world_changed", effect="e", text="beans", surprise_field="x")
     kinds = {e["kind"] for e in client.get("/events?limit=100", headers=PUBLIC).json()}
     assert {"inbox", "say", "letter_sent", "error"}.isdisjoint(kinds)
-    garden = next(e for e in client.get("/events?limit=100", headers=PUBLIC).json() if e["kind"] == "garden")
-    assert set(garden["data"]) <= {"plot", "crop", "firsts", "returns"} and garden["data"]["crop"] == "beans"
+    changed = next(e for e in client.get("/events?limit=100", headers=PUBLIC).json() if e["kind"] == "world_changed")
+    assert set(changed["data"]) <= {"effect", "text", "name", "firsts", "returns"} and changed["data"]["text"] == "beans"
 
 
 def test_tool_events_drop_their_arguments(client):
@@ -129,7 +129,7 @@ def test_redaction_matches_whole_words_only():
 def test_public_stream_is_filtered(client):
     st = client.app.state.agent.state
     st.log("inbox", id=1, text="secret", sender="Dana")
-    st.log("garden", plot=2, crop="kale")
+    st.log("world_changed", effect="e", text="kale")
     async def never():
         return False
 
@@ -188,8 +188,9 @@ def test_a_three_letter_name_is_hidden_and_a_two_letter_one_is_not():
 
 
 def test_a_public_event_keeps_its_envelope():
-    out = pv.public_event({"id": 7, "ts": 1.5, "kind": "garden", "importance": 3, "data": {"plot": 1, "crop": "kale", "x": 1}})
-    assert out == {"id": 7, "ts": 1.5, "kind": "garden", "importance": 3, "data": {"plot": 1, "crop": "kale"}}
+    out = pv.public_event({"id": 7, "ts": 1.5, "kind": "world_changed", "importance": 3, "data": {"effect": "e", "text": "kale", "x": 1}})
+    assert out == {"id": 7, "ts": 1.5, "kind": "world_changed", "importance": 3, "data": {"effect": "e", "text": "kale"}}
+    assert pv.public_event({"id": 8, "ts": 1.5, "kind": "garden", "importance": 3, "data": {"plot": 1}}) is None    # gone with 0.35.0's events
 
 
 def test_the_event_transform_drops_private_events_and_hides_names(client):

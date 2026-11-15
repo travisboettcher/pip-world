@@ -25,6 +25,17 @@ def _weights(raw, default: tuple) -> tuple:
     return w if len(w) == 3 and all(x >= 0 for x in w) and sum(w) > 0 else default
 
 
+def _approval(raw: str) -> str:
+    """MODULES_APPROVAL: whose modules wait for the owner (world, agent, library). An author the engine doesn't have is refused rather than
+    ignored, since ignoring it would let that author's modules go live unasked (the agent's own were called `pip` before 0.47.0)."""
+    names = [a.strip() for a in raw.split(",") if a.strip()]
+    unknown = [a for a in names if a not in ("world", "agent", "library")]
+    if unknown:
+        raise ValueError(f"MODULES_APPROVAL names {', '.join(unknown)}: the authors are world, agent (the agent's own programs; "
+                         "`pip` before 0.47.0) and library")
+    return ",".join(names)
+
+
 def _float(name: str, default: float) -> float:
     return float(os.environ.get(name) or default)
 
@@ -59,9 +70,9 @@ class Settings:
     garden_speed: float = 1.0  # >1 grows the garden module's crops faster (testing / impatience)
     work_speed: float = 1.0    # >1 makes work sessions end sooner than real time
     max_active_projects: int = 3
-    max_active_projects_cap: int = 5   # most projects at once, however much workshop Pip builds
-    companion_replies_per_hour: int = 4  # caps Pip <-> companion back-and-forth
-    reflect_hour: int = 3              # local hour after which Pip's nightly reflection runs (fallback when it hasn't slept)
+    max_active_projects_cap: int = 5   # most projects at once, however much workshop the agent builds
+    companion_replies_per_hour: int = 4  # caps the agent <-> companion back-and-forth
+    reflect_hour: int = 3              # local hour after which the agent's nightly reflection runs (fallback when it hasn't slept)
     verify_insights: bool = True       # one small GM call a night checks that insights follow from what they cite
     firsts_max_age_hours: float = 24   # a first older than this is no longer offered as new
     firsts_showings: int = 3           # how many ticks a first is shown
@@ -71,12 +82,12 @@ class Settings:
     wild_places: list[str] | None = None   # which of the pack's starting places to include (None: all of them)
     outreach: str = "on"                # off | on | log (record, don't deliver)
     outreach_channels: list[str] = field(default_factory=list)   # e.g. ["matrix"]; the first is primary; empty = no outside world
-    outreach_per_day: int = 2           # new conversations Pip may start per local day
+    outreach_per_day: int = 2           # new conversations the agent may start per local day
     outreach_min_gap_hours: float = 3
     outreach_max_chars: int = 240
     outreach_reply_max_chars: int = 1500
     outreach_failures_per_day: int = 3
-    works_per_day: int = 6              # pictures and pieces of writing Pip may finish per local day
+    works_per_day: int = 6              # pictures and pieces of writing the agent may finish per local day
     works_min_gap_minutes: float = 10
     sleep: bool = True                 # day/night rhythm and the sleep tool
     weather: bool = False              # real weather and daylight (DESIGN-weather.md); needs a provider that is set up
@@ -84,15 +95,15 @@ class Settings:
     hass_url: str = "http://homeassistant.local:8123"            # the Home Assistant provider's settings
     hass_token: str = ""               # a long-lived access token; only weather and sun.sun are ever read, read-only
     weather_entity: str = "weather.forecast_home"
-    emotions: str = "on"               # on = tracked and shown to Pip | quiet = tracked only | off (see DESIGN-emotions.md)
-    emotion_settle_per_day: int = 3    # times Pip may settle a strong feeling per local day
+    emotions: str = "on"               # on = tracked and shown to the agent | quiet = tracked only | off (see DESIGN-emotions.md)
+    emotion_settle_per_day: int = 3    # times the agent may settle a strong feeling per local day
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
     reflect_max_chars: int = 12000     # how much of the day a reflection reads (newest kept)
     neighbor: bool = True              # invent a neighbor who writes letters
     letter_delay_minutes: float = 120  # how long a letter takes each way (+-30%)
     neighbor_writes_every_hours: float = 30
-    letters_per_day: int = 3           # Pip's letters per 24 h
+    letters_per_day: int = 3           # The agent's letters per 24 h
     parcels_per_day: int = 1           # parcels the neighbor may send per 24 h
     invented_places_per_day: int = 2   # new heard-of places characters may add per 24 h (DESIGN-invented-places.md)
     invented_places_max: int = 12      # invented places in all, heard-of and real together
@@ -103,7 +114,7 @@ class Settings:
     tools: list[str] = field(default_factory=list)
     search_provider: str = "tavily"    # which web search source: see search.py (providers register by name)
     tavily_api_key: str = ""     # the Tavily provider's key
-    # Matrix channel (see matrix.py): the homeserver, Pip's account and token, the one room, and who may talk to Pip
+    # Matrix channel (see matrix.py): the homeserver, the agent's account and token, the one room, and who may talk to the agent
     matrix_homeserver: str = ""
     matrix_user_id: str = ""
     matrix_access_token: str = field(default="", repr=False)
@@ -123,21 +134,21 @@ class Settings:
     talk_scenes: str = "off"                # on: talk with someone in person runs as its own scene (talk.py); off here so a bare Settings() keeps the old way
     modules: str = "off"                    # on: modules (docs/DESIGN-modules.md) run, and the world proposes its own; off here for tests
     module_runner: str = ""                 # where module code runs: the pip-runner socket (unix:///run/pip-runner/runner.sock) or URL, or "local" (development only)
-    modules_approval: str = "world,pip"     # whose modules wait for the owner's approval before going live
+    modules_approval: str = "world,agent"     # whose modules wait for the owner's approval before going live
     module_library: str = "off"             # on: the modules shipped with the engine (module_library/) are installed and run, with or without
                                             # MODULES (scenes, the gallery wall and more are modules now); off here for tests
     module_builder: str = "off"             # on: once a night the world may propose one rule module of its own (builder.py); off here for tests
     world_bible_path: str = ""              # the owner's own description of what this world is and isn't, for the builder (default: the engine's)
     modules_notify: str = "off"             # on: the owner is sent a notice (Matrix) when a module waits for approval or is switched off; off here for tests
-    modules_notify_room: str = ""           # the Matrix room for those notices (default: Pip's own room)
-    dashboard_url: str = ""                 # the owner's dashboard address, for links in notices (e.g. https://pip.example.internal)
+    modules_notify_room: str = ""           # the Matrix room for those notices (default: The agent's own room)
+    dashboard_url: str = ""                 # the owner's dashboard address, for links in notices (e.g. https://dashboard.example.internal)
     place_scenes: str = "off"               # on: each place gets scene details (walls, roof, palette, setting, props), chosen once (looks.py); off here for tests
     character_looks: str = "off"            # on: each neighbor or resident gets a look for the world view, chosen once (looks.py); off here for tests
     character_booths: str = "off"           # on: neighbors sell their own wares at home and at a market one day a week (the trade module's `wares`); off here for tests
     reminders: str = "off"                  # on: old memories come to mind by themselves (reminders.py); log: chosen and logged, not shown; off here for tests
     reminders_shown: int = 2                # slots in a world turn (a conversation scene has one)
     remind_cooldown_hours: float = 12       # a memory brought to mind stays out of mind this long, unless someone or somewhere new cues it
-    wish_share: str = "off"                 # on: wishes that are not things are shared with Pip's friend, one a day (off here so a bare Settings() sends nothing)
+    wish_share: str = "off"                 # on: wishes that are not things are shared with the agent's friend, one a day (off here so a bare Settings() sends nothing)
 
     # What is running: set by the image build (VERSION and REVISION build args), shown on the dashboard
     version: str = "dev"
@@ -145,7 +156,7 @@ class Settings:
 
     # The public, read-only view (docs/DESIGN-public-view.md): requests whose Host is listed are served the scrubbed, read-only surface
     public_hosts: list = field(default_factory=list)
-    public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people Pip knows are hidden anyway)
+    public_redact: list = field(default_factory=list)   # names always shown as "someone" there (visitors and people the agent knows are hidden anyway)
 
     # The agent's stats are its world's (the pack's stats.json); this overrides any of a stat's numbers: {"hunger": {"per_hour": 0.1}}
     # (or, naming one the world hasn't, adds it)
@@ -166,7 +177,7 @@ class Settings:
             talk_scenes=(e("TALK_SCENES") or "on").lower() if (e("TALK_SCENES") or "on").lower() in ("on", "off") else "on",
             modules=(e("MODULES") or "on").lower() if (e("MODULES") or "on").lower() in ("on", "off") else "on",
             module_runner=e("MODULE_RUNNER") or "",
-            modules_approval=e("MODULES_APPROVAL") if e("MODULES_APPROVAL") is not None else "world,pip",
+            modules_approval=_approval(e("MODULES_APPROVAL") if e("MODULES_APPROVAL") is not None else "world,agent"),
             module_library=(e("MODULE_LIBRARY") or "on").lower() if (e("MODULE_LIBRARY") or "on").lower() in ("on", "off") else "on",
             module_builder=(e("MODULE_BUILDER") or "on").lower() if (e("MODULE_BUILDER") or "on").lower() in ("on", "off") else "on",
             world_bible_path=e("WORLD_BIBLE_PATH") or "",

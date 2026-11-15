@@ -1,6 +1,6 @@
-"""Outreach: Pip's way to the world outside, over a pluggable channel (see DESIGN-outreach.md).
+"""Outreach: The agent's way to the world outside, over a pluggable channel (see DESIGN-outreach.md).
 
-The core owns policy; a channel (channels.py) owns transport. Pip may *start* a conversation (a postcard) a couple of
+The core owns policy; a channel (channels.py) owns transport. The agent may *start* a conversation (a postcard) a couple of
 times a day, never at night, never twice alike, with short plain text and no links. It may *answer* what a person sends
 back through the channel the message came in on, inside the same conversation, as often as it likes (but never
 unprompted). Everything is recorded; the recipient is fixed by the channel, never chosen by the model.
@@ -61,7 +61,7 @@ class Outreach:
             if "receive" in ch.capabilities:
                 try:
                     await ch.start(self._handler(ch))
-                except Exception as e:  # a broken channel must not stop Pip
+                except Exception as e:  # a broken channel must not stop the agent
                     self.errors[ch.name] = f"{type(e).__name__}: {e}"
                     log.exception("channel %s failed to start", ch.name)
 
@@ -78,7 +78,7 @@ class Outreach:
                 return
             sender = clip(m.sender_name or m.sender_id, 40)
             reply = commands.answer(self.state, self.s, m.text)
-            if reply is not None:       # a slash command: answered from state, never Pip's inbox
+            if reply is not None:       # a slash command: answered from state, never the agent's inbox
                 await self._deliver(ch, Outbound(reply[:2000], "reply"), m.conversation)
                 return
             iid = self.receive(str(m.text)[:2000], sender, ch.name, m.conversation, m.message_id)
@@ -94,7 +94,7 @@ class Outreach:
         return datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
     def allowance(self, now: float | None = None) -> dict:
-        """What Pip may do right now: {'now', 'remaining', 'next', 'reason'}. `next` is when it could next start a conversation."""
+        """What the agent may do right now: {'now', 'remaining', 'next', 'reason'}. `next` is when it could next start a conversation."""
         now = now or time.time()
         if not self.enabled:
             return {"now": False, "remaining": 0, "next": None, "reason": "no channel"}
@@ -167,7 +167,7 @@ class Outreach:
 
     async def notify_owner(self, text: str, room: str | None = None) -> bool:
         """A notice from the engine to the owner, on the first channel that can carry one (Matrix). Not a postcard: it doesn't count
-        against Pip's allowance and Pip doesn't see it. Returns whether it went (or was logged, in log mode)."""
+        against the agent's allowance and the agent doesn't see it. Returns whether it went (or was logged, in log mode)."""
         ch = next((c for c in self.channels if hasattr(c, "notice")), None) if self.s.outreach != "off" else None
         if ch is None:
             return False
@@ -182,7 +182,7 @@ class Outreach:
         return res.delivered
 
     async def send_postcard(self, text: str, now: float | None = None, images=()) -> tuple[bool, str]:
-        """Start a conversation. Returns (ok, what Pip is told)."""
+        """Start a conversation. Returns (ok, what the agent is told)."""
         now = now or time.time()
         if not self.enabled:
             return False, "you have no way to reach anyone outside right now"
@@ -207,7 +207,7 @@ class Outreach:
         return True, "your postcard is on its way; if they write back you'll hear it in the same thread" + extra
 
     async def route_reply(self, text: str, inbox_ids: list[int]) -> int:
-        """Pip's `say` answered these visitor messages; send it back through any channel they came in on, into the same
+        """The agent's `say` answered these visitor messages; send it back through any channel they came in on, into the same
         conversation. Returns how many conversations it went to. Never unprompted: it needs a real message to answer."""
         if not self.enabled or not inbox_ids:
             return 0
@@ -227,7 +227,7 @@ class Outreach:
         return sent
 
     async def typing(self, inbox_ids: list[int]) -> None:
-        """Show 'typing' wherever Pip is about to answer. Best effort."""
+        """Show 'typing' wherever the agent is about to answer. Best effort."""
         if not self.enabled or self.s.outreach == "log":
             return
         for row in self.state.inbox_rows(list(inbox_ids)):

@@ -1,9 +1,9 @@
 // A place built from parts (docs/DESIGN-modules.md): the engine sends the built shapes and anchors (app/layouts.py), and this draws them with
 // the kit, the same way for every place. Rotations are in degrees, heading first (Euler order YXZ), so a part turned in a layout stays upright.
 // A shape with `when` shows only while its conditions hold (open, shut, day, night, the tide, the season, whether whoever lives here is home,
-// whether Pip has set out a stall). What changes with the world is drawn on the anchors a layout tags for it:
-//   pip, seat, bed, workbench, reading, garden-path, browse, visitor, pip-stall   where Pip stands, sits, sleeps, works, reads, gardens, browses
-//   plot (in order)        a garden plot: its crop, growing         clock / shelf / walkers   Pip's creations: clocks, things, walking things
+// whether the agent has set out a stall). What changes with the world is drawn on the anchors a layout tags for it:
+//   agent, seat, bed, workbench, reading, garden-path, browse, visitor, agent-stall   where the agent stands, sits, sleeps, works, reads, gardens, browses
+//   plot (in order)        a garden plot: its crop, growing         clock / shelf / walkers   the agent's creations: clocks, things, walking things
 //   resident, resident-evening, resident-walk                       whoever lives here, by the time of day (a walk out at low tide)
 //   people   others here     wares   what a neighbor sells     counter, stock   a shop's goods and keeper     booth   a market's booths
 //   crowd    people walking about while it's open             finds   what can be found here, lying about
@@ -18,17 +18,17 @@ const CLOTH = ["grey", "brown", "green", "blue", "red", "ochre", "plum", "cream"
 const hours = (min) => (min < 60 ? `${min} minutes` : `${Math.round(min / 60)} hours`);
 const priced = (items) => items.map((i) => `${i.name} (${i.price} coin${i.price === 1 ? "" : "s"}${i.left ? "" : ", sold out"})`).join(", ");
 
-export function poseOf(pip) {           // what Pip is doing, as a pose: the one place facts become animation
-  if (!pip.here) return "away";
-  if (pip.asleep) return "sleep";
-  const s = pip.session, a = `${pip.activity} ${pip.description}`.toLowerCase();
+export function poseOf(agent) {           // what the agent is doing, as a pose: the one place facts become animation
+  if (!agent.here) return "away";
+  if (agent.asleep) return "sleep";
+  const s = agent.session, a = `${agent.activity} ${agent.description}`.toLowerCase();
   if (s && (s.kind === "work" || s.kind === "experiment")) return "work";
   if (s && s.kind === "read") return "read";
   if (s && s.kind === "gather") return "gather";
   if (s && s.kind === "module") {         // a module's session: work if it says so, else what the agent is doing (reading, gathering)
     if (s.working) return "work";
-    if (pip.activity === "reading") return "read";
-    if (pip.activity === "gathering") return "gather";
+    if (agent.activity === "reading") return "read";
+    if (agent.activity === "gathering") return "gather";
   }
   if (/\b(fil(e|es|ing)|tinker\w*|making|build\w*|hammer\w*|solder\w*|carv\w*|assembl\w*|shaping|sanding|measur\w*|cutting|fitting|winding)\b/.test(a) && !/\b(wait\w*|rest\w*)\b/.test(a)) return "work";
   if (/garden|plot|plant|harvest|water|weed|tend/.test(a) && !/wait|rest/.test(a)) return "garden";
@@ -83,9 +83,9 @@ export function build(kit, art, data) {
   }
   const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
   const words = (t) => String(t || "")
-    .replace("$label", cap(latest.place.label)).replace("$description", latest.place.description || latest.place.blurb || "").replace("$blurb", latest.place.blurb || "")
+    .replaceAll("$name", latest.agent.name).replace("$label", cap(latest.place.label)).replace("$description", latest.place.description || latest.place.blurb || "").replace("$blurb", latest.place.blurb || "")
     .replace("$belongings", (latest.items || []).map((i) => `${i.name} ×${i.qty}`).join(", ") + `; ${latest.coins ?? 0} coins.`)
-    .replace("$project", latest.pip.session?.project ? `Pip is ${latest.pip.session.label || `busy with ${latest.pip.session.project}`}.` : "Where Pip works on its projects.")
+    .replace("$project", latest.agent.session?.project ? `${latest.agent.name} is ${latest.agent.session.label || `busy with ${latest.agent.session.project}`}.` : `Where ${latest.agent.name} works.`)
     .replace("$hours", latest.place.hours ? `Open ${latest.place.hours[0]}:00 to ${latest.place.hours[1]}:00.` : "Shut for now.")
     .replace("$note", `At my stall in ${latest.lives_here?.away_at ?? "the market"} today.`)
     .replace("$resident", latest.lives_here?.name || "Someone")
@@ -133,14 +133,14 @@ export function build(kit, art, data) {
   function now() {
     const min = minutesNow(latest), open = !!latest.place.open, away = !!latest.lives_here?.away_at, high = tide(min) > 0.55, night = min < 6 * 60 || min >= 20 * 60;
     return { min, c: { open, shut: !open, day: !night, night, "high-tide": high, "low-tide": !high, winter: season === "winter", "not-winter": season !== "winter",
-                       "resident-home": !!latest.lives_here && !away, "resident-away": away, "pip-stall": !!latest.stall?.length, "no-pip-stall": !latest.stall?.length,
+                       "resident-home": !!latest.lives_here && !away, "resident-away": away, "agent-stall": !!latest.stall?.length, "no-agent-stall": !latest.stall?.length,
                        ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`booth-${i + 1}`, i < boothsUp])) } };
   }
 
   // --- anchors for what changes with the world -------------------------------------------------------------------------------
   const all = (tag) => lay.anchors.filter((a) => a.tags.includes(tag));
   const tagged = (tag) => all(tag)[0];
-  const spot = tagged("pip") || lay.anchors.find((a) => a.type === "ground" || a.type === "floor") || { at: [0, 0, 0], extent: [4, 2] };
+  const spot = tagged("agent") || lay.anchors.find((a) => a.type === "ground" || a.type === "floor") || { at: [0, 0, 0], extent: [4, 2] };
   const pick = (a) => a[Math.floor(r() * a.length)];
   const someone = (apron) => ({ height: pick(["short", "medium", "medium", "tall"]), hair: pick(HAIRS), skin: pick(SKINS), top: pick(CLOTH), bottom: pick(["grey", "brown", "navy", "black"]), accessory: apron ? "apron" : pick(["hat", "scarf", "satchel", "none", "none"]) });
   const along = (a, k) => [a.at[0] - a.extent[0] / 2 + k * a.extent[0], a.at[1], a.at[2]];
@@ -182,12 +182,12 @@ export function build(kit, art, data) {
       k.stand(a.at[0] + 0.4, 0, a.at[2] - 1.0); openOnly.push(k);
     });
   }
-  // Pip's own stall, with what it set out (its drawings and creations are shown by modules)
-  const pipStallAt = tagged("pip-stall");
+  // The agent's own stall, with what it set out (its drawings and creations are shown by modules)
+  const agentStallAt = tagged("agent-stall");
   let stallGoods = [];
   function showStall(stall) {
     stallGoods.forEach((g) => kit.scene.remove(g));
-    stallGoods = pipStallAt ? setOut(pipStallAt, (stall || []).filter((s) => !["work", "creation"].includes(s.kind)).slice(0, 4), 3) : [];
+    stallGoods = agentStallAt ? setOut(agentStallAt, (stall || []).filter((s) => !["work", "creation"].includes(s.kind)).slice(0, 4), 3) : [];
   }
   // a neighbor's wares, on their shelves
   all("wares").forEach((a, i) => { const wares = (latest.lives_here?.wares || []).slice(i * 2, i * 2 + 2).map((name) => ({ name })); setOut(a, wares.length ? wares : (i === 0 && !latest.lives_here?.wares?.length ? [{ name: "jar" }, { name: "jar" }] : []), 2); });
@@ -217,7 +217,7 @@ export function build(kit, art, data) {
     });
   }
 
-  // Pip's creations: a clock on the wall, things on the shelf, walking things on the floor
+  // The agent's creations: a clock on the wall, things on the shelf, walking things on the floor
   const made = new Map(), clocks = all("clock"), shelf = tagged("shelf"), walkersAt = tagged("walkers");
   const fit = (p, most) => { const w = p.rows[0].length, h = p.rows.length, k = most / Math.max(w, h); return [w * k, h * k]; };
   function showCreations(list) {
@@ -250,10 +250,10 @@ export function build(kit, art, data) {
   const crowdAt = tagged("crowd");
   const crowd = crowdAt ? Array.from({ length: 8 }, (_, i) => { const p = personAt(kit, art, someone(false), () => ({ title: "Someone about", text: `Here for ${latest.place.label}.` })); p.userData.k = i / 8; p.userData.speed = 0.012 + r() * 0.01; p.userData.lane = (r() - 0.5) * 1.2; return p; }) : [];
 
-  // Pip, and what goes with a pose: a thought, sleep, sparks, a book
-  const pip = kit.sprite(art.pip(), 1.0, 1.375), spark = kit.sprite(art.spark(), 0.35, 0.35, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false);
+  // The agent, and what goes with a pose: a thought, sleep, sparks, a book
+  const figure = kit.sprite(art.agent(), 1.0, 1.375), spark = kit.sprite(art.spark(), 0.35, 0.35, false), zzz = kit.sprite(art.zzz(), 0.6, 0.6, false);
   const bubble = kit.sprite(art.bubble(), 0.7, 0.6, false), book = kit.sprite(art.bubble("#8a3a2a"), 0.5, 0.42, false);
-  kit.tipOn(pip, () => ({ title: "Pip", text: `${latest.pip.description || latest.pip.activity}.` + (latest.pip.mood ? ` Feeling ${latest.pip.mood}; energy ${Math.round((latest.pip.energy ?? 0) * 100)}%.` : "") }));
+  kit.tipOn(figure, () => ({ title: latest.agent.name, text: `${latest.agent.description || latest.agent.activity}.` + (latest.agent.mood ? ` Feeling ${latest.agent.mood}; energy ${Math.round((latest.agent.energy ?? 0) * 100)}%.` : "") }));
   const seat = tagged("seat"), bed = tagged("bed") || seat, bench = tagged("workbench"), reading = tagged("reading") || seat, gardenPath = tagged("garden-path"),
     browse = tagged("browse"), visitor = tagged("visitor");
 
@@ -289,24 +289,24 @@ export function build(kit, art, data) {
       if (e.kind === "clock") { const cr = latest.creations.find((x) => x.name === e.name) || {}; const m = cr.clock ? cr.clock.minutes + (cr.clock.running ? (Date.now() / 1000 - latest.now.ts) / 60 : 0) : 0; e.ck.draw(Math.floor(m), cr.clock?.running ? Math.round(Math.sin(t * Math.PI) * 2) : 0); }
       if (e.kind === "walker") { const k = (Math.sin(t * 0.35 + e.lane) + 1) / 2, [x, y, z] = along(walkersAt, k); e.mesh.position.set(x, y + 0.3, z + walkersAt.extent[1] / 2 - 0.3 - e.lane * 0.6); e.mesh.scale.x = Math.cos(t * 0.35 + e.lane) >= 0 ? 1 : -1; if (e.t.userData.frames > 1) e.t.offset.x = (Math.floor(t * 6) % 2) / 2; }
     }
-    // Pip
-    const pose = poseOf(latest.pip), at = (a, frame, dy = 0.69) => { pip.position.set(a.at[0], a.at[1] + dy, a.at[2]); kit.frame(pip, frame); };
-    pip.visible = pose !== "away"; spark.visible = zzz.visible = bubble.visible = book.visible = false; pip.scale.x = 1;
-    if (!pip.visible) return;
+    // The agent
+    const pose = poseOf(latest.agent), at = (a, frame, dy = 0.69) => { figure.position.set(a.at[0], a.at[1] + dy, a.at[2]); kit.frame(figure, frame); };
+    figure.visible = pose !== "away"; spark.visible = zzz.visible = bubble.visible = book.visible = false; figure.scale.x = 1;
+    if (!figure.visible) return;
     const [x, y, z] = spot.at, [w, d] = spot.extent;
     if (pose === "gather") {                                         // searching back and forth across its spot, stopping now and then
       const k = (t * 0.03) % 1, stop = Math.floor(t / 2.5) % 2 === 0, px = x + Math.sin(k * Math.PI * 2) * w * 0.4, pz = z + Math.cos(k * Math.PI * 4) * d * 0.3;
-      pip.position.set(px, y + 0.69, pz); kit.frame(pip, stop ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); pip.scale.x = Math.cos(k * Math.PI * 2) >= 0 ? 1 : -1;
+      figure.position.set(px, y + 0.69, pz); kit.frame(figure, stop ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = Math.cos(k * Math.PI * 2) >= 0 ? 1 : -1;
       spark.visible = stop && Math.floor(t * 2) % 2 === 0; spark.position.set(px + 0.4, y + 0.3, pz + 0.2);
     } else if (pose === "sleep" && bed) { at(bed, 6); zzz.visible = true; zzz.position.set(bed.at[0] + 0.6, bed.at[1] + 1.6 + ((t * 0.3) % 0.4), bed.at[2] + 0.05); }
-    else if (pose === "sit" && seat) { at(seat, 9); bubble.visible = GARDEN_WORDS.test(latest.pip.description || "") && plots.length > 0 && Math.floor(t / 3) % 3 !== 2; bubble.position.set(seat.at[0] + 0.5, seat.at[1] + 1.8 + Math.sin(t * 2) * 0.04, seat.at[2] + 0.05); }
+    else if (pose === "sit" && seat) { at(seat, 9); bubble.visible = GARDEN_WORDS.test(latest.agent.description || "") && plots.length > 0 && Math.floor(t / 3) % 3 !== 2; bubble.position.set(seat.at[0] + 0.5, seat.at[1] + 1.8 + Math.sin(t * 2) * 0.04, seat.at[2] + 0.05); }
     else if (pose === "read" && reading) { at(reading, 9); book.visible = true; book.position.set(reading.at[0] + 0.5, reading.at[1] + 1.6 + Math.sin(t * 2) * 0.03, reading.at[2] + 0.1); }
     else if (pose === "work" && bench) { const hit = Math.floor(t * 4) % 2; at(bench, 7 + hit); spark.visible = hit === 1; spark.position.set(bench.at[0] + 0.7, bench.at[1] + 1.49, bench.at[2] - 0.65); }
-    else if (pose === "garden" && gardenPath) { const k = (t * 0.05) % 1, still = k > 0.3 && k < 0.5, [gx, gy, gz] = along(gardenPath, k < 0.5 ? k * 2 : 2 - k * 2); pip.position.set(gx, gy + 0.69, gz); kit.frame(pip, still ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); pip.scale.x = k > 0.5 ? -1 : 1; }
-    else if (c["pip-stall"] && pipStallAt) { pip.position.set(pipStallAt.at[0] + 0.4, 0.69, pipStallAt.at[2] - 1.1); kit.frame(pip, Math.floor(t * 1.6) % 2); }
-    else if (browse) { const k = (Math.sin(t * 0.25) + 1) / 2, [bx, by, bz] = along(browse, k); pip.position.set(bx, by + 0.69, bz); kit.frame(pip, Math.abs(Math.cos(t * 0.25)) > 0.2 ? 2 + Math.floor(t * 8) % 4 : Math.floor(t * 1.6) % 2); pip.scale.x = Math.cos(t * 0.25) >= 0 ? 1 : -1; }
+    else if (pose === "garden" && gardenPath) { const k = (t * 0.05) % 1, still = k > 0.3 && k < 0.5, [gx, gy, gz] = along(gardenPath, k < 0.5 ? k * 2 : 2 - k * 2); figure.position.set(gx, gy + 0.69, gz); kit.frame(figure, still ? Math.floor(t * 1.6) % 2 : 2 + Math.floor(t * 8) % 4); figure.scale.x = k > 0.5 ? -1 : 1; }
+    else if (c["agent-stall"] && agentStallAt) { figure.position.set(agentStallAt.at[0] + 0.4, 0.69, agentStallAt.at[2] - 1.1); kit.frame(figure, Math.floor(t * 1.6) % 2); }
+    else if (browse) { const k = (Math.sin(t * 0.25) + 1) / 2, [bx, by, bz] = along(browse, k); figure.position.set(bx, by + 0.69, bz); kit.frame(figure, Math.abs(Math.cos(t * 0.25)) > 0.2 ? 2 + Math.floor(t * 8) % 4 : Math.floor(t * 1.6) % 2); figure.scale.x = Math.cos(t * 0.25) >= 0 ? 1 : -1; }
     else if (visitor && resident?.visible) at(visitor, Math.floor(t * 1.6) % 2);
-    else { pip.position.set(x, y + 0.69, z); kit.frame(pip, pose === "sleep" ? 6 : Math.floor(t * 1.6) % 2); }
+    else { figure.position.set(x, y + 0.69, z); kit.frame(figure, pose === "sleep" ? 6 : Math.floor(t * 1.6) % 2); }
   });
   return { update };
 }

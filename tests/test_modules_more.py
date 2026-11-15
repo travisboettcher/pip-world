@@ -86,7 +86,7 @@ def test_the_context_word_for_word(tmp_path):
     assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": "",
                            "utc_offset": round(t.astimezone().utcoffset().total_seconds())}
     assert ctx["weather"] == {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True}
-    assert ctx["pip"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
+    assert ctx["agent"] == {"where": "workshop", "at_home": True, "activity": "sleeping", "asleep": True,
                           "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"}
     assert ctx["facts"] == {"says": {"weather": {"condition": "rain", "temp": 9.5, "unit": "C", "daylight": True, "next_rising": None, "next_setting": None}}}
     c = st.creations()[0]
@@ -156,9 +156,9 @@ async def test_each_calls_history_line_says_what_happened(tmp_path):
 async def test_a_module_switched_off_mid_step_runs_no_more_hooks_and_only_live_ones_run(tmp_path):
     s, st, agent = modular(tmp_path)
     src = "def on_time(ctx):\n    return 1/0\ndef on_tick(ctx):\n    return {}\ndef on_event(ctx):\n    return {}\n"
-    m = live(st, rule(hooks=["on_time", "on_tick", "on_event"], events=["garden"]), src)
+    m = live(st, rule(hooks=["on_time", "on_tick", "on_event"], events=["world_changed"]), src)
     st.update_module(m["id"], fails=2, due=NOW - 1)
-    st.log("garden", plot=1, crop="peas")
+    st.log("world_changed", effect="e", text="peas")
     waiting = live(st, rule(name="waiting"), "def on_tick(ctx):\n    return {}\n")
     st.update_module(waiting["id"], status="waiting")
     ticker = live(st, rule(name="ticker", hooks=["on_tick"], proposes=["wake"]), "def on_tick(ctx):\n    return {'wake': ctx['state'].get('w', True)}\n")
@@ -166,7 +166,7 @@ async def test_a_module_switched_off_mid_step_runs_no_more_hooks_and_only_live_o
     assert await M.step(st, s, agent.runner, NOW) is True                                         # one wakes, one doesn't: still woken
     assert [c["hook"] for c in st.module_calls(m["id"])] == ["on_time"] and st.module(m["id"])["status"] == "disabled"
     assert st.module_calls(waiting["id"]) == [] and [c["hook"] for c in st.module_calls(quiet["id"])] == ["on_tick"]
-    st.log("garden", plot=2, crop="beans")
+    st.log("world_changed", effect="e", text="beans")
     assert [c["hook"] for c in st.module_calls(ticker["id"])] == ["on_tick"]                    # no on_event for a module that has none
     await M.step(st, s, agent.runner, NOW)
     assert [c["hook"] for c in st.module_calls(ticker["id"])] == ["on_tick", "on_tick"]
@@ -261,15 +261,15 @@ def test_rejecting_and_switching_off_word_for_word(tmp_path):
 async def test_the_dry_run_report_precisely(tmp_path):
     s, st, agent = modular(tmp_path)
     st.log("module", name="earlier", text="from before", author="world")
-    st.log("garden", plot=1, crop="peas")
-    st.log("garden", plot=2, crop="beans")
+    st.log("world_changed", effect="e", text="peas")
+    st.log("world_changed", effect="e", text="beans")
     src = ("def on_tick(ctx):\n    t0 = ctx['state'].get('t0', ctx['now'] - 900)\n"
            "    return {'log': 'tick ' + str(int(ctx['now'] - t0) // 60), 'state': {'t0': t0}}\n"
            "def on_time(ctx):\n    return {}\n"
-           "def on_event(ctx):\n    return {'perceive': 'saw ' + ctx['event']['data']['crop']}\n"
+           "def on_event(ctx):\n    return {'perceive': 'saw ' + ctx['event']['data']['text']}\n"
            "def on_install(ctx):\n    return {'offer': [{'name': 'poke', 'help': 'poke it'}]}\n"
            "def on_action(ctx):\n    return {'reply': ctx['args']['purpose']}\n")
-    man = rule(hooks=["on_install", "on_tick", "on_event", "on_action"], proposes=["log", "state", "perceive", "offer"], events=["garden"])
+    man = rule(hooks=["on_install", "on_tick", "on_event", "on_action"], proposes=["log", "state", "perceive", "offer"], events=["world_changed"])
     m = live(st, man, src)
     st.update_module(m["id"], status="proposed")
     rep = await M.dry_run(st, s, agent.runner, st.module(m["id"]), NOW)

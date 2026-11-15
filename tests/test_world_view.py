@@ -32,7 +32,7 @@ def test_places_carry_visits_and_whether_they_lie_by_water(tmp_path):
     assert by["woods"]["visits"] == 2 and by["woods"]["first_visited"] and by["junkyard"]["visits"] == 0 and by["junkyard"]["first_visited"] is None
     assert by["Saltholm"]["coastal"] and by["Oriel's home"]["coastal"] and not by["woods"]["coastal"] and not by["workshop"]["coastal"]
     assert by["Hollin"]["heard_only"] and not by["Hollin"]["coastal"]
-    assert m["seed"] == WV.seed(st) and m["home"] == "workshop" and m["pip"]["at"] == "workshop"
+    assert m["seed"] == WV.seed(st) and m["home"] == "workshop" and m["agent"]["at"] == "workshop"
     assert set(m["now"]) == {"ts", "minutes", "season", "weather"} and m["now"]["weather"] is None
 
 
@@ -41,7 +41,7 @@ async def test_a_walk_in_progress_has_its_times(tmp_path):
     s, st, gm, agent = make(tmp_path)
     agent.tools["go_to"] = T.REGISTRY["go_to"]
     await call(agent, "go_to", place="woods")
-    w = WV.map_view(st, s, None)["pip"]["walking"]
+    w = WV.map_view(st, s, None)["agent"]["walking"]
     sess = st.session()
     assert w["to"] == "woods" and w["started_at"] == sess["started_at"] and w["ends_at"] == sess["ends_at"]
 
@@ -86,9 +86,9 @@ async def test_the_walk_is_where_it_is_at_the_moment_asked(tmp_path):
     await call(agent, "go_to", place="woods")
     sess = st.session()
     half = (sess["started_at"] + sess["ends_at"]) / 2
-    assert WV.map_view(st, s, None, now=half)["pip"]["walking"]["progress"] == 0.5
+    assert WV.map_view(st, s, None, now=half)["agent"]["walking"]["progress"] == 0.5
     st.end_session()
-    assert WV.map_view(st, s, None)["pip"]["walking"] is None
+    assert WV.map_view(st, s, None)["agent"]["walking"] is None
 
 
 def test_a_new_seed_comes_from_the_whole_range(tmp_path, monkeypatch):
@@ -111,10 +111,10 @@ def test_the_home_scene_has_pip_the_garden_the_creations_and_the_belongings(tmp_
     from tests.test_garden import planted
     planted(st, s, 1, "peas", 600)
     c = clock(st)
-    st.add_coins("pip", 5)
+    st.add_coins("agent", 5)
     d = WV.scene_view(st, s, None)
     assert d["place"]["key"] == "workshop" and d["place"]["kind"] == "home" and d["place"]["open"] is True and not d["place"]["coastal"]
-    assert d["pip"]["here"] and not d["pip"]["walking"] and d["pip"]["description"] == "Waiting for the peas." and d["pip"]["session"] is None
+    assert d["agent"]["here"] and not d["agent"]["walking"] and d["agent"]["description"] == "Waiting for the peas." and d["agent"]["session"] is None
     assert d["facts"]["garden"]["plots"][0]["crop"] == "peas" and d["coins"] == st.coins() and {i["name"] for i in d["items"]} == {i["name"] for i in st.items()}
     gc = next(x for x in d["creations"] if x["name"] == c["name"])
     assert gc["capabilities"] == sorted(c["spec"]["capabilities"]) and gc["running"] and 0 <= gc["clock"]["minutes"] < 1440 and gc["tended_until"]
@@ -137,14 +137,14 @@ async def test_a_scene_elsewhere_knows_who_is_there_and_where_pip_is(tmp_path):
     agent.tools["go_to"] = T.REGISTRY["go_to"]
     ch = neighbor(st, s)
     d = WV.scene_view(st, s, None, "Marigold's home")
-    assert d["place"]["kind"] == "neighbor" and not d["pip"]["here"] and d["pip"]["where"] == "workshop" and "garden" not in d
+    assert d["place"]["kind"] == "neighbor" and not d["agent"]["here"] and d["agent"]["where"] == "workshop" and "garden" not in d
     assert [{k: c[k] for k in ("name", "kind", "about")} for c in d["present"]] == [{"name": "Marigold", "kind": "neighbor", "about": ch["about"]}]
     await call(agent, "go_to", place="Marigold")
     d = WV.scene_view(st, s, None)                                                     # on the way: the scene is where Pip is going
-    assert d["place"]["key"] == "Marigold's home" and d["pip"]["walking"] and not d["pip"]["here"] and d["pip"]["session"]["kind"] == "walk"
+    assert d["place"]["key"] == "Marigold's home" and d["agent"]["walking"] and not d["agent"]["here"] and d["agent"]["session"]["kind"] == "walk"
     time.sleep(0.01)
     await agent.finish_work()
-    assert WV.scene_view(st, s, None)["pip"]["here"]
+    assert WV.scene_view(st, s, None)["agent"]["here"]
     assert WV.scene_view(st, s, None, "Nowhere") is None
 
 
@@ -156,7 +156,7 @@ async def test_a_work_session_names_its_project_and_what_is_being_done(tmp_path)
     crafting(st)
     await call(agent, "start_project", name="Gear clock", goal="a clock", steps=PIP_STEPS)
     await call(agent, "work_on", project="#1")
-    sess = WV.scene_view(st, s, None)["pip"]["session"]
+    sess = WV.scene_view(st, s, None)["agent"]["session"]
     assert {k: sess[k] for k in ("kind", "target", "label", "working", "project")} == \
         {"kind": "module", "target": "crafting", "label": "working on Gear clock: cut the wheels", "working": True, "project": "Gear clock"}
     assert sess["ends_at"] > sess["started_at"]
@@ -206,14 +206,14 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
     d = WV.scene_view(st, s, None, "Brygdon")
     assert set(d["place"]) == {"key", "label", "kind", "blurb", "description", "hours", "open", "heard_only", "coastal", "props", "scene", "finds"}
     assert d["place"]["label"] == "Brygdon" and d["place"]["blurb"] == "the square" and d["place"]["description"] == "" and d["place"]["heard_only"] is False
-    assert set(d["pip"]) == {"here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
+    assert set(d["agent"]) == {"name", "here", "where", "walking", "activity", "description", "mood", "energy", "hunger", "asleep", "session"}
     item = next(i for i in d["booths"][0]["items"] if i["name"] == "brass wire")
     assert item == {"name": "brass wire", "kind": "material", "price": item["price"], "left": item["left"]} and item["left"] == 4
-    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "objects", "layout", "facts"}
+    assert d["now"]["weather"] == "rainy" and set(d) == {"place", "lives_here", "agent", "present", "booths", "stall", "now", "objects", "layout", "facts"}
     home = WV.scene_view(st, s, None)
-    assert set(home) == {"place", "lives_here", "pip", "present", "booths", "stall", "now", "creations", "items", "coins", "objects", "layout", "facts"}
+    assert set(home) == {"place", "lives_here", "agent", "present", "booths", "stall", "now", "creations", "items", "coins", "objects", "layout", "facts"}
     st.update_agent(activity="sleeping")
-    assert WV.scene_view(st, s, None)["pip"]["asleep"] is True
+    assert WV.scene_view(st, s, None)["agent"]["asleep"] is True
     st.add_place("Hollin", "hollin", kind="wild", status="heard", created_at=time.time(), heard_at=time.time(), hours=None, daylight_only=0, walk_minutes=20.0, loot=[], verbs={})
     h = WV.scene_view(st, s, None, "Hollin")
     assert h["place"]["heard_only"] is True and h["place"]["open"] is False and h["place"]["kind"] == "wild" and h["place"]["hours"] is None
@@ -222,10 +222,10 @@ def test_the_scene_carries_exactly_these_facts(tmp_path):
 def test_a_module_session_about_nothing_names_no_project(tmp_path):
     s, st, gm, agent = make(tmp_path)
     st.start_session(0, 0, 30, time.time() + 600, kind="module", target="reading", expect="reading A book")
-    sess = WV.scene_view(st, s, None)["pip"]["session"]
+    sess = WV.scene_view(st, s, None)["agent"]["session"]
     assert (sess["label"], sess["working"], "project" in sess) == ("reading A book", False, False)
     st.start_session(0, 0, 10, time.time() + 600, kind="walk", target="woods")
-    assert set(WV.scene_view(st, s, None)["pip"]["session"]) == {"kind", "started_at", "ends_at", "target"}
+    assert set(WV.scene_view(st, s, None)["agent"]["session"]) == {"kind", "started_at", "ends_at", "target"}
 
 
 @pytest.mark.asyncio
@@ -248,7 +248,7 @@ def test_scene_numbers_and_creations_in_detail(tmp_path):
     c = clock(st)
     night = datetime(2026, 7, 9, 2, 0).timestamp()
     d = WV.scene_view(st, s, None, now=night)
-    assert d["pip"]["energy"] == 0.12 and d["pip"]["hunger"] == 0.68 and d["now"]["ts"] == night and d["now"]["minutes"] == 120
+    assert d["agent"]["energy"] == 0.12 and d["agent"]["hunger"] == 0.68 and d["now"]["ts"] == night and d["now"]["minutes"] == 120
     gc = d["creations"][0]
     assert set(gc) == {"name", "quality", "capabilities", "running", "description", "clock", "tended_until"} and gc["quality"] == "sound"
     assert all(set(i) == {"name", "qty", "kind"} for i in d["items"]) and d["items"]

@@ -4,7 +4,7 @@ Where the catalogue comes from is a *provider*, registered by name: `library_cal
 `library_folder.py` reads a plain folder of books. This module is everything that does not care which: the `Library` base (finding a
 book), ranking a search, and the format readers (EPUB: zipfile + HTML-to-text over the spine; PDF: pypdf, page by page; plain text in
 sections). The `books` source (sources.py) is how the world reaches it; reading itself is the `reading` module's. A reading position is (section, offset): a section is a PDF page, an EPUB chapter or a
-stretch of a text file. Raw text never reaches Pip's prompt - a reading session's stretch of text is condensed by the GM.
+stretch of a text file. Raw text never reaches the agent's prompt - a reading session's stretch of text is condensed by the GM.
 Pick the provider with `LIBRARY_PROVIDER` (`auto` tries Calibre, then a folder). To add one, write a module that registers a
 `Library` subclass and import it at the bottom.
 """

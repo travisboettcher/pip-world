@@ -58,7 +58,7 @@ class Agent:
 
     @property
     def possessive(self) -> str:
-        """The name's possessive: "Pip's"."""
+        """The name's possessive: "the agent's"."""
         return f"{self.name}'s"
 
 

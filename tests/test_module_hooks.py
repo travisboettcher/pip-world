@@ -92,7 +92,7 @@ def test_what_goes_together_in_a_manifest():
     with pytest.raises(M.Refused, match="a `session` starts from on_action and ends in on_time"):
         M.check_manifest(rule(name="digger", hooks=["on_action"], proposes=["session"]), "world")
     with pytest.raises(M.Refused, match="not for Pip's programs"):
-        M._tools([{"name": "dig", "help": "x"}], "pip")
+        M._tools([{"name": "dig", "help": "x"}], "agent")
     got = M.check_manifest(pots(), "world")
     assert got["tools"][1] == {"name": "empty_pot", "help": "Empty a pot.", "where": "anywhere",
                                "params": {"type": "object", "properties": {"pot": {"type": "integer"}}, "required": ["pot"]}}

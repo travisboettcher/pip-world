@@ -1,9 +1,9 @@
-"""The night pass: after the nightly reflection, Pip's sleeping self may adjust its own goals (DESIGN-nightpass.md).
+"""The night pass: after the nightly reflection, the agent's sleeping self may adjust its own goals (DESIGN-nightpass.md).
 
-A second call, once per sleep, in Pip's voice. It decides a few things from a fixed vocabulary about Pip's own to-dos,
+A second call, once per sleep, in the agent's voice. It decides a few things from a fixed vocabulary about the agent's own to-dos,
 wishes, ambitions and projects, and sets a short focus for tomorrow. The engine validates every decision (known ops,
-age floors, a cap, cited evidence), applies it reversibly (archive and pause, never delete) and records it so Pip can
-`undo_decision`. Facts in, decisions out: the engine never tells Pip what to want.
+age floors, a cap, cited evidence), applies it reversibly (archive and pause, never delete) and records it so the agent can
+`undo_decision`. Facts in, decisions out: the engine never tells the agent what to want.
 """
 import difflib
 import re
@@ -92,7 +92,7 @@ def facts(state, settings, now: float, tool_names=()) -> dict:
 
 
 def review_focus(state, now: float) -> tuple[list[dict], int]:
-    """Close last night's focus items that the log shows were kept. Returns (the rest, for Pip to decide on; kept)."""
+    """Close last night's focus items that the log shows were kept. Returns (the rest, for the agent to decide on; kept)."""
     left, kept_n = [], 0
     for f in state.focus("open"):
         kept = False
@@ -203,7 +203,7 @@ def validate(state, settings, raw_ops, f: dict, shown: dict, now: float) -> tupl
             section, text = raw.get("section"), clip(raw.get("text"), 300)
             if adopted or section not in ("todo", "ambitions") or len(text) < 8:
                 reject("one new todo or ambition a night, with real text")
-            elif tools_mod.STAT_NUMBERS.search(text):
+            elif tools_mod.stat_number_in(settings, text):
                 reject("no stat numbers in notes")
             elif any(difflib.SequenceMatcher(None, text.lower(), m["text"].lower()).ratio() >= tools_mod.SIMILARITY_LIMIT
                      or tools_mod.overlapping(text, m["text"]) for m in notes.values() if m["section"] == section):
@@ -390,7 +390,7 @@ def _evidence(state, cite: str, shown: dict, f: dict) -> str:
     return f"{p['name']}: {p['goal']}" if p else ""
 
 
-# --- what Pip sees ---------------------------------------------------------------------------
+# --- what the agent sees ---------------------------------------------------------------------------
 def perception(state, settings) -> list[str]:
     lines = []
     new = state.unseen_decisions(DECISION_MAX_AGE_HOURS, SHOWN_DECISIONS)

@@ -31,7 +31,7 @@ def day_number(state, now: float) -> int:
 
 
 def fall_asleep(state, settings, now: float | None = None) -> dict:
-    """Pip goes to bed. Returns when it will wake."""
+    """The agent goes to bed. Returns when it will wake."""
     now = now or time.time()
     until = next_wake(settings, now)
     state.update_agent(activity="sleeping", description="asleep")
@@ -40,7 +40,7 @@ def fall_asleep(state, settings, now: float | None = None) -> dict:
 
 
 def wake_up(state, now: float | None = None) -> dict | None:
-    """End sleep (on time, or early when something woke Pip). Call after apply_decay so the night's rest counts."""
+    """End sleep (on time, or early when something woke the agent). Call after apply_decay so the night's rest counts."""
     if not asleep(state):
         return None
     now = now or time.time()

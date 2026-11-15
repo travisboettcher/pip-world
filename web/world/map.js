@@ -1,9 +1,10 @@
 // The parchment map (docs/DESIGN-world-view.md). Drawn in the browser from /world/map: the land is invented from the world seed around
-// the engine's own place spots, so it is the same every time; only what Pip has walked is painted, and the sheet grows as Pip goes further.
-// A map unit is a minute of Pip's walking (worldmap.py), so the scale bar is in minutes.
+// the engine's own place spots, so it is the same every time; only what the agent has walked is painted, and the sheet grows as the agent goes further.
+// A map unit is a minute of the agent's walking (worldmap.py), so the scale bar is in minutes.
 
 const W = 1600, H = 1000, GRID = 4;          // the sheet, in pixels; the land is computed on a coarser grid and painted smooth
-const MIN_SPAN = 64, PAD = 16;               // the smallest sheet (in minutes of walking across), and the margin round what Pip knows
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const MIN_SPAN = 64, PAD = 16;               // the smallest sheet (in minutes of walking across), and the margin round what the agent knows
 
 /* ---------- seeded noise ---------- */
 function hash(x, y, s) { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
@@ -26,7 +27,7 @@ export function land(data) {
     height(x, y) {
       const wx = x + (fbm(x / 22, y / 22, s + 7, 3) - 0.5) * 14, wy = y + (fbm(x / 22 + 9, y / 22, s + 8, 3) - 0.5) * 14;   // ragged edges
       let h = fbm(wx / 26, wy / 26, s) - 0.47;
-      h += 0.34 * Math.exp(-(((x - cx) / (reach * 1.4)) ** 2 + ((y - cy) / (reach * 1.4)) ** 2));                    // the country Pip lives in
+      h += 0.34 * Math.exp(-(((x - cx) / (reach * 1.4)) ** 2 + ((y - cy) / (reach * 1.4)) ** 2));                    // the country the agent lives in
       for (const c of coasts) {                                                     // a place by the water has the water just beyond it
         const dx = x - c.p.x, dy = y - c.p.y, along = dx * c.ux + dy * c.uy, side = Math.abs(dx * c.uy - dy * c.ux), width = 9 + Math.max(0, along) * 0.9;
         if (along > 2) h -= Math.min(0.6, (along - 2) * 0.035) * Math.exp(-(side * side) / (2 * width * width));
@@ -53,7 +54,7 @@ export function frame(data) {
   return { x0, x1, y0, y1, unit: W / w, toPx: (x, y) => [(x - x0) / w * W, (y1 - y) / h * H], toW: (px, py) => [x0 + px / W * w, y1 - py / H * h] };
 }
 
-/* ---------- what Pip has explored: 1 inside, fading to 0 a little beyond ---------- */
+/* ---------- what the agent has explored: 1 inside, fading to 0 a little beyond ---------- */
 export function explored(data) {
   const seen = data.places.filter((p) => p.key === data.home || p.visits > 0);
   return (x, y) => {
@@ -109,7 +110,7 @@ export function drawSheet(ctx, data) {
   }
   pcx.putImageData(paper, 0, 0); ctx.imageSmoothingEnabled = true; ctx.drawImage(pc, 0, 0, W, H);
 
-  // washes, hill-shaded and tinted by the season, only where Pip has been
+  // washes, hill-shaded and tinted by the season, only where the agent has been
   const tint = SEASON_TINT[data.now?.season] || [1, 1, 1];
   const wash = document.createElement("canvas"); wash.width = gw; wash.height = gh; const wc = wash.getContext("2d"), wd = wc.createImageData(gw, gh);
   for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
@@ -152,7 +153,7 @@ export function drawSheet(ctx, data) {
   }
   marks.sort((a, b) => a[2] - b[2]).forEach(([k, x, y, s]) => glyph(ctx, k, x, y, s, data.now?.season));
 
-  // roads to the places Pip has been, then the places, then Pip
+  // roads to the places the agent has been, then the places, then the agent
   for (const p of data.places) {
     if (p.key === data.home || !p.visits) continue;
     const pts = road(p, f, seed);
@@ -161,20 +162,20 @@ export function drawSheet(ctx, data) {
   }
   const taken = [];                                    // label boxes already placed, so the next one finds a free side
   for (const p of [...data.places].sort((a, b) => (b.key === data.home) - (a.key === data.home))) {
-    const [x, y] = f.toPx(p.x, p.y), heard = p.heard_only || (!p.visits && p.key !== data.home), label = p.key === data.home ? "Pip's Workshop" : p.label;
+    const [x, y] = f.toPx(p.x, p.y), heard = p.heard_only || (!p.visits && p.key !== data.home), label = p.key === data.home ? `${data.agent.name}'s ${cap(data.home_called)}` : p.label;
     if (heard) pencilled(ctx, x, y, label); else { icon(ctx, p.kind, x, y); plaque(ctx, x, y, label, taken); }
   }
   // the scale, the compass and the title
   const sx = 70, sy = H - 60, ten = f.unit * 10;
   ctx.strokeStyle = "#3a2a1c"; ctx.fillStyle = "#3a2a1c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + ten * 3, sy); ctx.stroke();
   for (let i = 0; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(sx + ten * i, sy - 6); ctx.lineTo(sx + ten * i, sy + 6); ctx.stroke(); if (i < 3 && i % 2 === 0) ctx.fillRect(sx + ten * i, sy - 3, ten, 6); }
-  ctx.font = "16px 'IM Fell English', Georgia, serif"; ctx.textAlign = "left"; ctx.fillText("minutes of Pip's walking:  10   20   30", sx, sy - 14);
+  ctx.font = "16px 'IM Fell English', Georgia, serif"; ctx.textAlign = "left"; ctx.fillText(`minutes of ${data.agent.name}'s walking:  10   20   30`, sx, sy - 14);
   compass(ctx, W - 120, 120);
-  ctx.font = "italic 34px 'IM Fell English', Georgia, serif"; ctx.fillStyle = "rgba(58,42,28,0.8)"; ctx.fillText("The Country round Pip's Workshop", 60, 70);
+  ctx.font = "italic 34px 'IM Fell English', Georgia, serif"; ctx.fillStyle = "rgba(58,42,28,0.8)"; ctx.fillText(`The Country round ${data.agent.name}'s ${cap(data.home_called)}`, 60, 70);
   ctx.font = "italic 16px 'IM Fell English', Georgia, serif";
-  ctx.fillText(`as far as Pip has walked, to ${new Date((data.now?.ts ?? Date.now() / 1000) * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`, 62, 96);
+  ctx.fillText(`as far as ${data.agent.name} has walked, to ${new Date((data.now?.ts ?? Date.now() / 1000) * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`, 62, 96);
   ctx.font = "italic 22px 'IM Fell English', Georgia, serif"; ctx.fillStyle = "rgba(58,42,28,0.3)"; ctx.textAlign = "center";
-  ctx.fillText("here Pip has not been", W - 260, H - 70);
+  ctx.fillText(`here ${data.agent.name} has not been`, W - 260, H - 70);
   return f;
 }
 
@@ -208,7 +209,7 @@ function plaque(ctx, x, y, label, taken = []) {
   ctx.strokeStyle = "rgba(230,214,170,0.5)"; ctx.lineWidth = 1; roundRect(ctx, bx + 2, by + 2, tw + 14, 22, 3); ctx.stroke();
   ctx.fillStyle = "#f1e6c8"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(label, bx + (tw + 18) / 2, by + 14); ctx.textBaseline = "alphabetic";
 }
-function pencilled(ctx, x, y, label) {                 // somewhere Pip has only heard of: a pencilled question, not an inked place
+function pencilled(ctx, x, y, label) {                 // somewhere the agent has only heard of: a pencilled question, not an inked place
   ctx.save(); ctx.strokeStyle = "rgba(90,74,58,0.6)"; ctx.fillStyle = "rgba(90,74,58,0.7)"; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   ctx.font = "italic 20px 'IM Fell English', Georgia, serif"; ctx.textAlign = "center"; ctx.fillText("?", x, y + 7);
@@ -235,33 +236,33 @@ function compass(ctx, x, y) {
   ctx.font = "20px 'IM Fell English SC', Georgia, serif"; ctx.fillStyle = "#3a2a1c"; ctx.textAlign = "center"; ctx.fillText("N", 0, -58); ctx.restore();
 }
 
-/* ---------- Pip: a flag where it is, or moving along the road while it walks ---------- */
-export function pipAt(data, f, now = Date.now() / 1000) {
-  const w = data.pip.walking, byKey = Object.fromEntries(data.places.map((p) => [p.key, p]));
-  if (!w || !byKey[w.to] || !byKey[w.from]) { const p = byKey[data.pip.at] || byKey[data.home]; return { xy: f.toPx(p.x, p.y), walking: null }; }
+/* ---------- the agent: a flag where it is, or moving along the road while it walks ---------- */
+export function agentAt(data, f, now = Date.now() / 1000) {
+  const w = data.agent.walking, byKey = Object.fromEntries(data.places.map((p) => [p.key, p]));
+  if (!w || !byKey[w.to] || !byKey[w.from]) { const p = byKey[data.agent.at] || byKey[data.home]; return { xy: f.toPx(p.x, p.y), walking: null }; }
   const k = w.ends_at > w.started_at ? Math.max(0, Math.min(1, (now - w.started_at) / (w.ends_at - w.started_at))) : w.progress;
   const out = w.from === data.home ? road(byKey[w.to], f, data.seed) : w.to === data.home ? road(byKey[w.from], f, data.seed).slice().reverse()
     : [f.toPx(byKey[w.from].x, byKey[w.from].y), f.toPx(byKey[w.to].x, byKey[w.to].y)];
   const seg = k * (out.length - 1), i = Math.min(out.length - 2, Math.floor(seg)), t = seg - i;
   return { xy: [out[i][0] + (out[i + 1][0] - out[i][0]) * t, out[i][1] + (out[i + 1][1] - out[i][1]) * t], walking: { ...w, k, path: out } };
 }
-export function drawPip(ctx, data, f, now) {
+export function drawAgent(ctx, data, f, now) {
   ctx.clearRect(0, 0, W, H);
-  const { xy: [x, y], walking } = pipAt(data, f, now);
+  const { xy: [x, y], walking } = agentAt(data, f, now);
   if (walking) { ctx.strokeStyle = "rgba(201,134,42,0.9)"; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); walking.path.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.stroke(); ctx.setLineDash([]); }
   ctx.fillStyle = "#c9862a"; ctx.strokeStyle = "#3a2a1c"; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(x + 2, y - 8); ctx.lineTo(x + 2, y - 34); ctx.lineTo(x + 20, y - 27); ctx.lineTo(x + 2, y - 20); ctx.fill(); ctx.stroke();
   ctx.font = "italic 16px 'IM Fell English', Georgia, serif"; ctx.fillStyle = "#3a2a1c"; ctx.textAlign = "left";
-  ctx.fillText(walking ? "Pip, on the way" : "Pip is here", x + 24, y - 24);
+  ctx.fillText(walking ? `${data.agent.name}, on the way` : `${data.agent.name} is here`, x + 24, y - 24);
 }
 
-/* ---------- the widget: a sheet that pans and zooms, with Pip on top ---------- */
+/* ---------- the widget: a sheet that pans and zooms, with the agent on top ---------- */
 export class WorldMap {
   constructor(host, { onPlace } = {}) {
     this.host = host; this.onPlace = onPlace; this.view = { s: 1, x: 0, y: 0 }; this.data = null; this.sig = "";
     this.inner = document.createElement("div"); this.inner.className = "wm-inner";
-    this.sheet = document.createElement("canvas"); this.pipLayer = document.createElement("canvas");
-    for (const c of [this.sheet, this.pipLayer]) { c.width = W; c.height = H; this.inner.append(c); }
+    this.sheet = document.createElement("canvas"); this.agentLayer = document.createElement("canvas");
+    for (const c of [this.sheet, this.agentLayer]) { c.width = W; c.height = H; this.inner.append(c); }
     this.sheet.setAttribute("role", "img"); this.busy = document.createElement("p"); this.busy.className = "wm-busy"; this.busy.textContent = "Inking the map…";
     host.replaceChildren(this.inner, this.busy); host.classList.add("wm");
     this._wire();
@@ -272,15 +273,15 @@ export class WorldMap {
     const sig = JSON.stringify([data.seed, data.now?.season, data.places.map((p) => [p.key, p.x, p.y, p.visits > 0, p.heard_only, p.coastal, p.label, Math.min(12, p.visits)])]);
     const go = () => {
       if (sig !== this.sig) { this.frame = drawSheet(this.sheet.getContext("2d"), data); this.sig = sig; }
-      this.busy.hidden = true; this.sheet.setAttribute("aria-label", `Map of the country round Pip's workshop. ${data.places.filter((p) => p.visits).length} places visited.`);
-      if (!this.opened && this.host.clientWidth > 0) { this.opened = true; if (this.host.clientWidth < 600) this.centreOnPip(); }   // a phone opens close in, on Pip (once it is on screen)
-      this._pip(); clearInterval(this.tick); if (data.pip.walking) this.tick = setInterval(() => this._pip(), 1000);
+      this.busy.hidden = true; this.sheet.setAttribute("aria-label", `Map of the country round ${data.agent.name}'s ${data.home_called}. ${data.places.filter((p) => p.visits).length} places visited.`);
+      if (!this.opened && this.host.clientWidth > 0) { this.opened = true; if (this.host.clientWidth < 600) this.centreOnAgent(); }   // a phone opens close in, on the agent (once it is on screen)
+      this._agent(); clearInterval(this.tick); if (data.agent.walking) this.tick = setInterval(() => this._agent(), 1000);
     };
     if (sig === this.sig) go(); else { this.busy.hidden = false; (document.fonts?.ready ?? Promise.resolve()).then(() => setTimeout(go, 20)); }
   }
-  centreOnPip() { if (!this.frame) return; const [x, y] = pipAt(this.data, this.frame).xy, r = this.host.getBoundingClientRect(); this.view.s = Math.max(this.view.s, 2.4); this.view.x = r.width / 2 - x / W * r.width * this.view.s; this.view.y = r.height / 2 - y / H * r.height * this.view.s; this._apply(); }
+  centreOnAgent() { if (!this.frame) return; const [x, y] = agentAt(this.data, this.frame).xy, r = this.host.getBoundingClientRect(); this.view.s = Math.max(this.view.s, 2.4); this.view.x = r.width / 2 - x / W * r.width * this.view.s; this.view.y = r.height / 2 - y / H * r.height * this.view.s; this._apply(); }
   zoom(f) { const r = this.host.getBoundingClientRect(); this._zoomAt(r.left + r.width / 2, r.top + r.height / 2, f); this._apply(); }
-  _pip() { if (this.frame) drawPip(this.pipLayer.getContext("2d"), this.data, this.frame); }
+  _agent() { if (this.frame) drawAgent(this.agentLayer.getContext("2d"), this.data, this.frame); }
   _apply() { const r = this.host.getBoundingClientRect(), v = this.view; v.s = Math.max(1, Math.min(5, v.s)); v.x = Math.min(0, Math.max(r.width - r.width * v.s, v.x)); v.y = Math.min(0, Math.max(r.height - r.height * v.s, v.y)); this.inner.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`; }
   _zoomAt(cx, cy, f) { const r = this.host.getBoundingClientRect(), px = cx - r.left, py = cy - r.top, ns = Math.max(1, Math.min(5, this.view.s * f)), k = ns / this.view.s; this.view.x = px - (px - this.view.x) * k; this.view.y = py - (py - this.view.y) * k; this.view.s = ns; }
   _wire() {

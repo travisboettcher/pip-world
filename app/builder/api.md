@@ -68,11 +68,11 @@ It returns {"parts": [{"part": a part's name, "params": {...}, "at": [x, 0, z], 
 open ground in front. Give the ground as a box, like {"shape": "box", "size": [30, 2, 16], "at": [0, -1, -4], "faces": {"top":
 {"texture": "grass", "repeat": [15, 8]}, "side": {"texture": "cliff", "repeat": [15, 1]}}, "tip": {"title": "$label", "text":
 "$description"}}: its top is at y 0, so anything lying on it (a stream, a path, a pond) sits a little above, at y 0.02, and anything
-standing on it has its base at y 0. Add ground anchors tagged "pip" (where AGENT_NAME stands, near z 0), "finds" (where things lie) and "people",
-like {"id": "pip", "type": "ground", "tags": ["outside", "pip"], "at": [0, 0, 0], "extent": [8, 2]} (extent: width along x, depth along z).
+standing on it has its base at y 0. Add ground anchors tagged "agent" (where AGENT_NAME stands, near z 0), "finds" (where things lie) and "people",
+like {"id": "agent", "type": "ground", "tags": ["outside", "agent"], "at": [0, 0, 0], "extent": [8, 2]} (extent: width along x, depth along z).
 A shop or market also needs a counter: a box to stand at, and a surface anchor tagged "counter" on top of it (its goods are set out there
 and the keeper stands just behind), inside the building if there is one. Add "reserved" to the tags of the anchors the scene itself
-draws on (pip, people, counter), so things modules show stay off them.
+draws on (agent, people, counter), so things modules show stay off them.
 Shapes: box (size), plane (size), cylinder (radius, top, height), cone, sphere, ico, dodeca, torus (radius, tube), gable (width, height),
 sprite (pixels or art), light (color, strength, range, lamp); each with at, rot (degrees), and a material {texture, repeat, color}; textures:
 TEXTURES. A shape (or a part entry) with "when": [...] shows only while all of those hold: CONDITIONS.

@@ -1,6 +1,6 @@
 """Abilities objects can grant (see DESIGN-abilities.md).
 
-A thing Pip made can give Pip something it cannot otherwise do, but only while the thing works: a running clock tells the exact time, a
+A thing the agent made can give the agent something it cannot otherwise do, but only while the thing works: a running clock tells the exact time, a
 running radio brings news. Like `world_effects.py`, this is a small registry: the GM may propose an ability for a finished project (the
 `provides` capability), the engine checks it and owns every limit. A stopped or unwound object provides nothing. Adding an ability is one
 registry entry here plus the place its result shows up.

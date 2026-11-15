@@ -17,7 +17,7 @@ roam, forage and want things. It replaces the ROADMAP's "Small economy" item.
 - Follow CLAUDE.md: extend general verbs, keep new tools few, put sources of truth in the engine and let the GM only narrate.
 
 ## Coins
-- One integer purse per **party** (`pip`, or a character's name): table `purses(party, coins)`. Pip starts with 10.
+- One integer purse per **party** (`agent`, `pip` before 0.47.0, or a character's name): table `purses(party, coins)`. Pip starts with 10.
 - Coins are never created by buying or selling. The only faucet is a booth keeper paying Pip from the keeper's **till**.
   A keeper's till refills a fixed amount each day (`TILL_PER_DAY`, default 40 coins for a shop, 80 for a market booth), so a
   booth can absorb only so much surplus per day. That is the natural throttle on a tomato glut: Pip can sell about a day's worth

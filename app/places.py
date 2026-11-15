@@ -1,9 +1,9 @@
 """Places the agent can be. The home, the library and the places a world starts with are the world pack's (places.json), and each
 neighbor's home is a walk away.
 
-`go_to` uses the same real-time session as work (kind `walk`): Pip is walking until it arrives, then wakes there.
-Each place gets a description written once by the GM the first time Pip arrives, and kept. A neighbor's home is
-the place called "<Name>'s home"; while Pip is there, the neighbor greets it and talks with it in person (see
+`go_to` uses the same real-time session as work (kind `walk`): The agent is walking until it arrives, then wakes there.
+Each place gets a description written once by the GM the first time the agent arrives, and kept. A neighbor's home is
+the place called "<Name>'s home"; while the agent is there, the neighbor greets it and talks with it in person (see
 neighbors.py), as does a resident at an invented place. See DESIGN-library.md and DESIGN-neighbor.md.
 """
 import time
@@ -57,12 +57,12 @@ def place_of(state, ch: dict) -> str | None:
 
 
 def company_at(state, place: str | None) -> list[dict]:
-    """The characters Pip can talk with in person at `place` (none while it's walking: pass present_at)."""
+    """The characters the agent can talk with in person at `place` (none while it's walking: pass present_at)."""
     return [c for c in state.characters() if place and place_of(state, c) == place]
 
 
 def present_at(state) -> str | None:
-    """Where Pip is in company: its location, or None while it's walking (it has left, and hasn't arrived)."""
+    """Where the agent is in company: its location, or None while it's walking (it has left, and hasn't arrived)."""
     sess = state.session()
     return None if sess and sess["kind"] == "walk" else state.agent()["location"]
 
@@ -91,7 +91,7 @@ def label(place: str) -> str:
 
 @dataclass
 class Place:
-    """A place Pip can be. `verbs` maps a tool name to (short help for 'Here you can', full description of the verb
+    """A place the agent can be. `verbs` maps a tool name to (short help for 'Here you can', full description of the verb
     here or None to use the tool's own). `offers` are the short words shown in the directory."""
     key: str
     blurb: str
@@ -101,7 +101,7 @@ class Place:
     hours: tuple[int, int] | None = None   # local open hours (start, end); None = always open
     daylight_only: bool = False
     invented: bool = False   # from the places table (a place a character mentioned); see invented_places.py
-    heard: bool = False      # ...and Pip hasn't been yet: no description, no verbs
+    heard: bool = False      # ...and the agent hasn't been yet: no description, no verbs
     mentions: list = field(default_factory=list)
     distance: str = ""
     kind: str = ""           # a starting place's kind of place (places.json: wild, yard...), whose shared verbs it may offer
@@ -128,7 +128,7 @@ def open_now(place: Place, settings, now: float | None = None) -> bool:
 
 
 def registry(state, settings, library) -> dict[str, Place]:
-    """Every place Pip can go, as records: home, the library (if mounted), each neighbor's home."""
+    """Every place the agent can go, as records: home, the library (if mounted), each neighbor's home."""
     walk = settings.walk_minutes if settings else 10.0
     d = _data()
     home = d.get("home", {})
@@ -193,13 +193,13 @@ def invented_place(rec: dict) -> Place:
 
 
 def here(state, settings, library) -> Place:
-    """The record for where Pip is (a bare one for a location the registry no longer lists)."""
+    """The record for where the agent is (a bare one for a location the registry no longer lists)."""
     loc = state.agent()["location"]
     return registry(state, settings, library).get(loc) or Place(loc, "", settings.walk_minutes)
 
 
 def available(state, library) -> dict[str, str]:
-    """place -> what it is, for every place Pip can go."""
+    """place -> what it is, for every place the agent can go."""
     return {k: p.blurb for k, p in registry(state, None, library).items()}
 
 
@@ -225,15 +225,15 @@ def start_walk(state, settings, place: str, minutes: float | None = None) -> int
 
 
 async def arrive(state, settings, gm, library, rng=None) -> dict | None:
-    """Finish a walk: Pip is now at its destination. The first visit to a place gets a lasting description; a place
-    Pip has only heard of is designed instead (invented_places.realise), and retried next time if that fails."""
+    """Finish a walk: The agent is now at its destination. The first visit to a place gets a lasting description; a place
+    The agent has only heard of is designed instead (invented_places.realise), and retried next time if that fails."""
     sess = state.session()
     if not sess or sess["kind"] != "walk":
         return None
     state.end_session()
     place = sess["target"]
     here_record = registry(state, settings, library).get(place)
-    first = place != home_key() and state.meta(f"place:{place}") is None  # home is where Pip started
+    first = place != home_key() and state.meta(f"place:{place}") is None  # home is where the agent started
     bare = False
     if here_record and here_record.heard:
         made = await invented.realise(state, gm, place, label(place), rng)
@@ -250,7 +250,7 @@ async def arrive(state, settings, gm, library, rng=None) -> dict | None:
         state.set_meta(**{f"place:{place}": clip(desc, 500) if desc else ""})
     state.update_agent(location=place, activity="idle",
                        description="just got home" if place == home_key() else f"just arrived at {label(place)}")
-    state.set_meta(arrived_at=str(time.time()))  # marks this visit (a neighbor greets Pip once per visit)
+    state.set_meta(arrived_at=str(time.time()))  # marks this visit (a neighbor greets the agent once per visit)
     data = {"place": place, "label": label(place), "first_time": first,
             "description": invented.BARE.format(label(place)) if bare else state.meta(f"place:{place}") or ""}
     state.log("arrived", **data)
@@ -258,7 +258,7 @@ async def arrive(state, settings, gm, library, rng=None) -> dict | None:
 
 
 def directory(state, settings, library, now: float | None = None) -> list[str]:
-    """Where Pip can go and what each place is for, from the same records that decide which tools it is offered."""
+    """Where the agent can go and what each place is for, from the same records that decide which tools it is offered."""
     loc = state.agent()["location"]
     lines, heard_of = [], []
     for key, p in registry(state, settings, library).items():

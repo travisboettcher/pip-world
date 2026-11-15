@@ -33,7 +33,7 @@ place gets a short path from home. Places are: home, the library, the woods, the
 ```
 {"home": "workshop",
  "places": [{"key", "label", "kind", "x", "y", "visited", "heard_only", "distance_minutes"}],
- "pip": {"x", "y", "at": <key or null>, "walking": {"from", "to", "progress"} | null}}
+ "agent": {"name", "x", "y", "at": <key or null>, "walking": {"from", "to", "progress"} | null}}     (`pip` before 0.47.0)
 ```
 `kind` is `home`, `wild` (woods, junkyard), `library`, `neighbor`, or the invented place's own kind (`shop`, `sight`, ...). `visited` is whether Pip has
 ever arrived (`state.last_arrived`), and `heard_only` marks an invented place Pip has been told of but not been to.

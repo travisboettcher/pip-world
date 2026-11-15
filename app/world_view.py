@@ -1,7 +1,7 @@
 """The world view's data (docs/DESIGN-world-view.md): everything the browser needs to draw the parchment map, in one read-only call.
 
 The map's land is invented in the browser from a world seed (made once, kept in meta) around the engine's own place spots (worldmap.py).
-This adds what the drawing needs beyond `/map`: the seed, which places lie by water (so the coast comes close to them), how often Pip has
+This adds what the drawing needs beyond `/map`: the seed, which places lie by water (so the coast comes close to them), how often the agent has
 been to each and since when, the walk in progress with its times, and the hour, season and weather.
 """
 import random
@@ -57,8 +57,8 @@ def map_view(state, settings, library, now: float | None = None) -> dict:
         p["visits"] = seen["count"] if seen else 0
         p["coastal"] = p["key"] != places.HOME and bool(coastal().search(_words(state, p["key"], rows)))
     sess = state.session()
-    if snap["pip"]["walking"] and sess:
-        snap["pip"]["walking"].update(started_at=sess["started_at"], ends_at=sess["ends_at"])
+    if snap["agent"]["walking"] and sess:
+        snap["agent"]["walking"].update(started_at=sess["started_at"], ends_at=sess["ends_at"])
     return {**snap, "seed": seed(state), "now": moment(state, settings, now)}
 
 
@@ -94,7 +94,7 @@ def place_details(state, settings, key: str, kind: str) -> dict:
 
 
 def scene_view(state, settings, library, place: str | None = None, now: float | None = None) -> dict | None:
-    """Everything a scene draws from, for one place (where Pip is, by default): the place, who is there, what is for sale, Pip if it is
+    """Everything a scene draws from, for one place (where the agent is, by default): the place, who is there, what is for sale, the agent if it is
     there, and the place's own things (at home: the garden, the creations, the belongings). None if there is no such place."""
     from . import creations as cr
     now = now or time.time()
@@ -107,7 +107,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
         return None
     p, rows = reg[key], {r["key"]: r for r in state.place_rows()}
     kind = {q["key"]: q["kind"] for q in worldmap.snapshot(state, settings, library, now)["places"]}[key]
-    pip_here = a["location"] == key and not walking
+    agent_here = a["location"] == key and not walking
     session = None
     if sess:
         session = {k: sess[k] for k in ("kind", "started_at", "ends_at", "target")}
@@ -137,7 +137,7 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
                   "scene": {k: v for k, v in scene.items() if k != "props"},
                   "finds": [e[0] for e in finds.loot_for(state, key) or []][:12]},
         "lives_here": lives_here,
-        "pip": {"here": pip_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
+        "agent": {"name": world_pack.active().agent.name, "here": agent_here, "where": a["location"], "walking": walking, "activity": a["activity"], "description": a["description"],
                 "mood": a["mood"], **{n: round(v, 2) for n, v in stats_mod.values(state).items()}, "asleep": a["activity"] == "sleeping",
                 "session": session},
         "present": present, "booths": booths,

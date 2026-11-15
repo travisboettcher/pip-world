@@ -1,6 +1,6 @@
 """Long-term memory: nightly reflection (consolidation) and recall (retrieval). See DESIGN-memory.md.
 
-Pip reflects in its own voice (its persona is the system prompt): once a day it turns everything since the last
+The agent reflects in its own voice (its persona is the system prompt): once a day it turns everything since the last
 reflection into a day summary, a few insights with importance, notes on the people involved, and a fresh
 self-portrait. Those go into every prompt at a fixed size. Everything worth remembering is also indexed for the
 `recall` tool (SQLite FTS5, BM25 ranking).
@@ -128,7 +128,7 @@ def ago(ts: float, now: float | None = None) -> str:
 
 
 def compute_day_stats(state, since: float, until: float) -> dict:
-    """Plain counts of what Pip did in a stretch of time - facts to compare days by, not judgments."""
+    """Plain counts of what the agent did in a stretch of time - facts to compare days by, not judgments."""
     c = {k: 0 for k, _ in STAT_LABELS}
     for e in state.events_since(since, limit=5000):
         if e["ts"] > until:
@@ -188,8 +188,6 @@ def material(state, since: float, until: float, max_chars: int) -> tuple[list[st
                 text = f"You wrote ({a.get('section')}): {a.get('text')}"
             elif d["tool"] == "resolve_note":
                 text = f"You crossed off a note: {a.get('outcome') or d['result']}"
-            elif d["tool"] == "start_project":
-                text = f"You started a project: {a.get('name')}" + (f" ({a['goal']})" if a.get("goal") else "")
         elif k == "creation" and d.get("what") in ("stopped", "used"):
             text = d["text"]
         if text:
@@ -212,9 +210,9 @@ def due(state, settings, now: float) -> bool:
     if now - failed < RETRY_AFTER:
         return False
     if settings.sleep:
-        if state.agent()["activity"] == "sleeping":  # Pip reflects as it sleeps: once per sleep
+        if state.agent()["activity"] == "sleeping":  # The agent reflects as it sleeps: once per sleep
             return state.meta("reflected_sleep") != state.meta("sleep_started")
-        # fallback if Pip hasn't slept for a long while: the old fixed hour
+        # fallback if the agent hasn't slept for a long while: the old fixed hour
         if now - float(state.meta("last_reflection_ts") or 0) < 30 * 3600:
             return False
     local = datetime.fromtimestamp(now)
@@ -243,7 +241,7 @@ async def reflect(state, settings, gm, persona: str, now: float | None = None,
     candidate = turning.detect(state, since, now, stats, today, stat_labels(stats))
     if candidate["flagged"]:
         state.add_turning(candidate["score"], candidate["signals"], since, now)
-        for sg in candidate["signals"]:  # evidence Pip can cite even if the budget cut the line from the material
+        for sg in candidate["signals"]:  # evidence the agent can cite even if the budget cut the line from the material
             for ev in sg["events"]:
                 shown.setdefault(ev, clip(state.event_text(ev) or sg["text"], 300))
     firsts = state.firsts_between(since, now)
@@ -364,7 +362,7 @@ CITE = re.compile(r"^\s*\[?([ei])\s*#?(\d+)\]?\s*$", re.I)
 
 
 def valid_cites(because, shown: dict, earlier: dict) -> list[tuple[str, int]]:
-    """Keep only citations that point at something Pip was actually shown tonight."""
+    """Keep only citations that point at something the agent was actually shown tonight."""
     out = []
     for ref in because if isinstance(because, list) else []:
         m = CITE.match(str(ref))
@@ -412,7 +410,7 @@ async def cited_insights(state, settings, gm, raw, shown: dict, earlier: dict, s
 
 # --- prompt section -------------------------------------------------------------
 def perception(state, now: float | None = None) -> list[str]:
-    """The always-present memory section (fixed size however long Pip lives)."""
+    """The always-present memory section (fixed size however long the agent lives)."""
     lines = []
     portrait = state.meta("self_portrait")
     if portrait:

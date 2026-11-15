@@ -132,14 +132,16 @@ def test_every_narrator_keeps_the_floor(tmp_path):
     assert W.load(Settings()).narrator_system().endswith(W.FLOOR_RULES)
 
 
-def test_an_older_install_keeps_its_hunger_and_energy(tmp_path):
-    s = Settings(db_path=str(tmp_path / "old.db"))
-    st = State(s)
-    st.db.execute("DROP TABLE stats")
-    st.db.execute("UPDATE agent SET hunger = 0.6, energy = 0.3, hunger_alerted = 1 WHERE id = 1")
-    st.db.commit()
-    a = State(s).agent()                                                    # as an install from before stats were the world's
-    assert (a["hunger"], a["energy"], a["hunger_alerted"], a["energy_alerted"]) == (0.6, 0.3, 1, 0)
-    st2 = State(s)
-    st2.update_agent(hunger=0.1)
-    assert State(s).agent()["hunger"] == 0.1                                # carried over once, not again
+def test_the_agent_table_keeps_no_stats_of_its_own(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    State(Settings(db_path=path)).db.close()
+    db = sqlite3.connect(path)
+    for col in ("hunger REAL NOT NULL DEFAULT 0.6", "energy REAL NOT NULL DEFAULT 0.3", "hunger_alerted INTEGER NOT NULL DEFAULT 1",
+                "energy_alerted INTEGER NOT NULL DEFAULT 0"):
+        db.execute(f"ALTER TABLE agent ADD COLUMN {col}")                       # as a database from before 0.47.0
+    db.commit()
+    db.close()
+    st = State(Settings(db_path=path))
+    assert {r["name"] for r in st.db.execute("PRAGMA table_info(agent)")} == {"id", "mood", "location", "activity", "description", "updated_at"}
+    assert (st.agent()["hunger"], st.agent()["energy"]) == (0.2, 0.9)                     # the stats table's, as the world starts them

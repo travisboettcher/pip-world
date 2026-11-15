@@ -55,7 +55,7 @@ async def test_a_visit_becomes_a_talk_until_pip_says_goodbye(tmp_path):
     assert lines(st) == [("Marigold", "Pip! Come in."), ("Pip", "Hello! How are the bees?"), ("Marigold", "The hives are cross today. How is your garden?"),
                          ("Pip", "Growing well, thank you. I must get home."), ("Marigold", "Go well, Pip.")]
     ev = [e["data"] for e in st.events(30) if e["kind"] == "talk"][0]
-    assert ev == {"name": "Marigold", "turns": 2, "ended": "pip"}
+    assert ev == {"name": "Marigold", "turns": 2, "ended": "agent"}
     assert st.meta("talk_done") == st.meta("arrived_at") and st.meta("talk_scene") == "" and agent._wake.is_set()
     assert [e["data"]["reason"] for e in st.events(30) if e["kind"] == "tick"] == ["talk", "talk"]
     assert st.characters("neighbor")[0]["heard"] == []                           # all answered in the scene
@@ -253,7 +253,7 @@ async def test_a_letter_that_repeats_an_earlier_one_is_written_again(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="I laid my palm on the step this morning and it was still cool, so my own bed waits.", gist="g"),
                                        report(text="The heron came back to the flats today and stood for an hour.", gist="g2")])
     ch = neighbor(st, s)
-    st.add_letter("Marigold", "pip", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 10)
+    st.add_letter("Marigold", "agent", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 10)
     assert await nb._write(st, s, agent.gm, FixedRng(), st.characters("neighbor")[0], time.time(), None) is True
     sent = [lt for lt in st.letters(between="Marigold", limit=5) if lt["sender"] == "Marigold"]
     assert any("heron" in lt["text"] for lt in sent) and len(gm.calls) == 2
@@ -420,7 +420,7 @@ async def test_the_second_try_at_a_letter_has_the_same_context(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="I laid my palm on the step this morning and it was still cool, so my own bed waits.", gist="g"),
                                        report(text="The heron came back to the flats today and stood for an hour.", gist="g2")])
     neighbor(st, s)
-    st.add_letter("Marigold", "pip", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 10)
+    st.add_letter("Marigold", "agent", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 10)
     now = time.time()
     await nb._write(st, s, agent.gm, FixedRng(), st.characters("neighbor")[0], now, None)
     first, second = (c["messages"][0]["content"] for c in gm.calls)
@@ -432,9 +432,9 @@ async def test_the_second_try_at_a_letter_has_the_same_context(tmp_path):
 async def test_only_her_last_few_letters_are_checked_for_repeats(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="I laid my palm on the step this morning and it was still cool, so my own bed waits.", gist="g")])
     neighbor(st, s)
-    st.add_letter("Marigold", "pip", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 100)
+    st.add_letter("Marigold", "agent", "Dear Pip, I laid my palm on the step this morning and it was still cool, so my bed waits.", time.time() - 100)
     for i in range(nb.LETTERS_CHECKED):
-        st.add_letter("Marigold", "pip", f"Letter number {i}: the weather turned and the {['bees', 'hens', 'goats', 'cats', 'owls', 'moths'][i % 6]} hid.", time.time() - 50 + i)
+        st.add_letter("Marigold", "agent", f"Letter number {i}: the weather turned and the {['bees', 'hens', 'goats', 'cats', 'owls', 'moths'][i % 6]} hid.", time.time() - 50 + i)
     await nb._write(st, s, agent.gm, FixedRng(), st.characters("neighbor")[0], time.time(), None)
     assert len(gm.calls) == 1
 

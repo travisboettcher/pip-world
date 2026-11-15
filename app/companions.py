@@ -1,4 +1,4 @@
-"""Talk with characters: the recent lines between Pip and someone, and what Pip said to them waiting for an answer.
+"""Talk with characters: the recent lines between the agent and someone, and what the agent said to them waiting for an answer.
 
 A creation that talks does so through its `workings` module (module_library/workings.py: a voice, `ask` and `speak`); the characters
 here are the people (neighbors, residents) the engine's conversation code answers for.
@@ -12,7 +12,7 @@ CONVERSATION_LINES = 6
 
 
 def conversation(state, name: str, verbatim_since: float | None = None) -> list[str]:
-    """The last lines between Pip and `name`. With `verbatim_since`, `name`'s own earlier lines are shown in brief."""
+    """The last lines between the agent and `name`. With `verbatim_since`, `name`'s own earlier lines are shown in brief."""
     lines = []
     for e in reversed(state.events(200)):
         d = e["data"]

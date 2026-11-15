@@ -13,7 +13,7 @@ export class SceneView {
     this.note = document.createElement("div"); this.note.className = "scene-note"; this.note.hidden = true;
     host.append(this.tip, this.note);
   }
-  async show(place) {                                   // place: a key, or null for wherever Pip is
+  async show(place) {                                   // place: a key, or null for wherever the agent is
     const data = await this.api(`/world/scene${place ? `?place=${encodeURIComponent(place)}` : ""}`);
     const key = data.place.key, tpl = data.layout ? layout : null;      // every place is built from parts: a layout, once one is ready
     const sig = JSON.stringify([key, data.place.kind, data.place.scene, data.place.props, data.layout && [data.layout.module, data.layout.version, data.now.season]]);

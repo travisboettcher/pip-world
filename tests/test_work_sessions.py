@@ -33,7 +33,7 @@ async def test_work_in_a_modules_session_shows_and_is_remembered_as_work(tmp_pat
              "params": {"type": "object", "properties": {}, "required": []}}]), src)
     await M.use_tool(st, s, M.LocalRunner(), m, m["manifest"]["tools"][0], {}, NOW)
     assert st.session()["about"] == "Kite" and st.session()["kind"] == "module"
-    sess = WV.scene_view(st, s, None)["pip"]["session"]
+    sess = WV.scene_view(st, s, None)["agent"]["session"]
     assert (sess["label"], sess["working"], sess["project"]) == ("working on the kite", True, "Kite")
     c = R.cue(st, [], time.time())
     assert c.project == "Kite" and "working on the kite" in c.words
@@ -45,5 +45,5 @@ async def test_work_in_a_modules_session_shows_and_is_remembered_as_work(tmp_pat
 async def test_a_session_that_isnt_work_or_about_anything(tmp_path):
     s, st, agent = modular(tmp_path)
     st.start_session(0, 0, 10, time.time() + 600, kind="module", target="reading", expect="reading Tides")
-    sess = WV.scene_view(st, s, None)["pip"]["session"]
+    sess = WV.scene_view(st, s, None)["agent"]["session"]
     assert sess["working"] is False and "project" not in sess and R.cue(st, [], time.time()).project is None

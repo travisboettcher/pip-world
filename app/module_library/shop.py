@@ -45,7 +45,7 @@ def on_build(ctx):
           {"shape": "sprite", "art": "note", "size": [0.45, 0.45], "at": [SX1 + 0.62, 1.4, SZ0 + 2.1], "shadow": False, "when": "shut", "tip": {"title": "Shut", "text": "$hours"}}]
     anchors = [{"id": "counter", "type": "surface", "tags": ["inside", "counter", "reserved"], "at": [-2.2, 1.0, -5.3], "extent": [6.4, 0.6]},
                *({"id": f"stock-{k}", "type": "surface", "tags": ["inside", "stock", "reserved"], "at": [-2.2, y, SZ0 + 0.95], "extent": [9.0, 0.4]} for k, y in enumerate((0.95, 1.75, 2.55))),
-               {"id": "pip", "type": "floor", "tags": ["inside", "pip", "reserved"], "at": [-1.2, 0.12, -4.3], "extent": [1, 1]},
+               {"id": "agent", "type": "floor", "tags": ["inside", "agent", "reserved"], "at": [-1.2, 0.12, -4.3], "extent": [1, 1]},
                {"id": "people", "type": "floor", "tags": ["inside", "people", "reserved"], "at": [-1, 0.12, -4.2], "extent": [4, 1]},
                {"id": "back-wall", "type": "wall", "tags": ["inside", "back"], "at": [2.2, 2.2, SZ0 + 0.16], "normal": [0, 0, 1], "extent": [2.6, 1.0]},
                {"id": "outside", "type": "ground", "tags": ["outside"], "at": [-2, 0.0, -1.5], "extent": [8, 2]}]

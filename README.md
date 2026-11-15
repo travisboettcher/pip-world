@@ -76,7 +76,7 @@ Everything is an environment variable, listed with comments in [`.env.example`](
 | `CHARACTER_LOOKS` (`on`, `off`) | each neighbor or resident gets a look for the world view's scenes, chosen once ([design](docs/DESIGN-world-view.md)) |
 | `MODULES` (`on`, `off`) | features the world and Pip write as code, checked by the engine and run in the `pip-runner` sandbox ([design](docs/DESIGN-modules.md)) |
 | `MODULE_RUNNER` | where module code runs: `unix:///run/pip-runner/runner.sock` (the `pip-runner` service), a URL, or `local` (development only); unset, modules don't run |
-| `MODULES_APPROVAL` (default `world,pip`) | whose modules wait for the owner's approval (dashboard Work tab, `pipchat modules`) before going live |
+| `MODULES_APPROVAL` (default `world,agent`; an author it doesn't know stops the start) | whose modules wait for the owner's approval (dashboard Work tab, `pipchat modules`) before going live |
 | `MODULES_NOTIFY` (`on`, `off`) | the owner gets a Matrix notice (`m.notice`, from Pip's account; Pip never sees it) when a module waits for approval or is switched off for failing |
 | `MODULES_NOTIFY_ROOM` | the Matrix room for those notices (Pip's account must have joined it); default Pip's own room |
 | `DASHBOARD_URL` | the owner's dashboard address, so notices can link to it |

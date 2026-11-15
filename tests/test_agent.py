@@ -468,7 +468,7 @@ async def test_edit_note_rules(tmp_path):
     assert m["text"] == "Some fine brass gears" and m["edited_at"]
     assert "can't be changed" in (await edit(agent.ctx, {"id": diary, "text": "x"})).text
     assert "no note #99" in (await edit(agent.ctx, {"id": 99, "text": "x"})).text
-    assert "hunger/energy" in (await edit(agent.ctx, {"id": wish, "text": "Gears, hunger 0.5"})).text
+    assert "stats' numbers" in (await edit(agent.ctx, {"id": wish, "text": "Gears, hunger 0.5"})).text
     st.resolve_memory(wish, "got them")
     assert "already done" in (await edit(agent.ctx, {"id": wish, "text": "again"})).text
 

@@ -152,13 +152,13 @@ async def test_the_days_limits_and_pips_state_hold_for_module_happenings_too(tmp
     with pytest.raises(M.Refused) as e:
         M.plan(st, st.module(m["id"]), {"happen": GIFT}, time.time(), "on_tick")
     assert str(e.value) == "nothing can happen now: happenings can't be checked here"
-    assert "happen" not in M.PIP_PROPOSES
+    assert "happen" not in M.AGENT_PROPOSES
 
 
 @pytest.mark.asyncio
 async def test_a_happening_that_no_longer_fits_is_dropped_and_a_failed_text_falls_back(tmp_path):
     s, st, agent, m = happy(tmp_path)
-    st.add_coins("pip", -st.coins())
+    st.add_coins("agent", -st.coins())
     st.update_module(m["id"], happen=[{"category": "found", "tone": "bad", "effects": [{"kind": "coins"}]}])
     assert await H.from_modules(st, s, Writer(), time.time()) is False
     assert next(e["data"] for e in st.events(3) if e["kind"] == "happening_dropped") == {"module": "porch", "category": "found", "reason": "Pip has no coins to lose"}
@@ -177,10 +177,10 @@ def test_the_reads_a_happenings_module_needs(tmp_path):
     st.add_character("Oriel Vantosh", "neighbor", None, "a weaver", 60, NOW)
     from tests.test_world_view import clock
     clock(st)
-    m = live(st, rule(reads=["people", "creations", "happenings", "pip"], params={"chance": 0.1, "severity": [50, 45, 5]}), "x")
+    m = live(st, rule(reads=["people", "creations", "happenings", "agent"], params={"chance": 0.1, "severity": [50, 45, 5]}), "x")
     ctx = M.context(st, s, m, time.time())
     assert ctx["people"] == [{"name": "Oriel Vantosh", "kind": "neighbor", "about": "", "home": "Oriel Vantosh's home"}] and ctx["params"] == {"chance": 0.1, "severity": [50, 45, 5]}
-    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock"}] and ctx["pip"]["coins"] == st.coins()
+    assert ctx["creations"] == [{"name": "Gear Clock", "running": True, "tended": True, "quality": "sound", "description": "a clock"}] and ctx["agent"]["coins"] == st.coins()
     assert ctx["happenings"] == {"recent": [], "today": 0, "room": "", "can_remember": False}
     with pytest.raises(M.Refused):
         M.check_manifest(rule(params={"a": [[1]]}), "world")

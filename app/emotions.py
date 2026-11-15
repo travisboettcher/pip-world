@@ -1,6 +1,6 @@
 """Emotion state: eight numbers (0-100) the engine keeps, moved by logged events by fixed rules (see DESIGN-emotions.md).
 
-A functional model, not a claim that Pip feels: the numbers make its days more coherent. The engine owns them; Pip sees a short
+A functional model, not a claim that the agent feels: the numbers make its days more coherent. The engine owns them; The agent sees a short
 readout and decides what to do. Every move is logged with its cause. Each emotion decays toward a baseline with its own half-life.
 """
 import time
@@ -10,7 +10,7 @@ NAMES = ("joy", "sadness", "anger", "fear", "trust", "disgust", "surprise", "ant
 BASELINE = {"joy": 45, "sadness": 15, "anger": 8, "fear": 10, "trust": 55, "disgust": 5, "surprise": 10, "anticipation": 35}
 HALF_LIFE_MIN = {"joy": 360, "sadness": 1440, "anger": 180, "fear": 120, "trust": 2880, "disgust": 240, "surprise": 20, "anticipation": 240}
 HIGH = 60                 # entering this band is worth an event
-NOTABLE = 10              # how far from baseline an emotion must be to be shown to Pip
+NOTABLE = 10              # how far from baseline an emotion must be to be shown to the agent
 SHOWN = 4
 WAKE_EASE = 0.4           # a night's sleep closes this fraction of every gap to baseline
 SETTLE_EASE = 35          # points a settled feeling drops (never below baseline)
@@ -97,7 +97,7 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
         return dict(alert_feelings(data.get("stat"))), f"{data.get('stat')} needs attention"
     if kind == "stall_sale":
         return {"joy": 2}, f"sold {data['item']} at your stall" if data.get("item") else "sold something at your stall"
-    if kind == "happening":   # the startle lands at once; the meaning waits for Pip's reading (happenings.py)
+    if kind == "happening":   # the startle lands at once; the meaning waits for the agent's reading (happenings.py)
         return ({"surprise": data["jolt"]} if data.get("jolt") else {}), f"something happened: {data.get('title', 'an event')}"
     if kind == "happening_felt":
         return dict(data.get("moves") or {}), f"{data.get('title', 'an event')}, read as {data.get('read_as')}"
@@ -175,7 +175,7 @@ def snapshot(state, now: float | None = None) -> dict:
 
 
 def readout(state, now: float | None = None) -> list[str]:
-    """What Pip is shown: only what stands out, then the overall tone."""
+    """What the agent is shown: only what stands out, then the overall tone."""
     lv = levels(state, now)
     v, a, b = valence(lv), arousal(lv), blend(lv)
     notable = sorted((n for n in NAMES if abs(lv[n] - BASELINE[n]) >= NOTABLE), key=lambda n: -abs(lv[n] - BASELINE[n]))[:SHOWN]
@@ -195,7 +195,7 @@ def _today(now: float) -> float:
 
 
 def settle(state, settings, emotion: str, how: str = "", now: float | None = None) -> tuple[bool, str]:
-    """Pip takes a quiet moment to ease one strong feeling. Limited per day; never below the usual level."""
+    """The agent takes a quiet moment to ease one strong feeling. Limited per day; never below the usual level."""
     now = now or time.time()
     emotion = str(emotion or "").strip().lower()
     if emotion not in BASELINE:

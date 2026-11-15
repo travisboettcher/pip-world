@@ -160,16 +160,27 @@ def test_overlap_threshold_is_exactly_sixty_percent():
     assert T.overlapping("alpha bravo charlie delta echoes foxtrot", "alpha bravo charlie golfing hotel india") is False
 
 
-def test_stat_numbers_pattern():
-    assert T.STAT_NUMBERS.search("hunger is 0.4 today") and T.STAT_NUMBERS.search("Energy: 0.8")
-    assert T.STAT_NUMBERS.search("my energy was low at 0.2")
-    assert not T.STAT_NUMBERS.search("hunger is high") and not T.STAT_NUMBERS.search("version 1.5 shipped")
-    assert not T.STAT_NUMBERS.search("energy " + "x" * 20 + " 0.5")                  # too far apart
+def test_stat_numbers_are_the_worlds_stats_by_name_and_label():
+    from app.config import Settings
+    s = Settings(stats={"radiation": {"label": "rads", "start": 0.1}, "grit": {"start": 0.5}})
+    found = lambda text: T.stat_number_in(s, text)  # noqa: E731
+    assert found("hunger is 0.4 today") and found("Energy: 0.8") and found("my energy was low at 0.2")
+    assert found("radiation at 0.4") and found("rads 0.6") and not found("rads were high") and found("grit 0.3")   # no label: its name
+    assert not found("hunger is high") and not found("version 1.5 shipped")
+    assert not found("energy " + "x" * 20 + " 0.5")                                  # too far apart
+    assert T.stat_numbers(Settings(stats={})) is not None                             # Pip's world still has its own
+    import json
+    import pathlib
+    import tempfile
+    from tests.test_world_pack import pack_dir
+    d = pack_dir(pathlib.Path(tempfile.mkdtemp()))
+    (d / "stats.json").write_text(json.dumps({}))
+    assert T.stat_numbers(Settings(world_pack=str(d))) is None and not T.stat_number_in(Settings(world_pack=str(d)), "hunger 0.4")
 
 
 def test_check_note_refuses_numbers_near_copies_and_restatements(tmp_path, clock):
     ctx, st = make(tmp_path)
-    assert T.check_note(ctx, "diary", "energy at 0.5 now") == "don't write hunger/energy numbers in notes - your stats are already tracked for you"
+    assert T.check_note(ctx, "diary", "energy at 0.5 now") == "don't write your stats' numbers in notes - your stats are already tracked for you"
     n = st.add_memory("fix the garden gate before winter", "todo")
     assert T.check_note(ctx, "todo", "fix the garden gate before winter!") == \
         f"too close to your note #{n}; only write something new (edit_note #{n} to update it)"

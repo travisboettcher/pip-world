@@ -121,13 +121,14 @@ def test_the_snapshot_describes_each_place_by_kind_and_what_pip_knows_of_it(tmp_
 
 def test_pip_is_marked_where_it_is(tmp_path):
     s, st, *_ = make(tmp_path)
-    here = M.snapshot(st, s, None, time.time())["pip"]
-    assert here == {"x": 0.0, "y": 0.0, "at": "workshop", "walking": None}
+    here = M.snapshot(st, s, None, time.time())["agent"]
+    assert here == {"name": "Pip", "x": 0.0, "y": 0.0, "at": "workshop", "walking": None}
+    assert M.snapshot(st, s, None, time.time())["home_called"] == "workshop"
     st.update_agent(location="woods")
-    pip = M.snapshot(st, s, None, time.time())["pip"]
+    pip = M.snapshot(st, s, None, time.time())["agent"]
     assert (pip["x"], pip["y"]) == st.map_positions()["woods"] and pip["at"] == "woods" and pip["walking"] is None
     st.update_agent(location="nowhere-we-know")
-    assert M.snapshot(st, s, None, time.time())["pip"] == {"x": 0.0, "y": 0.0, "at": "nowhere-we-know", "walking": None}
+    assert M.snapshot(st, s, None, time.time())["agent"] == {"name": "Pip", "x": 0.0, "y": 0.0, "at": "nowhere-we-know", "walking": None}
 
 
 def _walk(st, origin, target, started, ends):
@@ -142,11 +143,11 @@ def test_pip_is_drawn_part_of_the_way_along_a_walk(tmp_path):
     spots = M.sync(st, s, None)
     t = 1000.0
     _walk(st, "workshop", "woods", t, t + 600)
-    pip = M.snapshot(st, s, None, t + 150)["pip"]
+    pip = M.snapshot(st, s, None, t + 150)["agent"]
     assert pip["at"] is None and pip["walking"] == {"from": "workshop", "to": "woods", "progress": 0.25}
     assert (pip["x"], pip["y"]) == pytest.approx((spots["woods"][0] * 0.25, spots["woods"][1] * 0.25), abs=0.01)
     _walk(st, "junkyard", "woods", t, t + 100)
-    pip = M.snapshot(st, s, None, t + 50)["pip"]
+    pip = M.snapshot(st, s, None, t + 50)["agent"]
     mid = ((spots["junkyard"][0] + spots["woods"][0]) / 2, (spots["junkyard"][1] + spots["woods"][1]) / 2)
     assert (pip["x"], pip["y"]) == pytest.approx(mid, abs=0.01) and pip["walking"]["progress"] == 0.5
 
@@ -155,16 +156,16 @@ def test_walk_progress_is_clamped_and_a_zero_length_walk_has_arrived(tmp_path):
     s, st, *_ = make(tmp_path)
     spots = M.sync(st, s, None)
     _walk(st, "workshop", "woods", 1000.0, 1100.0)
-    assert M.snapshot(st, s, None, 900.0)["pip"]["walking"]["progress"] == 0.0
-    late = M.snapshot(st, s, None, 5000.0)["pip"]
+    assert M.snapshot(st, s, None, 900.0)["agent"]["walking"]["progress"] == 0.0
+    late = M.snapshot(st, s, None, 5000.0)["agent"]
     assert late["walking"]["progress"] == 1.0 and (late["x"], late["y"]) == pytest.approx(spots["woods"], abs=0.01)
     _walk(st, "workshop", "woods", 1000.0, 1000.0)
-    assert M.snapshot(st, s, None, 1000.0)["pip"]["walking"]["progress"] == 1.0
+    assert M.snapshot(st, s, None, 1000.0)["agent"]["walking"]["progress"] == 1.0
     _walk(st, "workshop", "unknown-place", 1000.0, 1100.0)
-    assert M.snapshot(st, s, None, 1050.0)["pip"]["walking"] == {"from": "workshop", "to": "unknown-place", "progress": 0.5}
+    assert M.snapshot(st, s, None, 1050.0)["agent"]["walking"] == {"from": "workshop", "to": "unknown-place", "progress": 0.5}
     st.end_session()
     st.start_session(1, 0, 30, 2000.0, kind="work")                          # work is not a trip
-    assert M.snapshot(st, s, None, 1500.0)["pip"]["walking"] is None
+    assert M.snapshot(st, s, None, 1500.0)["agent"]["walking"] is None
 
 
 # --- the endpoint ---------------------------------------------------------------------------------------------------
@@ -173,7 +174,7 @@ def test_the_map_endpoint_returns_the_snapshot_and_grows_the_map(tmp_path):
     with TestClient(create_app(s, FakeBackend())) as c:
         body = c.get("/map").json()
         assert body["home"] == "workshop" and {p["key"] for p in body["places"]} >= {"workshop", "woods", "junkyard"}
-        assert body["pip"]["at"] == "workshop" and set(body["pip"]) == {"x", "y", "at", "walking"}
+        assert body["agent"]["at"] == "workshop" and set(body["agent"]) == {"name", "x", "y", "at", "walking"}
         before = {p["key"]: (p["x"], p["y"]) for p in body["places"]}
         c.app.state.agent.state.add_character("Marigold", "neighbor", "a beekeeper", "persona", 60, "", 0)
         after = {p["key"]: (p["x"], p["y"]) for p in c.get("/map").json()["places"]}
@@ -243,11 +244,11 @@ def test_walking_between_places_off_both_axes_and_rounding_to_hundredths(tmp_pat
     (sx, sy), (ex, ey) = spots["Saltholm"], spots["Marigold's home"]
     assert sx != sy and ex != ey and sx != ex and sy != ey                      # no accidental symmetry to hide a swapped axis
     _walk(st, "Saltholm", "Marigold's home", 1000.0, 1003.0)
-    pip = M.snapshot(st, s, None, 1001.0)["pip"]
+    pip = M.snapshot(st, s, None, 1001.0)["agent"]
     assert pip["x"] == round(sx + (ex - sx) / 3, 2) and pip["y"] == round(sy + (ey - sy) / 3, 2)
     assert pip["walking"]["progress"] == 0.33                                    # hundredths, like the coordinates
     _walk(st, "Saltholm", "Marigold's home", 1000.0, 1000.5)
-    assert M.snapshot(st, s, None, 1000.25)["pip"]["walking"]["progress"] == 0.5   # a short walk is not "already there"
+    assert M.snapshot(st, s, None, 1000.25)["agent"]["walking"]["progress"] == 0.5   # a short walk is not "already there"
 
 
 @pytest.mark.asyncio

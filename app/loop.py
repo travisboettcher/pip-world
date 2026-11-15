@@ -90,7 +90,7 @@ class Agent:
 
     # --- wake control ------------------------------------------------
     def receive(self, text: str, sender: str, source: str = "web", conversation: str = "", external_id: str = "") -> int | None:
-        """A visitor's message arrives (the web UI, or a channel): queue it, record it and wake Pip. A channel message
+        """A visitor's message arrives (the web UI, or a channel): queue it, record it and wake the agent. A channel message
         already seen (same source and id) is ignored, so a replay can't answer twice."""
         if external_id and self.state.inbox_has(source, external_id):
             return None
@@ -98,12 +98,12 @@ class Agent:
         inbox_id = self.state.add_inbox(text, sender, source=source, conversation=conversation, external_id=external_id)
         self.state.log("inbox", id=inbox_id, text=text, sender=sender, **({"source": source, "conversation": conversation}
                                                                           if source != "web" else {}))
-        invented.from_chat(self.state, sender, text)  # a visitor can point Pip somewhere new, like a character
+        invented.from_chat(self.state, sender, text)  # a visitor can point the agent somewhere new, like a character
         self.request_wake(urgent=True)
         return inbox_id
 
     def request_wake(self, force: bool = False, urgent: bool = False) -> None:
-        """Ask for an early tick. While Pip sleeps only urgent wakes (a visitor) or a forced tick get through."""
+        """Ask for an early tick. While the agent sleeps only urgent wakes (a visitor) or a forced tick get through."""
         self._force = self._force or force
         self._urgent = self._urgent or urgent
         self._wake.set()
@@ -202,7 +202,7 @@ class Agent:
             await self.reflect()
 
     async def finish_work(self) -> bool:
-        """Resolve whatever Pip was busy with once its time is up: a walk (Pip arrives), or a module's session (work, reading, gathering:
+        """Resolve whatever the agent was busy with once its time is up: a walk (The agent arrives), or a module's session (work, reading, gathering:
         the module hears it)."""
         async with self._finishing:
             sess = self.state.session()
@@ -216,7 +216,7 @@ class Agent:
             return False
 
     async def reflect(self) -> dict | None:
-        """Pip's nightly reflection (also triggered by POST /reflect). One at a time."""
+        """The agent's nightly reflection (also triggered by POST /reflect). One at a time."""
         async with self._reflecting:
             started, shown = time.time(), {}
             result = await mem.reflect(self.state, self.s, self.gm, self._system_prompt(), shown_out=shown)
@@ -236,7 +236,7 @@ class Agent:
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
-        """One wake. A visitor message Pip read but never answered gets one more look (see _second_chance)."""
+        """One wake. A visitor message the agent read but never answered gets one more look (see _second_chance)."""
         started, self._shown_inbox = time.time(), []
         try:
             await self._tick(reason)
@@ -244,7 +244,7 @@ class Agent:
             self._second_chance(started)
 
     def _second_chance(self, started: float) -> None:
-        """Pip is told a visitor can only hear it through `say`, but a model busy with its work sometimes forgets.
+        """The agent is told a visitor can only hear it through `say`, but a model busy with its work sometimes forgets.
         A message that got no `say` is put back once, plainly marked; a second silence is respected."""
         if not self._shown_inbox:
             return
@@ -295,7 +295,7 @@ class Agent:
                 return
             self._budget_logged = False
 
-            await self.outreach.typing([m["id"] for m in inbox])  # "typing..." wherever Pip is about to answer
+            await self.outreach.typing([m["id"] for m in inbox])  # "typing..." wherever the agent is about to answer
             resp = await self.backend.complete(
                 system=self._system_prompt(), messages=messages, tools=specs,
                 max_tokens=self.s.llm_max_tokens,
@@ -367,7 +367,7 @@ class Agent:
         return self._persona() + "\n\n" + guide.render(self.tool_names(), self.s, self.library is not None)
 
     async def _converse(self, ch: dict) -> str:
-        """A talk with someone Pip is with in person, as its own scene (see talk.py). Returns how it ended."""
+        """A talk with someone the agent is with in person, as its own scene (see talk.py). Returns how it ended."""
         visit = self.state.meta("arrived_at")
         self.state.set_meta(talk_scene=visit)                        # the monitor leaves this visit's answers to the scene
         turns, ended = 0, "turns"
@@ -397,7 +397,7 @@ class Agent:
                 fresh = next((c for c in self.state.characters() if c["id"] == ch["id"]), ch)
                 answer = await nb.reply(self.state, self.s, self.gm, fresh, time.time(), self.library, closing=True)
                 if bye:
-                    ended = "pip"
+                    ended = "agent"
                     break
                 if not answer:
                     ended = "no answer"
@@ -412,7 +412,7 @@ class Agent:
         return ended
 
     def _free_time(self, now: float) -> list[str]:
-        """At home with nothing due for a while: say so, with what Pip has said it wants to do. Facts, not orders."""
+        """At home with nothing due for a while: say so, with what the agent has said it wants to do. Facts, not orders."""
         if self.state.agent()["location"] != places.HOME or self.state.session() or sleepmod.asleep(self.state):
             return []
         due = [(c["runtime"]["tended_until"] - now) / 60 for c in self.state.creations()
@@ -438,7 +438,7 @@ class Agent:
         return lines
 
     def _talk(self, inbox: list[dict]) -> list[str]:
-        """The conversations Pip is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
+        """The conversations the agent is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
         now, lines = time.time(), []
         here = self.state.agent()["location"]
         for ch in self.state.characters("neighbor"):
@@ -465,7 +465,7 @@ class Agent:
         return lines
 
     def _projects(self) -> list[str]:
-        """The things Pip has made (its projects are the crafting module's status)."""
+        """The things the agent has made (its projects are the crafting module's status)."""
         lines: list[str] = []
         made = self.state.creations()
         if made:
@@ -504,7 +504,7 @@ class Agent:
         return None  # visitor messages are summarised separately in _moments
 
     def _gallery(self) -> list[str]:
-        """The last few pictures and pieces, by number, so Pip can send or refer to them."""
+        """The last few pictures and pieces, by number, so the agent can send or refer to them."""
         if "draw" not in self.tools and "write_piece" not in self.tools:
             return []
         works = self.state.works(limit=4)
@@ -512,7 +512,7 @@ class Agent:
                                               for w in works]) if works else []
 
     def _calibration(self) -> list[str]:
-        """How close Pip's predictions have been, in plain counts (only once there are enough to count)."""
+        """How close the agent's predictions have been, in plain counts (only once there are enough to count)."""
         rows = self.state.expectations(limit=60)
         lines = exp.calibration(rows)
         if lines:
@@ -533,9 +533,9 @@ class Agent:
         return ["New for you:"] + [f"- {f['label']} ({mem.ago(f['first_ts'])})" for f in found]
 
     def _moments(self) -> list[str]:
-        """Notable things since Pip's last diary entry, offered a few times so they aren't forgotten.
+        """Notable things since the agent's last diary entry, offered a few times so they aren't forgotten.
 
-        Deterministic about *when* something is worth a diary line; Pip decides what (if anything) to write.
+        Deterministic about *when* something is worth a diary line; The agent decides what (if anything) to write.
         """
         if "note_to_self" not in self.tools:
             return []
@@ -550,7 +550,7 @@ class Agent:
             if e["kind"] == "inbox" and e["data"].get("letter"):
                 moments.append(([e["id"]], f"A letter came from {e['data']['sender']}"))
             elif e["kind"] == "inbox":
-                visit_ids.append(e["id"])  # never quote visitor text here: Pip would answer it again
+                visit_ids.append(e["id"])  # never quote visitor text here: The agent would answer it again
                 visit_inbox.append(e["data"].get("id"))
                 who = e["data"].get("sender") or "A visitor"
                 if who not in visitors:
@@ -605,7 +605,7 @@ class Agent:
             went = [name for name, ts in visits if ts > since and State.related(name, m["text"])]
             note = (f"  [you've since visited {', '.join(went)} - is this done? resolve_note it, or edit_note it down "
                     "to what's left]") if went else ""
-            for r in invented.named_in(heard_of, m["text"]):  # somewhere Pip has only heard of: it can go
+            for r in invented.named_in(heard_of, m["text"]):  # somewhere the agent has only heard of: it can go
                 note += (f"  [{places.label(r['key'])}: you've heard of it; go_to {r['key']} to walk there]"
                          if r["walk_minutes"] is not None else
                          f"  [{places.label(r['key'])}: you've heard of it, but it's too far to walk]")
@@ -627,7 +627,7 @@ class Agent:
         return lines
 
     def _specs(self) -> list:
-        """The tools to offer now: what can be done here, described for here. Mid-walk Pip is nowhere yet, so only what works anywhere."""
+        """The tools to offer now: what can be done here, described for here. Mid-walk the agent is nowhere yet, so only what works anywhere."""
         if places.present_at(self.state) is None:
             mods = module_specs(self.state, "")
             engine = specs_for(self.tools, "")
@@ -708,9 +708,9 @@ class Agent:
                     lines.append(f"- you sent a postcard ({d.get('channel')}): {d['text']}")
                 elif e["kind"] == "talk":
                     lines.append(f"- you talked with {d['name']} ({d['turns']} of your lines; "
-                                 + ("you said goodbye" if d["ended"] == "pip" else f"{d['name']} said goodbye" if d["ended"] == d["name"]
+                                 + ("you said goodbye" if d["ended"] == "agent" else f"{d['name']} said goodbye" if d["ended"] == d["name"]
                                     else "it trailed off") + ")")
-                elif e["kind"] in ("module_live", "module_rejected", "module_disabled") and d.get("author") == "pip":
+                elif e["kind"] in ("module_live", "module_rejected", "module_disabled") and d.get("author") == "agent":
                     lines.append(f"- your program for {d.get('subject') or d['name']} "
                                  + {"module_live": "is working now",
                                     "module_rejected": "wasn't taken up" + (f": {d['note']}" if d.get("note") else ""),

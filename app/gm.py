@@ -56,7 +56,7 @@ class GameMaster:
         return out
 
     async def verify_insights(self, items: list[dict]) -> list[dict] | None:
-        """Does the evidence Pip cited actually support each claim it drew? items: [{index, claim, evidence: [str]}].
+        """Does the evidence the agent cited actually support each claim it drew? items: [{index, claim, evidence: [str]}].
         Returns [{index, verdict}] with verdict supported | partly | unsupported, or None if the check failed."""
         blocks = []
         for it in items:
@@ -71,8 +71,8 @@ class GameMaster:
         return [v for v in out["verdicts"] if isinstance(v, dict)] if out and isinstance(out.get("verdicts"), list) else None
 
     async def use(self, creation_line: str, purpose: str, situation: str, actions=()) -> dict | None:
-        """Pip spends time with something it made: the words, a mood or energy if they follow, and which of the thing's own `actions`
-        ({name, help}: what its workings offer) Pip did, if any."""
+        """The agent spends time with something it made: the words, a mood or energy if they follow, and which of the thing's own `actions`
+        ({name, help}: what its workings offer) the agent did, if any."""
         effects = [f"`mood`: a word or two, if this changes how {self.agent.name} feels",
                    f"`energy`: -0.1 to 0.1, only if it really tires or refreshes {self.agent.name}"]
         if actions:
@@ -225,7 +225,7 @@ class GameMaster:
         return clip(out["text"], 500) if out else None
 
     async def design_place(self, place: str, mentions: list[str], existing: list[str]) -> dict | None:
-        """Make a place a character told Pip about real, on Pip's first arrival: its kind (from the registry), a
+        """Make a place a character told the agent about real, on the agent's first arrival: its kind (from the registry), a
         description that agrees with what was said, what can be found there, and perhaps who lives or works there.
         The engine validates all of it."""
         task = (

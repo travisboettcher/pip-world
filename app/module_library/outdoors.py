@@ -1,6 +1,6 @@
 # Every place out of doors without a layout of its own: wild places to forage, yards to dig through, spots just to see. The land follows
 # the place's setting (wood, shore, marsh, hills, heath, riverside, field, town); a yard has heaps of scrap, a shed and a fence; a sight
-# has something to look at and a bench to look from; a lighthouse stands where people speak of one. Pip, finds and people have anchors.
+# has something to look at and a bench to look from; a lighthouse stands where people speak of one. The agent, finds and people have anchors.
 import random
 
 GROUND = {"heath": "heather", "shore": "sand", "marsh": "marsh", "town": "cobble"}
@@ -55,7 +55,7 @@ def on_build(ctx):
         parts.append({"part": "bench", "at": [0, 0, 1.4], "role": "bench"})
         if "lighthouse" not in props:
             parts.append({"part": "standing-stones", "at": [0, 0, -8.2], "role": "stones"})
-    anchors = [{"id": "pip", "type": "ground", "tags": ["outside", "pip", "people"], "at": [-1.5, 0, 0.5], "extent": [10, 3]},
+    anchors = [{"id": "agent", "type": "ground", "tags": ["outside", "agent", "people"], "at": [-1.5, 0, 0.5], "extent": [10, 3]},
                {"id": "finds", "type": "ground", "tags": ["outside", "finds"], "at": [-1, 0, -2.5], "extent": [18, 6]},
                {"id": "open-ground", "type": "ground", "tags": ["outside", "clearing"], "at": [0, 0, -3], "extent": [12, 3]}]
     return {"parts": parts, "shapes": shapes, "anchors": anchors}

@@ -31,12 +31,12 @@ def test_a_programs_manifest_comes_from_its_code(tmp_path):
     s, st, agent = programmer(tmp_path)
     bell = thing(st)
     man = M.program_manifest(BELL, bell)
-    assert man == {"name": "brass-bell-by-pip", "kind": "thing", "api": 1, "subject": "Brass Bell", "hooks": ["on_install", "on_action"],
-                   "reads": list(M.PIP_READS), "proposes": list(M.PIP_PROPOSES), "events": [], "consumes": {"*": 2}}
-    assert M.check_manifest(man, "pip", st)["name"] == "brass-bell-by-pip"
+    assert man == {"name": "brass-bell-by-agent", "kind": "thing", "api": 1, "subject": "Brass Bell", "hooks": ["on_install", "on_action"],
+                   "reads": list(M.AGENT_READS), "proposes": list(M.AGENT_PROPOSES), "events": [], "consumes": {"*": 2}}
+    assert M.check_manifest(man, "agent", st)["name"] == "brass-bell-by-agent"
     c = clock(st)
-    man = M.program_manifest("def on_event(ctx):\n    pass\ndef helper():\n    pass\n", c, ["garden", 5])
-    assert man["tends"] == "tend" and man["hooks"] == ["on_event"] and man["events"] == ["garden"]
+    man = M.program_manifest("def on_event(ctx):\n    pass\ndef helper():\n    pass\n", c, ["world_changed", 5])
+    assert man["tends"] == "tend" and man["hooks"] == ["on_event"] and man["events"] == ["world_changed"]
     with pytest.raises(M.Refused) as e:
         M.program_manifest("def helper(ctx):\n    pass\n", bell)
     assert str(e.value) == "define at least one of on_install, on_tick, on_time, on_event, on_action, on_message, on_answer"
@@ -44,7 +44,7 @@ def test_a_programs_manifest_comes_from_its_code(tmp_path):
         M.program_manifest("def on_event(ctx):\n    pass\n", bell)
     assert str(e.value) == "on_event needs `events`: the kinds of thing that happen it listens for"
     with pytest.raises(M.Refused) as e:
-        M.program_manifest(BELL, bell, ["garden"])
+        M.program_manifest(BELL, bell, ["world_changed"])
     assert str(e.value) == "`events` is only for a program with on_event"
     with pytest.raises(M.sandbox.Rejected):
         M.program_manifest("import os", bell)
@@ -54,12 +54,12 @@ def test_pips_programs_are_held_to_less_than_the_worlds(tmp_path):
     s, st, agent = programmer(tmp_path)
     thing(st)
     with pytest.raises(M.Refused) as e:
-        M.check_manifest(rule(), "pip", st)
+        M.check_manifest(rule(), "agent", st)
     assert str(e.value) == "your programs make one of your creations work"
     with pytest.raises(M.Refused) as e:
-        M.check_manifest(rule(kind="thing", subject="Brass Bell", reads=["works", "time"], proposes=["publish"]), "pip", st)
+        M.check_manifest(rule(kind="thing", subject="Brass Bell", reads=["works", "time"], proposes=["publish"]), "agent", st)
     assert str(e.value) == "your programs can't use: works, publish"
-    m = live(st, rule(kind="thing", subject="Brass Bell", proposes=["show"]), "x", author="pip")
+    m = live(st, rule(kind="thing", subject="Brass Bell", proposes=["show"]), "x", author="agent")
     pic = {"rows": ["kkkk"] * 4, "palette": {"k": "#000"}}
     with pytest.raises(M.Refused) as e:
         M.plan(st, m, {"show": [{"id": "a", "sprite": pic, "at": {"type": "floor", "place": "home"}}]}, NOW, "on_tick")
@@ -76,7 +76,7 @@ async def test_pip_writes_a_program_sees_its_trial_and_it_waits_to_be_tried(tmp_
     m = M.programs(st)["brass bell"]
     assert r.text == ("you write a program for your Brass Bell (version 1). On a trial run it was called 2 times. Using it: ring: ding. "
                       "It offers: ring. It waits to be tried; you'll hear when it's working.") and r.followup
-    assert (m["author"], m["status"], m["reason"], m["subject"]) == ("pip", "waiting", "Pip's program for its Brass Bell.", "Brass Bell")
+    assert (m["author"], m["status"], m["reason"], m["subject"]) == ("agent", "waiting", "Pip's program for its Brass Bell.", "Brass Bell")
     assert st.events(1)[0]["kind"] == "programmed" and st.events(1)[0]["data"] == {"name": "Brass Bell", "version": 1, "status": "waiting"}
     assert "- Brass Bell (sound): a bell - your program for it: version 1 waiting to be tried" in agent._projects()
     r = await call(agent, "program", creation="Brass Bell", code=BELL.replace("ding", "dong"))
@@ -160,7 +160,7 @@ async def test_pips_program_takes_over_from_the_worlds_and_tend_uses_its_tend(tm
     tends = 'def on_install(ctx):\n    return {"offer": [{"name": "tend", "help": "wind it"}]}\ndef on_action(ctx):\n    return {"reply": "you wind it your way"}\n'
     await call(agent, "program", creation="gear clock", code=tends)
     await M.approve(st, s, agent.runner, M.programs(st)["gear clock"]["id"])
-    assert st.module(world_one)["status"] == "replaced" and [m["author"] for m in st.modules("live") if m["kind"] == "thing"] == ["pip"]
+    assert st.module(world_one)["status"] == "replaced" and [m["author"] for m in st.modules("live") if m["kind"] == "thing"] == ["agent"]
     assert (await call(agent, "tend", creation="gear clock")).text == "you wind it your way"
 
 
@@ -168,8 +168,8 @@ async def test_pips_program_takes_over_from_the_worlds_and_tend_uses_its_tend(tm
 async def test_rough_work_sometimes_doesnt_respond_and_the_worlds_never_misfires(tmp_path):
     s, st, agent = programmer(tmp_path)
     rough, master = thing(st, "Rough Bell", "rough"), thing(st, "Fine Bell", "masterwork")
-    a = live(st, rule(kind="thing", name="rough-bell", subject="Rough Bell", hooks=["on_action", "on_install"]), BELL, author="pip")
-    b = live(st, rule(kind="thing", name="fine-bell", subject="Fine Bell", hooks=["on_action"]), BELL, author="pip")
+    a = live(st, rule(kind="thing", name="rough-bell", subject="Rough Bell", hooks=["on_action", "on_install"]), BELL, author="agent")
+    b = live(st, rule(kind="thing", name="fine-bell", subject="Fine Bell", hooks=["on_action"]), BELL, author="agent")
     w = live(st, rule(kind="thing", name="world-bell", subject="Rough Bell", hooks=["on_action"]), BELL)
     times = range(int(NOW), int(NOW) + 400)
     rough_misses = [t for t in times if M.misfires(st, a, "on_action", t)]
@@ -212,13 +212,13 @@ async def test_the_owner_hears_once_of_a_module_waiting_and_of_one_switched_off(
     await call(agent, "program", creation="brass bell", code=BELL)
     m = M.programs(st)["brass bell"]
     assert await M.notify_owner(st, s, agent.outreach) == 1
-    assert ch.notices == [(f"pip-world: a module is waiting for your approval - brass-bell-by-pip v1 by Pip, for Brass Bell. "
+    assert ch.notices == [(f"pip-world: a module is waiting for your approval - brass-bell-by-agent v1 by Pip, for Brass Bell. "
                            f"Pip's program for its Brass Bell. Trial run: 2 calls, clean. https://pip.example/ui/#work (pipchat modules show {m['id']})", None)]
     assert await M.notify_owner(st, s, agent.outreach) == 0 and st.module(m["id"])["notified"] == "waiting"
     await M.approve(st, s, agent.runner, m["id"])
     M.disable(st, m["id"], "its code failed 3 times in a row: boom")
     assert await M.notify_owner(st, s, agent.outreach) == 1
-    assert ch.notices[-1][0] == f"pip-world: module brass-bell-by-pip v1 by Pip, for Brass Bell was switched off: its code failed 3 times in a row: boom https://pip.example/ui/#work (pipchat modules show {m['id']})"
+    assert ch.notices[-1][0] == f"pip-world: module brass-bell-by-agent v1 by Pip, for Brass Bell was switched off: its code failed 3 times in a row: boom https://pip.example/ui/#work (pipchat modules show {m['id']})"
     await M.approve(st, s, agent.runner, m["id"])
     M.disable(st, m["id"], "switched off by the owner")
     assert await M.notify_owner(st, s, agent.outreach) == 0                                       # the owner knows: they did it
@@ -288,7 +288,7 @@ async def test_a_trial_never_misfires_even_for_rough_work(tmp_path):
     s, st, agent = programmer(tmp_path)
     thing(st, "Rough Bell", "rough")
     src = 'def on_tick(ctx):\n    return {"state": {"n": ctx["state"].get("n", 0) + 1}, "log": "tick"}\n'
-    r = await M.propose(st, s, agent.runner, "pip", M.program_manifest(src, st.creations()[0]), src, now=NOW)
+    r = await M.propose(st, s, agent.runner, "agent", M.program_manifest(src, st.creations()[0]), src, now=NOW)
     calls = M.DRY_HOURS * 60 // M.DRY_STEP_MINUTES
     assert r["report"]["calls"] == calls and M.PER_DAY["log"] <= len(r["report"]["logged"]) <= calls and not r["report"]["errors"]
     assert len(r["report"]["logged"]) + len(r["report"]["refused"]) == calls                     # every call ran: none misfired
@@ -355,10 +355,10 @@ def test_programs_status_words_and_whose_programs_count(tmp_path):
     thing(st)
     live(st, rule(kind="thing", name="world-bell", subject="Brass Bell"), "x")
     assert M.programs(st) == {}
-    p = live(st, rule(kind="thing", name="brass-bell-by-pip", subject="Brass Bell"), "x", author="pip")
+    p = live(st, rule(kind="thing", name="brass-bell-by-agent", subject="Brass Bell"), "x", author="agent")
     assert list(M.programs(st)) == ["brass bell"]
     assert M.program_status({**p, "status": "proposed"}) == "version 1 waiting to be tried"
     assert M.program_status({**p, "status": "rejected", "note": ""}) == "version 1 not taken up"
     thing(st, "Odd Bell", "peculiar")
-    q = live(st, rule(kind="thing", name="odd-bell", subject="Odd Bell"), "x", author="pip")
+    q = live(st, rule(kind="thing", name="odd-bell", subject="Odd Bell"), "x", author="agent")
     assert not any(M.misfires(st, q, "on_action", t) for t in range(int(NOW), int(NOW) + 200))         # an unknown quality never misfires

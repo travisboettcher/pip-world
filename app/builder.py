@@ -1,6 +1,6 @@
 """The builder: the world adding to itself, one small rule at a time (docs/DESIGN-modules.md, "The builder").
 
-Once a night, after Pip's reflection, the GM is shown the world bible (what this world is and isn't), the modules that already exist (and
+Once a night, after the agent's reflection, the GM is shown the world bible (what this world is and isn't), the modules that already exist (and
 what the owner said about its own), what happened lately, open wishes and places only heard of, and the module API. It may propose one rule
 module, revise one of its own, or propose nothing. A second, separate GM call checks the idea against the bible and what is already there; a
 proposal that doesn't fit is dropped. One that fits goes through the usual dry run (modules.propose); if the trial goes wrong the builder gets
@@ -110,7 +110,7 @@ def lately(state, settings, now: float) -> str:
         if not pub or e["kind"] in ("tick", "emotion", "module") or e["ts"] < now - 2 * 86400:
             continue
         d = pub["data"]
-        text = d.get("text") or d.get("title") or d.get("summary") or d.get("label") or d.get("name") or d.get("crop") or ""
+        text = d.get("text") or d.get("title") or d.get("summary") or d.get("label") or d.get("name") or ""
         lines.append(f"- {datetime.fromtimestamp(e['ts']).strftime('%a %H:%M')} {e['kind']}: {str(text)[:140]}")
     lines = lines[-RECENT_EVENTS:]
     wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=8)]

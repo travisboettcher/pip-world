@@ -29,15 +29,15 @@ def test_a_module_can_read_the_garden_the_visitors_and_how_pip_is(tmp_path):
     s, st, agent = modular(tmp_path)
     planted(st, s, 1, "peas", 600)                                       # the garden module publishes its plots
     st.update_agent(hunger=0.7, energy=0.2, mood="tired")
-    m = live(st, rule(reads=["facts", "visitors", "pip"]), "x")
+    m = live(st, rule(reads=["facts", "visitors", "agent"]), "x")
     ctx = M.context(st, s, m, time.time())
     plots = ctx["facts"]["garden"]["plots"]
     assert plots[0]["crop"] == "peas" and plots[0]["ready_at"] > time.time() and plots[1] == {"plot": 2} and ctx["facts"]["garden"]["names"] == ["peas"]
     assert ctx["visitors"] == {"waiting": 0}
     st.add_inbox("hello", "Ada")
     assert M.context(st, s, m, time.time())["visitors"] == {"waiting": 1}
-    assert (ctx["pip"]["hunger"], ctx["pip"]["energy"], ctx["pip"]["mood"]) == (0.7, 0.2, "tired")
-    assert {"facts", "visitors"} <= set(M.PIP_READS) and "garden" not in M.READS
+    assert (ctx["agent"]["hunger"], ctx["agent"]["energy"], ctx["agent"]["mood"]) == (0.7, 0.2, "tired")
+    assert {"facts", "visitors"} <= set(M.AGENT_READS) and "garden" not in M.READS
 
 
 # --- effects -----------------------------------------------------------------------------------------------------------------
@@ -86,13 +86,13 @@ def test_find_needs_its_finds_and_pip_cant_grant_itself_effects():
         with pytest.raises(M.Refused):
             M.check_manifest(rule(proposes=["find"], finds=bad), "world")
     for p in ("affect", "find"):
-        assert p in M.PROPOSES and p not in M.PIP_PROPOSES
+        assert p in M.PROPOSES and p not in M.AGENT_PROPOSES
     assert "garden" not in M.PROPOSES                                    # the garden is a module: it's asked (`request`), not proposed to
 
 
 def test_the_engines_own_modules_have_room_for_a_busy_day():
     assert M.limits({"author": M.SHIPPED})["calls"] >= 1440 + 48 and M.limits({"author": M.SHIPPED})["perceive"] >= 72
-    assert M.limits({"author": "world"}) == M.PER_DAY == M.limits({"author": "pip"})
+    assert M.limits({"author": "world"}) == M.PER_DAY == M.limits({"author": "agent"})
 
 
 # --- the workings module -----------------------------------------------------------------------------------------------------

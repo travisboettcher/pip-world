@@ -22,10 +22,10 @@ def test_coins_in_whole_numbers_up_to_the_manifests_most_and_never_more_than_the
         assert refused(M._coins, st, man, bad) == shape
     assert refused(M._coins, st, {}, 1) == "`coins` is a whole number of coins to the agent (or less than 0, from it), at most 0 either way"
     assert refused(M._coins, st, {"belongings": None}, 1).endswith("at most 0 either way")
-    st.add_coins("pip", -7)                                                   # 3 left
+    st.add_coins("agent", -7)                                                   # 3 left
     rich = {"belongings": {"coins": 500}}
     assert M._coins(st, rich, -3) == -3 and refused(M._coins, st, rich, -4) == "Pip has only 3 coins"
-    st.add_coins("pip", -3)
+    st.add_coins("agent", -3)
     assert M._coins(st, rich, 1) == 1 and refused(M._coins, st, rich, -1) == "Pip has only 0 coins"
 
 

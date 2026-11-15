@@ -1,8 +1,8 @@
-"""Channels: how Pip talks to the world outside (see DESIGN-outreach.md).
+"""Channels: how the agent talks to the world outside (see DESIGN-outreach.md).
 
 A channel is a plug-in with a small, fixed set of semantics - receive messages from allowed people, send into a
 conversation (a thread) or start a new one, optionally show typing and images - so Matrix, Telegram, a webhook or anything
-else can be swapped in without touching Pip, the tool, the limits or the UI. The core (outreach.py) owns policy; a channel
+else can be swapped in without touching the agent, the tool, the limits or the UI. The core (outreach.py) owns policy; a channel
 owns transport and authorization (it only reports messages from senders it allows).
 """
 import asyncio
@@ -95,7 +95,7 @@ def build_channels(settings, state) -> list:
 
 # --- a scriptable in-memory channel for tests and dry runs ------------------------------------------
 class FakeChannel:
-    """Everything stays in memory: `inject` plays an incoming message, `sent` is what Pip sent. Like FakeBackend,
+    """Everything stays in memory: `inject` plays an incoming message, `sent` is what the agent sent. Like FakeBackend,
     it exists so the whole outreach path can be tested with no network."""
 
     name = "fake"

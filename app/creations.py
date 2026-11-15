@@ -25,7 +25,7 @@ COMPANION_MIN_DIFFICULTY = 3  # small, simple pieces don't get a mind of their o
 DRIFT_MIN_PER_DAY = {"rough": 15, "sound": 5, "fine": 1.5, "masterwork": 0.3}
 UPKEEP_FACTOR = {"rough": 0.5, "sound": 1.0, "fine": 1.5, "masterwork": 2.0}
 USE_ENERGY_COOLDOWN = 6 * 3600
-DRIFT_NOTICED = 5         # minutes a clock must be off before Pip is told (and tempted to reset it every hour)
+DRIFT_NOTICED = 5         # minutes a clock must be off before the agent is told (and tempted to reset it every hour)
 
 
 def _num(v, lo: float, hi: float, default: float) -> float:
@@ -206,8 +206,8 @@ async def made(state, raw: dict | None, project: dict, q: str, marks: list[str],
 
 
 async def use(state, gm, c: dict, purpose: str, now: float | None = None, actions=()) -> tuple[str, str | None]:
-    """Pip uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects. Returns (text, action): when
-    what Pip does is one of the thing's own `actions` (its workings' offers: tending it, setting it, listening to it...), the action's name,
+    """The agent uses (or looks at, plays, reads...) a creation: the GM narrates, the engine applies capped effects. Returns (text, action): when
+    what the agent does is one of the thing's own `actions` (its workings' offers: tending it, setting it, listening to it...), the action's name,
     for the caller to carry out through the module."""
     now = now or time.time()
     caps, rt = c["spec"]["capabilities"], c["runtime"]

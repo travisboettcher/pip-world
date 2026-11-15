@@ -26,7 +26,7 @@ WELL = ("def on_install(ctx):\n    return {'voices': [{'name': 'the Old Well', '
         "    return {'state': {'heard': ctx['state'].get('heard', []) + [m['text']]}, 'ask': {'prompt': 'Echo: ' + m['text'], 'purpose': 'reply'}}\n"
         "def on_answer(ctx):\n    a = ctx['answer']\n"
         "    if not a['text']:\n        return {}\n"
-        "    return {'speak': {'as': 'the Old Well', 'text': a['text'], 'to_pip': a['purpose'] == 'reply'}}\n")
+        "    return {'speak': {'as': 'the Old Well', 'text': a['text'], 'to_agent': a['purpose'] == 'reply'}}\n")
 WELL_MAN = rule(name="old-well", hooks=["on_install", "on_message", "on_answer"], proposes=["voices", "ask", "speak", "state"])
 
 
@@ -70,7 +70,7 @@ def test_voices_are_checked(tmp_path):
     assert why([{"name": "Bo", "at": "home"}, {"name": "bo", "at": "home"}]) == "two voices can't share a name"
     assert M.plan(st, other, {"voices": [{"name": "the Ferryman", "at": "Brygdon"}]}, NOW, "on_tick")      # its own: fine
     assert M.plan(st, m, {"voices": []}, NOW, "on_tick") == [("voices", [])]
-    assert "voices" not in M.PIP_PROPOSES and "ask" not in M.PIP_PROPOSES and "speak" not in M.PIP_PROPOSES
+    assert "voices" not in M.AGENT_PROPOSES and "ask" not in M.AGENT_PROPOSES and "speak" not in M.AGENT_PROPOSES
 
 
 def test_hearing_and_asking_need_their_proposals():
@@ -230,7 +230,7 @@ def test_speak_and_ask_at_their_limits(tmp_path):
     st.update_module(m["id"], voices=voices)
     m = st.module(m["id"])
     assert M.plan(st, m, {"speak": {"as": "bo", "text": "w" * 400}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "w" * 400, "to_agent": False})]
-    assert M.plan(st, m, {"speak": {"as": "Bo", "text": " hi ", "to_pip": 1}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "hi", "to_agent": False})]
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": " hi ", "to_agent": 1}}, NOW, "on_tick") == [("speak", {"name": "Bo", "text": "hi", "to_agent": False})]
     for bad in ({"as": "Bo"}, {"text": "hi"}, {"as": "Bo", "text": 3}):
         with pytest.raises(M.Refused):
             M.plan(st, m, {"speak": bad}, NOW, "on_tick")
@@ -267,7 +267,7 @@ async def test_hearing_keeps_the_last_five_words_for_word(tmp_path):
 async def test_answers_go_to_every_live_module_that_asked(tmp_path):
     s, st, agent = modular(tmp_path)
     asks = lambda *ps: [{"id": i + 1, "prompt": p, "purpose": "reply", "most": 300, "ts": NOW} for i, p in enumerate(ps)]
-    src = "def on_answer(ctx):\n    return {'speak': {'as': 'Bo', 'text': ctx['answer']['text'] or 'nothing', 'to_pip': ctx['answer']['purpose'] == 'reply'}}\n"
+    src = "def on_answer(ctx):\n    return {'speak': {'as': 'Bo', 'text': ctx['answer']['text'] or 'nothing', 'to_agent': ctx['answer']['purpose'] == 'reply'}}\n"
     quiet = live(st, rule(name="asks-nothing", hooks=["on_answer"], proposes=["ask"]), "def on_answer(ctx):\n    return {}\n")
     talker = live(st, rule(name="talker", hooks=["on_answer"], proposes=["ask", "voices", "speak"]), src, author=M.SHIPPED)
     st.update_module(talker["id"], voices=[{"name": "Bo", "at": "home", "about": ""}], asks=asks("one", "two"))

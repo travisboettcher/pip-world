@@ -1,8 +1,8 @@
-"""Firsts: the first time something happens to Pip, computed from the event log (see DESIGN-self.md).
+"""Firsts: the first time something happens to the agent, computed from the event log (see DESIGN-self.md).
 
 Each logged event yields a few independent *facets* (a stable key plus a plain-fact label). A facet seen for the
-first time is a "first": it is stored in the `facets` table, marked on the event, and shown to Pip as a fact. The
-engine never says what a first means - no mood words, no scripted reactions. Pip decides if it matters.
+first time is a "first": it is stored in the `facets` table, marked on the event, and shown to the agent as a fact. The
+engine never says what a first means - no mood words, no scripted reactions. The agent decides if it matters.
 Add a new kind of first by extending `facets()`.
 """
 from . import sleep as sleepmod

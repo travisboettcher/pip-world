@@ -1,6 +1,6 @@
-"""Slash commands: information straight from the engine, not a reply from Pip.
+"""Slash commands: information straight from the engine, not a reply from the agent.
 
-A message to Pip over a channel that starts with `/word` is answered here from state: no LLM call, nothing in Pip's
+A message to the agent over a channel that starts with `/word` is answered here from state: no LLM call, nothing in the agent's
 inbox, no wake. They mirror `pipchat` (status, items, projects...). Everything is read-only.
 """
 import re

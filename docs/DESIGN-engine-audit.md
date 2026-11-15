@@ -54,7 +54,7 @@ identity, places and walking, the map, creations as things, the module runtime a
 
 ## Findings
 
-### A. Small leaks (one release)
+### A. Small leaks (one release) — *built (0.47.0)*
 - **A1. Stats named in tools.** `eat` ("lowers hunger") and `rest` ("recover energy") describe themselves in Pip's stats; the note checks
   refuse "hunger/energy numbers" with a regex of those two words (`tools.py`, `STAT_NUMBERS`). *Fix:* word both from the declared stats
   (`restored_by`, labels); build the regex from the world's stat labels.
@@ -98,6 +98,11 @@ identity, places and walking, the map, creations as things, the module runtime a
   engine's layout contract, so it stays the engine's and any pack's page may load it. A generic read of what live modules publish
   (`/published`) replaces the three feature endpoints, so a pack's page reads its modules' data without routes of their own; the chat
   command for a module's standing is `/<module>`. The abstract dashboard with reusable components is a later piece of work.
+  *Found while renaming (0.47.0), for the same release:* the renderer draws the agent with Pip's sprite (`art.agent()` is Pip's look)
+  and knows a garden (a `garden` pose, `garden-path`, the plots, `GARDEN_WORDS`); the shipped `home` layout is Pip's workshop and
+  `gallery-wall` and `stall-pictures` are Pip's world's features as much as any. The agent's look becomes the pack's (a sprite in the
+  pack, or drawn from its `look`), the garden's drawing comes from what the garden module shows, and Pip's own layouts and rules move to
+  `worlds/pip/modules/` with Pip's `world.json` naming its modules.
 
 ### C. Features still built into the engine
 - **C1. Neighbours and letters.** `neighbors.py` (about 350 lines), `write_letter`, the `letters` table, the narrator's
@@ -147,7 +152,14 @@ Nine hooks, nineteen reads and thirty-four proposals, added one feature at a tim
 
 ## Releases
 Each a release with tests, mutation testing on what changed, Pip's world running unchanged, and the Ashfall day extended to cover it.
-1. **The small leaks and the rename** (A1-A5): no `pip` left in the engine, the old columns and legacy fields gone.
+1. **The small leaks and the rename** (A1-A5): no `pip` left in the engine, the old columns and legacy fields gone. *Built (0.47.0):*
+   `eat` and `rest` name no stat; a stat's number in a note is caught by the world's own stat names and labels; the agent table has no
+   stat columns; the `pip` read, the `"pip"` author (`-by-pip`), the purse, the scene's key, the `pip` anchor and tags and `pip-stall`
+   are `agent` (`-by-agent`, `agent-stall`), with a one-time migration of stored rows and no aliases; `MODULES_APPROVAL` refuses an
+   author it doesn't know (an old `world,pip` would otherwise stop asking about the agent's programs); a layout's or a shown thing's tip
+   may say `$name`; the map names the agent and its home from the world; the engine's comments and docstrings say "the agent";
+   `tests/test_engine_neutral.py` fails on any `pip` in the engine (code, comments, shipped modules, the builder's page, the
+   renderer) but the project's own names and the default pack.
 2. **The dashboard into Pip's pack** (B5): the engine serves the pack's page and the shared renderer, `/published` replaces the feature
    endpoints, `/<module>` the feature commands; Ashfall gets the plain page.
 3. **The night pass and the guide** (B1, B2): plans any module offers, tidied overnight; guide pages that say when they apply.

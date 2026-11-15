@@ -1,8 +1,8 @@
 """Turning-point candidates: stretches of time where the logged facts changed more than usual (DESIGN-self.md, 5).
 
-Deterministic and facts-only. Signals: a count far from Pip's own baseline, major firsts, surprises, goal changes,
-a change in who Pip talks to most, and returning to something after a long gap. Enough of them make a *candidate*,
-which only gives the nightly reflection an occasion to ask whether it mattered. Pip decides; it is never forced.
+Deterministic and facts-only. Signals: a count far from the agent's own baseline, major firsts, surprises, goal changes,
+a change in who the agent talks to most, and returning to something after a long gap. Enough of them make a *candidate*,
+which only gives the nightly reflection an occasion to ask whether it mattered. The agent decides; it is never forced.
 """
 import statistics
 

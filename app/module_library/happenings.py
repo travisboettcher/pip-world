@@ -2,7 +2,7 @@
 # hit picks a category the world allows (a garden needs a crop growing, a mishap something to stop...), not one that came up in the last
 # twelve hours, weighted by the season; then a tone (good, bad or neutral, bad much less likely after two bad ones), a size, and what kind
 # of thing changes. Slots slept through are rolled on waking, and a hit is something that happened in the night. The engine sets every
-# amount, checks it all, keeps the day's limits, writes the words, and Pip takes it as it takes any happening.
+# amount, checks it all, keeps the day's limits, writes the words, and the agent takes it as it takes any happening.
 import random
 
 COOLDOWN, WINDOW, NIGHT_STALE = 12 * 3600, 30 * 60, 2 * 3600
@@ -80,13 +80,13 @@ def _slots(ctx):
     return max(started, key=lambda s: s[1]) if started else None
 
 
-def _low(pip):
-    return pip["hunger"] >= 0.8 or pip["energy"] <= 0.25
+def _low(me):
+    return me["hunger"] >= 0.8 or me["energy"] <= 0.25
 
 
 def _plan(ctx, cat, tone, severity, rng):
     """What kind of thing changes ({effects, names}), or None if this category can't happen like this now."""
-    pip, garden = ctx["agent"], _growing(ctx)
+    me, garden = ctx["agent"], _growing(ctx)
     foods = sorted((i for i in ctx["items"] if i["kind"] == "food"), key=lambda i: -i["qty"])
     neighbors = [p["name"] for p in ctx["people"] if p["kind"] == "neighbor"]
     tools = [i["name"] for i in ctx["items"] if i["kind"] == "tool"]
@@ -107,17 +107,17 @@ def _plan(ctx, cat, tone, severity, rng):
             return {}
         if tone == "good":
             return {"effects": [{"kind": "item"}]}
-        return {"effects": [{"kind": "food_loss"}]} if not _low(pip) and foods and foods[0]["qty"] >= 5 else None
+        return {"effects": [{"kind": "food_loss"}]} if not _low(me) and foods and foods[0]["qty"] >= 5 else None
     if cat == "found":
         if tone == "neutral":
             return {}
         if tone == "bad":
-            return {"effects": [{"kind": "coins"}]} if pip["coins"] >= 10 else None
+            return {"effects": [{"kind": "coins"}]} if me["coins"] >= 10 else None
         return {"effects": [{"kind": "item" if rng.random() < 0.5 else "coins"}]}
     if cat == "body":
         if tone == "neutral":
             return {}
-        if tone == "bad" and _low(pip):
+        if tone == "bad" and _low(me):
             return None
         return {"effects": [{"kind": rng.choice(("energy", "hunger"))}]}
     if cat == "market":
@@ -129,7 +129,7 @@ def _plan(ctx, cat, tone, severity, rng):
         if tone == "neutral":
             return {"names": tools[:1]}
         if severity == "minor":
-            return None if _low(pip) else {"effects": [{"kind": "energy"}], "names": tools[:1]}
+            return None if _low(me) else {"effects": [{"kind": "energy"}], "names": tools[:1]}
         if not stoppable:
             return None
         return {"effects": [{"kind": "stop", "creation": rng.choice(stoppable), "mend": severity == "major"}]}
@@ -180,10 +180,10 @@ def _choose(ctx, rng, night):
 
 
 def on_tick(ctx):
-    st, pip, now, p = dict(ctx["state"]), ctx["agent"], ctx["now"], ctx["params"]
+    st, me, now, p = dict(ctx["state"]), ctx["agent"], ctx["now"], ctx["params"]
     st.setdefault("rolled", [])
     out = {}
-    if pip["asleep"]:
+    if me["asleep"]:
         if "slept_at" not in st:
             st["slept_at"] = now
         return {"state": st} if st != ctx["state"] else {}
@@ -201,7 +201,7 @@ def on_tick(ctx):
             out["happen"] = h
     else:
         slot = _slots(ctx)
-        if slot and now - slot[1] <= WINDOW and slot[0] not in st["rolled"] and not pip["walking"] and not ctx["happenings"]["room"]:
+        if slot and now - slot[1] <= WINDOW and slot[0] not in st["rolled"] and not me["walking"] and not ctx["happenings"]["room"]:
             st["rolled"] = (st["rolled"] + [slot[0]])[-12:]
             if random.Random(f"{st.get('salt')}:{slot[0]}").random() < p["chance"]:
                 h = _choose(ctx, random.Random(f"{st.get('salt')}:{slot[0]}:build"), False)

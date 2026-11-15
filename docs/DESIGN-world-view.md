@@ -57,7 +57,7 @@ All rendering happens in the browser. The engine adds two read-only endpoints an
 **API** (`app/world_view.py`, routes in `main.py`, both added to the public allowlist):
 - `GET /world/map`: everything the map needs in one call:
   `seed` (a world seed, created once and kept in `meta.world_seed`), `places` (key, label, kind, x, y, status real/heard, visited, first
-  visited), `roads` (from home to each visited place, with how often Pip has walked it), `pip` (where it is, or the walk in progress:
+  visited), `roads` (from home to each visited place, with how often Pip has walked it), `agent` (`pip` before 0.47.0; where it is, or the walk in progress:
   from, to, started_at, ends_at), `now` (time, season, weather).
 - `GET /world/scene?place=<key>` (default: where Pip is): the place record (kind, label, description, hours, open now, `scene` details,
   below), **who is present** (via `places.place_of`, so Oriel is at Brygdon on her market day), **booths** (`market.booths`, each with stock

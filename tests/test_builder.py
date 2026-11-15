@@ -117,12 +117,12 @@ async def test_the_builder_can_revise_its_own_and_hears_the_owner(tmp_path):
 async def test_what_the_builder_is_shown(tmp_path):
     s, st, gm, agent = world(tmp_path, [report(action="nothing", reason="quiet")])
     st.add_memory("a kite to fly over the hill", "wishlist", "thing")
-    st.log("garden", plot=1, crop="peas")
+    st.log("world_changed", effect="e", text="peas")
     st.log("say", text="private words")
     await night(st, s, agent, time.time())
     prompt = gm.calls[0]["messages"][0]["content"]
     assert B.bible(s) in prompt and "Modules that already exist:\n(none yet)" in prompt and "How a module works:" in prompt
-    assert "garden: peas" in prompt and "private words" not in prompt and "Places Pip has only heard of: none" in prompt
+    assert "world_changed: peas" in prompt and "private words" not in prompt and "Places Pip has only heard of: none" in prompt
     assert "Pip's open wishes: a kite to fly over the hill" in prompt
     assert "Event kinds you can listen for: " + ", ".join(sorted(__import__("app.public_view", fromlist=["x"]).EVENT_FIELDS)) in prompt
 
@@ -131,10 +131,10 @@ def test_the_pieces(tmp_path):
     s, st, gm, agent = world(tmp_path)
     assert B.name_of("Market Bell!") == "market-bell" and B.name_of("9 lives") == "rule-9-lives" and B.name_of("") == "thing"
     assert B.name_of("ab") == "ab-rule"
-    man = B.manifest("def on_event(ctx):\n    pass\ndef on_time(ctx):\n    pass\n", "x-rule", ["garden", 3])
+    man = B.manifest("def on_event(ctx):\n    pass\ndef on_time(ctx):\n    pass\n", "x-rule", ["world_changed", 3])
     assert man == {"name": "x-rule", "kind": "rule", "api": 1, "hooks": ["on_event", "on_time"], "reads": list(B.RULE_READS),
-                   "proposes": list(B.RULE_PROPOSES), "events": ["garden"]}
-    assert B.manifest("def on_time(ctx):\n    pass\n", "y", ["garden"])["events"] == []
+                   "proposes": list(B.RULE_PROPOSES), "events": ["world_changed"]}
+    assert B.manifest("def on_time(ctx):\n    pass\n", "y", ["world_changed"])["events"] == []
     assert "subject" not in B.RULE_READS and "places" in B.RULE_READS
     own = tmp_path / "bible.md"
     own.write_text("  A world of glass.  \n")
@@ -142,11 +142,11 @@ def test_the_pieces(tmp_path):
     assert B.bible(s) == "A world of glass."
     s.world_bible_path = str(tmp_path / "missing.md")
     assert B.bible(s).startswith("This is a small, slow world")
-    p = live(st, rule(kind="thing", name="bell-by-pip", subject="Bell"), "x", author="pip")
+    p = live(st, rule(kind="thing", name="bell-by-agent", subject="Bell"), "x", author="agent")
     w = live(st, rule(name="bells"), "x")
     st.update_module(w["id"], reason="Bells.", note="nice")
     st.update_module(p["id"], note="hidden from the builder")
-    assert B.catalogue(st) == "- bell-by-pip (thing, for Bell; by Pip; live): \n- bells (rule; by you; live): Bells. The owner said: nice"
+    assert B.catalogue(st) == "- bell-by-agent (thing, for Bell; by Pip; live): \n- bells (rule; by you; live): Bells. The owner said: nice"
 
 
 def test_rules_can_read_the_places(tmp_path):
@@ -211,12 +211,12 @@ async def test_what_lately_holds_exactly(tmp_path, monkeypatch):
     for i in range(10):
         st.add_memory(f"wish {i}", "wishlist", "thing")
     st.set_memory_status(next(m["id"] for m in st.memories("wishlist", limit=20) if m["text"] == "wish 0"), "done")
-    old = st.log("garden", plot=1, crop="ancient peas")
+    old = st.log("world_changed", effect="e", text="ancient peas")
     st.db.execute("UPDATE events SET ts = ? WHERE id = ?", (now - 2 * 86400 - 5, old))
     st.db.commit()
     for kind, data in (("tick", {"step": 1, "text": "t"}), ("emotion", {"emotion": "joy", "value": 1, "cause": "c"}),
                        ("module", {"name": "m", "text": "a rule spoke"}), ("owner_notice", {"text": "x"}), ("say", {"text": "private"}),
-                       ("garden", {"plot": 2, "crop": "beans"}), ("arrived", {"place": "woods", "label": "the woods", "first_time": False}),
+                       ("world_changed", {"effect": "e", "text": "beans"}), ("arrived", {"place": "woods", "label": "the woods", "first_time": False}),
                        ("happening", {"id": 1, "title": "A gull", "text": "A gull steals a crust."}),
                        ("reflection", {"summary": "A good day."}), ("neighbor", {"name": "Oriel", "about": "x"}),
                        ("made_work", {"id": 1, "what": "drawing", "title": "Sun", "caption": ""}), ("night_pass", {"decisions": 1})):
@@ -227,15 +227,15 @@ async def test_what_lately_holds_exactly(tmp_path, monkeypatch):
     text = B.lately(st, s, now)
     lines = text.split("\n")
     assert lines[0] == "Lately:" and "ancient peas" not in text and "private" not in text and "a rule spoke" not in text
-    assert [l.split(" ", 3)[3] for l in lines[1:8]] == ["garden: beans", "arrived: the woods", "happening: A gull steals a crust.",
+    assert [l.split(" ", 3)[3] for l in lines[1:8]] == ["world_changed: beans", "arrived: the woods", "happening: A gull steals a crust.",
                                                         "reflection: A good day.", "neighbor: Oriel", "made_work: Sun", "night_pass: "]
-    beans = next(e for e in st.events(30) if e["kind"] == "garden" and e["data"]["crop"] == "beans")
+    beans = next(e for e in st.events(30) if e["kind"] == "world_changed" and e["data"]["text"] == "beans")
     assert lines[1].startswith(f"- {datetime.fromtimestamp(beans['ts']).strftime('%a %H:%M')} ")       # the event's own minute and lines[-2] == "Pip's open wishes: " + "; ".join(f"wish {i}" for i in range(2, 10))
     assert lines[-1] == "Places Pip has only heard of: Saltholm, the Tor"
-    st.log("garden", plot=3, crop="x" * 300)
-    assert B.lately(st, s, now).split("\n")[8].endswith("garden: " + "x" * 140)
+    st.log("world_changed", effect="e", text="x" * 300)
+    assert B.lately(st, s, now).split("\n")[8].endswith("world_changed: " + "x" * 140)
     monkeypatch.setattr(B, "RECENT_EVENTS", 2)
-    assert [l.split(": ", 1)[0].split(" ")[-1] for l in B.lately(st, s, now).split("\n")[1:3]] == ["night_pass", "garden"]
+    assert [l.split(": ", 1)[0].split(" ")[-1] for l in B.lately(st, s, now).split("\n")[1:3]] == ["night_pass", "world_changed"]
 
 
 def test_lately_when_nothing_happened(tmp_path, monkeypatch):
@@ -293,9 +293,9 @@ async def test_the_nights_edges(tmp_path):
         gm.queue(draft(name=f"chime {i}", reason="x" * 600), FITS)
         r = await night(st, s, agent, NOW + (10 + i) * 86400)
         assert r["outcome"] == "proposed" and len(st.module(r["module"])["reason"]) == 500
-    gm.queue(draft(name="ears", code='def on_event(ctx):\n    return {"log": "heard"}\n', events=["garden"]), FITS)
+    gm.queue(draft(name="ears", code='def on_event(ctx):\n    return {"log": "heard"}\n', events=["world_changed"]), FITS)
     r = await night(st, s, agent, NOW + 20 * 86400)
-    assert st.module(r["module"])["manifest"]["events"] == ["garden"]
+    assert st.module(r["module"])["manifest"]["events"] == ["world_changed"]
     gm.queue(draft(), report(fits=False, why="w" * 400))
     assert len((await night(st, s, agent, NOW + 21 * 86400))["why"]) == 300
 
@@ -344,7 +344,7 @@ def test_lately_edges(tmp_path, monkeypatch):
         st.add_memory(f"wish {i}", "wishlist", "thing")
     st.set_memory_status(next(m["id"] for m in st.memories("wishlist", limit=20) if m["text"] == "wish 8"), "done")
     st.add_memory("a diary line", "diary")
-    e = st.log("garden", plot=1, crop="right on the edge")
+    e = st.log("world_changed", effect="e", text="right on the edge")
     st.db.execute("UPDATE events SET ts = ? WHERE id = ?", (NOW - 2 * 86400, e))
     st.db.commit()
     text = B.lately(st, s, NOW)

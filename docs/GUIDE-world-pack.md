@@ -74,7 +74,7 @@ and so are small kindnesses. Nothing is magic; the monsters are animals the ash 
 
 **The home's layout**: a place module that lays out the shelter (works today; see DESIGN-modules.md, "Parts and layouts", and the
 shipped `home` layout in `app/module_library/` and Ashfall's `modules/shelter.py`). At its smallest: a ground box, a building, and
-anchors tagged `pip` (where she stands; the name is the renderer's), `seat` and `workbench`, so the renderer can draw her poses.
+anchors tagged `agent` (where she stands), `seat` and `workbench`, so the renderer can draw her poses.
 
 Start it with `WORLD_PACK=worlds/ashfall` (works today). Check the dashboard: the scene, the journal filling, the Work tab's modules all live.
 

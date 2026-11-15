@@ -1,13 +1,13 @@
 """What comes to mind: memory step 3 (docs/DESIGN-reminders.md).
 
-Every memory keeps the context it was written in (where Pip was, with whom, doing what, feeling how: State._context_now) and the times it
+Every memory keeps the context it was written in (where the agent was, with whom, doing what, feeling how: State._context_now) and the times it
 was used. Its activation is ACT-R's base level over those uses, so a memory fades with time and comes back with use; below a line set by
 its importance it is `faded`: it no longer comes to mind by itself, though `recall` still finds it (and that revives it).
 
 Each world turn a cue is built from the situation (who is here or writing, the place, the project, the newest words), memories compete
 for two slots on relevance + importance + activation + shared context, and the winners are shown with their frame ("3 days ago, at
-Oriel's, while you were visiting, feeling content: ..."). Winners and runners-up are logged (`reminded`), so what was on Pip's mind is a
-fact. Being shown is not a use; Pip taking a reminder up (its next turn shares words with it) is. No LLM calls.
+Oriel's, while you were visiting, feeling content: ..."). Winners and runners-up are logged (`reminded`), so what was on the agent's mind is a
+fact. Being shown is not a use; The agent taking a reminder up (its next turn shares words with it) is. No LLM calls.
 """
 import math
 import re
@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from . import places
+from . import world_pack
 from .memory import STOP_WORDS, ago
 from .text import clip
 
@@ -50,7 +51,7 @@ def fade_line(importance: int) -> float:
 
 
 def words(text: str) -> list[str]:
-    return [w for w in re.findall(r"[a-z0-9]+", str(text).lower()) if len(w) > 2 and w not in STOP_WORDS and w not in VAGUE and w != "pip"]
+    return [w for w in re.findall(r"[a-z0-9]+", str(text).lower()) if len(w) > 2 and w not in STOP_WORDS and w not in VAGUE and w != world_pack.active().agent.name.lower()]
 
 
 @dataclass
@@ -65,7 +66,7 @@ class Cue:
 
 
 def cue(state, inbox: list[dict], now: float, partner: dict | None = None) -> Cue:
-    """The situation, as a cue: who is here or writing, where Pip is (away from home), its project, and the newest words."""
+    """The situation, as a cue: who is here or writing, where the agent is (away from home), its project, and the newest words."""
     people = [m["sender"] for m in inbox if not m.get("gift") and m.get("sender")]
     text = [m["text"] for m in inbox]
     if partner:
@@ -144,7 +145,7 @@ def when(ts: float, now: float) -> str:
 
 
 def frame(source: str, text: str, ctx: dict | None, now: float) -> str:
-    """A memory with when, where, doing what and how Pip was, each part only if known."""
+    """A memory with when, where, doing what and how the agent was, each part only if known."""
     ts = ctx["ts"] if ctx else now
     parts = []
     if ctx and ctx["place"] and ctx["place"] != places.HOME:
@@ -172,13 +173,13 @@ def recall_lines(state, hits: list[dict], because: dict, now: float) -> str:
 
 
 def taken_up(state, now: float) -> list[tuple[str, str]]:
-    """Reminders Pip took up: its turns since they were shown share at least TAKEN_UP_WORDS content words with them. Those are uses."""
+    """Reminders the agent took up: its turns since they were shown share at least TAKEN_UP_WORDS content words with them. Those are uses."""
     last = state.meta("reminded_event")
     if not last or state.meta("reminded_checked") == last:
         return []
     after = [e for e in state.events(200, after_id=int(last)) if e["kind"] in ("tool", "tick")]
     if not any(e["kind"] == "tool" for e in after):
-        return []                                                       # Pip hasn't acted since: look again next turn
+        return []                                                       # The agent hasn't acted since: look again next turn
     state.set_meta(reminded_checked=last)
     said = set(words(" ".join(str(e["data"].get("args", "")) + " " + str(e["data"].get("text", "")) for e in after)))
     shown = next((e["data"] for e in state.events(1, before_id=int(last) + 1) if e["kind"] == "reminded"), {})

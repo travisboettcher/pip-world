@@ -3,7 +3,7 @@
 A place module with `new` in its manifest describes a place that doesn't exist yet: what it's called, which kind of place it is (an
 existing kind, so gathering, browsing and trading work as for any place), what is there, how far, what can be found, its setting and its
 hours; its `on_build` is its layout (layouts.py). It enters the world the way invented places do (DESIGN-invented-places.md): when the
-owner approves it, a character Pip knows mentions it, and it is recorded as heard-of (so the map shows it and `go_to` works); on Pip's
+owner approves it, a character the agent knows mentions it, and it is recorded as heard-of (so the map shows it and `go_to` works); on the agent's
 first arrival it becomes real from the module's own description, without asking the GM to invent one.
 """
 import random
@@ -62,7 +62,7 @@ def exists(state, label: str) -> bool:
 
 
 def teller(state, key: str) -> str:
-    """Who mentions it: one of the characters Pip has met (a neighbor or a resident), the same one for the same place."""
+    """Who mentions it: one of the characters the agent has met (a neighbor or a resident), the same one for the same place."""
     people = sorted(c["name"] for c in state.characters() if c["kind"] in ("neighbor", "resident"))
     return people[zlib.crc32(key.encode()) % len(people)] if people else "a passing traveller"
 
@@ -72,7 +72,7 @@ def first_sentence(text: str) -> str:
 
 
 def introduce(state, m: dict, now: float | None = None, rng: random.Random | None = None) -> dict | None:
-    """A new place module has gone live: someone tells Pip about it, and it is heard-of. Nothing if the place already exists."""
+    """A new place module has gone live: someone tells the agent about it, and it is heard-of. Nothing if the place already exists."""
     from .looks import clean_scene
     import json
     new = m["manifest"].get("new")

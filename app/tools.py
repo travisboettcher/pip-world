@@ -52,7 +52,7 @@ class ToolContext:
 
 
 async def stop_working(ctx: "ToolContext") -> str:
-    """Cut a module's session short (when Pip rests instead): work, reading, gathering. Returns a note for the result."""
+    """Cut a module's session short (when the agent rests instead): work, reading, gathering. Returns a note for the result."""
     sess = ctx.state.session()
     if not sess:
         return ""
@@ -68,7 +68,7 @@ MAX_REST_MINUTES = 240
 
 
 def busy(ctx: "ToolContext") -> str:
-    """Why Pip can't start something new right now, or '' if it can."""
+    """Why the agent can't start something new right now, or '' if it can."""
     return modules.busy_line(ctx.state, time.time())
 
 
@@ -76,7 +76,7 @@ def busy(ctx: "ToolContext") -> str:
 class ToolResult:
     text: str
     followup: bool = False  # the model should see this result and respond (e.g. fresh information)
-    noop: bool = False      # nothing changed; kept out of the feeds and out of Pip's recent-event list
+    noop: bool = False      # nothing changed; kept out of the feeds and out of the agent's recent-event list
     images: list = field(default_factory=list)  # [(mime, bytes)] the model looks at in this turn (never stored in events)
     first: str = ""         # a module's tool: what its first use is called ("planted something")
     module: str = ""        # a module's tool: the module's name
@@ -107,13 +107,13 @@ def listed_here(name: str, place) -> bool:
 
 
 def out_of_place(ctx, name: str, scope: tuple[str, ...] | None = None) -> str:
-    """Why `name` can't be used where Pip is, or '' if it can (`scope`: a module's tool's own)."""
+    """Why `name` can't be used where the agent is, or '' if it can (`scope`: a module's tool's own)."""
     scope = scope or SCOPES.get(name, (ANYWHERE,))
     here = ctx.state.agent()["location"]
     place = places.here(ctx.state, ctx.settings, ctx.library)
     listed = listed_here(name, place)
     walk = ctx.state.session()
-    if (ANYWHERE not in scope or listed) and walk and walk["kind"] == "walk":  # Pip's location is where it left from, not where it is
+    if (ANYWHERE not in scope or listed) and walk and walk["kind"] == "walk":  # The agent's location is where it left from, not where it is
         return f"you're on the way to {places.label(walk['target'])}; wait until you get there"
     if not is_here(scope, here) and not listed:
         if scope[0] == "home":
@@ -227,7 +227,15 @@ def tool(name: str, description: str, parameters: dict, where: str | tuple[str, 
     return deco
 
 
-STAT_NUMBERS = re.compile(r"\b(hunger|energy)\b[^.;]{0,15}\d\.\d", re.I)
+def stat_numbers(settings) -> re.Pattern | None:
+    """A stat's number written out ("energy 0.42"), in this world's stats' names and labels: the journal isn't for those."""
+    names = {w for n, d in stats_mod.declared(settings).items() for w in (n, d.get("label", n))}
+    return re.compile(r"\b(" + "|".join(sorted(map(re.escape, names))) + r")\b[^.;]{0,15}\d\.\d", re.I) if names else None
+
+
+def stat_number_in(settings, text: str) -> bool:
+    found = stat_numbers(settings)
+    return bool(found and found.search(text))
 SIMILARITY_LIMIT = 0.6
 
 
@@ -253,8 +261,8 @@ def overlapping(a: str, b: str) -> bool:
 
 def check_note(ctx: "ToolContext", section: str, text: str) -> str:
     """Why this note shouldn't be written, or '' if it's fine. Guards against log-spam."""
-    if STAT_NUMBERS.search(text):
-        return "don't write hunger/energy numbers in notes - your stats are already tracked for you"
+    if stat_number_in(ctx.settings, text):
+        return "don't write your stats' numbers in notes - your stats are already tracked for you"
     st = ctx.state
     openable = section in RESOLVABLE
     for m in st.memories(section, status="open" if openable else None, limit=OPEN_NOTES_CHECKED if openable else 10):
@@ -271,7 +279,7 @@ def _obj(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-SAY_LOOKBACK = 2 * 3600     # Pip's own lines a new one must not repeat
+SAY_LOOKBACK = 2 * 3600     # The agent's own lines a new one must not repeat
 
 
 @tool("say", "Speak out loud. This is the only way a visitor can hear you. To talk to something you made that "
@@ -368,8 +376,8 @@ async def set_activity(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"now {activity}{held}")
 
 
-@tool("eat", "Eat. With no `item` you have a plain meal (lowers hunger). Name a food item you own (e.g. "
-      "something you harvested) to eat that instead - it is used up and usually fills you more.",
+@tool("eat", "Eat. With no `item` you have a plain meal. Name a food item you own to eat that instead - it is used up and usually does "
+      "you more good.",
       _obj({"item": {"type": "string", "description": "optional: a food item from your belongings"}}, []))
 async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     a = ctx.state.agent()
@@ -390,7 +398,7 @@ async def eat(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(f"ate {item['name']}")
 
 
-@tool("rest", "Rest to recover energy. Say how many minutes you want to rest (up to 240); the world lets you be until then "
+@tool("rest", "Rest to recover. Say how many minutes you want to rest (up to 240); the world lets you be until then "
       "unless something happens. Leave it out to rest until you're recovered. Resting continues until you choose another activity.",
       _obj({"minutes": {"type": "integer", "description": "How long to rest, in minutes"}}, []))
 async def rest(ctx: ToolContext, args: dict) -> ToolResult:
@@ -469,8 +477,8 @@ async def resolve_note(ctx: ToolContext, args: dict) -> ToolResult:
            ["id", "text"]))
 async def edit_note(ctx: ToolContext, args: dict) -> ToolResult:
     text = str(args["text"]).strip()[:500]
-    if STAT_NUMBERS.search(text):
-        return ToolResult("not edited: don't write hunger/energy numbers in notes")
+    if stat_number_in(ctx.settings, text):
+        return ToolResult("not edited: don't write your stats' numbers in notes")
     err, old = ctx.state.edit_memory(int(args["id"]), text)
     if err:
         return ToolResult(f"error: {err}", followup=True)
@@ -498,7 +506,7 @@ async def use_item(ctx: ToolContext, args: dict) -> ToolResult:
             purpose = str(args.get("purpose") or "")[:200]
             m = modules.bound(ctx.state).get(made["name"].lower())
             text, action = await cr.use(ctx.state, ctx.gm, made, purpose, actions=m["offers"] if m else ())
-            if action:                                            # what Pip did is one of the thing's own actions: its workings carry it out
+            if action:                                            # what the agent did is one of the thing's own actions: its workings carry it out
                 text += f" ({await modules.act(ctx.state, ctx.settings, ctx.runner, m, action, {'purpose': purpose})})"
             return ToolResult(text, followup=True)
         return ToolResult(f"error: {err}", followup=True)
@@ -552,7 +560,7 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult("nothing comes to mind", followup=True)
     because = {}
     for h in hits:
-        if h["source"] in ("insight", "change", "turning"):  # show what a belief rests on, so Pip can check it
+        if h["source"] in ("insight", "change", "turning"):  # show what a belief rests on, so the agent can check it
             texts = [ctx.state.event_text(i) if k == "event" else ctx.state.reflection_text(i)
                      for k, i in ctx.state.reflection_cites(int(h["ref"]))]
             because[(h["source"], str(h["ref"]))] = [t for t in texts if t][:2]
@@ -598,7 +606,7 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
       _obj({"place": {"type": "string"}}, ["place"]))
 async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     place = places.find(ctx.state, ctx.library, args["place"])
-    if not place:  # somewhere a character told Pip about: known, or said recently (the backstop)
+    if not place:  # somewhere a character told the agent about: known, or said recently (the backstop)
         rec = invented.find_record(ctx.state, args["place"]) or invented.recall_mention(ctx.state, args["place"])
         if rec and rec["walk_minutes"] is None:
             return ToolResult(f"{places.label(rec['key'])} is too far to walk to: you've only heard of it "
@@ -607,7 +615,7 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     if not place:
         known = ", ".join(places.available(ctx.state, ctx.library))
         return ToolResult(f"error: you don't know a place called {args['place']!r} (you know: {known})", followup=True)
-    if why := busy(ctx):  # first: mid-walk, the location is still where Pip set off from
+    if why := busy(ctx):  # first: mid-walk, the location is still where the agent set off from
         return ToolResult(why, followup=True)
     if place == ctx.state.agent()["location"]:
         return ToolResult(f"you're already at {places.label(place)}", followup=True)
@@ -678,7 +686,7 @@ async def feel(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("undo_decision",
-      "Take back something your sleeping self decided (an archived note, a paused project, a merge...). Use the "
+      "Take back something your sleeping self decided (an archived note, a merge, something put on hold...). Use the "
       "decision's number from 'While you slept you decided'.",
       _obj({"id": {"type": "integer", "description": "the decision number"}}, ["id"]))
 async def undo_decision(ctx: ToolContext, args: dict) -> ToolResult:
@@ -784,7 +792,7 @@ async def program(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"your program wasn't accepted: {e}. Fix it and send it again.", followup=True)
     ctx.state.set_meta(programs_day=today, programs_n=str(n + 1))
     old = modules.programs(ctx.state).get(c["name"].lower())
-    r = await modules.propose(ctx.state, ctx.settings, ctx.runner, "pip", man, args["code"], f"{world_pack.active().agent.possessive} program for {world_pack.active().agent.their} {c['name']}.",
+    r = await modules.propose(ctx.state, ctx.settings, ctx.runner, "agent", man, args["code"], f"{world_pack.active().agent.possessive} program for {world_pack.active().agent.their} {c['name']}.",
                               replaces=old["id"] if old and old["status"] != "rejected" and old["name"] == man["name"] else None)
     if "error" in r:
         return ToolResult(f"your program wasn't accepted: {r['error']}. Fix it and send it again.", followup=True)
@@ -862,7 +870,7 @@ async def draw(ctx: ToolContext, args: dict) -> ToolResult:
         text += f" It's how {of} looks in your {world_pack.active().data('places').get('home', {}).get('called', 'home')} now."
     if not ctx.vision:
         return ToolResult(text)
-    # Pip sees what it made, and can answer with a redo in the same breath
+    # The agent sees what it made, and can answer with a redo in the same breath
     return ToolResult(text + " Here is how it came out. If it isn't what you meant, draw it again with replaces=" + str(wid)
                       + "; if you like it, you're done.", followup=True, images=_picture(ctx.state.work(wid)))
 

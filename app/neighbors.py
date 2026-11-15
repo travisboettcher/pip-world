@@ -1,11 +1,11 @@
-"""The neighbor: a GM-invented character who lives nearby and exchanges slow letters with Pip.
+"""The neighbor: a GM-invented character who lives nearby and exchanges slow letters with the agent.
 
-Letters take hours each way. The neighbor answers what Pip sends, writes first now and then, may tuck in a small
-parcel (capped per day), and has a little life of their own that moves on between letters. Letters for Pip arrive
+Letters take hours each way. The neighbor answers what the agent sends, writes first now and then, may tuck in a small
+parcel (capped per day), and has a little life of their own that moves on between letters. Letters for the agent arrive
 in the inbox with the neighbor as sender, so perception, diary moments, recall and reflection treat them like any
 other visit. See DESIGN-neighbor.md.
 
-Residents (someone who lives or works at a place a character told Pip about, DESIGN-invented-places.md) are met in
+Residents (someone who lives or works at a place a character told the agent about, DESIGN-invented-places.md) are met in
 person the same way, but only at their place, and they don't write.
 """
 import math
@@ -53,7 +53,7 @@ def correspondence(state, name: str) -> list[str]:
 
 
 def _told(ch: dict, out: dict) -> dict:
-    """Things about themselves the neighbor just told Pip for the first time, added to what Pip already knows."""
+    """Things about themselves the neighbor just told the agent for the first time, added to what the agent already knows."""
     raw = out.get("told")
     new = [t for t in (clip(x, 80) for x in (raw if isinstance(raw, list) else [])) if t][:TOLD_PER_CALL]
     return {"told": (ch["told"] + new)[-TOLD_KEPT:]} if new else {}
@@ -123,7 +123,7 @@ def arrive(state, settings, new: dict, now: float | None = None, rng: random.Ran
 
 
 async def recall_told(state, gm, tries: dict) -> None:
-    """One-time backfill: a neighbor who knows nothing of what they've told Pip has it recalled from everything said
+    """One-time backfill: a neighbor who knows nothing of what they've told the agent has it recalled from everything said
     so far. Done for good once it succeeds; after two failures it waits for the next start (`tries` lives that long)."""
     for ch in state.characters("neighbor") if gm else []:
         done = f"told_recalled:{ch['id']}"
@@ -142,7 +142,7 @@ async def recall_told(state, gm, tries: dict) -> None:
         state.set_meta(**{done: "1"})
 
 
-def _deliver_to_pip(state, lt: dict, now: float) -> None:
+def _deliver_to_agent(state, lt: dict, now: float) -> None:
     text = f"A letter from {lt['sender']}: {lt['text']}"
     p = lt["parcel"]
     if p:
@@ -159,7 +159,7 @@ OFFER_CHANCE = 0.25          # a letter with no wish to answer still offers one 
 
 def trade_note(state, ch: dict, rng) -> str:
     """What a neighbor's letter is told about their trade (what live modules note about them), and now and then a thing they sell to offer
-    Pip (one it wishes for, first): what modules say they have `for_sale`."""
+    The agent (one it wishes for, first): what modules say they have `for_sale`."""
     from .modules import for_sale, notes_on
     notes = notes_on(state, ch["name"])
     wares = [(item, price) for _, item, price, whose in for_sale(state) if whose == ch["name"]]
@@ -206,13 +206,13 @@ async def _write(state, settings, gm, rng, ch: dict, now: float, answering: dict
 
 
 def _places(state, settings, library, ch: dict) -> dict:
-    """What a character's prompt is told about the places in Pip's world, and how to point Pip to a new one."""
+    """What a character's prompt is told about the places in Pip's world, and how to point the agent to a new one."""
     return {"places": invented.places_line(state, ch["name"], settings, library),
             "mention": invented.mention_instruction(state, settings, library)}
 
 
 async def step(state, settings, gm, rng: random.Random, now: float | None = None, library=None) -> bool:
-    """Deliver due letters, let neighbors answer or write first. Returns True if Pip should wake."""
+    """Deliver due letters, let neighbors answer or write first. Returns True if the agent should wake."""
     now = now or time.time()
     wake = False
     for ch in state.characters("neighbor"):
@@ -223,7 +223,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
         if lt["deliver_at"] > now:
             continue
         if lt["recipient"] == world_pack.active().agent.name:
-            _deliver_to_pip(state, lt, now)
+            _deliver_to_agent(state, lt, now)
             wake = True
             continue
         ch = neighbors.get(lt["recipient"])
@@ -246,7 +246,7 @@ async def step(state, settings, gm, rng: random.Random, now: float | None = None
 
 
 async def reply(state, settings, gm, ch: dict, now: float, library=None, closing: bool = False) -> dict | None:
-    """One line from someone Pip is with in person: a greeting if this visit has had none, else an answer to what Pip has said (`ch["heard"]`), which it
+    """One line from someone the agent is with in person: a greeting if this visit has had none, else an answer to what the agent has said (`ch["heard"]`), which it
     consumes. Logged as a `companion` event; returns what the model said (with `goodbye` when `closing` asks for it), or None."""
     where = places.place_of(state, ch)
     visit = state.meta("arrived_at") or ""
@@ -287,7 +287,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
 
 
 async def _visits(state, settings, gm, now: float, library=None) -> bool:
-    """In person: whoever Pip finds where it is (a neighbor at home, a resident at their place) greets it once per
+    """In person: whoever the agent finds where it is (a neighbor at home, a resident at their place) greets it once per
     visit and answers what it says (capped per hour)."""
     here = places.present_at(state)
     wake = False
@@ -297,7 +297,7 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
         where = places.place_of(state, ch)
         if not where or here != where:
             if ch["heard"]:
-                state.update_character(ch["id"], heard=[])  # Pip left before they could answer
+                state.update_character(ch["id"], heard=[])  # The agent left before they could answer
             continue
         visit = state.meta("arrived_at") or ""
         if visit and state.meta("talk_scene") == visit:
@@ -315,13 +315,13 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
 
 
 def _can_give(state, settings, now: float) -> bool:
-    """Whether they may hand Pip something today: letters' parcels and hand-overs share the daily cap."""
+    """Whether they may hand the agent something today: letters' parcels and hand-overs share the daily cap."""
     in_person = sum(1 for e in state.events_since(now - DAY) if e["kind"] == "gift" and e["data"].get("in_person"))
     return state.letters_since_parcel(now - DAY) + in_person < settings.parcels_per_day
 
 
 def _hand_over(state, name: str, raw) -> str:
-    """Put what they handed over into Pip's belongings. Returns a note for the line ('' if nothing was given)."""
+    """Put what they handed over into the agent's belongings. Returns a note for the line ('' if nothing was given)."""
     p = clean_parcel(raw)
     if not p:
         return ""

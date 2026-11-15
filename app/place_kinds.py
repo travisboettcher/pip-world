@@ -1,6 +1,6 @@
 """Kinds of invented place (see DESIGN-invented-places.md, "The kind registry").
 
-A place a character mentions becomes real on Pip's first arrival as one of these kinds. The GM proposes the kind; the
+A place a character mentions becomes real on the agent's first arrival as one of these kinds. The GM proposes the kind; the
 engine keeps it only if the characters' own words back it (a shop needs a shop word), and otherwise falls back to the
 kind the words suggest, or a `sight`: a destination with a description and nothing to do. The kind decides everything
 mechanical: the verbs (only the existing shared `gather` and `browse`, never a new tool), the hours, what the loot table
@@ -28,7 +28,7 @@ class PlaceKind:
     shop_hours: bool = False                    # bounded opening hours (else: open in daylight)
     session: tuple[int, int] = DEFAULT_SESSION  # how long a gather there may be
     trades: bool = False                        # has booths: the trade module's buy, sell and pay work here
-    stalls: bool = False                        # Pip may set out a stall of its own here, and customers stop while it is there
+    stalls: bool = False                        # The agent may set out a stall of its own here, and customers stop while it is there
 
 
 def registry() -> dict[str, PlaceKind]:

@@ -110,7 +110,7 @@ TREE = ('def on_build(ctx):\n    s = ctx["params"]["scale"]\n'
 PLACE = ('def on_build(ctx):\n    return {"parts": [{"part": "tree", "params": {"scale": 2}, "at": [3, 0, -4], "turn": 90, "role": "big"},'
          ' {"part": "tree", "at": [-3, 0, -4]}, {"part": "tree", "params": {"scale": 2}, "at": [0, 0, -8]}],'
          ' "shapes": [{"shape": "box", "size": [20, 1, 10], "at": [0, -0.5, -4], "faces": {"top": {"texture": "grass"}, "side": {"texture": "cliff"}}}],'
-         ' "anchors": [{"id": "pip", "type": "ground", "tags": ["pip", "outside"], "at": [0, 0, 0], "extent": [4, 2]}]}\n')
+         ' "anchors": [{"id": "agent", "type": "ground", "tags": ["agent", "outside"], "at": [0, 0, 0], "extent": [4, 2]}]}\n')
 
 
 def part_man(name="tree", **kw):
@@ -131,7 +131,7 @@ def test_parts_and_places_are_the_worlds_and_only_build(tmp_path):
         with pytest.raises(M.Refused) as e:
             M.check_manifest(m, author)
         return str(e.value)
-    assert refused(part_man(), "pip") == "parts and places are the world's; they have just on_build, and read and propose nothing"
+    assert refused(part_man(), "agent") == "parts and places are the world's; they have just on_build, and read and propose nothing"
     assert refused(part_man(hooks=["on_build", "on_tick"])) == "`hooks` is a list drawn from: on_build"
     assert refused(part_man(reads=["time"])).startswith("parts and places are the world's")
     assert refused({**part_man(), "hooks": ["on_tick"]}) == "`hooks` is a list drawn from: on_build"
@@ -178,7 +178,7 @@ async def test_a_live_place_is_built_from_its_parts_and_drawn_instead_of_its_tem
     b = st.module(m["id"])["built"]
     assert b["parts"] == {"tree": st.modules()[0]["id"]} and b["season"] == L.season(st) and b["version"] == 1
     assert [sh["at"] for sh in b["shapes"]] == [[0.0, -0.5, -4.0], [3.0, 1.0, -4.0], [-3.0, 0.5, -4.0], [0.0, 1.0, -8.0]]
-    assert [a["id"] for a in b["anchors"]] == ["pip", "big-shade", "tree-1-shade", "tree-2-shade"]
+    assert [a["id"] for a in b["anchors"]] == ["agent", "big-shade", "tree-1-shade", "tree-2-shade"]
     assert b["anchors"][1]["at"] == [4.0, 0.0, -4.0] and "big" in b["anchors"][1]["tags"]               # turned: its shade is to the side
     assert st.events(1)[0]["kind"] == "layout_built" and st.events(1)[0]["data"] == {"name": "glade", "place": "woods", "shapes": 4, "anchors": 4}
     lay = WV.scene_view(st, s, None, "woods")["layout"]
@@ -254,7 +254,7 @@ async def test_the_librarys_parts_and_the_outdoors_layout_build(tmp_path):
     assert await L.step(st, s, agent.runner, NOW) >= 2                                             # the woods and the junkyard
     woods, yard = L.for_scene(st, "woods", "wild"), L.for_scene(st, "junkyard", "yard")
     assert woods["module"] == yard["module"] == "outdoors"
-    assert len(woods["shapes"]) == 2 + 11 * 5 + 18 * 4 and {"pip", "finds", "open-ground"} <= {a["id"] for a in woods["anchors"]}
+    assert len(woods["shapes"]) == 2 + 11 * 5 + 18 * 4 and {"agent", "finds", "open-ground"} <= {a["id"] for a in woods["anchors"]}
     assert sum(sh.get("hitbox", False) for sh in yard["shapes"]) == 4 and any(a["id"].startswith("heap-") for a in yard["anchors"])
     assert L.for_scene(st, "woods") is None and L.anchors_for(st, "woods", "wild") == tuple(woods["anchors"])
     assert st.module(made[0])["built"] == {} and "woods" in L.kind_module(st, "wild")["built"]["places"]
@@ -453,12 +453,12 @@ def test_a_kind_layout_is_checked(tmp_path):
             M.check_manifest({**kinds, "kinds": k}, "world")
         assert str(e.value) == "`kinds` is a list drawn from: home, neighbor, library, wild, yard, shop, market, sight"
     with pytest.raises(M.Refused):
-        M.check_manifest(kinds, "pip")
+        M.check_manifest(kinds, "agent")
 
 
 KIND = ('def on_build(ctx):\n    d = ctx["details"]\n'
         '    return {"shapes": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "material": {"color": "#000"}, "tip": {"title": d["kind"], "text": d.get("setting", "")}}],'
-        ' "anchors": [{"id": "pip", "type": "ground", "tags": ["pip"], "at": [0, 0, 0]}]}\n')
+        ' "anchors": [{"id": "agent", "type": "ground", "tags": ["agent"], "at": [0, 0, 0]}]}\n')
 
 
 @pytest.mark.asyncio
@@ -530,7 +530,7 @@ async def test_the_builder_hears_the_anchors_a_kind_layout_has_built(tmp_path):
     await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard"]}, KIND, now=NOW)
     await L.step(st, s, agent.runner, NOW)
     lines = B.anchor_list(st).splitlines()
-    assert "  wild/yard: ground tagged pip" in lines and "  neighbor/library/shop/market/sight: ground tagged outside (once its layout is built)" in lines
+    assert "  wild/yard: ground tagged agent" in lines and "  neighbor/library/shop/market/sight: ground tagged outside (once its layout is built)" in lines
     assert "reserved" not in lines[0] and "clock" not in lines[0]                                    # where the scene draws its own: not offered
     assert len([l for l in lines if l.startswith("  wild")]) == 1
 
@@ -649,8 +649,8 @@ async def test_the_shipped_layouts_build_every_kind_of_place_from_its_details(tm
     market = await build("market", props=["barrow", "crates", "well"])
     booths = [a for a in market["anchors"] if "booth" in a["tags"]]
     assert len(booths) == 6 and all("reserved" in a["tags"] for a in booths) and "well" in market["parts"]
-    assert {tuple(sh["when"]) for sh in market["shapes"] if sh.get("material", {}).get("texture") == "stripes"} >= {("open", "booth-1"), ("shut", "booth-1"), ("open", "pip-stall"), ("no-pip-stall",)}
-    assert [a["id"] for a in market["anchors"] if "pip" in a["tags"] and "stall" in a["tags"]][0] == "pip-stall" and market["camera"]["look"] == [0, 0.4, -3]
+    assert {tuple(sh["when"]) for sh in market["shapes"] if sh.get("material", {}).get("texture") == "stripes"} >= {("open", "booth-1"), ("shut", "booth-1"), ("open", "agent-stall"), ("no-agent-stall",)}
+    assert [a["id"] for a in market["anchors"] if "agent" in a["tags"] and "stall" in a["tags"]][0] == "agent-stall" and market["camera"]["look"] == [0, 0.4, -3]
     harbour = await build("shop", coastal=True, props=["boats", "rope", "lanterns", "drawers"])
     assert sum(sh.get("tip", {}).get("title") == "A boat" for sh in harbour["shapes"]) == 2 and sum(sh["shape"] == "torus" for sh in harbour["shapes"]) == 3
     assert any(sh.get("when") == ["shut"] and sh.get("art") == "note" for sh in harbour["shapes"]) and [a["id"] for a in harbour["anchors"]][:4] == ["counter", "stock-0", "stock-1", "stock-2"]
@@ -661,7 +661,7 @@ async def test_the_shipped_layouts_build_every_kind_of_place_from_its_details(tm
     home = await build("home")
     ids = [a["id"] for a in home["anchors"]]
     assert ids[:6] == ["back-wall-by-window", "back-wall-over-bench", "back-wall-under-shelf", "bench", "floor", "yard"]
-    assert {"plot-1", "plot-4", "clock-1", "shelf", "walkers", "seat", "workbench", "garden-path", "pip"} <= set(ids)
+    assert {"plot-1", "plot-4", "clock-1", "shelf", "walkers", "seat", "workbench", "garden-path", "agent"} <= set(ids)
     assert all(("reserved" in a["tags"]) == (a["id"] not in ids[:6] and not a["id"].startswith("tree")) for a in home["anchors"])
 
 
@@ -669,7 +669,7 @@ def test_the_renderer_draws_live_elements_on_tagged_anchors():
     from pathlib import Path
     web = Path(M.__file__).resolve().parent.parent / "web" / "world"
     js = (web / "layout.js").read_text()
-    for tag in ("finds", "counter", "stock", "booth", "pip-stall", "wares", "plot", "clock", "shelf", "walkers", "resident", "resident-evening",
+    for tag in ("finds", "counter", "stock", "booth", "agent-stall", "wares", "plot", "clock", "shelf", "walkers", "resident", "resident-evening",
                 "resident-walk", "people", "crowd", "seat", "bed", "workbench", "reading", "garden-path", "browse", "visitor"):
         assert f'"{tag}"' in js, tag
     import re

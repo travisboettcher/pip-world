@@ -19,6 +19,8 @@ village of survivors, and what would leak over? The answer was no; this is how t
 modules, added to a world, not switches turned off in the engine**; and a world needs a bootstrapping guide
 ([GUIDE-world-pack.md](GUIDE-world-pack.md)) that says what a basic pack needs.
 
+**Names (0.47.0):** where this record says the `pip` read, the `"pip"` author or the `pip` anchor, the engine now says `agent`, with no aliases (DESIGN-engine-audit.md, A4).
+
 ## Why
 The module system made the engine extensible: a world can now grow rules, places, scenes, things to talk to and happenings without a
 release. But the core still assumes one world: a gentle maker called Pip in a workshop with a garden, in a coastal countryside, beside

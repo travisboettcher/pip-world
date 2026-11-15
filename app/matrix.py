@@ -1,6 +1,6 @@
-"""The Matrix channel: Pip and its owner in one private room on a homeserver they run (see DESIGN-outreach.md).
+"""The Matrix channel: The agent and its owner in one private room on a homeserver they run (see DESIGN-outreach.md).
 
-It speaks the Client-Server API directly over httpx (login is done once by the bootstrap script; Pip is given an access
+It speaks the Client-Server API directly over httpx (login is done once by the bootstrap script; The agent is given an access
 token), so there is no native dependency and no end-to-end encryption machinery: the room is unencrypted, on the owner's own
 server. A *conversation* is a thread: the id of its root event. A postcard is a top-level message (its event id is the thread
 root); a reply is sent inside that thread; a human message in a thread keeps it, and a human top-level message opens one.
@@ -141,7 +141,7 @@ class MatrixChannel:
         if rel.get("rel_type") == "m.thread" and rel.get("event_id"):
             return rel["event_id"]
         replied = (rel.get("m.in_reply_to") or {}).get("event_id")
-        if replied and replied in self._list("roots"):  # a plain reply to one of Pip's postcards
+        if replied and replied in self._list("roots"):  # a plain reply to one of the agent's postcards
             return replied
         return ev["event_id"]                            # a top-level message opens its own conversation
 
@@ -155,7 +155,7 @@ class MatrixChannel:
             return
         self._remember("seen", eid, KEEP_SEEN)
         conversation = self._conversation(ev)
-        self.store.set(f"last:{conversation}", eid)  # Pip's next reply answers the latest message in the thread
+        self.store.set(f"last:{conversation}", eid)  # The agent's next reply answers the latest message in the thread
         if self._on_message:
             await self._on_message(Inbound(sender, self.allowed[sender], str(content["body"]), conversation,
                                            (ev.get("origin_server_ts") or 0) / 1000, eid))
@@ -197,7 +197,7 @@ class MatrixChannel:
         return SendResult(True, error="; ".join(problems), conversation=root)
 
     async def notice(self, text: str, room: str | None = None) -> SendResult:
-        """A notice from the engine to the owner (not Pip speaking): an m.notice, in Pip's room or another it has joined. Pip never sees it:
+        """A notice from the engine to the owner (not the agent speaking): an m.notice, in the agent's room or another it has joined. The agent never sees it:
         the sync skips messages from its own account."""
         if not self.configured:
             return SendResult(False, error="the Matrix channel is not configured")

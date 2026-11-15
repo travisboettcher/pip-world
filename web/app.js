@@ -105,7 +105,7 @@ function describe(e) {
     case 'module_live': return { group: 'system', text: `Module ${d.name} (v${d.version}, by ${d.author === 'world' ? 'the world' : 'Pip'}) is live` };
     case 'module_disabled': return { group: 'system', cls: 'warn', text: `Module ${d.name} was switched off${d.why ? `: ${d.why}` : ''}` };
     case 'module_rejected': return { group: 'system', text: `Module ${d.name} v${d.version} was turned down${d.note ? `: ${d.note}` : ''}` };
-    case 'talk': return { group: 'world', cls: 'world', text: `Pip and ${d.name} talked (${d.turns} of Pip's lines; ${d.ended === 'pip' ? 'Pip said goodbye' : d.ended === d.name ? `${d.name} said goodbye` : d.ended})` };
+    case 'talk': return { group: 'world', cls: 'world', text: `Pip and ${d.name} talked (${d.turns} of Pip's lines; ${d.ended === 'agent' ? 'Pip said goodbye' : d.ended === d.name ? `${d.name} said goodbye` : d.ended})` };
     case 'reflection': return { group: 'journal', text: `Pip slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: "Pip's nightly reflection failed; it'll retry in an hour" };
     case 'inbox': return d.letter ? { group: 'world', cls: 'world', text: d.text }
@@ -271,9 +271,9 @@ $('chat-form').addEventListener('submit', async (ev) => {
 // painted only where Pip has walked. Clicking a place opens its scene.
 let mapData = null, worldMap = null;
 function mapWhere(m) {
-  const w = m.pip.walking, name = (key) => m.places.find((p) => p.key === key)?.label ?? key;
+  const w = m.agent.walking, name = (key) => m.places.find((p) => p.key === key)?.label ?? key;
   if (w) return `Pip is walking from ${name(w.from)} to ${name(w.to)} (${Math.round(w.progress * 100)}%).`;
-  return m.pip.at === m.home ? 'Pip is home.' : `Pip is at ${name(m.pip.at)}.`;
+  return m.agent.at === m.home ? 'Pip is home.' : `Pip is at ${name(m.agent.at)}.`;
 }
 function showPlace(p) { openScene(p.key); }
 function renderMap() {
@@ -283,7 +283,7 @@ function renderMap() {
   if (worldMode === 'map') $('map-where').textContent = mapWhere(mapData);
 }
 const refreshMap = async () => { mapData = await api('/world/map'); renderMap(); if (worldMode === 'scene') scene?.refresh().catch(() => {}); };
-$('wm-pip').addEventListener('click', () => worldMap?.centreOnPip());
+$('wm-pip').addEventListener('click', () => worldMap?.centreOnAgent());
 $('wm-in').addEventListener('click', () => worldMap?.zoom(1.5));
 $('wm-out').addEventListener('click', () => worldMap?.zoom(1 / 1.5));
 
@@ -296,9 +296,9 @@ function setWorldMode(mode) {
   if (mode === 'map') { $('world-title').textContent = 'Map'; $('wv-here').setAttribute('aria-pressed', 'false'); if (mapData) $('map-where').textContent = mapWhere(mapData); }
 }
 function sceneCaption(d) {
-  const pip = d.pip, label = (k) => mapData?.places.find((p) => p.key === k)?.label ?? k;
+  const pip = d.agent, label = (k) => mapData?.places.find((p) => p.key === k)?.label ?? k;
   if (pip.here) return `Pip is here: ${(pip.description || pip.activity).replace(/[.!]+$/, '')}.`;
-  if (pip.walking) return `Pip isn't here; it's on its way to ${label(mapData?.pip.walking?.to)}.`;
+  if (pip.walking) return `Pip isn't here; it's on its way to ${label(mapData?.agent.walking?.to)}.`;
   return `Pip isn't here; it's at ${pip.where === mapData?.home ? 'home' : label(pip.where)}.` + (d.place.open === false ? ' This place is shut just now.' : '');
 }
 async function openScene(place) {
@@ -307,12 +307,12 @@ async function openScene(place) {
   try {
     const d = await scene.show(place);
     $('world-title').textContent = d.place.kind === 'home' ? "Pip's workshop" : d.place.label[0].toUpperCase() + d.place.label.slice(1);
-    $('wv-here').setAttribute('aria-pressed', String(d.pip.here));
+    $('wv-here').setAttribute('aria-pressed', String(d.agent.here));
     $('map-where').textContent = sceneCaption(d);
   } catch (err) { $('map-where').textContent = `Couldn't draw this place: ${err.message}`; }
 }
 $('wv-map').addEventListener('click', () => setWorldMode('map'));
-$('wv-here').addEventListener('click', () => { if (mapData?.pip.walking) setWorldMode('map'); else openScene(null); });
+$('wv-here').addEventListener('click', () => { if (mapData?.agent.walking) setWorldMode('map'); else openScene(null); });
 setInterval(() => { if (worldMode === 'scene') scene?.moment(); }, 20_000);
 
 // ---- tabs -------------------------------------------------------------------
@@ -325,7 +325,7 @@ function showTab(name, remember = true) {
     $(`tab-btn-${t}`).tabIndex = t === name ? 0 : -1;
   }
   if (remember) { store.set('tab', name); history.replaceState(null, '', `#${name}`); }
-  if (name === 'world') refreshMap().then(() => { if (!scene && !mapData?.pip.walking) openScene(null); }).catch(() => {});
+  if (name === 'world') refreshMap().then(() => { if (!scene && !mapData?.agent.walking) openScene(null); }).catch(() => {});
 }
 $('tabbar').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 $('tabbar').addEventListener('keydown', (ev) => {

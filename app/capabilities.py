@@ -1,7 +1,7 @@
-"""Capabilities: what Pip has actually been able to do, counted from outcomes (DESIGN-self.md, 6).
+"""Capabilities: what the agent has actually been able to do, counted from outcomes (DESIGN-self.md, 6).
 
 A measured record - tries and how they went per tool, craft and ability - so the self-portrait can draw on competence
-that happened rather than on what Pip would like to be true (Voyager's verified skills; Lipson's self-model). Counts,
+that happened rather than on what the agent would like to be true (Voyager's verified skills; Lipson's self-model). Counts,
 not judgments. Computed from the event log each night and kept as dated snapshots, so change over time is visible.
 """
 from .toolnames import canonical

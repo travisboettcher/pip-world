@@ -14,7 +14,7 @@ TEXTURES = ("grass", "soil", "cliff", "plaster", "inner", "thatch", "planks", "f
             "chart", "book")
 ARTS = ("reed", "flower", "curlew", "spark", "coin", "note", "carrots")   # small sprites the browser already draws
 CONDITIONS = ("open", "shut", "day", "night", "high-tide", "low-tide", "winter", "not-winter", "resident-home", "resident-away",
-              "pip-stall", "no-pip-stall", *(f"booth-{i}" for i in range(1, 9)))          # `when`: a shape shows only while all of its conditions hold
+              "agent-stall", "no-agent-stall", *(f"booth-{i}" for i in range(1, 9)))          # `when`: a shape shows only while all of its conditions hold
 HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 SHAPES_MAX, ANCHORS_MAX, REACH, SIZE_MAX = 400, 24, 60.0, 60.0
 ANCHOR_TYPES = ("wall", "surface", "floor", "ground", "hang")

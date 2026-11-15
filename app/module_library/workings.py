@@ -1,7 +1,7 @@
 # A creation's workings, as the engine has always run them: it runs down and stops unless tended (upkeep), keeps time and drifts
-# (timekeeper), says something now and then (periodic), notices a condition and tells Pip (sensor), and helps on its own: finds something,
-# hurries the garden along, or comforts Pip (helper), and, with a mind of its own, talks (companion): it is a voice where it is, chatters
-# now and then, and answers when Pip talks to it, in words the model writes from who it is and what has been said. What it can do and how
+# (timekeeper), says something now and then (periodic), notices a condition and tells the agent (sensor), and helps on its own: finds something,
+# hurries the garden along, or comforts the agent (helper), and, with a mind of its own, talks (companion): it is a voice where it is, chatters
+# now and then, and answers when the agent talks to it, in words the model writes from who it is and what has been said. What it can do and how
 # often come from the creation's capabilities; the times it last did each, and its conversation, are kept in this module's state. The
 # clock's workings live in the creation's runtime, which the engine reads to show the time. Once it's sold or given away it does nothing.
 import random
@@ -155,13 +155,13 @@ def on_action(ctx):
 
 # --- a mind of its own ---------------------------------------------------------------------------------------------------------
 def _prompt(ctx, heard):
-    s, pip, name = ctx["subject"], ctx["agent"], ctx["subject"]["name"]
-    who = pip["name"]
+    s, me, name = ctx["subject"], ctx["agent"], ctx["subject"]["name"]
+    who = me["name"]
     about = s["description"] + (f" Quirks: {'; '.join(s['quirks'])}." if s.get("quirks") else "")
     lines = ctx["state"].get("lines") or []
     return (f"Voice {name}, something {who} made that has a mind of its own: {about}\n"
             f"Who {name} is: {s['capabilities']['companion']['persona']}\n"
-            f"Right now: {who} is {pip['activity']}, feeling {pip['mood']}.\n"
+            f"Right now: {who} is {me['activity']}, feeling {me['mood']}.\n"
             + ("Recent conversation:\n" + "\n".join(lines) + "\n" if lines else "")
             + (f"{who} just said to {name}: " + " / ".join(f'"{h}"' for h in heard) + f"\nAnswer {who} as {name}."
                if heard else f"Nobody spoke to {name}; say something on its own that fits the moment, or do a small action (in *asterisks*) "
@@ -176,7 +176,7 @@ def _quiet(ctx):
 
 
 def on_message(ctx):
-    """Pip spoke to it: remember it, and ask for an answer (unless it has answered enough this hour, or is already finding words)."""
+    """The agent spoke to it: remember it, and ask for an answer (unless it has answered enough this hour, or is already finding words)."""
     st, now = dict(ctx["state"]), ctx["now"]
     if _quiet(ctx):
         return {}
@@ -194,7 +194,7 @@ def on_message(ctx):
 
 
 def _listen(ctx):
-    """Pip tunes in: a bulletin comes through (the model writes it), a few a day."""
+    """The agent tunes in: a bulletin comes through (the model writes it), a few a day."""
     s, now, st = ctx["subject"], ctx["now"], dict(ctx["state"])
     if _stopped_at(s["runtime"], now) is not None:
         return {"reply": f"your {s['name']} has stopped; it needs tending ({s['capabilities']['upkeep']['verb']}) first"}
@@ -213,7 +213,7 @@ def _listen(ctx):
 
 
 def on_answer(ctx):
-    """The model's words: a bulletin for Pip, or said aloud (to Pip, if they answer it)."""
+    """The model's words: a bulletin for the agent, or said aloud (to the agent, if they answer it)."""
     st, a, s = dict(ctx["state"]), ctx["answer"], ctx["subject"]
     if a["purpose"] == "news":
         if not a["text"] or s is None:

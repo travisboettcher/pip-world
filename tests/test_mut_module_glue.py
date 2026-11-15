@@ -181,6 +181,6 @@ def test_the_scene_shows_a_modules_session_and_only_live_facts(tmp_path):
     st.update_module(off["id"], facts={"b": 2}, status="disabled")
     st.start_session(0, 0, 30, time.time() + 1800, kind="module", target="pots", expect="tidying")
     d = WV.scene_view(st, s, None)
-    assert d["facts"] == {"pots": {"a": 1}} and d["pip"]["session"]["label"] == "tidying"
+    assert d["facts"] == {"pots": {"a": 1}} and d["agent"]["session"]["label"] == "tidying"
     st.start_session(0, 0, 30, time.time() + 1800, kind="walk", target="woods")
-    assert "label" not in (WV.scene_view(st, s, None, "woods")["pip"]["session"] or {})
+    assert "label" not in (WV.scene_view(st, s, None, "woods")["agent"]["session"] or {})

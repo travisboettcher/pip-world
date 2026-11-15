@@ -113,19 +113,19 @@ def test_the_agent_has_the_forms_prompts_need(pronoun, forms):
     assert (a.them, a.their, a.themself) == forms and a.possessive == "Wren's"
 
 
-def test_modules_read_the_agent_and_the_old_name_still_works(tmp_path):
+def test_modules_read_the_agent_and_the_old_name_is_gone(tmp_path):
     from app import modules as M
     from tests.test_modules import NOW, live, modular, rule
     s, st, agent = modular(tmp_path)
     new = M.context(st, s, live(st, rule(name="new-reader", reads=["agent"]), "x"), NOW)
-    old = M.context(st, s, live(st, rule(name="old-reader", reads=["pip"]), "x"), NOW)
-    assert new["agent"] == old["pip"] and "pip" not in new and "agent" not in old and new["agent"]["where"] == "workshop"
+    assert new["agent"]["where"] == "workshop" and new["agent"]["name"] == "Pip" and "pip" not in M.READS and "pip" not in M.AUTHORS
+    with pytest.raises(M.Refused):
+        M.check_manifest(rule(name="old-reader", reads=["pip"]), "world")
     m = live(st, rule(name="talker", proposes=["voices", "speak"]), "x")
     st.update_module(m["id"], voices=[{"name": "Bo", "at": "home", "about": ""}])
     m = st.module(m["id"])
-    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_pip": True}}, NOW, "on_tick")[0][1]["to_agent"] is True
     assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_agent": True}}, NOW, "on_tick")[0][1]["to_agent"] is True
-    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi", "to_agent": False, "to_pip": True}}, NOW, "on_tick")[0][1]["to_agent"] is False
+    assert M.plan(st, m, {"speak": {"as": "Bo", "text": "hi"}}, NOW, "on_tick")[0][1]["to_agent"] is False
 
 
 def test_until_a_world_is_set_the_active_one_is_pips_and_they_agree_with_their_verbs(tmp_path, monkeypatch):

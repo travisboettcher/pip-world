@@ -171,7 +171,7 @@ async def test_its_tools_are_offered_at_shops_markets_and_neighbours_and_nowhere
 async def test_buying_in_detail(tmp_path):
     s, st, agent = world(tmp_path, where="Saltholm")
     one = priced(6, "Saltholm")
-    st.add_coins("pip", 5)                                                           # 15 coins in all
+    st.add_coins("agent", 5)                                                           # 15 coins in all
     assert await use(st, s, "buy", item="brass wire") == f"you bought 1 brass wire for {G['coins_text'](one)} ({15 - one} left)"
     assert st.find_item("brass wire")[0]["qty"] == 1 and st.coins() == 15 - one
     v = view(st, s)
@@ -183,9 +183,9 @@ async def test_you_cannot_buy_what_isnt_kept_more_than_you_can_afford_or_none(tm
     s, st, agent = world(tmp_path, where="Saltholm")
     assert await use(st, s, "buy", item="a unicorn") == "error: Saltholm doesn't keep 'a unicorn'"
     price = view(st, s).quote("Saltholm", G["entry_of"](LOOT, "awl"), 1)
-    st.add_coins("pip", price - 10)                                                 # exactly enough
+    st.add_coins("agent", price - 10)                                                 # exactly enough
     assert await use(st, s, "buy", item="awl") == f"you bought 1 awl for {G['coins_text'](price)} (0 left)" and st.coins() == 0
-    st.add_coins("pip", 5)
+    st.add_coins("agent", 5)
     again = view(st, s).quote("Saltholm", G["entry_of"](LOOT, "awl"), 1)
     assert await use(st, s, "buy", item="awl") == f"error: you can't afford awl: it's {again} coins each and you have 5 coins"
     assert await use(st, s, "buy", item="awl", quantity=0) == "error: quantity must be a whole number, at least 1"
@@ -193,7 +193,7 @@ async def test_you_cannot_buy_what_isnt_kept_more_than_you_can_afford_or_none(tm
 
 async def test_a_booth_runs_out_for_the_day_and_restocks_tomorrow(tmp_path):
     s, st, agent = world(tmp_path, where="Saltholm")
-    st.add_coins("pip", 1000)
+    st.add_coins("agent", 1000)
     assert (await use(st, s, "buy", item="awl", quantity=5)).startswith("you bought 2 awl")      # a day's stock: twice the biggest haul
     assert await use(st, s, "buy", item="awl") == "error: Saltholm is out of awl today; they'll have more tomorrow"
     assert (await use(st, s, "buy", item="awl", now=NOW + DAY)).startswith("you bought 1 awl")
@@ -212,7 +212,7 @@ async def test_quotes_for_several_climb_four_percent_a_unit_up_to_the_ceiling(tm
 
 async def test_the_bought_thing_keeps_the_booths_description_and_attributes(tmp_path):
     s, st, agent = world(tmp_path, where="Saltholm")
-    st.add_coins("pip", 50)
+    st.add_coins("agent", 50)
     await use(st, s, "buy", item="tomatoes", quantity=2)
     item = st.find_item("tomatoes")[0]
     assert item["kind"] == "food" and item["description"] == "ripe tomatoes" and item["attrs"] == {"food_value": 0.5}
@@ -298,7 +298,7 @@ async def test_a_quick_sale_at_a_market_says_what_a_stall_would_fetch(tmp_path):
 
 async def test_a_buy_then_a_sell_back_loses_money(tmp_path):
     s, st, agent = world(tmp_path, where="Saltholm")
-    st.add_coins("pip", 100)
+    st.add_coins("agent", 100)
     await use(st, s, "buy", item="brass wire", quantity=4)
     await use(st, s, "sell", item="brass wire", quantity=4)
     assert st.coins() < 110 and st.find_item("brass wire")[0] is None
@@ -314,7 +314,7 @@ async def test_owe_puts_things_on_account_and_pay_settles_at_todays_prices(tmp_p
     debt = 2 * priced(12, "Saltholm", "awl") + 2 * 3
     assert view(st, s).owed("Saltholm", LOOT) == debt
     assert await use(st, s, "pay") == f"error: you owe Saltholm {debt} coins and have 10 coins"
-    st.add_coins("pip", debt - 10)
+    st.add_coins("agent", debt - 10)
     assert await use(st, s, "pay") == f"you paid {debt} coins for what was on account at Saltholm (0 left)"
     assert account(st, "Saltholm") == {} and view(st, s).till("Saltholm") == 40 + debt
 
@@ -344,7 +344,7 @@ async def test_browsing_a_shop_shows_some_of_its_stock_with_prices_and_whats_on_
 
 async def test_a_bare_shop_says_come_back(tmp_path):
     s, st, agent = world(tmp_path, where="Saltholm")
-    st.add_coins("pip", 1000)
+    st.add_coins("agent", 1000)
     for e in LOOT:
         await use(st, s, "buy", item=e[0], quantity=20)
     assert await use(st, s, "browse") == "The shelves at Saltholm are bare today; they restock slowly, so come back in a day or so."
@@ -513,7 +513,7 @@ def selling(day_name):
 async def test_at_her_home_pip_can_see_buy_and_sell(tmp_path):
     s, st, agent = world(tmp_path, where="Marigold's home")
     marigold(st, s)
-    st.add_coins("pip", 50)
+    st.add_coins("agent", 50)
     now = her_day(hers=False)
     r = await use(st, s, "browse", now=now)
     assert r.startswith("Marigold has for sale: cork floats (") and r.endswith("You have 60 coins. buy what you want, or sell them some of yours.")
@@ -550,7 +550,7 @@ async def test_a_neighbour_with_nothing_for_sale_says_so(tmp_path):
 async def test_on_her_market_day_she_keeps_a_stall_at_the_market(tmp_path):
     s, st, agent = world(tmp_path, where="Marigold's home")
     ch = marigold(st, s)
-    st.add_coins("pip", 50)
+    st.add_coins("agent", 50)
     now, day = her_day(), G["WEEKDAYS"][G["crc32"]("Marigold") % 7]
     assert await use(st, s, "browse", now=now) == "Marigold is at a stall in Brygdon today, with their wares"
     assert M.whereabouts(st, "Marigold") == {"at": "Brygdon", "doing": f"minding a stall at Brygdon today ({selling(day)})"}

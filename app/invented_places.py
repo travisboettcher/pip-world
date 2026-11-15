@@ -1,8 +1,8 @@
 """Places that characters mention become real (see DESIGN-invented-places.md).
 
-When a character (a neighbor's letter or talk, a companion, a visitor in chat) points Pip at a place that doesn't exist
+When a character (a neighbor's letter or talk, a companion, a visitor in chat) points the agent at a place that doesn't exist
 yet, the engine records it as **heard-of**: a name, who said it and what they said is there, and a walk time the engine
-fixes once. Pip's directory lists it, so `go_to` just works. It becomes **real** lazily, on Pip's first arrival: one GM
+fixes once. The agent's directory lists it, so `go_to` just works. It becomes **real** lazily, on the agent's first arrival: one GM
 call proposes its kind, description and what can be found there, and the engine validates and keeps it.
 
 The engine owns everything mechanical: which names count (the name must be in the speaker's own words, not a known
@@ -20,7 +20,7 @@ from .world import normalize_attrs
 from . import world_pack
 
 DAY = 86400
-FORGET_AFTER = 30 * DAY        # a heard-of place nobody mentions again and Pip never visits is forgotten
+FORGET_AFTER = 30 * DAY        # a heard-of place nobody mentions again and the agent never visits is forgotten
 MENTIONS_KEPT = 6
 THERE_CHARS = 240             # what a character said is there: the sentence naming it, and up to two after it that carry facts
 BANDS = {"near": (12, 20), "far": (20, 35)}   # walking minutes; "very far" is heard-of but too far to walk
@@ -93,7 +93,7 @@ def _stale(rec: dict, now: float) -> bool:
 
 
 def records(state, now: float | None = None) -> list[dict]:
-    """The places Pip knows of (heard-of and real); a heard-of one nobody has mentioned for 30 days is forgotten."""
+    """The places the agent knows of (heard-of and real); a heard-of one nobody has mentioned for 30 days is forgotten."""
     now = now or time.time()
     return [r for r in state.place_rows() if r["status"] in ACTIVE and not _stale(r, now)]
 
@@ -298,7 +298,7 @@ def _grow(state, rec: dict, mention: dict, rng: random.Random) -> dict:
     return {}
 
 
-# --- the backstop: a name a character said, found again when Pip tries to go there ----------------
+# --- the backstop: a name a character said, found again when the agent tries to go there ----------------
 VERY_FAR_CUES = ("days away", "day's walk", "days' walk", "days of walking", "across the sea", "over the sea",
                  "far away", "a long way off", "too far", "over the mountains")
 NEAR_CUES = ("nearby", "near here", "close by", "just down", "next door", "round the corner", "around the corner",
@@ -316,8 +316,8 @@ def guess_distance(text: str) -> str:
 
 
 def _voices(state, limit: int, scan: int) -> list[tuple[str, str]]:
-    """(speaker, words) for the latest things others said to Pip: companions and neighbors in person, delivered
-    letters, and visitors in chat. Never Pip's own words, and never engine-written gift notes."""
+    """(speaker, words) for the latest things others said to the agent: companions and neighbors in person, delivered
+    letters, and visitors in chat. Never the agent's own words, and never engine-written gift notes."""
     out = []
     for e in state.events(scan):
         d = e["data"]
@@ -379,8 +379,8 @@ def _spot(name: str, text: str, proper: bool) -> tuple[str, str] | None:
 
 def recall_mention(state, name: str, now: float | None = None, limit: int = BACKSTOP_EVENTS,
                    scan: int = BACKSTOP_SCAN, proper: bool = False) -> dict | None:
-    """Pip asked for a place nobody recorded: if a character recently said it, record it now (the sentence it came
-    from is what they said is there). A name only Pip has used stays unknown."""
+    """The agent asked for a place nobody recorded: if a character recently said it, record it now (the sentence it came
+    from is what they said is there). A name only the agent has used stays unknown."""
     if not core(name):
         return None
     for speaker, text in _voices(state, limit, scan):
@@ -405,7 +405,7 @@ NOT_PLACES = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 
 
 def backfill(state, now: float | None = None) -> list[dict]:
-    """Once, on the first start with invented places: a proper name in one of Pip's open to-dos that a character said
+    """Once, on the first start with invented places: a proper name in one of the agent's open to-dos that a character said
     (as a name: capitalised, mid-sentence) becomes heard-of, so a place mentioned before this existed isn't a dead end."""
     if state.meta("invented_places_backfill"):
         return []
@@ -445,7 +445,7 @@ def _chat_for(_pack) -> list:
 
 
 def chat_mentions(text: str) -> list[dict]:
-    """Places a chat message points Pip to, as `mentions_place`-shaped dicts (the sentence is what's there)."""
+    """Places a chat message points the agent to, as `mentions_place`-shaped dicts (the sentence is what's there)."""
     text = str(text or "")
     out, seen = [], set()
     for pat in _chat():
@@ -472,7 +472,7 @@ BARE = "you find {}, but can't get your bearings today"
 
 
 def known_items(state) -> dict[str, tuple[str, str]]:
-    """name_key -> (name, kind) for things that already exist (the loot tables, Pip's belongings, other places'
+    """name_key -> (name, kind) for things that already exist (the loot tables, the agent's belongings, other places'
     tables), so an invented place's 'brass wire' is the junkyard's brass wire and stacks with it."""
     from . import finds  # finds reads place rows; keep the import one-way at load time
     out = {}
@@ -543,7 +543,7 @@ STAPLE_COUNT = 8   # how many kinds of thing a trading place keeps when its desi
 
 
 def staples(kind: str, rng: random.Random) -> list[list]:
-    """The standard stock of a shop or market whose design came back with nothing to sell: a spread of what Pip can find elsewhere in the world,
+    """The standard stock of a shop or market whose design came back with nothing to sell: a spread of what the agent can find elsewhere in the world,
     so a trading place is never bare. The kind's tool limit holds."""
     from . import finds
     k = kinds.KINDS[kind]
@@ -601,7 +601,7 @@ def design(state, rec: dict, raw, rng: random.Random | None = None, now: float |
 
 def settle(state, key: str, raw) -> dict | None:
     """Someone the design says lives or works at the place becomes a resident: a character met only there (owner
-    decision 5). Checked like a new neighbor: a name and a persona, clipped; never Pip or a name already taken."""
+    decision 5). Checked like a new neighbor: a name and a persona, clipped; never the agent or a name already taken."""
     if not isinstance(raw, dict) or not isinstance(raw.get("name"), str) or not isinstance(raw.get("persona"), str):
         return None
     name, persona = clip(raw["name"].strip(" ."), 40), clip(raw["persona"], 800)
@@ -614,7 +614,7 @@ def settle(state, key: str, raw) -> dict | None:
 
 async def realise(state, gm, key: str, label: str, rng: random.Random | None = None,
                   now: float | None = None) -> dict | None:
-    """Pip has arrived somewhere it has only heard of: one GM call designs it (at most one a day)."""
+    """The agent has arrived somewhere it has only heard of: one GM call designs it (at most one a day)."""
     now = now or time.time()
     rec = state.place_row(key)
     from . import module_places
@@ -642,7 +642,7 @@ WALK_WORDS = {"near": "a short walk", "far": "a long walk", VERY_FAR: "too far t
 
 
 def known_names(state, settings=None, library=None) -> list[str]:
-    """Every place that exists for Pip (built-in, a neighbor's home, invented, very far ones too), as it's said."""
+    """Every place that exists for the agent (built-in, a neighbor's home, invented, very far ones too), as it's said."""
     from . import places  # places builds on this module
     built = [places.label(k) for k in places.registry(state, settings, library) if k != places.HOME]
     return list(dict.fromkeys(built + [places.label(r["key"]) for r in records(state)]))
@@ -668,7 +668,7 @@ def _line_for(state, rec: dict, name: str) -> str:
 
 
 def places_line(state, name: str, settings=None, library=None) -> str:
-    """'Places in Pip's world: ...' for a character's prompt: what they told Pip about first, then the built-in places
+    """'Places in Pip's world: ...' for a character's prompt: what they told the agent about first, then the built-in places
     and neighbors' homes (not their own), then places others mentioned; up to 8."""
     from . import places
     recs = records(state)

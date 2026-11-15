@@ -98,7 +98,7 @@ def on_build(ctx):
     anchors = [{"id": "resident", "type": "floor", "tags": ["inside", "resident", "reserved"], "at": [-3.0, 0.12, CZ0 + 1.6], "extent": [1, 1]},
                {"id": "resident-evening", "type": "floor", "tags": ["inside", "resident-evening", "reserved"], "at": [0.9, 0.12, -5.6], "extent": [1, 1]},
                {"id": "visitor", "type": "floor", "tags": ["inside", "visitor", "reserved"], "at": [-1.2, 0.12, CZ0 + 2.3], "extent": [1, 1]},
-               {"id": "pip", "type": "ground", "tags": ["outside", "pip", "reserved"], "at": [CX1 + 2.4, 0.12, CZ0 + 3.0], "extent": [2, 1]},
+               {"id": "agent", "type": "ground", "tags": ["outside", "agent", "reserved"], "at": [CX1 + 2.4, 0.12, CZ0 + 3.0], "extent": [2, 1]},
                {"id": "people", "type": "ground", "tags": ["outside", "people", "reserved"], "at": [CX1 + 1, 0, CZ0 + 3.8], "extent": [4, 1]},
                *({"id": f"wares-{k}", "type": "surface", "tags": ["inside", "wares", "reserved"], "at": [-3.4, round(0.58 + k * 0.7, 2), CZ0 + 0.9], "extent": [2.0, 0.4]} for k in range(3)),
                # where module objects go (as the hand-written scene published)

@@ -1,8 +1,8 @@
-"""Pip's map (see DESIGN-map.md).
+"""The agent's map (see DESIGN-map.md).
 
 Travel time to a place is a property of the destination, so the world is a star around home and the honest map is radial: a place sits
 as many units from home as it takes minutes to walk there. Each place gets a spot once, when it first exists, and keeps it forever (a
-`map_places` row), so the map only grows. Where Pip is drawn comes from its location, or from how far along a walk it is.
+`map_places` row), so the map only grows. Where the agent is drawn comes from its location, or from how far along a walk it is.
 """
 import hashlib
 import math
@@ -60,7 +60,7 @@ def _kind(place, rows: dict) -> str:
 
 
 def _walk(state, spots: dict, now: float) -> tuple[tuple[float, float], dict | None]:
-    """Where Pip is drawn when it is not standing in a place: along the walk it is on."""
+    """Where the agent is drawn when it is not standing in a place: along the walk it is on."""
     origin = state.agent()["location"]
     start = spots.get(origin, (0.0, 0.0))
     sess = state.session()
@@ -85,4 +85,6 @@ def snapshot(state, settings, library, now: float | None = None) -> dict:
                       "distance_minutes": place.walk_minutes})
     point, walking = _walk(state, spots, now)
     at = None if walking else state.agent()["location"]
-    return {"home": places.HOME, "places": shown, "pip": {"x": point[0], "y": point[1], "at": at, "walking": walking}}
+    home = world_pack.active().data("places").get("home", {})
+    return {"home": places.HOME, "home_called": home.get("called", "home"), "places": shown,
+            "agent": {"name": world_pack.active().agent.name, "x": point[0], "y": point[1], "at": at, "walking": walking}}

@@ -1,5 +1,5 @@
-# What Pip has made, shown on its own market stall: copies of a drawing stand framed, a creation Pip drew stands as its picture.
-# Looks again every ten minutes, so the stall follows what Pip sets out and sells.
+# What the agent has made, shown on its own market stall: copies of a drawing stand framed, a creation the agent drew stands as its picture.
+# Looks again every ten minutes, so the stall follows what the agent sets out and sells.
 EVERY = 600
 
 
@@ -13,8 +13,8 @@ def _pictures(ctx):
         if not w:
             continue
         show.append({"id": f"stall-{len(show)}", "sprite": {"rows": w["rows"], "palette": w["palette"]}, "frame": copy,
-                     "size": 0.6 if copy else 0.5, "at": {"type": "surface", "tags": ["stall", "pip"], "place": line["place"]},
-                     "tip": {"title": line["item"], "text": f"{line['qty']} on Pip's stall." if copy else "On Pip's stall."}})
+                     "size": 0.6 if copy else 0.5, "at": {"type": "surface", "tags": ["stall", "agent"], "place": line["place"]},
+                     "tip": {"title": line["item"], "text": f"{line['qty']} on $name's stall." if copy else "On $name's stall."}})
     return show[:8]
 
 

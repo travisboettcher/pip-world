@@ -57,7 +57,7 @@ def on_build(ctx):
                {"id": "walkers", "type": "floor", "tags": ["inside", "walkers"], "at": [-7.8, 0.12, -2.9], "extent": [3.2, 1.2]},
                {"id": "seat", "type": "surface", "tags": ["inside", "seat"], "at": [-9.6, 0.5, WZ1 - 1.2], "extent": [0.7, 0.7]},
                {"id": "workbench", "type": "floor", "tags": ["inside", "workbench"], "at": [-6.6, 0.06, WZ0 + 2.25], "extent": [1.0, 0.6]},
-               {"id": "pip", "type": "floor", "tags": ["inside", "pip"], "at": [-4.6, 0.06, WZ0 + 2.9], "extent": [1.0, 0.6]},
+               {"id": "agent", "type": "floor", "tags": ["inside", "agent"], "at": [-4.6, 0.06, WZ0 + 2.9], "extent": [1.0, 0.6]},
                {"id": "back-wall", "type": "wall", "tags": ["inside", "back"], "at": [-5.25, 2.0, -6.78], "normal": [0, 0, 1], "extent": [0.9, 0.9]},
                {"id": "bench", "type": "surface", "tags": ["inside", "bench"], "at": [-5.6, 1.1, -5.8], "extent": [1.8, 0.6]},
                {"id": "floor", "type": "floor", "tags": ["inside"], "at": [-6.0, 0.12, -3.4], "extent": [4.0, 1.2]},

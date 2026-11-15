@@ -1,9 +1,9 @@
-"""Pip's pictures and writing (see DESIGN-art.md).
+"""The agent's pictures and writing (see DESIGN-art.md).
 
-Pip draws by writing SVG itself. It is untrusted text that ends up in a browser and in a chat room, so it is never stored
+The agent draws by writing SVG itself. It is untrusted text that ends up in a browser and in a chat room, so it is never stored
 or served as written: it is parsed with a strict whitelist (shapes, paths, text, gradients; no scripts, images, links,
 styles, filters or references to anything outside the picture), size-limited, and re-serialised on a fixed canvas.
-Anything that could do more than paint is rejected with a plain reason so Pip can fix it and try again.
+Anything that could do more than paint is rejected with a plain reason so the agent can fix it and try again.
 """
 import re
 import xml.etree.ElementTree as ET
@@ -36,7 +36,7 @@ NUMBERISH = re.compile(r"^[\s\d.,+\-eE%a-zA-Z()#/:'\"_ ]*$")
 
 
 class SvgRejected(ValueError):
-    """The picture can't be accepted; the message tells Pip what to change."""
+    """The picture can't be accepted; the message tells the agent what to change."""
 
 
 PIXELS_MIN, PIXELS_MAX, PALETTE_MAX = 4, 32, 16
@@ -44,7 +44,7 @@ HEX = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
 def clean_pixels(rows, palette) -> tuple[list[str], dict]:
-    """A pixel picture as Pip wrote it: rows of letters, each letter a colour from its palette, "." for nothing. Checked, never trusted."""
+    """A pixel picture as the agent wrote it: rows of letters, each letter a colour from its palette, "." for nothing. Checked, never trusted."""
     if not isinstance(rows, list) or not all(isinstance(r, str) for r in rows):
         raise SvgRejected("`pixels` is a list of rows, each a string of palette letters (\".\" for nothing)")
     rows = [r.rstrip("\n") for r in rows]
@@ -178,7 +178,7 @@ def clean_writing(raw) -> str:
 
 
 def pace(state, settings, now: float | None = None) -> str:
-    """Why Pip can't finish another picture or piece of writing right now, or ''. Cheap in tokens, but a gallery of a
+    """Why the agent can't finish another picture or piece of writing right now, or ''. Cheap in tokens, but a gallery of a
     hundred near-identical sketches isn't worth keeping, so there is a daily limit and a short gap."""
     import time
     from datetime import datetime

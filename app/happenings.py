@@ -26,14 +26,14 @@ from . import world_pack
 
 SEVERITIES = ("minor", "medium", "major")
 NEUTRAL_AMOUNT = 2
-JOLT_SHARE = 0.3                  # the part of a happening that is a startle (surprise); the rest is meaning, which Pip reads
+JOLT_SHARE = 0.3                  # the part of a happening that is a startle (surprise); the rest is meaning, which the agent reads
 TONES = ("good", "bad", "neutral")
 CROSSOVER = 0.2                   # how often the lens is the unusual one for the tone
 LENS_USUAL = {"bad": ("sadness", "fear", "anger", "disgust"), "good": ("joy", "trust", "anticipation"), "neutral": ("surprise", "anticipation")}
 LENS_CROSS = {"bad": ("joy", "anticipation", "trust"), "good": ("sadness", "fear"), "neutral": emo.NAMES}
-RESOLVE_AFTER_TICKS = 2           # a happening is shown, then Pip gets one more tick to read it
+RESOLVE_AFTER_TICKS = 2           # a happening is shown, then the agent gets one more tick to read it
 RESOLVE_AFTER_MINUTES = 45        # or this long awake after it was first shown
-FRESH_HOURS = 3                   # a resolved happening stays in Pip's prompt this long
+FRESH_HOURS = 3                   # a resolved happening stays in the agent's prompt this long
 
 SEASONS = ("winter", "spring", "summer", "autumn")
 # What a season makes likelier (a missing entry is 1): which categories come up, and the tone of a category (see DESIGN-happenings.md, "Seasons").
@@ -79,7 +79,7 @@ def lens_amount(tone: str, severity: str) -> int:
 
 
 def split_amount(amount: int) -> tuple[int, int]:
-    """(jolt, meaning): the startle that lands at once and the meaning that waits for Pip's reading."""
+    """(jolt, meaning): the startle that lands at once and the meaning that waits for the agent's reading."""
     jolt = round(amount * JOLT_SHARE)
     return jolt, amount - jolt
 
@@ -165,7 +165,7 @@ def _mending_part(rng):
 
 
 def _proper_nouns(text: str) -> list[str]:
-    return sorted(set(re.findall(r"\b[A-Z][a-z]+\b", text)))      # Pip's own words: any capitalised word may be a name, sentence-first or not
+    return sorted(set(re.findall(r"\b[A-Z][a-z]+\b", text)))      # The agent's own words: any capitalised word may be a name, sentence-first or not
 
 
 def _plan_memory(w, tone, severity, rng):
@@ -219,7 +219,7 @@ def apply_effects(state, effects: list, now: float, title: str = "") -> None:
     for e in effects:
         kind = e["kind"]
         if kind == "coins":
-            state.add_coins("pip", max(e["delta"], -state.coins()))
+            state.add_coins("agent", max(e["delta"], -state.coins()))
         elif kind == "item":
             state.add_item(e["name"], e["qty"], e["item_kind"], e["description"], e["attrs"])
         elif kind == "food_loss":
@@ -340,7 +340,7 @@ async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, n
 
 
 async def from_modules(state, settings, gm, now: float | None = None) -> bool:
-    """Write and record the happenings live modules proposed. True when one happened (Pip should hear of it)."""
+    """Write and record the happenings live modules proposed. True when one happened (The agent should hear of it)."""
     now, made = now or time.time(), False
     for m in state.modules("live"):
         if m.get("happen"):
@@ -352,7 +352,7 @@ async def from_modules(state, settings, gm, now: float | None = None) -> bool:
 # --- happenings a module proposes (modules.py, `happen`) --------------------------------------------------------
 # A module decides that something happens and what kind of thing changes; the engine sets every amount by the severity, checks every
 # target is real and that the tone fits (a good turn only gives, a bad one only takes, a neutral one changes nothing), and keeps the
-# day's limits. The words are written and checked as for any happening, and Pip takes it the same way.
+# day's limits. The words are written and checked as for any happening, and the agent takes it the same way.
 INTENTS = ("coins", "item", "food_loss", "stat", "harm", "stop", "news", "memory", "request")   # `stat` (or the stat's own name) is any declared stat;
 #                                                                                     `harm` one that can run out (stakes.py)
 INTENTS_MAX, ABOUT_MAX, CATEGORY = 2, 300, re.compile(r"^[a-z][a-z -]{1,23}$")
@@ -529,13 +529,13 @@ async def _ask(state, settings, e: dict, c: dict, apply: bool) -> str:
     return line if line[-1] in ".!?" else line + "."
 
 
-# --- Pip's reading -----------------------------------------------------------------------------------------------
+# --- The agent's reading -----------------------------------------------------------------------------------------------
 def unresolved(state) -> list[dict]:
     return [h for h in state.happenings(10) if h["status"] == "applied"]
 
 
 def resolve(state, h: dict, emotion: str | None) -> dict:
-    """Land a happening's meaning on one emotion (the lens by default, or what Pip says; None: nothing)."""
+    """Land a happening's meaning on one emotion (the lens by default, or what the agent says; None: nothing)."""
     read_as = emotion or "nothing"
     moves = {emotion: h["meaning"]["amount"]} if emotion else {}
     state.update_happening(h["id"], read_as=read_as, status="resolved")
@@ -544,7 +544,7 @@ def resolve(state, h: dict, emotion: str | None) -> dict:
 
 
 def feel(state, settings, emotion: str, about=None, now: float | None = None) -> tuple[bool, str]:
-    """Pip says how it takes something that just happened (one of the eight emotions, or 'nothing'). Records a report when nothing is waiting."""
+    """The agent says how it takes something that just happened (one of the eight emotions, or 'nothing'). Records a report when nothing is waiting."""
     now = now or time.time()
     emotion = str(emotion or "").strip().lower()
     if emotion != "nothing" and emotion not in emo.NAMES:
@@ -566,7 +566,7 @@ def feel(state, settings, emotion: str, about=None, now: float | None = None) ->
 
 
 def perception(state, tools, now: float) -> list[str]:
-    """What Pip is told about a happening that is fresh or waiting to be read, and counts each showing."""
+    """What the agent is told about a happening that is fresh or waiting to be read, and counts each showing."""
     lines = []
     for h in state.happenings(5):
         if h["status"] not in ("applied", "resolved"):
@@ -585,7 +585,7 @@ def perception(state, tools, now: float) -> list[str]:
 
 
 def resolve_due(state, now: float) -> bool:
-    """Land the meaning of happenings Pip has been shown and has not read: one more tick later, or 45 minutes awake after the first showing."""
+    """Land the meaning of happenings the agent has been shown and has not read: one more tick later, or 45 minutes awake after the first showing."""
     if sleepmod.asleep(state):
         return False
     changed = False
@@ -599,7 +599,7 @@ def resolve_due(state, now: float) -> bool:
 
 # --- the monitor's step ------------------------------------------------------------------------------------------
 async def step(state, settings, gm, now: float | None = None) -> bool:
-    """Land the meaning of what Pip has been shown and not read. The dice are a module's (module_library/happenings.py); what modules
+    """Land the meaning of what the agent has been shown and not read. The dice are a module's (module_library/happenings.py); what modules
     propose is written by `from_modules`."""
     if settings.happenings == "off":
         return False

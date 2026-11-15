@@ -1,5 +1,5 @@
 # The library: a tall reading room opened like a dollhouse, walls of books, columns and steps at the front, a reading table under a lamp.
-# Pip reads in a chair at the table, or browses along the shelves.
+# The agent reads in a chair at the table, or browses along the shelves.
 import random
 
 LX0, LX1, LZ0, LZ1, LH = -9.0, 6.0, -10.0, -3.4, 4.4
@@ -32,7 +32,7 @@ def on_build(ctx):
     s += [_box([LX1 - LX0 - 1, LH - 0.6, 0.6], [(LX0 + LX1) / 2, (LH - 0.6) / 2, LZ0 + 0.5], tex("books", (6, 3))),
           _box([0.6, LH - 0.6, 4.6], [LX0 + 0.5, (LH - 0.6) / 2, LZ0 + 3.2], tex("books", (3, 3))),
           _box([LX1 - LX0 - 1, LH - 0.6, 0.8], [(LX0 + LX1) / 2, (LH - 0.6) / 2, LZ0 + 0.6], None, hitbox=True,
-               tip={"title": "The shelves", "text": "Real books: Pip can browse them, or settle in and read one."})]
+               tip={"title": "The shelves", "text": "Real books: $name can browse them, or settle in and read one."})]
     s += [_box([0.1, 3.4, 0.1], [x, 1.7, LZ0 + 1.0], tex("planks", (1, 2), color="#6b4a30"), rot=[-11.5, 0, 0]) for x in (2.4, 3.0)]
     wood = tex("planks", (2, 1), color="#7a5236")
     s += [_box([3.6, 0.14, 1.4], [-1.4, 0.9, -6.9], wood, tip={"title": "The reading table", "text": "A long table under a green-shaded lamp."})]
@@ -46,7 +46,7 @@ def on_build(ctx):
           {"shape": "plane", "size": [1.0, 1.4], "at": [LX1 - 1.4, 3.3, LZ0 + 0.21], "material": {"texture": "window", "emissive": "#ffb050", "lamp": 0.6}}]
     anchors = [{"id": "reading", "type": "floor", "tags": ["inside", "reading", "reserved"], "at": [-2.6, 0.51, -5.5], "extent": [0.8, 0.8]},
                {"id": "browse", "type": "floor", "tags": ["inside", "browse", "reserved"], "at": [-2.0, 0.12, LZ0 + 1.6], "extent": [6.0, 0.6]},
-               {"id": "pip", "type": "floor", "tags": ["inside", "pip", "reserved"], "at": [-2.0, 0.12, LZ0 + 1.6], "extent": [6.0, 0.6]},
+               {"id": "agent", "type": "floor", "tags": ["inside", "agent", "reserved"], "at": [-2.0, 0.12, LZ0 + 1.6], "extent": [6.0, 0.6]},
                {"id": "table", "type": "surface", "tags": ["inside", "table"], "at": [-2.2, 0.97, -6.9], "extent": [1.8, 1.2]},
                {"id": "people", "type": "floor", "tags": ["inside", "people", "reserved"], "at": [-4, 0.12, -5], "extent": [4, 1]},
                {"id": "steps", "type": "ground", "tags": ["outside"], "at": [(LX0 + LX1) / 2, 0.3, LZ1 + 0.9], "extent": [12, 1.2]}]

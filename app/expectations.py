@@ -1,6 +1,6 @@
 """Expectations and surprise (see DESIGN-expectations.md).
 
-Pip may say what it expects before a work session or an experiment; step durations compare Pip's own minutes guess
+The agent may say what it expects before a work session or an experiment; step durations compare the agent's own minutes guess
 with the time actually spent. The engine compares expectation and outcome and records the gap as plain fact
 ('better than expected', 'longer than expected') - no mood words, no scripted reaction. Everything is deterministic.
 """
@@ -15,7 +15,7 @@ EXPERIMENT_WORDS = {"nothing": "it failed", "clue": "it partly worked", "insight
                     "surprise": "it worked, with something unexpected"}
 SESSION_SURPRISE = 2     # |ordinal error| at or above this is a surprise
 STEP_LONGER, STEP_SHORTER = 1.8, 0.5
-CALIBRATION_MIN = 5      # predictions needed before Pip is shown a summary
+CALIBRATION_MIN = 5      # predictions needed before the agent is shown a summary
 CALIBRATION_WINDOW = 10
 CRAFT_MIN, CRAFT_WINDOW = 3, 5
 PROGRESS_WINDOW = 5      # learning progress compares the last N misses with the N before
@@ -54,7 +54,7 @@ def compare_step(guess: float, actual: float) -> dict | None:
 
 
 def calibration(rows: list[dict]) -> list[str]:
-    """Plain counts over Pip's latest session/experiment predictions (newest first), or [] if there are too few."""
+    """Plain counts over the agent's latest session/experiment predictions (newest first), or [] if there are too few."""
     rows = [r for r in rows if r["kind"] in ("session", "experiment")][:CALIBRATION_WINDOW]
     if len(rows) < CALIBRATION_MIN:
         return []

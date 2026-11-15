@@ -84,3 +84,31 @@ def test_the_engine_speaks_of_the_active_worlds_agent(tmp_path):
     finally:
         W.set_active(W.load(Settings()))
     assert "what Pip is doing and how it is" in commands.answer(None, Settings(), "/help")
+
+
+# --- no `pip` anywhere in the engine (DESIGN-engine-audit.md, A4: renamed completely, no aliases) -----------------------------------
+ANY_PIP = re.compile(r"(?i)\bpip\b(?!-world|-runner|'s world)")
+ROOT = APP.parent
+THE_OLD_NAME = {"state.py": "_name_the_agent", "config.py": "_approval"}   # where the old name must be named: the migration and the refusal
+
+
+def engine_text():
+    """Every file of the engine: its code (comments and docstrings too), the shipped modules, the builder's page and the renderer."""
+    yield from (p for p in sorted(APP.rglob("*")) if p.suffix in (".py", ".json", ".md") and "__pycache__" not in p.parts)
+    yield from sorted((ROOT / "web" / "world").glob("*.js"))
+
+
+def spans_of(path: Path, name: str) -> set:
+    """The lines of the function `name` (and, under mutation testing, of its mutated copies, whose names contain it)."""
+    lines = {i for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and name in n.name
+             for i in range(n.lineno, n.end_lineno + 1)}
+    assert lines, f"{path.name} has no {name}"
+    return lines
+
+
+@pytest.mark.parametrize("path", list(engine_text()), ids=lambda p: str(p.relative_to(ROOT)))
+def test_the_agent_is_called_the_agent_everywhere_in_the_engine(path):
+    allowed = spans_of(path, THE_OLD_NAME[path.name]) if path.parent == APP and path.name in THE_OLD_NAME else set()
+    found = [f"{i}: {line.strip()[:100]}" for i, line in enumerate(path.read_text().splitlines(), 1)
+             if ANY_PIP.search(line.replace("worlds/pip", "").replace('"worlds" / "pip"', "")) and i not in allowed]
+    assert not found, f"{path.relative_to(ROOT)} still says pip (say the agent; DESIGN-engine-audit.md A4):\n" + "\n".join(found)

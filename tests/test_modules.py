@@ -209,7 +209,7 @@ def test_the_runner_comes_from_the_settings():
 
 def test_module_settings_from_the_environment(monkeypatch):
     s = Settings.from_env()
-    assert (s.modules, s.module_runner, s.modules_approval) == ("on", "", "world,pip")
+    assert (s.modules, s.module_runner, s.modules_approval) == ("on", "", "world,agent")
     monkeypatch.setenv("MODULES", "off")
     monkeypatch.setenv("MODULE_RUNNER", "http://pip-runner:8100")
     monkeypatch.setenv("MODULES_APPROVAL", "")
@@ -238,13 +238,13 @@ def test_a_manifest_is_held_to_what_the_engine_offers(tmp_path):
     assert "a thing needs a `subject`" in bad(rule(kind="thing")) and bad(rule(kind="thing", subject="Moon Lamp")) == "there is no creation called 'Moon Lamp'"
     assert "only a thing has a subject" in bad(rule(subject="x")) and "only a thing" in bad(rule(reads=["subject"])) and "only a thing" in bad(rule(proposes=["runtime"]))
     assert "`events` is a list of public event kinds" in bad(rule(hooks=["on_event"], events=["inbox"]))
-    assert "`on_event` and `events` go together" in bad(rule(hooks=["on_event"])) and "go together" in bad(rule(events=["garden"]))
-    assert M.check_manifest(rule(hooks=["on_event"], events=["garden"]), "world")["events"] == ["garden"]
+    assert "`on_event` and `events` go together" in bad(rule(hooks=["on_event"])) and "go together" in bad(rule(events=["world_changed"]))
+    assert M.check_manifest(rule(hooks=["on_event"], events=["world_changed"]), "world")["events"] == ["world_changed"]
     assert "`consumes` maps item names" in bad(rule(proposes=["consume"], consumes={"oil": 6})) and "`consumes`" in bad(rule(proposes=["consume"], consumes={"oil": True}))
     assert "`consume` and `consumes` go together" in bad(rule(proposes=["consume"])) and "go together" in bad(rule(consumes={"oil": 1}))
     assert "`tends` is the name" in bad(rule(tends="tend"))
     clock(st)
-    thing = M.check_manifest(rule(kind="thing", subject="gear clock", tends="wind it", hooks=["on_tick", "on_tick"]), "pip", st)
+    thing = M.check_manifest(rule(kind="thing", subject="gear clock", tends="wind it", hooks=["on_tick", "on_tick"]), "agent", st)
     assert thing["subject"] == "gear clock" and thing["tends"] == "wind it" and thing["hooks"] == ["on_tick"]
     assert "`tends`" in bad(rule(kind="thing", subject="Gear Clock", tends="Wind!"))
 
@@ -377,18 +377,18 @@ async def test_a_day_has_a_call_budget_and_a_down_runner_costs_nothing(tmp_path)
 async def test_the_step_runs_due_times_events_and_ticks_and_pip_hears_each_line_once(tmp_path):
     s, st, agent = modular(tmp_path)
     src = ("def on_time(ctx):\n    return {'perceive': 'the bell for ' + str(ctx['due']), 'schedule': ctx['now'] + 3600, 'wake': True}\n"
-           "def on_event(ctx):\n    e = ctx['event']\n    return {'log': 'noticed ' + e['kind'] + ' ' + e['data']['crop']}\n"
+           "def on_event(ctx):\n    e = ctx['event']\n    return {'log': 'noticed ' + e['kind'] + ' ' + e['data']['text']}\n"
            "def on_tick(ctx):\n    return {'state': {'ticks': ctx['state'].get('ticks', 0) + 1, 'hour': ctx['time']['hour']}}\n")
-    man = rule(hooks=["on_time", "on_event", "on_tick"], proposes=["state", "perceive", "schedule", "wake", "log"], events=["garden"])
+    man = rule(hooks=["on_time", "on_event", "on_tick"], proposes=["state", "perceive", "schedule", "wake", "log"], events=["world_changed"])
     m = live(st, man, src)
-    st.log("garden", plot=1, crop="peas")                                         # before it was watching: not its business
+    st.log("world_changed", effect="e", text="peas")                                         # before it was watching: not its business
     st.update_module(m["id"], cursor=st.events(1)[0]["id"], due=NOW - 5)
-    st.log("garden", plot=2, crop="beans")
+    st.log("world_changed", effect="e", text="beans")
     st.log("say", text="hello")                                                   # not a kind it listens for
     assert await M.step(st, s, agent.runner, NOW) is True
     got = st.module(m["id"])
     assert got["due"] == NOW + 3600 and got["state"]["ticks"] == 1 and got["cursor"] == st.events(1)[0]["id"] - 1
-    assert [e["data"]["text"] for e in st.events(10) if e["kind"] == "module"] == ["noticed garden beans"]
+    assert [e["data"]["text"] for e in st.events(10) if e["kind"] == "module"] == ["noticed world_changed beans"]
     assert M.perception(st) == ["Things in the world:", f"- the bell for {NOW - 5}"] and M.perception(st) == []
     assert await M.step(st, s, agent.runner, NOW + 60) is False and st.module(m["id"])["state"]["ticks"] == 2
     assert await M.step(st, s, None, NOW + 9999) is False and st.module(m["id"])["state"]["ticks"] == 2
@@ -414,7 +414,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     assert set(bare) == {"now", "seed", "state", "offers", "due"} and bare["seed"] == int(NOW) * 7919 + 2
     full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] == "" and 0 <= full["time"]["hour"] < 24
-    assert full["pip"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
+    assert full["agent"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
                             "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"} and full["weather"] is None
     assert full["subject"]["name"] == "Gear Clock" and full["subject"]["capabilities"]["timekeeper"] == {"drift_per_day": 5}
     assert {"name": "oil", "qty": 2, "kind": "material", "description": "", "attrs": {}} in full["items"] and full["facts"] == {"fair": {"fair_today": True}}
@@ -456,7 +456,7 @@ async def test_a_new_version_replaces_the_old_when_it_goes_live(tmp_path):
     one = await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, now=NOW)
     await M.approve(st, s, agent.runner, one["id"], now=NOW)
     assert "no module #99" in (await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, replaces=99))["error"]
-    assert (await M.propose(st, s, agent.runner, "pip", BELLS_MAN, BELLS, replaces=one["id"]))["error"] == "your programs make one of your creations work"
+    assert (await M.propose(st, s, agent.runner, "agent", BELLS_MAN, BELLS, replaces=one["id"]))["error"] == "your programs make one of your creations work"
     two = await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS.replace("ring the bell", "ring it"), replaces=one["id"], now=NOW)
     assert st.module(two["id"])["version"] == 2 and st.module(one["id"])["status"] == "live"
     await M.approve(st, s, agent.runner, two["id"], now=NOW)
@@ -479,8 +479,8 @@ async def test_rejecting_disabling_and_turning_back_on(tmp_path):
 
 @pytest.mark.asyncio
 async def test_without_approval_a_clean_module_goes_live_and_a_dirty_one_still_waits(tmp_path):
-    s, st, agent = modular(tmp_path, modules_approval="pip")
-    assert M.needs_approval(s, "pip") and not M.needs_approval(s, "world")
+    s, st, agent = modular(tmp_path, modules_approval="agent")
+    assert M.needs_approval(s, "agent") and not M.needs_approval(s, "world")
     r = await M.propose(st, s, agent.runner, "world", BELLS_MAN, BELLS, now=NOW)
     assert r["status"] == "live" and [e["data"]["by"] for e in st.events(5) if e["kind"] == "module_live"] == ["auto"]
     assert st.module(r["id"])["offers"]

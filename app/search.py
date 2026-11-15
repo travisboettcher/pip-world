@@ -1,14 +1,14 @@
 """Web search (see DESIGN-extract.md).
 
 Where the answers come from is a *provider*: a small class registered by name (`@register("tavily")`) that turns a query into `Answers`.
-This module is everything that does not care which: the answer type, how it is worded for Pip, the registry, and `run`. Pick the provider
+This module is everything that does not care which: the answer type, how it is worded for the agent, the registry, and `run`. Pick the provider
 with `SEARCH_PROVIDER`; add one by writing a module that registers a class with `ready` and `async fetch(query, http)`, then importing it
-at the bottom. What comes back is untrusted text from the internet (Pip's guide says so); nothing here follows instructions found in it.
+at the bottom. What comes back is untrusted text from the internet (The agent's guide says so); nothing here follows instructions found in it.
 """
 from dataclasses import dataclass, field
 from typing import Callable
 
-MAX_CHARS = 1200      # what Pip reads of one search, at most
+MAX_CHARS = 1200      # what the agent reads of one search, at most
 HIT_CHARS = 200       # of each result
 
 
@@ -46,13 +46,13 @@ def ready(settings) -> bool:
 
 
 def format(answers: Answers) -> str:
-    """What Pip reads: the answer, then a line per result."""
+    """What the agent reads: the answer, then a line per result."""
     lines = [answers.summary] + [f"- {h.title}: {h.text[:HIT_CHARS]}" for h in answers.hits]
     return "\n".join(line for line in lines if line)[:MAX_CHARS]
 
 
 async def run(settings, query: str, http=None) -> str | None:
-    """Search and word the answer for Pip: '' if nothing came back, None if no provider is set up."""
+    """Search and word the answer for the agent: '' if nothing came back, None if no provider is set up."""
     source = provider(settings)
     if not source or not source.ready:
         return None

@@ -1,11 +1,11 @@
 """What makes talk read like talk, shared by every kind of conversation in the world: a check for saying the same thing twice, and the
-transcripts Pip is shown of a visit and of a chat with a visitor (see docs/DESIGN-conversation.md)."""
+transcripts the agent is shown of a visit and of a chat with a visitor (see docs/DESIGN-conversation.md)."""
 import difflib
 import re
 
 SHINGLE = 6           # a run of this many words said before is a repeat
 SIMILAR = 0.8         # or a line this alike as a whole
-THREAD_LINES = 10     # lines of a chat with a visitor Pip is shown
+THREAD_LINES = 10     # lines of a chat with a visitor the agent is shown
 THREAD_DAYS = 3
 VISIT_LINES = 8
 
@@ -29,7 +29,7 @@ def repeats(text: str, earlier) -> bool:
 
 
 def visit_lines(state, name: str, since: float) -> list[str]:
-    """This visit, in full: what `name` and Pip have said to each other since Pip arrived (oldest first)."""
+    """This visit, in full: what `name` and the agent have said to each other since the agent arrived (oldest first)."""
     out = []
     for e in reversed(state.events(200)):
         if e["ts"] < since:
@@ -43,7 +43,7 @@ def visit_lines(state, name: str, since: float) -> list[str]:
 
 
 def thread_lines(state, sender: str, now: float, skip_ids=()) -> list[str]:
-    """A chat with a visitor so far (oldest first): what they wrote, what Pip answered, and the postcards Pip sent on the channel they write on.
+    """A chat with a visitor so far (oldest first): what they wrote, what the agent answered, and the postcards the agent sent on the channel they write on.
     Messages in `skip_ids` (shown as the inbox) are left out."""
     events = [e for e in reversed(state.events(400)) if now - e["ts"] <= THREAD_DAYS * 86400]
     theirs = [e["data"] for e in events if e["kind"] == "inbox" and e["data"].get("sender") == sender

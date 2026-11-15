@@ -1,8 +1,8 @@
 """The conversation scene (docs/DESIGN-conversation.md, part 2).
 
-When someone Pip is with in person (a neighbor at home, a resident at their place) has spoken this visit, the talk runs as its own short scene instead of
-through Pip's world turn: Pip's turns get a small prompt (who it is with, why it came, what it has with it, the date, and the talk so far) and only
-`say` and `feel`; the other side answers at once; it goes on until either says goodbye, Pip falls silent, or SCENE_TURNS of Pip's lines. Then Pip's
+When someone the agent is with in person (a neighbor at home, a resident at their place) has spoken this visit, the talk runs as its own short scene instead of
+through Pip's world turn: The agent's turns get a small prompt (who it is with, why it came, what it has with it, the date, and the talk so far) and only
+`say` and `feel`; the other side answers at once; it goes on until either says goodbye, the agent falls silent, or SCENE_TURNS of the agent's lines. Then the agent's
 world turn picks up with the whole talk in view.
 """
 from . import conversation as conv
@@ -23,7 +23,7 @@ SAY = ToolSpec("say", "Say your next line to the one you are with: one to three 
 
 
 def partner(state) -> dict | None:
-    """Who Pip is with in person, if anyone: the neighbor whose home it is in, or a resident of the place it is at."""
+    """Who the agent is with in person, if anyone: the neighbor whose home it is in, or a resident of the place it is at."""
     here = places.present_at(state)
     if not here:
         return None
@@ -31,7 +31,7 @@ def partner(state) -> dict | None:
 
 
 def waiting(state) -> dict | None:
-    """The one Pip should talk with now: they have spoken this visit, and this visit's talk has not been had yet."""
+    """The one the agent should talk with now: they have spoken this visit, and this visit's talk has not been had yet."""
     ch = partner(state)
     visit = state.meta("arrived_at")
     if not ch or not visit or state.meta("talk_done") == visit:
@@ -50,7 +50,7 @@ def system(persona: str, ch: dict) -> str:
 
 
 def prompt(state, ch: dict, clock: str, now: float, on_mind: list[str] = ()) -> str:
-    """Pip's turn in a talk: who it is with, why it came, what it has with it, and everything said this visit."""
+    """The agent's turn in a talk: who it is with, why it came, what it has with it, and everything said this visit."""
     people = {p["name"]: p["notes"] for p in state.people()}
     about = people.get(ch["name"]) or ch.get("about") or ""
     todos = [m["text"] for m in reversed(state.memories("todo", status="open", limit=40)) if State.related(ch["name"], m["text"])][:TODOS_SHOWN]

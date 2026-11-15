@@ -205,7 +205,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.post("/items")
     def give_item(g: Gift):
-        """A visitor gives Pip something: it joins the inventory and Pip is told (so it can react)."""
+        """A visitor gives the agent something: it joins the inventory and the agent is told (so it can react)."""
         agent: Agent = app.state.agent
         try:
             item = agent.state.add_item(g.name, g.qty, g.kind, g.description, g.attrs)
@@ -304,7 +304,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/map")
     def get_map():
-        """Pip's map: every place with its spot, and where Pip is (see worldmap.py)."""
+        """The agent's map: every place with its spot, and where the agent is (see worldmap.py)."""
         agent: Agent = app.state.agent
         return worldmap.snapshot(agent.state, settings, agent.library)
 
@@ -316,7 +316,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/world/scene")
     def get_world_scene(place: str | None = None):
-        """Everything a place's scene draws from (where Pip is, unless `place` says otherwise)."""
+        """Everything a place's scene draws from (where the agent is, unless `place` says otherwise)."""
         agent: Agent = app.state.agent
         got = world_view.scene_view(agent.state, settings, agent.library, place)
         if got is None:
@@ -325,7 +325,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/places")
     def get_places():
-        """Places characters told Pip about (heard-of, real, removed), with who mentioned them and who lives there;
+        """Places characters told the agent about (heard-of, real, removed), with who mentioned them and who lives there;
         and the built-ins."""
         agent: Agent = app.state.agent
         st = agent.state
@@ -362,7 +362,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @app.get("/library/bookmarks")
     def library_bookmarks():
-        """The books Pip has read in, most recent first: what live modules publish as `bookmarks` (the reading module)."""
+        """The books the agent has read in, most recent first: what live modules publish as `bookmarks` (the reading module)."""
         return [b for m in app.state.agent.state.modules("live") for b in ((m["facts"] or {}).get("bookmarks") or []) if isinstance(b, dict)]
 
     # --- modules (docs/DESIGN-modules.md): anyone sees what's live; only the owner sees proposals and decides ---------------------

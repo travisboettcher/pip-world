@@ -15,7 +15,7 @@ from tests.test_projects import make, report
 NEW = {"label": "the old mill", "kind": "sight", "description": "An old water mill on the river. Its wheel is quiet now. People come to watch the water.",
        "distance": "near", "items": ["Watercress", "driftwood"], "setting": "riverside"}
 LAYOUT = ('def on_build(ctx):\n    return {"shapes": [{"shape": "box", "size": [30, 2, 16], "at": [0, -1, -4], "faces": {"top": {"texture": "grass"},'
-          ' "side": {"texture": "cliff"}}}], "anchors": [{"id": "pip", "type": "ground", "tags": ["pip"], "at": [0, 0, 0]}]}\n')
+          ' "side": {"texture": "cliff"}}}], "anchors": [{"id": "agent", "type": "ground", "tags": ["agent"], "at": [0, 0, 0]}]}\n')
 
 
 def man(name="old-mill", **new):

@@ -1,9 +1,9 @@
-"""Lasting changes Pip can make to its world (see DESIGN-creations.md, "Pip changes its world").
+"""Lasting changes the agent can make to its world (see DESIGN-creations.md, "the agent changes its world").
 
 A finished project may carry a `world` capability naming one effect from this registry. The GM proposes it only for work that
 plainly made that kind of change; the engine then checks it (the effect exists, the project is hard enough, the project's own
 words are about it, the world has room under a hard cap) and applies it once. Anything lasting that is *not* in this registry
-still happens as an ordinary creation: a pond Pip digs is a thing in the world with a description, just without a mechanical
+still happens as an ordinary creation: a pond the agent digs is a thing in the world with a description, just without a mechanical
 effect. To give a new kind of change teeth, add one entry here (a few lines): nothing else needs to know.
 """
 from dataclasses import dataclass

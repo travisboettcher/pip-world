@@ -1,4 +1,4 @@
-# A wooden bench, to sit and look from. Its seat is where Pip sits.
+# A wooden bench, to sit and look from. Its seat is where the agent sits.
 def on_build(ctx):
     wood = {"texture": "planks", "repeat": [2, 1], "color": "#7a5236"}
     return {"shapes": [{"shape": "box", "size": [2.2, 0.12, 0.6], "at": [0, 0.5, 0], "material": wood},

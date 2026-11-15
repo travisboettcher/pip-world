@@ -1,7 +1,7 @@
 """Wishes of every kind (docs/DESIGN-wishes.md).
 
-A wish is a note on the wishlist with a `kind`: a thing to have, an activity to do, an ability Pip wishes it had, or an idea it wishes it understood. A wish for a
-thing is shown with where it could be had; the nightly reflection may add a couple of wishes of its own; and the wishes that are not things are shared with Pip's friend
+A wish is a note on the wishlist with a `kind`: a thing to have, an activity to do, an ability the agent wishes it had, or an idea it wishes it understood. A wish for a
+thing is shown with where it could be had; the nightly reflection may add a couple of wishes of its own; and the wishes that are not things are shared with the agent's friend
 without being asked (one a day, through the same channel as its postcards).
 """
 import difflib
@@ -29,7 +29,7 @@ SHARED_KEPT = 200
 
 def sources(state, text: str, now: float) -> list[str]:
     """Where a wished-for thing could be had: places selling something like it, with today's price (what live modules say is `for_sale`),
-    then places Pip has been that have turned it up."""
+    then places the agent has been that have turned it up."""
     from .modules import for_sale
     sold, found, seen = [], [], set()
     for place, item, price, whose in for_sale(state):
@@ -49,7 +49,7 @@ MAKING = re.compile(r"\b(make|making|made|build|building|craft|create|mend|repai
 
 
 def doings(state, settings, library, text: str, tools) -> list[str]:
-    """Where a wish to do something (or be able to) could be tried: places Pip knows whose verbs share its words, and a project when it is about making."""
+    """Where a wish to do something (or be able to) could be tried: places the agent knows whose verbs share its words, and a project when it is about making."""
     from .tools import content_words
     want = content_words(text)
     out = []
@@ -95,7 +95,7 @@ def _today(now: float) -> str:
 
 
 async def share_step(state, settings, outreach, now: float | None = None) -> bool:
-    """Tell Pip's friend, unasked, about a wish that is not a thing: one postcard a day at most, and only when postcards may go out. True when one was sent."""
+    """Tell the agent's friend, unasked, about a wish that is not a thing: one postcard a day at most, and only when postcards may go out. True when one was sent."""
     if settings.wish_share != "on":
         return False
     now = now or time.time()

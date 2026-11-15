@@ -1,9 +1,9 @@
-"""Modules: features the world and Pip write as code (docs/DESIGN-modules.md).
+"""Modules: features the world and the agent write as code (docs/DESIGN-modules.md).
 
 A module is source code plus a manifest. Its hooks are pure functions run in the sandbox (sandbox.py, in the `pip-runner` container): each
 gets one JSON `ctx` and returns a dict of proposals. Here the engine is the referee: it checks every proposal against the manifest and the
 world's rules and applies the call's proposals together, or refuses them all with a reason the author can read. Step 1 (this file): things
-and rules, with state, facts, lines for Pip, events, a schedule, offers, consuming Pip's materials, and their creation's runtime.
+and rules, with state, facts, lines for the agent, events, a schedule, offers, consuming the agent's materials, and their creation's runtime.
 """
 import json
 import logging
@@ -27,16 +27,16 @@ log = logging.getLogger(__name__)
 API = 1
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
-READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
+READS = ("time", "weather", "agent", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
          "answers", "making", "found")
 PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
             "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
             "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
-AUTHORS = ("world", "pip", SHIPPED)
-PIP_READS = ("time", "weather", "agent", "pip", "subject", "items", "facts", "visitors")                      # what Pip's own programs may know, and do (step 3)
-PIP_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
-MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often Pip's work fails to fire
+AUTHORS = ("world", "agent", SHIPPED)
+AGENT_READS = ("time", "weather", "agent", "subject", "items", "facts", "visitors")                      # what the agent's own programs may know, and do (step 3)
+AGENT_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
+MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often the agent's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
 RUNTIME_KEYS = {"clock_set_at": "number", "clock_offset": "number", "tended_until": "number", "halted_at": "number", "stop_logged": "bool",
                 "needs_part": "part"}                       # a thing's creation fields the engine's readers use (creations.py)
@@ -119,7 +119,7 @@ def check_manifest(m, author: str, state=None) -> dict:
     if "on_answer" in out["hooks"] and "ask" not in out["proposes"]:
         raise Refused("`on_answer` gets the words it asked for: it needs `ask` among what it proposes")
     if kind in ("part", "place"):
-        if author == "pip" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
+        if author == "agent" or out["hooks"] != ["on_build"] or out["reads"] or out["proposes"]:
             raise Refused("parts and places are the world's; they have just on_build, and read and propose nothing")
         if kind == "part":
             out["params"] = _params(m, lists=False)
@@ -142,10 +142,10 @@ def check_manifest(m, author: str, state=None) -> dict:
             out["place"] = m["place"].strip()[:60]
         out.update(events=[], consumes={})
         return out
-    if author == "pip":
+    if author == "agent":
         if kind != "thing":
             raise Refused("your programs make one of your creations work")
-        extra = [v for v in out["reads"] if v not in PIP_READS] + [v for v in out["proposes"] if v not in PIP_PROPOSES]
+        extra = [v for v in out["reads"] if v not in AGENT_READS] + [v for v in out["proposes"] if v not in AGENT_PROPOSES]
         if extra:
             raise Refused(f"your programs can't use: {', '.join(extra)}")
     subject = str(m.get("subject") or "").strip()
@@ -214,7 +214,7 @@ def check_manifest(m, author: str, state=None) -> dict:
         out["sources"] = list(names)
     logs = m.get("logs") or []
     if not isinstance(logs, list) or any(not isinstance(k, str) or not KIND_WORD.match(k) or k in engine_event_kinds() for k in logs) \
-            or len(set(logs)) != len(logs) or (logs and author == "pip"):
+            or len(set(logs)) != len(logs) or (logs and author == "agent"):
         raise Refused("`logs` lists the kinds of event it logs: its own (a word, not a kind the engine logs itself), and not for "
                       f"{world_pack.active().agent.name}'s programs")
     if bool(logs) != ("event" in out["proposes"]):
@@ -226,7 +226,7 @@ def check_manifest(m, author: str, state=None) -> dict:
 
 def _tools(tools, author: str) -> list:
     """Tools a module offers the agent: each a name, a line of help, the arguments it takes (a small JSON schema) and where it works."""
-    if author == "pip" or not isinstance(tools, list) or not 1 <= len(tools) <= TOOLS_MAX:
+    if author == "agent" or not isinstance(tools, list) or not 1 <= len(tools) <= TOOLS_MAX:
         raise Refused(f"`tools` is a list of up to {TOOLS_MAX} {{name, help, params?, where?}} (and not for {world_pack.active().agent.name}'s programs)")
     out = []
     for t in tools:
@@ -366,7 +366,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
     if "weather" in reads:
         w = published(state, "weather")
         ctx["weather"] = {k: w.get(k) for k in ("condition", "temp", "unit", "daylight")} if isinstance(w, dict) else None
-    if "agent" in reads or "pip" in reads:                   # `pip` is the old name of the `agent` read, kept for modules written with it
+    if "agent" in reads:
         a = state.agent()
         from . import places
         me = {"where": a["location"], "at_home": a["location"] == places.HOME, "activity": a["activity"], "asleep": a["activity"] == "sleeping",
@@ -375,7 +375,7 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
                       "tired": stats_mod.tired(state), "tiring": stats_mod.tiring(settings), "busy": busy_line(state, now),
                       "tools": sorted(set(settings.tools)),           # the engine's tools the agent has (TOOLS), for a hint that names one
                       **{k: getattr(world_pack.active().agent, k) for k in ("they", "them", "their", "possessive")}}
-        ctx.update({k: me for k in ("agent", "pip") if k in reads})
+        ctx["agent"] = me
     if "subject" in reads:
         c = _creation(state, man["subject"])
         ctx["subject"] = None if not c else {"name": c["name"], "quality": c["quality"], "description": c["description"],
@@ -553,7 +553,7 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("runtime", _runtime(result["runtime"])))
     if "show" in result:
         shown = _show(result["show"])
-        if m["author"] == "pip" and any(o["at"]["place"] != "subject" for o in shown):
+        if m["author"] == "agent" and any(o["at"]["place"] != "subject" for o in shown):
             raise Refused("your things show themselves where they are: `at.place` is \"subject\"")
         changes.append(("show", shown))
     voices = m.get("voices") or []
@@ -1074,14 +1074,14 @@ def _voices(state, m: dict, v) -> list:
 
 
 def _speak(voices: list, v) -> dict:
-    """A line spoken as one of the module's own voices (to Pip, or just aloud)."""
+    """A line spoken as one of the module's own voices (to the agent, or just aloud)."""
     if not isinstance(v, dict) or not isinstance(v.get("as"), str) or not isinstance(v.get("text"), str) \
             or not v["text"].strip() or len(v["text"]) > SPEAK_MAX:
         raise Refused(f"`speak` is {{as, text, to_agent?}}: text is a line of up to {SPEAK_MAX} characters")
     voice = next((x for x in voices if x["name"].lower() == v["as"].strip().lower()), None)
     if not voice:
         raise Refused("it can only speak as its own voices: " + (", ".join(x["name"] for x in voices) or "it has none"))
-    return {"name": voice["name"], "text": v["text"].strip(), "to_agent": v.get("to_agent", v.get("to_pip")) is True}   # to_pip: the old name
+    return {"name": voice["name"], "text": v["text"].strip(), "to_agent": v.get("to_agent") is True}
 
 
 def _ask(v) -> dict:
@@ -1148,7 +1148,7 @@ def _show(objs) -> list:
 
 
 def _consume(state, may: dict, want) -> list:
-    """Materials to take from Pip's belongings: only what the manifest allows, and only what Pip has."""
+    """Materials to take from the agent's belongings: only what the manifest allows, and only what the agent has."""
     if not isinstance(want, dict):
         raise Refused("`consume` maps item names to quantities")
     take = []
@@ -1227,7 +1227,7 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             state.update_character(ch["id"], next_chatter_at=now)            # written on the engine's next step, as letters are answered
             budget["letter"] += 1
         elif kind == "coins":
-            state.add_coins("pip", val)
+            state.add_coins("agent", val)
         elif kind == "part_with":
             c = _creation(state, val["creation"])
             state.give_creation(c["id"], val["to"])
@@ -1347,8 +1347,8 @@ async def call(state, settings, runner, m: dict, hook: str, now: float, trial: b
 
 
 def misfires(state, m: dict, hook: str, now: float) -> bool:
-    """Pip's programs run in things Pip made, and a thing is only as good as its making: now and then a rough one doesn't fire."""
-    if m["author"] != "pip" or hook == "on_install":
+    """The agent's programs run in things the agent made, and a thing is only as good as its making: now and then a rough one doesn't fire."""
+    if m["author"] != "agent" or hook == "on_install":
         return False
     c = _creation(state, m["manifest"].get("subject", ""))
     chance = MISFIRE.get(c["quality"], 0.0) if c else 0.0
@@ -1357,7 +1357,7 @@ def misfires(state, m: dict, hook: str, now: float) -> bool:
 
 # --- the engine's step -----------------------------------------------------------------------------------------------------------
 async def step(state, settings, runner, now: float | None = None) -> bool:
-    """Run every live module's hooks that are due: its tick, its scheduled time, the events it listens for. True if Pip should wake."""
+    """Run every live module's hooks that are due: its tick, its scheduled time, the events it listens for. True if the agent should wake."""
     now, wake, local = now or time.time(), False, LocalRunner()
     for m in state.modules("live"):
         hooks = m["manifest"]["hooks"]
@@ -1375,7 +1375,7 @@ async def step(state, settings, runner, now: float | None = None) -> bool:
             state.update_module(m["id"], cursor=m["cursor"])
         if "on_tick" in hooks and m["status"] == "live":
             wake |= (await call(state, settings, run, m, "on_tick", now))["wake"]
-        if m.get("heard") and m["status"] == "live":           # what Pip said to its voices, once each
+        if m.get("heard") and m["status"] == "live":           # what the agent said to its voices, once each
             heard = m["heard"]
             state.update_module(m["id"], heard=[])
             m["heard"] = []
@@ -1539,7 +1539,7 @@ def status_lines(state) -> list[str]:
 
 
 async def answer(state, settings, gm, runner, now: float | None = None) -> bool:
-    """Ask the model what live modules asked for, and hand each its words (empty when there were none). True if Pip should wake."""
+    """Ask the model what live modules asked for, and hand each its words (empty when there were none). True if the agent should wake."""
     now, wake, local = now or time.time(), False, LocalRunner()
     for m in state.modules("live"):
         run = runner or (local if m["author"] == SHIPPED else None)
@@ -1587,7 +1587,7 @@ def voice_where(state, m: dict, v: dict) -> str | None:
 
 
 def voices_here(state) -> list[str]:
-    """Who Pip can talk to where it is, among modules' voices."""
+    """Who the agent can talk to where it is, among modules' voices."""
     from . import places
     here = places.present_at(state)
     found = [v for m in state.modules("live") for v in m.get("voices") or [] if here and voice_where(state, m, v) == here]
@@ -1597,7 +1597,7 @@ def voices_here(state) -> list[str]:
 
 
 def hear(state, m: dict, voice: dict, text: str, now: float | None = None) -> bool:
-    """Pip spoke to a module's voice: kept for its on_message. False if the module has no ears."""
+    """The agent spoke to a module's voice: kept for its on_message. False if the module has no ears."""
     if "on_message" not in m["manifest"]["hooks"]:
         return False
     state.update_module(m["id"], heard=(m.get("heard") or [])[-4:] + [{"to": voice["name"], "text": str(text)[:1000], "from": f"{world_pack.active().agent.name}", "ts": now or time.time()}])
@@ -1605,7 +1605,7 @@ def hear(state, m: dict, voice: dict, text: str, now: float | None = None) -> bo
 
 
 def perception(state) -> list[str]:
-    """Lines live modules have for Pip since it last looked (each is shown once)."""
+    """Lines live modules have for the agent since it last looked (each is shown once)."""
     lines = []
     for m in state.modules("live"):
         if m["lines"]:
@@ -1615,7 +1615,7 @@ def perception(state) -> list[str]:
 
 
 def where(state, m: dict, place: str) -> str | None:
-    """The place key an object's `at.place` means: "home"; "subject" (where a thing's creation is: at home while Pip has it); or a key."""
+    """The place key an object's `at.place` means: "home"; "subject" (where a thing's creation is: at home while the agent has it); or a key."""
     from . import places
     if place == "home":
         return places.HOME
@@ -1636,8 +1636,11 @@ def objects_for(state, key: str, kind: str) -> tuple[list[dict], list[str]]:
 def scene_objects(state, key: str, kind: str) -> list[dict]:
     """The objects for the scene view: what to draw and where (anchors.py worked out the where)."""
     placed, _ = objects_for(state, key, kind)
+    name = world_pack.active().agent.name
+    told = lambda tip: {k: v.replace("$name", name) for k, v in tip.items()}  # noqa: E731   # "$name": the agent, in any world
     return [{"key": o["key"], "rows": o["sprite"]["rows"], "palette": o["sprite"]["palette"], "frame": o["frame"], "w": o["w"], "h": o["h"],
-             "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], **{k: o[k] for k in ("motion", "tip") if k in o}} for o in placed]
+             "pos": o["pos"], "normal": o["normal"], "upright": o["upright"], **({"motion": o["motion"]} if "motion" in o else {}),
+             **({"tip": told(o["tip"])} if "tip" in o else {})} for o in placed]
 
 
 def live_named(state, name: str) -> dict | None:
@@ -1650,12 +1653,12 @@ def bound(state) -> dict:
     return {m["manifest"]["subject"].lower(): m for m in state.modules("live") if m["kind"] == "thing"}
 
 
-# --- Pip's own programs (step 3) -------------------------------------------------------------------------------------------------
+# --- The agent's own programs (step 3) -------------------------------------------------------------------------------------------------
 PROGRAMS_PER_DAY = 6
 
 
 def program_manifest(source: str, creation: dict, events=None) -> dict:
-    """The manifest for one of Pip's programs, worked out from the code: the hooks it defines; everything Pip's programs may read and do.
+    """The manifest for one of the agent's programs, worked out from the code: the hooks it defines; everything the agent's programs may read and do.
     Raises sandbox.Rejected (bad code) or Refused (a hook without what it needs)."""
     import ast
     tree = sandbox.check(source)
@@ -1667,18 +1670,18 @@ def program_manifest(source: str, creation: dict, events=None) -> dict:
     if ("on_event" in hooks) != bool(events):
         raise Refused("on_event needs `events`: the kinds of thing that happen it listens for" if "on_event" in hooks
                       else "`events` is only for a program with on_event")
-    man = {"name": f"{slug(creation['name'])}-by-pip", "kind": "thing", "api": API, "subject": creation["name"], "hooks": hooks,
-           "reads": list(PIP_READS), "proposes": list(PIP_PROPOSES), "events": events, "consumes": {"*": 2}}
+    man = {"name": f"{slug(creation['name'])}-by-agent", "kind": "thing", "api": API, "subject": creation["name"], "hooks": hooks,
+           "reads": list(AGENT_READS), "proposes": list(AGENT_PROPOSES), "events": events, "consumes": {"*": 2}}
     if "upkeep" in creation["spec"]["capabilities"]:
         man["tends"] = "tend"                                       # if the program offers "tend", the tend tool uses it
     return man
 
 
 def programs(state) -> dict:
-    """Pip's newest program for each of its creations (by creation name, lowercase), whatever became of it."""
+    """The agent's newest program for each of its creations (by creation name, lowercase), whatever became of it."""
     out = {}
     for m in state.modules():
-        if m["author"] == "pip" and m["status"] != "replaced":
+        if m["author"] == "agent" and m["status"] != "replaced":
             out[m["subject"].lower()] = m
     return out
 
@@ -1690,7 +1693,7 @@ def program_status(m: dict) -> str:
 
 
 def trial_text(report: dict) -> str:
-    """A dry run, told to Pip in a few lines."""
+    """A dry run, told to the agent in a few lines."""
     if report.get("skipped"):
         return "It couldn't be tried just now."
     parts = [f"On a trial run it was called {report['calls']} times."]
@@ -1745,7 +1748,7 @@ def offers_line(m: dict) -> str:
 
 
 async def act(state, settings, runner, m: dict, action: str, args: dict, now: float | None = None) -> str:
-    """Pip uses one of a module's offers (through use_item or tend). Returns the result for Pip."""
+    """The agent uses one of a module's offers (through use_item or tend). Returns the result for the agent."""
     now = now or time.time()
     names = [o["name"] for o in m["offers"]]
     if action not in names:
@@ -1820,7 +1823,7 @@ async def approve(state, settings, runner, module_id: int, note: str = "", now: 
     m = state.module(module_id)
     if m["kind"] == "place" and m["manifest"].get("new"):
         from . import module_places
-        module_places.introduce(state, m, now)                       # someone tells Pip about it
+        module_places.introduce(state, m, now)                       # someone tells the agent about it
     if runner and "on_install" in m["manifest"]["hooks"]:
         await call(state, settings, runner, m, "on_install", now)
     return {"id": module_id, "status": "live"}
@@ -1879,7 +1882,7 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
     from .state import State
     if m["kind"] in ("part", "place"):
         return await _try_build(state, settings, runner, m, now)
-    tmp = Path(tempfile.mkdtemp(prefix="pip-dry-"))
+    tmp = Path(tempfile.mkdtemp(prefix="module-dry-"))
     copy_db = tmp / "world.db"
     try:
         with state.lock:

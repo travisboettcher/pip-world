@@ -20,11 +20,8 @@ log = logging.getLogger("state")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  hunger REAL NOT NULL, energy REAL NOT NULL,
   mood TEXT NOT NULL, location TEXT NOT NULL, activity TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  hunger_alerted INTEGER NOT NULL DEFAULT 0,
-  energy_alerted INTEGER NOT NULL DEFAULT 0,
   updated_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS stats (           -- the agent's stats, as its world declares them (stats.py)
@@ -245,15 +242,15 @@ class State:
                 ("inbox", "source", "TEXT NOT NULL DEFAULT 'web'"),           # 'web' or the channel it came through
                 ("inbox", "conversation", "TEXT NOT NULL DEFAULT ''"),        # the channel's thread reference
                 ("inbox", "external_id", "TEXT NOT NULL DEFAULT ''"),         # the channel's message id (replay guard)
-                ("works", "revisions", "INTEGER NOT NULL DEFAULT 0"),           # times Pip redrew it after looking
+                ("works", "revisions", "INTEGER NOT NULL DEFAULT 0"),           # times the agent redrew it after looking
                 ("events", "importance", "INTEGER NOT NULL DEFAULT 0"),
                 ("reflections", "grounded", "INTEGER NOT NULL DEFAULT 1"),     # 0 = a hunch: nothing cited / unsupported
                 ("reflections", "support", "TEXT NOT NULL DEFAULT 'legacy'"),  # supported|partly|unsupported|unchecked|none|legacy
-                ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what Pip said it expects (may be empty)
+                ("work_session", "expect", "TEXT NOT NULL DEFAULT ''"),     # what the agent said it expects (may be empty)
                 ("work_session", "about", "TEXT NOT NULL DEFAULT ''"),      # what a module's session is about (a project's name)
                 ("work_session", "kind", "TEXT NOT NULL DEFAULT 'work'"),   # work | walk | read
                 ("work_session", "target", "TEXT NOT NULL DEFAULT ''"),     # walk: place; read: book title
-                ("characters", "told", "TEXT NOT NULL DEFAULT '[]'"),      # what a neighbor has told Pip (phrases)
+                ("characters", "told", "TEXT NOT NULL DEFAULT '[]'"),      # what a neighbor has told the agent (phrases)
                 ("characters", "upcoming", "TEXT NOT NULL DEFAULT '[]'"),  # a neighbor's plans: [{what, due_at}]
                 ("letters", "gist", "TEXT NOT NULL DEFAULT ''"),           # the sender's one-line summary of it
                 ("characters", "place", "TEXT NOT NULL DEFAULT ''"),       # a resident's place (its key)
@@ -263,7 +260,7 @@ class State:
                 ("modules", "show", "TEXT NOT NULL DEFAULT '[]'"),        # what a module draws in scenes (anchors.py)
                 ("modules", "notified", "TEXT NOT NULL DEFAULT ''"),      # the status the owner was last told about (modules.notify_owner)
                 ("modules", "voices", "TEXT NOT NULL DEFAULT '[]'"),      # the names a module speaks as, and where they are (modules.py)
-                ("modules", "heard", "TEXT NOT NULL DEFAULT '[]'"),       # what Pip said to them, waiting for on_message
+                ("modules", "heard", "TEXT NOT NULL DEFAULT '[]'"),       # what the agent said to them, waiting for on_message
                 ("modules", "asks", "TEXT NOT NULL DEFAULT '[]'"),        # prompts waiting for the model's words (on_answer)
                 ("modules", "happen", "TEXT NOT NULL DEFAULT '[]'"),      # a happening it proposed, waiting to be written (happenings.py)
                 ("modules", "standing", "TEXT NOT NULL DEFAULT '{}'"),    # its status lines for the agent: {title, lines, ready, next_at}
@@ -274,20 +271,21 @@ class State:
             ):
                 if col not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+            for col in ("hunger", "energy", "hunger_alerted", "energy_alerted"):     # from before stats were the world's (0.47.0 drops them)
+                if col in {r["name"] for r in self.db.execute("PRAGMA table_info(agent)")}:
+                    self.db.execute(f"ALTER TABLE agent DROP COLUMN {col}")
             if not self.db.execute("SELECT 1 FROM agent").fetchone():
                 self.db.execute(
-                    "INSERT INTO agent (id, hunger, energy, mood, location, activity, updated_at) "
-                    "VALUES (1, 0.2, 0.9, 'curious', ?, 'idle', ?)",
+                    "INSERT INTO agent (id, mood, location, activity, updated_at) VALUES (1, 'curious', ?, 'idle', ?)",
                     (world_pack.load(self.s).data("places").get("home", {}).get("key", "home"), time.time()),
                 )
             have = {r["name"] for r in self.db.execute("SELECT name FROM stats")}
-            row = dict(self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone())
-            for name, d in stats_mod.declared(self.s).items():   # a world's stats, once each; an older world's own values carried over
+            for name, d in stats_mod.declared(self.s).items():   # a world's stats, once each, from where the world starts them
                 if name not in have:
-                    self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, ?)",
-                                    (name, row.get(name, d.get("start", 0.5)), row.get(f"{name}_alerted", 0)))
+                    self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, 0)", (name, d.get("start", 0.5)))
             self._from_before_modules()
             self._backfill_reads()
+            self._name_the_agent()
             self._backfill_firsts()
             self._backfill_portraits()
             if self.meta("recall_indexed") != RECALL_INDEX_VERSION:
@@ -426,13 +424,13 @@ class State:
         self.set_meta(firsts_v=FIRSTS_VERSION)
 
     def place_visits(self, place: str) -> dict | None:
-        """How often Pip has arrived at a place, and when first and last (from its facet), or None if never."""
+        """How often the agent has arrived at a place, and when first and last (from its facet), or None if never."""
         with self.lock:
             row = self.db.execute("SELECT first_ts, last_ts, count FROM facets WHERE key = ?", (f"place:{place}",)).fetchone()
         return dict(row) if row else None
 
     def last_arrived(self, place: str) -> float | None:
-        """When Pip last arrived at a place (from the facet count), or None if it never has."""
+        """When the agent last arrived at a place (from the facet count), or None if it never has."""
         with self.lock:
             row = self.db.execute("SELECT last_ts FROM facets WHERE key = ?", (f"place:{place}",)).fetchone()
         return row["last_ts"] if row else None
@@ -493,7 +491,7 @@ class State:
             return cur.lastrowid
 
     def reoffer_inbox(self, inbox_id: int) -> None:
-        """Put a message Pip read but didn't answer back in the inbox once more."""
+        """Put a message the agent read but didn't answer back in the inbox once more."""
         with self.lock:
             self.db.execute("UPDATE inbox SET consumed = 0, offers = offers + 1 WHERE id = ?", (inbox_id,))
             self.db.commit()
@@ -634,10 +632,10 @@ class State:
     # --- coins (trade: module_library/trade.py) ----------------------------
     START_COINS = 10
 
-    def coins(self, party: str = "pip") -> int:
+    def coins(self, party: str = "agent") -> int:
         with self.lock:
             row = self.db.execute("SELECT coins FROM purses WHERE party = ?", (party,)).fetchone()
-        return row["coins"] if row else (self.START_COINS if party == "pip" else 0)
+        return row["coins"] if row else (self.START_COINS if party == "agent" else 0)
 
     def add_coins(self, party: str, delta: int) -> int:
         """Change a purse by `delta` coins (a purse never goes below zero). Returns the new total."""
@@ -732,6 +730,32 @@ class State:
                     self.db.execute("UPDATE events SET data = ? WHERE id = ?", (json.dumps({**d, "read": read}), r["id"]))
         self.set_meta(event_reads="1")
 
+    def _name_the_agent(self) -> None:
+        """Once (0.47.0): what was stored under the name `pip` (the agent's purse, the author of its own programs and what they read, the
+        layout anchor and stall it stands at, how a talk ended) is the agent's. A world-made layout that names the old anchor is rewritten
+        and built again."""
+        if self.meta("agent_named") == "1":
+            return
+        if not self.db.execute("SELECT 1 FROM purses WHERE party = 'agent'").fetchone():
+            self.db.execute("UPDATE purses SET party = 'agent' WHERE party = 'pip'")
+        old = {'"no-pip-stall"': '"no-agent-stall"', '"pip-stall"': '"agent-stall"', '"pip"': '"agent"'}
+        for r in self.db.execute("SELECT id, name, author, kind, manifest, source FROM modules").fetchall():
+            man, source, name = json.loads(r["manifest"]), r["source"], r["name"]
+            if "pip" in man.get("reads", []):
+                man["reads"] = list(dict.fromkeys("agent" if x == "pip" else x for x in man["reads"]))
+            if r["kind"] in ("place", "part") and r["author"] != "library":     # the shipped ones change with the engine
+                for a, b in old.items():
+                    source = source.replace(a, b)
+            if r["author"] == "pip" and name.endswith("-by-pip"):
+                name = name[:-len("-by-pip")] + "-by-agent"
+            changed = source != r["source"]
+            self.db.execute("UPDATE modules SET author = ?, name = ?, manifest = ?, source = ?, built = CASE WHEN ? THEN '{}' ELSE built END "
+                            "WHERE id = ?", ("agent" if r["author"] == "pip" else r["author"], name, json.dumps({**man, "name": name}
+                                             if man.get("name") == r["name"] else man), source, changed, r["id"]))
+        self.db.execute("UPDATE events SET data = json_set(data, '$.author', 'agent') WHERE json_extract(data, '$.author') = 'pip'")
+        self.db.execute("UPDATE events SET data = json_set(data, '$.ended', 'agent') WHERE kind = 'talk' AND json_extract(data, '$.ended') = 'pip'")
+        self.set_meta(agent_named="1")
+
     def edit_memory(self, memory_id: int, text: str) -> tuple[str, str]:
         """Rewrite an open non-diary note. Returns (error, previous_text); error is '' on success."""
         with self.lock:
@@ -768,7 +792,7 @@ class State:
 
     def start_session(self, project_id: int, stage: int, minutes: float, ends_at: float, kind: str = "work",
                       target: str = "", expect: str = "", about: str = "") -> None:
-        """The one thing Pip is busy with in real time: work on a project, a walk, or a module's session (`about` what)."""
+        """The one thing the agent is busy with in real time: work on a project, a walk, or a module's session (`about` what)."""
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO work_session (id, project_id, stage, minutes, started_at, ends_at, "
                             "kind, target, expect, about) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -813,7 +837,7 @@ class State:
         return self._creation(row) if row else None
 
     def creations(self, include_given: bool = False) -> list[dict]:
-        """Things Pip has made (and still has, unless include_given)."""
+        """Things the agent has made (and still has, unless include_given)."""
         q = "SELECT * FROM creations" + ("" if include_given else " WHERE given_to IS NULL") + " ORDER BY id"
         with self.lock:
             return [self._creation(r) for r in self.db.execute(q)]
@@ -979,13 +1003,13 @@ class State:
             return self.db.execute("SELECT COUNT(*) FROM letters WHERE sender = ? AND ts > ?", (sender, since)).fetchone()[0]
 
     def letters_since_parcel(self, since: float) -> int:
-        """How many parcels have been sent to Pip since `since`."""
+        """How many parcels have been sent to the agent since `since`."""
         with self.lock:
             return self.db.execute("SELECT COUNT(*) FROM letters WHERE parcel IS NOT NULL AND ts > ?",
                                    (since,)).fetchone()[0]
 
     def born_at(self) -> float:
-        """When Pip's life here began: the first logged event (or now, for a brand-new world)."""
+        """When the agent's life here began: the first logged event (or now, for a brand-new world)."""
         b = self.meta("born_at")
         if b:
             return float(b)
@@ -1122,7 +1146,7 @@ class State:
             self.db.commit()
 
     def unseen_decisions(self, max_age_hours: float, showings: int) -> list[dict]:
-        """Applied, not undone decisions Pip hasn't been shown enough times yet."""
+        """Applied, not undone decisions the agent hasn't been shown enough times yet."""
         with self.lock:
             rows = self.db.execute("SELECT * FROM night_decisions WHERE applied = 1 AND undone = 0 AND shown < ? AND ts >= ? "
                                    "ORDER BY id", (showings, time.time() - max_age_hours * 3600)).fetchall()
@@ -1155,7 +1179,7 @@ class State:
             self.db.commit()
 
     def add_work(self, kind: str, title: str, body: str, caption: str = "", location: str = "", pixels: dict | None = None, subject: str = "") -> int:
-        """A picture (SVG, already sanitised) or a piece of writing Pip made."""
+        """A picture (SVG, already sanitised) or a piece of writing the agent made."""
         now = time.time()
         with self.lock:
             cur = self.db.execute("INSERT INTO works (ts, kind, title, body, caption, location, pixels, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1167,7 +1191,7 @@ class State:
 
     def revise_work(self, work_id: int, body: str, title: str | None = None, caption: str | None = None, pixels: dict | None = None,
                     subject: str | None = None) -> int:
-        """Replace a drawing with Pip's redrawing of it; returns how many times it has been redrawn."""
+        """Replace a drawing with the agent's redrawing of it; returns how many times it has been redrawn."""
         with self.lock:
             row = self.db.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
             title = title or row["title"]
@@ -1252,7 +1276,7 @@ class State:
                 "SELECT * FROM place_finds WHERE place = ? ORDER BY times DESC, last_ts DESC", (place,))]
 
     def found_where(self, item_name: str) -> list[dict]:
-        """Places Pip has found something like `item_name` (shares a meaningful word), most often first."""
+        """Places the agent has found something like `item_name` (shares a meaningful word), most often first."""
         with self.lock:
             rows = [dict(r) for r in self.db.execute("SELECT * FROM place_finds ORDER BY times DESC, last_ts DESC")]
         return [r for r in rows if self.related(item_name, r["item"])]
@@ -1332,7 +1356,7 @@ class State:
                 "SELECT ref_kind, ref_id FROM reflection_cites WHERE reflection_id = ?", (reflection_id,))]
 
     def event_text(self, event_id: int) -> str | None:
-        """What an event said, as Pip would remember it (the text recall indexes), or None."""
+        """What an event said, as the agent would remember it (the text recall indexes), or None."""
         with self.lock:
             row = self.db.execute("SELECT kind, data FROM events WHERE id = ?", (event_id,)).fetchone()
         return recall_text(row["kind"], json.loads(row["data"])) if row else None
@@ -1343,12 +1367,12 @@ class State:
         return row["text"] if row else None
 
     def senders(self) -> list[str]:
-        """Everyone who has ever sent Pip a message (visitors by name, neighbors' letters)."""
+        """Everyone who has ever sent the agent a message (visitors by name, neighbors' letters)."""
         with self.lock:
             return [r["sender"] for r in self.db.execute("SELECT DISTINCT sender FROM inbox")]
 
     def people(self) -> list[dict]:
-        """Everyone Pip has notes on, most recently seen first."""
+        """Everyone the agent has notes on, most recently seen first."""
         with self.lock:
             return [dict(r) for r in self.db.execute("SELECT * FROM people ORDER BY last_seen DESC")]
 
@@ -1362,7 +1386,7 @@ class State:
 
     def _index(self, source: str, ref, ts: float, text: str, commit: bool = True, data: dict | None = None,
                importance: int = 3, fresh: bool = True) -> None:
-        """(Re)index one remembered thing for recall. Caller holds the lock. A fresh write also records its context (where Pip was,
+        """(Re)index one remembered thing for recall. Caller holds the lock. A fresh write also records its context (where the agent was,
         with whom, doing what, feeling how: see reminders.py); writing an existing memory again (an edit) counts as a use of it."""
         self.db.execute("DELETE FROM recall_index WHERE source = ? AND ref = ?", (source, str(ref)))
         self.db.execute("INSERT INTO recall_index (text, source, ref, ts) VALUES (?, ?, ?, ?)",
@@ -1382,13 +1406,13 @@ class State:
 
     @staticmethod
     def _people_in(source: str, data: dict) -> list[str]:
-        """The people a remembered thing is about: who wrote, spoke, was spoken to or told Pip something."""
+        """The people a remembered thing is about: who wrote, spoke, was spoken to or told the agent something."""
         keys = ("sender", "to", "by") + (("name",) if source in ("event:companion", "person") else ())
         names = [str(data[k]).strip() for k in keys if isinstance(data.get(k), str) and data[k].strip()]
-        return list(dict.fromkeys(n for n in names if n.lower() not in ("pip", "a visitor")))
+        return list(dict.fromkeys(n for n in names if n.lower() not in (world_pack.active().agent.name.lower(), "a visitor")))
 
     def _context_now(self, source: str, data: dict) -> dict:
-        """Where Pip is, with whom, doing what, feeling how: a memory's context, captured as it is written."""
+        """Where the agent is, with whom, doing what, feeling how: a memory's context, captured as it is written."""
         from . import places
         from .emotions import BASELINE, NOTABLE
         a = self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone()
@@ -1409,7 +1433,7 @@ class State:
                         (json.dumps((uses + [now])[-USES_KEPT:]), source, ref))
 
     def _backfill_memory_context(self) -> None:
-        """Memories written before contexts were kept: who they were about and how much they mattered (where and how Pip was are unknown)."""
+        """Memories written before contexts were kept: who they were about and how much they mattered (where and how the agent was are unknown)."""
         have = {(r["source"], r["ref"]) for r in self.db.execute("SELECT source, ref FROM memory_context")}
         for r in self.db.execute("SELECT source, ref, ts FROM recall_index").fetchall():
             if (r["source"], r["ref"]) in have:
@@ -1450,7 +1474,7 @@ class State:
             return [self._ctx(r) for r in self.db.execute(q, () if faded is None else (int(faded),))]
 
     def use_memories(self, keys, now: float | None = None) -> None:
-        """Pip used these memories (recalled them, or took up a reminder): each use makes them easier to bring to mind."""
+        """The agent used these memories (recalled them, or took up a reminder): each use makes them easier to bring to mind."""
         now = now or time.time()
         with self.lock:
             for source, ref in keys:
