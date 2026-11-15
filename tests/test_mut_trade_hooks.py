@@ -15,28 +15,42 @@ def refused(fn, *args):
 
 def test_coins_in_whole_numbers_up_to_the_manifests_most_and_never_more_than_the_agent_has(tmp_path):
     s, st, agent = modular(tmp_path)
-    man = {"belongings": {"coins": 5}}
-    assert M._coins(st, man, 5) == 5 and M._coins(st, man, -5) == -5 and M._coins(st, man, 1) == 1
-    shape = "`coins` is a whole number of coins to the agent (or less than 0, from it), at most 5 either way"
-    for bad in (0, 6, -6, True, 1.0, "2"):
-        assert refused(M._coins, st, man, bad) == shape
-    assert refused(M._coins, st, {}, 1) == "`coins` is a whole number of coins to the agent (or less than 0, from it), at most 0 either way"
-    assert refused(M._coins, st, {"belongings": None}, 1).endswith("at most 0 either way")
+    man = {"belongings": {"takes": [], "gives": [], "most": 1, "coins": 5}}
+    assert M._give(st, man, [{"coins": 5}]) == [{"coins": 5}] and M._take(st, man, [{"coins": 5}]) == [{"coins": 5}]
+    assert M._give(st, man, [{"coins": 1}]) == [{"coins": 1}]
+    for bad in (0, 6, -1, True, 1.0, "2"):
+        assert refused(M._take, st, man, [{"coins": bad}]) == "`take` coins is a whole number from 1 to 5"
+        assert refused(M._give, st, man, [{"coins": bad}]) == "`give` coins is a whole number from 1 to 5"
+    assert refused(M._give, st, {"belongings": {"takes": [], "gives": [], "most": 1}}, [{"coins": 1}]) == "`give` coins is a whole number from 1 to 0"
     st.add_coins("agent", -7)                                                   # 3 left
-    rich = {"belongings": {"coins": 500}}
-    assert M._coins(st, rich, -3) == -3 and refused(M._coins, st, rich, -4) == "Pip has only 3 coins"
+    rich = {"belongings": {"takes": [], "gives": [], "most": 1, "coins": 500}}
+    assert M._take(st, rich, [{"coins": 3}]) == [{"coins": 3}] and refused(M._take, st, rich, [{"coins": 4}]) == "Pip has only 3 coins"
+    assert refused(M._take, st, rich, [{"coins": 2}, {"coins": 2}]) == "Pip has only 3 coins"            # all of them together
     st.add_coins("agent", -3)
-    assert M._coins(st, rich, 1) == 1 and refused(M._coins, st, rich, -1) == "Pip has only 0 coins"
+    assert refused(M._take, st, rich, [{"coins": 1}]) == "Pip has only 0 coins"
+    st.add_coins("agent", 9)
+    old = {"manifest": {"api": 1, "belongings": {"coins": 5}}, "name": "x"}                 # api 1's `coins`, made into a take or a give
+    assert M._from_api1(st, old, {"coins": 5}) == ({}, [("give", [{"coins": 5}])])
+    assert M._from_api1(st, old, {"coins": -5, "state": {}}) == ({"state": {}}, [("take", [{"coins": 5}])])
+    for bad in (0, 6, -6, True, 1.0, "2"):
+        assert refused(M._from_api1, st, old, {"coins": bad}) == "`coins` is a whole number of coins to the agent (or less than 0, from it), at most 5 either way"
+    assert refused(M._from_api1, st, {"manifest": {"api": 1}, "name": "x"}, {"coins": 1}).endswith("at most 0 either way")
+    assert refused(M._from_api1, st, {"manifest": {"api": 1, "belongings": None}, "name": "x"}, {"coins": 1}).endswith("at most 0 either way")
 
 
-def test_part_with_names_a_creation_the_agent_has_and_who_has_it_now(tmp_path):
+def test_a_creation_goes_to_whoever_has_it_now(tmp_path):
     s, st, agent = modular(tmp_path)
     st.add_creation("Brass Walker", "it walks", None, "fine", {"capabilities": {}}, {})
-    assert M._part_with(st, {"creation": "brass walker", "to": " a buyer "}) == {"creation": "Brass Walker", "to": "a buyer"}
+    man = {"belongings": {"takes": ["creation"], "gives": [], "most": 1}}
+    assert M._take(st, man, [{"creation": "brass walker", "to": " a buyer "}]) == [{"creation": "Brass Walker", "to": "a buyer"}]
+    assert refused(M._take, st, man, [{"creation": "Brass Walker", "to": "x", "y": 1}]) == M.TAKE_SHAPE
+    assert refused(M._take, st, man, [{"creation": 3, "to": "x"}]) == "`take` of a creation is {creation, to}: who has it now"
+    assert refused(M._take, st, man, [{"creation": "Kite", "to": "x"}]) == "Pip has no creation called 'Kite'"
+    assert refused(M._take, st, man, [{"creation": "Brass Walker", "to": " "}]) == "`take.to` is a line of text"
+    old = {"manifest": {"api": 1}, "name": "x"}                                                 # api 1's `part_with`
+    assert M._from_api1(st, old, {"part_with": {"creation": "brass walker", "to": "a buyer"}}) == ({}, [("take", [{"creation": "Brass Walker", "to": "a buyer"}])])
     for bad in ([], {"creation": "Brass Walker"}, {"creation": "Brass Walker", "to": "x", "y": 1}, {"creation": 3, "to": "x"}):
-        assert refused(M._part_with, st, bad) == "`part_with` is {creation, to}"
-    assert refused(M._part_with, st, {"creation": "Kite", "to": "x"}) == "Pip has no creation called 'Kite'"
-    assert refused(M._part_with, st, {"creation": "Brass Walker", "to": " "}) == "`part_with.to` is a line of text"
+        assert refused(M._from_api1, st, old, {"part_with": bad}) == "`part_with` is {creation, to}"
 
 
 def test_whereabouts_and_notes_are_about_people_in_the_world(tmp_path):
@@ -219,8 +233,8 @@ def test_tool_and_belongings_edges_word_for_word():
     assert str(e.value) == "`what` is at most 200 characters" and M._text(" x ", "what") == "x" and M._text("x" * 300, "what", 300) == "x" * 300
     with pytest.raises(M.Refused) as e:
         M._belongings({"most": 0})
-    assert str(e.value) == (f"`belongings` is {{takes?, gives?, most, coins?}}: kinds of thing ({', '.join(sorted(world_content.kinds()))}), at most 1 to 20 "
-                            "at a time, and coins (at most 500 a call)")
+    assert str(e.value) == (f"`belongings` is {{takes?, gives?, most, coins?}}: kinds of thing ({', '.join(sorted(world_content.kinds()))}; it may also "
+                            "take a creation, one of the agent's things going to someone), at most 1 to 20 at a time, and coins (at most 500 a call)")
 
 
 def test_an_argument_after_a_list_is_checked_too():

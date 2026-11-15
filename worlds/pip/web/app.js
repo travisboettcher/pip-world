@@ -652,7 +652,7 @@ function handleEvent(e, live) {
   if (e.kind === 'gathered' || e.kind === 'tool') { debounce('items', refreshItems); debounce('standing', refreshStanding); }   // a module's tool may give or take
   if (e.kind === 'gift') debounce('items', refreshItems);
   if (['gift', 'inbox', 'creation_made', 'module', 'alert', 'woke', 'outreach', 'settled', 'emotion'].includes(e.kind) || e.data?.read?.feel) debounce('emotions', refreshEmotions);
-  if (e.kind === 'module') debounce('standing', refreshStanding);
+  if (e.kind === 'module' || e.data?.by) debounce('standing', refreshStanding);      // a module's line or its own event
   if (['happening', 'happening_felt'].includes(e.kind)) { debounce('lately', refreshLately); debounce('state', refreshState, 1200); debounce('items', refreshItems); debounce('standing', refreshStanding); }
   if (e.kind === 'arrived' || (e.kind === 'tool' && t === 'go_to')) debounce('map', refreshMap);
   if (e.data?.by === 'crafting' || (e.kind === 'tool' && (e.data?.module === 'crafting' || ['set_activity', 'rest'].includes(t)))) debounce('projects', refreshProjects);

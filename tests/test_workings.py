@@ -54,7 +54,7 @@ def test_affect_garden_and_find_are_checked_capped_and_applied(tmp_path):
     item, _ = st.find_item("acorn")
     assert item["qty"] == 2 and item["kind"] == "material"
     m = st.module(m["id"])
-    assert (M._budget(m, now)["affect"], M._budget(m, now)["find"]) == (1, 1) and "garden" not in M._budget(m, now)
+    assert (M._budget(m, now)["affect"], M._budget(m, now)["give"]) == (1, 1) and "garden" not in M._budget(m, now)     # api 1's find: a give
     for bad, why in (({"affect": {"energy": 0.2}}, "`affect.energy` is a number from -0.1 to 0.1"),
                      ({"affect": {"mood": "x" * 41}}, "`affect.mood` is a word or two"),
                      ({"affect": {}}, "`affect` is {hunger?, energy?, mood?}"),
@@ -65,12 +65,12 @@ def test_affect_garden_and_find_are_checked_capped_and_applied(tmp_path):
         with pytest.raises(M.Refused) as e:
             M.plan(st, m, bad, now, "on_tick")
         assert str(e.value) == why
-    st.update_module(m["id"], budget={"day": M._day(now), "find": M.PER_DAY["find"], "affect": M.PER_DAY["affect"]})
+    st.update_module(m["id"], budget={"day": M._day(now), "give": M.PER_DAY["give"], "affect": M.PER_DAY["affect"]})
     m = st.module(m["id"])
-    for key, val in (("find", {"item": "acorn", "qty": 1}), ("affect", {"energy": 0.01})):
+    for key, val, cap in (("find", {"item": "acorn", "qty": 1}, "give"), ("affect", {"energy": 0.01}, "affect")):
         with pytest.raises(M.Refused) as e:
             M.plan(st, m, {key: val}, now, "on_tick")
-        assert str(e.value) == f"it has used today's {M.PER_DAY[key]} `{key}`"
+        assert str(e.value) == f"it has used today's {M.PER_DAY[cap]} `{cap}`"
     st.update_agent(energy=0.98)
     M.apply(st, m, [("affect", {"energy": 0.1})], now)
     assert st.agent()["energy"] == 1.0
@@ -85,8 +85,9 @@ def test_find_needs_its_finds_and_pip_cant_grant_itself_effects():
     for bad in (["x" * 41], ["a"] * 9, "acorn", [3]):
         with pytest.raises(M.Refused):
             M.check_manifest(rule(proposes=["find"], finds=bad), "world")
-    for p in ("affect", "find"):
+    for p in ("affect", "give"):
         assert p in M.PROPOSES and p not in M.AGENT_PROPOSES
+    assert "find" in M.PROPOSES_V1 and "find" not in M.PROPOSES                                 # api 2: a find is a `give`
     assert "garden" not in M.PROPOSES                                    # the garden is a module: it's asked (`request`), not proposed to
 
 
@@ -118,7 +119,8 @@ async def test_every_creation_that_does_something_gets_its_workings(tmp_path):
     assert mods["Sandy"]["manifest"]["hooks"] == ["on_install", "on_tick"]
     assert mods["Clock"]["manifest"]["hooks"] == ["on_install", "on_time", "on_action", "on_request"] and "stop" in mods["Clock"]["manifest"]["answers"]
     assert "answers" not in mods["Sandy"]["manifest"]                                              # only a thing that needs tending can be stopped
-    assert mods["Ferret"]["manifest"]["finds"] == ["acorn", "snail shell"] and "finds" not in mods["Sandy"]["manifest"]
+    assert mods["Ferret"]["manifest"]["belongings"]["gives"] == ["material"] and "give" in mods["Ferret"]["manifest"]["proposes"]
+    assert mods["Sandy"]["manifest"]["belongings"]["gives"] == [] and "give" not in mods["Sandy"]["manifest"]["proposes"]   # it finds nothing
     assert mods["Clock"]["manifest"]["tends"] == "tend" and "tends" not in mods["Bell"]["manifest"]
     assert mods["Clock"]["offers"] == [{"name": "tend", "help": "wound: keeps it going about 12 hours"}, {"name": "set", "help": "set it to the right time"}]
     assert mods["Sandy"]["offers"] == [] and all(m["report"]["clean"] for m in mods.values())
@@ -229,7 +231,7 @@ async def test_effects_at_their_limits_add_up_and_say_where_they_came_from(tmp_p
     m = st.module(m["id"])
     a = st.agent()
     assert round(a["energy"], 3) == 0.7 and a["mood"] == "x" * 40
-    assert {k: M._budget(m, now)[k] for k in ("affect", "find")} == {"affect": 3, "find": 2}
+    assert {k: M._budget(m, now)[k] for k in ("affect", "give")} == {"affect": 3, "give": 2}
     item = st.find_item("acorn")[0]
     assert item["qty"] == 2 and "found by your Ferret" in str(item.get("note") or item.get("source") or item)
     rule_m = live(st, rule(name="hedge", proposes=["find"], finds=["acorn"]), "x")

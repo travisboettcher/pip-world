@@ -11,7 +11,8 @@ async function api(path, opts) {
 }
 const when = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 
-// what happened, in a line each (kinds the engine logs in every world; anything else is left out)
+// what happened, in a line each (kinds the engine logs in every world, and a module's own event as it says it reads; anything else is left out)
+const byModule = (d) => d.by && (d.read?.public || d.read?.line);
 const LINES = {
   tick: (d) => d.text,
   module: (d) => d.text,
@@ -43,7 +44,7 @@ async function refreshStanding() {
 }
 
 async function refreshEvents() {
-  const rows = (await api('/events?limit=80')).map((e) => ({ e, line: LINES[e.kind]?.(e.data || {}) })).filter((x) => x.line).slice(0, 30);
+  const rows = (await api('/events?limit=80')).map((e) => ({ e, line: (LINES[e.kind] ?? byModule)(e.data || {}) })).filter((x) => x.line).slice(0, 30);
   $('events').replaceChildren(...(rows.length ? rows.map(({ e, line }) => h('li', {}, line, h('small', {}, when(e.ts))))
     : [h('li', { className: 'hint' }, 'Nothing yet.')]));
 }

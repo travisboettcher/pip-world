@@ -238,7 +238,7 @@ def test_a_manifest_is_held_to_what_the_engine_offers(tmp_path):
         return str(e.value)
     assert bad([]) == "the manifest must be an object" and bad(rule(), "god") == "unknown author 'god'"
     assert "`name` is 3 to 40" in bad(rule(name="X!")) and "`name`" in bad(rule(name="ab")) and "`kind` is one of thing, rule, part, place" in bad(rule(kind="castle"))
-    assert bad(rule(api=2)) == "`api` must be 1" and "`hooks` is a list drawn from" in bad(rule(hooks=["on_boot"]))
+    assert bad(rule(api=3)) == "`api` is 1 or 2" and bad(rule(api=True)) == "`api` is 1 or 2" and "`hooks` is a list drawn from" in bad(rule(hooks=["on_boot"]))
     assert "`reads` is a list" in bad(rule(reads="time")) and "`proposes` is a list" in bad(rule(proposes=["transfer"]))
     assert bad(rule(hooks=[])) == "`hooks` needs at least one hook"
     assert "a thing needs a `subject`" in bad(rule(kind="thing")) and bad(rule(kind="thing", subject="Moon Lamp")) == "there is no creation called 'Moon Lamp'"
@@ -258,7 +258,7 @@ def test_a_manifest_is_held_to_what_the_engine_offers(tmp_path):
 # --- the referee ------------------------------------------------------------------------------------------------------------
 def test_proposals_are_checked_together_and_refused_with_a_reason(tmp_path):
     s, st, agent = modular(tmp_path)
-    m = live(st, rule(proposes=list(M.PROPOSES[:6])), "x")
+    m = live(st, rule(proposes=list(M.PROPOSES_V1[:6])), "x")
 
     def refused(result, hook="on_tick"):
         with pytest.raises(M.Refused) as e:
@@ -301,8 +301,8 @@ def test_consuming_and_runtime_are_limited_to_what_the_thing_may_touch(tmp_path)
     assert refused({"consume": {"oil": 1}}) == "its manifest doesn't let it use up oil"
     assert refused({"consume": {"brass wire": 3}}) == "it may use up 1 to 2 brass wire at a time" and "1 to 2" in refused({"consume": {"brass wire": True}})
     m["manifest"]["consumes"] = {"*": 5}
-    assert refused({"consume": {"oil": 2}}) == "you need 2 oil for that" and refused({"consume": {"glue": 1}}) == "you need 1 glue for that"
-    assert M.plan(st, m, {"consume": {"Brass Wire": 2}}, NOW, "on_action")[0][1][0][1:] == (2, "brass wire")
+    assert refused({"consume": {"oil": 2}}) == "you need 2 oil for that (you have 1)" and refused({"consume": {"glue": 1}}) == "you need 1 glue for that"
+    assert M.plan(st, m, {"consume": {"Brass Wire": 2}}, NOW, "on_action")[0][1][0] == {"id": st.find_item("brass wire")[0]["id"], "qty": 2, "name": "brass wire"}
     assert refused({"runtime": []}) == "`runtime` maps runtime fields to values"
     assert refused({"runtime": {"made_at": 1}}).startswith("`runtime` can only set: clock_set_at")
     assert refused({"runtime": {"tended_until": "soon"}}) == "`runtime.tended_until` must be a number (or null to clear it)"
@@ -320,7 +320,7 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     src = ("def on_action(ctx):\n    return {'state': {'n': ctx['state'].get('n', 0) + 1}, 'consume': {'brass wire': ctx['args']['n']},"
            " 'runtime': {'halted_at': None, 'stop_logged': True}, 'perceive': 'tick', 'log': 'It whirrs.', 'wake': True, 'reply': 'whirr',"
            " 'publish': {'n': 1}, 'offer': [{'name': 'whirr', 'help': 'make it whirr'}], 'schedule': ctx['now'] + 60}\n")
-    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=[p for p in M.PROPOSES if p not in ("take", "give", "session", "coins", "part_with", "source", "event", "creation")], consumes={"brass wire": 2}, finds=["acorn"])
+    man = rule(kind="thing", subject="Gear Clock", hooks=["on_action"], proposes=[p for p in M.PROPOSES_V1 if p not in ("take", "give", "session", "coins", "part_with", "source", "event", "creation")], consumes={"brass wire": 2}, finds=["acorn"])
     m = live(st, man, src)
     c = st.creations()[0]
     st.set_runtime(c["id"], {**c["runtime"], "halted_at": NOW})
@@ -331,12 +331,12 @@ async def test_a_call_applies_everything_or_nothing_and_keeps_a_history(tmp_path
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "whirr", "changed": True}
     got = st.module(m["id"])
     assert got["state"] == {"n": 1} and got["facts"] == {"n": 1} and got["due"] == NOW + 60 and got["lines"] == [{"ts": NOW, "text": "tick"}]
-    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "source": 0, "event": 0, "creation": 0, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "find": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
+    assert got["offers"] == [{"name": "whirr", "help": "make it whirr"}] and got["budget"] == {"day": M._day(NOW), "calls": 1, "source": 0, "event": 0, "creation": 0, "perceive": 1, "log": 1, "wake": 1, "affect": 0, "ask": 0, "speak": 0, "happen": 0, "take": 1, "give": 0, "request": 0, "character": 0, "letter": 0}
     assert st.find_item("brass wire")[0]["qty"] == 1 and "halted_at" not in st.creations()[0]["runtime"] and st.creations()[0]["runtime"]["stop_logged"]
     ev = [e for e in st.events(5) if e["kind"] == "module"][0]["data"]
     assert (ev["name"], ev["text"], ev["author"]) == ("bells", "It whirrs.", "world")
     calls = st.module_calls(m["id"])
-    assert [c["summary"] for c in calls] == ["state, facts, perceive, log, wake, due, offers, consume, runtime, reply",
+    assert [c["summary"] for c in calls] == ["state, facts, perceive, log, wake, due, offers, runtime, take, reply",
                                               "refused: it may use up 1 to 2 brass wire at a time"]
     assert [c["ok"] for c in calls] == [True, False] and calls[0]["hook"] == "on_action" and calls[0]["ts"] == NOW
 
@@ -418,7 +418,7 @@ def test_the_context_holds_only_what_the_manifest_reads(tmp_path):
     st.update_module(other["id"], facts={"fair_today": True})
     bare = M.context(st, s, live(st, rule(name="bare", reads=[]), "x"), NOW, due=5)
     assert set(bare) == {"now", "seed", "state", "offers", "due"} and bare["seed"] == int(NOW) * 7919 + 2
-    full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x"), NOW)
+    full = M.context(st, s, live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS_V1)), "x"), NOW)
     assert full["time"]["weekday"] and full["time"]["season"] == "" and 0 <= full["time"]["hour"] < 24
     assert full["agent"] == {"where": "library", "at_home": False, "activity": "reading", "asleep": False,
                             "hunger": 0.2, "energy": 0.9, "mood": "curious", "walking": False, "coins": 10, "name": "Pip", "lives": "lives alone in a workshop with a garden", "tired": False, "tiring": "energy", "busy": "", "tools": sorted(s.tools), "they": "it", "them": "it", "their": "its", "possessive": "Pip's"} and full["weather"] is None

@@ -31,8 +31,9 @@ def test_a_programs_manifest_comes_from_its_code(tmp_path):
     s, st, agent = programmer(tmp_path)
     bell = thing(st)
     man = M.program_manifest(BELL, bell)
-    assert man == {"name": "brass-bell-by-agent", "kind": "thing", "api": 1, "subject": "Brass Bell", "hooks": ["on_install", "on_action"],
-                   "reads": list(M.AGENT_READS), "proposes": list(M.AGENT_PROPOSES), "events": [], "consumes": {"*": 2}}
+    assert man == {"name": "brass-bell-by-agent", "kind": "thing", "api": 2, "subject": "Brass Bell", "hooks": ["on_install", "on_action"],
+                   "reads": list(M.AGENT_READS), "proposes": list(M.AGENT_PROPOSES), "events": [],
+                   "belongings": {"takes": ["material"], "gives": [], "most": 2}}
     assert M.check_manifest(man, "agent", st)["name"] == "brass-bell-by-agent"
     c = clock(st)
     man = M.program_manifest("def on_event(ctx):\n    pass\ndef helper():\n    pass\n", c, ["world_changed", 5])
@@ -287,7 +288,7 @@ async def test_matrix_sends_a_notice_to_pips_room_or_another(tmp_path):
 async def test_a_trial_never_misfires_even_for_rough_work(tmp_path):
     s, st, agent = programmer(tmp_path)
     thing(st, "Rough Bell", "rough")
-    src = 'def on_tick(ctx):\n    return {"state": {"n": ctx["state"].get("n", 0) + 1}, "log": "tick"}\n'
+    src = 'def on_tick(ctx):\n    return {"state": {"n": ctx["state"].get("n", 0) + 1}, "event": "tick"}\n'
     r = await M.propose(st, s, agent.runner, "agent", M.program_manifest(src, st.creations()[0]), src, now=NOW)
     calls = M.DRY_HOURS * 60 // M.DRY_STEP_MINUTES
     assert r["report"]["calls"] == calls and M.PER_DAY["log"] <= len(r["report"]["logged"]) <= calls and not r["report"]["errors"]

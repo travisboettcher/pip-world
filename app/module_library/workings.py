@@ -69,7 +69,7 @@ def on_time(ctx):
     part = rt.get("needs_part")
     need = (f"{part['qty']} {part['name']} to mend it, then " if part else "") + f"tending ({s['capabilities']['upkeep']['verb']})"
     line = f"Your {s['name']} has stopped - it needs {need}."
-    return {"runtime": {"stop_logged": True}, "log": line, "perceive": line, "wake": True}
+    return {"runtime": {"stop_logged": True}, "event": line, "perceive": line, "wake": True}
 
 
 def on_tick(ctx):
@@ -93,7 +93,7 @@ def on_tick(ctx):
         does = h.get("does") or ""
         if h["effect"] == "find":
             item = rng.choice(h["finds"])
-            out["find"] = {"item": item, "qty": 1}
+            out["give"] = [{"item": item, "qty": 1, "kind": "material", "description": "found by your " + s["name"]}]
             said.append(f"{h['line']} (found: {item})")
         elif does.startswith("request:") and h.get("can"):    # asks a module (the garden: `hurry`), when it is any use
             _, module, what = does.split(":")
@@ -111,7 +111,7 @@ def on_tick(ctx):
     if new != st:
         out["state"] = new
     if said:
-        out["perceive"] = out["log"] = " ".join(said)
+        out["perceive"] = out["event"] = " ".join(said)
     return out
 
 
@@ -149,7 +149,7 @@ def on_action(ctx):
            "schedule": now + up["hours"] * 3600}
     part = rt.get("needs_part")
     if part:  # a mishap broke something: mended with a real part first
-        out["consume"] = {part["name"]: part["qty"]}
+        out["take"] = [{"item": part["name"], "qty": part["qty"], "kind": "material"}]
     if _stopped_at(rt, now) is not None and "timekeeper" in caps:  # it starts again from the time it stopped at, so it's now behind
         out["runtime"].update(clock_set_at=now, clock_offset=(_face(s, now) - now) / 60)
     out["reply"] = f"you tend your {s['name']} ({up['verb']}); it will keep going for about {round(up['hours'])} hours"
@@ -205,10 +205,11 @@ def _listen(ctx):
     if len(heard) >= BULLETINS_PER_DAY or ctx["asking"]:
         return {"reply": f"only static now: your {s['name']} has told you all the news it has today"}
     st["news_log"] = heard + [now]
-    w, t = ctx.get("weather"), ctx["time"]
+    w = next((f["weather"] for f in (ctx.get("facts") or {}).values() if isinstance(f, dict) and isinstance(f.get("weather"), dict)), None)
+    t = ctx["time"]
     a = ctx["agent"]
     prompt = (f"{a['name']} listens to {s['name']}, something {a['they']} made: {s['description']}. It is {t['weekday']}, {t['hour']}:00"
-              + (f", in {t['season']}" if t["season"] else "") + (f", and the weather is {w['condition']}" if w else "") + ". Write the bulletin that comes through: 2-3 sentences of news "
+              + (f", in {t['season']}" if t["season"] else "") + (f", and the weather is {w['condition']}" if w and w.get("condition") else "") + ". Write the bulletin that comes through: 2-3 sentences of news "
               f"about {a['possessive']} own small world only (the weather, the neighbors, the season, something invented and harmless), never real-world "
               "events, in the voice of whatever this receiver picks up.")
     return {"state": st, "ask": {"prompt": prompt, "purpose": "news", "most": 400},
@@ -222,7 +223,7 @@ def on_answer(ctx):
         if not a["text"] or s is None:
             return {}
         line = f"Your {s['name']}: {a['text']}"
-        return {"perceive": line, "log": line}
+        return {"perceive": line, "event": line}
     reply = a["purpose"] == "reply"
     if reply:
         st["heard"] = (st.get("heard") or [])[st.pop("answering", 0):]

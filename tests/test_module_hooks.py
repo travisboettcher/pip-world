@@ -191,9 +191,9 @@ def test_belongings_taken_and_given_within_the_manifest(tmp_path):
     s, st, agent, m = setup(tmp_path)
     man = m["manifest"]
     st.add_item("brass", 4, "material", "")
-    assert M._take(st, man, [{"item": "bean seeds", "qty": 2}])[0][1:] == (2, "bean seeds")
+    assert M._take(st, man, [{"item": "bean seeds", "qty": 2}])[0] == {"id": st.find_item("bean seeds")[0]["id"], "qty": 2, "name": "bean seeds"}
     for v, why in (({}, "`take` is a list"), ([{"item": "bean seeds", "qty": 4}], "`take` qty is 1 to 3"), ([{"item": "brass"}], "it can only take: seed"),
-                   ([{"item": "bean seeds", "qty": 3}], "there are only 2 bean seeds"), ([{"item": "gold"}], "you don't have"),
+                   ([{"item": "bean seeds", "qty": 3}], "you need 3 bean seeds for that (you have 2)"), ([{"item": "gold"}], "you need 1 gold for that"),
                    ([{"item": "bean seeds", "qty": True}], "`take` qty")):
         with pytest.raises(M.Refused, match=__import__("re").escape(why)):
             M._take(st, man, v)

@@ -173,7 +173,8 @@ def on_time(ctx):
     for p in plots:
         if p["state"] == "ready" and not p.get("notified"):
             changes[str(p["plot"])] = {k: p[k] for k in ("seed", "crop", "planted_at", "ready_at", "yield", "food_value")} | {"notified": True}
-            out = {"log": {"text": "Your " + p["crop"] + " in plot " + str(p["plot"]) + " ripened", "kind": "ripe", "feel": {"joy": 3}},
+            said = "Your " + p["crop"] + " in plot " + str(p["plot"]) + " ripened"
+            out = {"event": {"kind": "ripe", "data": {"crop": p["crop"], "plot": p["plot"]}, "read": {"line": said, "moment": said, "public": said, "feel": {"joy": 3}}},
                    "wake": True}
     view = _view(ctx, plots, {"plots": changes} if changes else None)
     view.update(out)
@@ -220,7 +221,7 @@ def _plant(ctx):
     elif plots[n - 1]["state"] != "empty":
         return {"reply": "error: plot " + str(n) + " is already growing " + plots[n - 1]["crop"]}
     at, now = item["attrs"], ctx["now"]
-    weather = (ctx.get("weather") or {}).get("condition")
+    weather = next((f["weather"].get("condition") for f in ctx["facts"].values() if isinstance(f, dict) and isinstance(f.get("weather"), dict)), None)
     grow = float(at["grow_minutes"]) * WEATHER.get(weather, 1.0)
     planted = {"seed": item["name"], "crop": at["crop"], "planted_at": now, "ready_at": now + grow * 60 / ctx["params"]["speed"],
                "yield": int(at["yield"]), "food_value": float(at["food_value"]), "notified": False}

@@ -156,7 +156,9 @@ def finish(ctx, got):
     out = view(ctx, store)
     text = ("You read " + now["title"] + (" (and finished it)" if finished else " (now " + str(percent) + "% through)") + ": " + summary
             + "".join(' "' + q + '"' for q in quotes))
-    out["log"] = {"text": clip(text, 1200), "kind": "finished_book" if finished else "read", "tool": "read"}
+    said = clip(text, 1200)
+    out["event"] = {"kind": "finished_book" if finished else "read", "data": {"title": now["title"], "percent": percent},
+                    "read": {"line": said, "moment": said, "public": said}}
     if ctx["agent"]["activity"] == "reading":
         out["doing"] = {"activity": "idle", "description": "just read some of " + now["title"]}
     out["wake"] = True

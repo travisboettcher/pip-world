@@ -86,7 +86,7 @@ def on_time(ctx):
     text = words(here["label"], round(minutes), found, depleted) + account
     items = [{"name": f[0], "qty": min(MOST, f[2])} for f in found]
     if s["interrupted"]:                                     # cut short: told plainly, at once
-        out.update(log={"text": text + " (You cut it short.)", "kind": "gathered", "items": items, "tool": "gather"}, wake=True)
+        out.update(event=haul(text + " (You cut it short.)", items), wake=True)
         return out
     got = ", ".join(str(i["qty"]) + " " + i["name"] for i in items) or "nothing"
     out["store"]["trip"]["told"] = {"text": text, "items": items, "account": account}
@@ -99,10 +99,17 @@ def on_time(ctx):
     return out
 
 
+def haul(text, items):
+    """What came of a trip, as the engine reads it: a moment of the day, how the `gather` tool went, and a first for each new find."""
+    read = {"line": text, "moment": text, "public": text, "tally": [{"group": "tool", "name": "gather", "outcome": "good" if items else "bad"}],
+            "firsts": [{"key": "found:" + i["name"], "label": "found " + i["name"]} for i in items[:8]]}
+    return {"kind": "haul", "data": {"items": items}, "read": read}
+
+
 def on_answer(ctx):
     told = ctx["store"].get("trip", {}).get("told")
     if not told or ctx["answer"]["purpose"] != "haul":
         return {}
     said = " ".join(ctx["answer"]["text"].split())[:300]
     text = (said + told["account"]) if said else told["text"]           # the model's words, or the plain ones if none came
-    return {"store": {"trip": {"told": None}}, "log": {"text": text, "kind": "gathered", "items": told["items"], "tool": "gather"}, "wake": True}
+    return {"store": {"trip": {"told": None}}, "event": haul(text, told["items"]), "wake": True}

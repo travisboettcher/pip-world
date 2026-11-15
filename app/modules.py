@@ -24,18 +24,25 @@ from . import stats as stats_mod
 
 log = logging.getLogger(__name__)
 
-API = 1
+API, APIS = 2, (1, 2)                                 # api 1 manifests are still taken, their old proposals made into api 2's (_from_api1)
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
-READS = ("time", "weather", "agent", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
-         "answers", "making", "found", "wishes")
-PROPOSES = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
-            "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
-            "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
+READS_V1 = ("time", "weather", "agent", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
+            "answers", "making", "found", "wishes")
+PROPOSES_V1 = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
+               "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
+               "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
+# api 2 (docs/DESIGN-engine-audit.md, D): a line for the record or a whole event is an `event` (api 1's `log`); things, coins and a
+# creation go out by `take` (`consume`, `coins`, `part_with`) and in by `give` (`find`, `coins`); the weather is a published fact.
+FOLDED = {"log", "consume", "find", "coins", "part_with"}
+READS = tuple(r for r in READS_V1 if r != "weather")
+PROPOSES = tuple(p for p in PROPOSES_V1 if p not in FOLDED)
 SHIPPED = "library"                                   # the author of modules shipped with the engine (module_library/): reviewed like its code
 AUTHORS = ("world", "agent", SHIPPED)
-AGENT_READS = ("time", "weather", "agent", "subject", "items", "facts", "visitors")                      # what the agent's own programs may know, and do (step 3)
-AGENT_PROPOSES = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
+AGENT_READS_V1 = ("time", "weather", "agent", "subject", "items", "facts", "visitors")                   # what the agent's own programs may know, and do (step 3)
+AGENT_PROPOSES_V1 = ("state", "perceive", "log", "schedule", "offer", "show", "consume", "runtime", "wake")
+AGENT_READS = tuple(r for r in AGENT_READS_V1 if r != "weather")
+AGENT_PROPOSES = ("state", "perceive", "event", "schedule", "offer", "show", "take", "runtime", "wake")
 MISFIRE = {"rough": 0.25, "sound": 0.08, "fine": 0.02, "masterwork": 0.0}     # craft over code: how often the agent's work fails to fire
 STATUSES = ("proposed", "waiting", "live", "disabled", "rejected", "replaced")
 RUNTIME_KEYS = {"clock_set_at": "number", "clock_offset": "number", "tended_until": "number", "halted_at": "number", "stop_logged": "bool",
@@ -55,11 +62,11 @@ SOURCE_DEPTH, SOURCE_ARGS_MAX = 3, 16_000           # sources asked in one go: j
 # agent's day (`moment`), its weight (`importance`), feelings, firsts, a turning point (`goal`), what it says of the agent's abilities
 # (`tally`), the day's counts and the public feed's line
 READ_KEYS = ("line", "moment", "importance", "feel", "firsts", "goal", "tally", "counts", "public")
-READ_TEXT, READ_FEEL_MOST, READ_FIRSTS, READ_TALLY, READ_COUNTS = 600, 20, 3, 8, 8
-TALLY_GROUPS, TALLY_OUTCOMES = ("craft", "ability"), ("good", "neutral", "bad")
+READ_TEXT, READ_FEEL_MOST, READ_FIRSTS, READ_TALLY, READ_COUNTS = 1_200, 20, 8, 8, 8
+TALLY_GROUPS, TALLY_OUTCOMES = ("craft", "ability", "tool"), ("good", "neutral", "bad")
 EXPECT_KINDS, EVENT_MAX = ("session", "step", "experiment"), 4_000  # the expectations an event may settle; an event's size
 REPLY_MAX, LOG_MAX = 1_500, 1_200                     # what a tool says back (a shop's shelves); a moment (what was read)
-PER_DAY = {"calls": 600, "source": 60, "event": 24, "creation": 2, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "find": 4, "ask": 12, "speak": 24, "happen": 2,
+PER_DAY = {"calls": 600, "source": 60, "event": 24, "creation": 2, "perceive": 12, "log": 24, "wake": 4, "affect": 6, "ask": 12, "speak": 24, "happen": 2,
            "take": 24, "give": 24, "request": 24, "character": 1, "letter": 2}
 SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "event": 200, "creation": 6, "perceive": 100, "log": 100, "wake": 12, "ask": 150, "speak": 150, "happen": 8, "take": 200, "give": 200,
                    "request": 200, "character": 2, "letter": 6}
@@ -67,6 +74,7 @@ SHIPPED_PER_DAY = {**PER_DAY, "calls": 3000, "source": 600, "event": 200, "creat
 TOOL_NAME, TOOLS_MAX, TOOL_PARAMS_MAX, PARAM_TYPES = re.compile(r"^[a-z][a-z_]{1,23}$"), 6, 8, ("string", "integer", "number", "boolean")
 STORE_MAX, STORE_KEYS, STORE_COLLECTIONS = 64_000, 200, 8
 COLLECTION, STORE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,23}$"), re.compile(r"^[A-Za-z0-9 _:.-]{1,40}$")
+FIRST_KEY = re.compile(r"^\S[^\n]{0,79}$")                 # a first's key ("found:jay's feather"): it only names a row
 STATUS_LINES, STATUS_TITLE, GIVE_LINES, ATTRS_MAX, FEEL_MOST, ANSWERS_MAX = 12, 40, 8, 8, 5, 8
 STATUS_LINE_MAX = 400                                 # a project's line: its stage, what it needs, and where that was found
 PRACTICE_MOST, DEPLETE_MOST, COINS_MOST = 240, 240, 500
@@ -104,11 +112,12 @@ def check_manifest(m, author: str, state=None) -> dict:
         raise Refused("`name` is 3 to 40 lowercase letters, digits and dashes, starting with a letter")
     if kind not in KINDS:
         raise Refused(f"`kind` is one of {', '.join(KINDS)}")
-    if m.get("api") != API:
-        raise Refused(f"`api` must be {API}")
-    out = {"name": name, "kind": kind, "api": API}
-    builds = kind in ("part", "place")
-    for key, allowed in (("hooks", ("on_build",) if builds else HOOKS), ("reads", READS), ("proposes", PROPOSES)):
+    api = m.get("api")
+    if api not in APIS or isinstance(api, bool):
+        raise Refused(f"`api` is {' or '.join(map(str, APIS))}")
+    out = {"name": name, "kind": kind, "api": api}
+    builds, v1 = kind in ("part", "place"), api == 1
+    for key, allowed in (("hooks", ("on_build",) if builds else HOOKS), ("reads", READS_V1 if v1 else READS), ("proposes", PROPOSES_V1 if v1 else PROPOSES)):
         vals = m.get(key) or []
         if not isinstance(vals, list) or any(v not in allowed for v in vals):
             raise Refused(f"`{key}` is a list drawn from: {', '.join(allowed)}")
@@ -146,7 +155,8 @@ def check_manifest(m, author: str, state=None) -> dict:
     if author == "agent":
         if kind != "thing":
             raise Refused("your programs make one of your creations work")
-        extra = [v for v in out["reads"] if v not in AGENT_READS] + [v for v in out["proposes"] if v not in AGENT_PROPOSES]
+        extra = [v for v in out["reads"] if v not in (AGENT_READS_V1 if v1 else AGENT_READS)] \
+            + [v for v in out["proposes"] if v not in (AGENT_PROPOSES_V1 if v1 else AGENT_PROPOSES)]
         if extra:
             raise Refused(f"your programs can't use: {', '.join(extra)}")
     subject = str(m.get("subject") or "").strip()
@@ -169,8 +179,10 @@ def check_manifest(m, author: str, state=None) -> dict:
                                              for k, v in consumes.items()):
         raise Refused(f"`consumes` maps item names (or \"*\" for any material) to at most {CONSUME_MAX} per call")
     if bool(consumes) != ("consume" in out["proposes"]):
-        raise Refused("`consume` and `consumes` go together: say which materials it may use up")
-    out["consumes"] = consumes
+        raise Refused("`consume` and `consumes` go together: say which materials it may use up" if v1
+                      else "`consumes` is api 1's: say what it may `take` in `belongings`")
+    if v1:
+        out["consumes"] = consumes
     if m.get("params"):                                      # settings the module is given (ctx["params"]): plain values, or lists of them
         out["params"] = _params(m)
     finds = m.get("finds")
@@ -178,7 +190,8 @@ def check_manifest(m, author: str, state=None) -> dict:
                               or not all(isinstance(f, str) and f.strip() and len(f) <= 40 for f in finds)):
         raise Refused(f"`finds` is a list of up to {FINDS_MAX} names of things it may find")
     if bool(finds) != ("find" in out["proposes"]):
-        raise Refused(f"`find` and `finds` go together: say what it may find (up to {FINDS_MAX} names)")
+        raise Refused(f"`find` and `finds` go together: say what it may find (up to {FINDS_MAX} names)" if v1
+                      else "`finds` is api 1's: say what it may `give` in `belongings`")
     if finds:
         out["finds"] = list(dict.fromkeys(f.strip().lower() for f in finds))
     tends = m.get("tends")
@@ -218,7 +231,7 @@ def check_manifest(m, author: str, state=None) -> dict:
             or len(set(logs)) != len(logs) or (logs and author == "agent"):
         raise Refused("`logs` lists the kinds of event it logs: its own (a word, not a kind the engine logs itself), and not for "
                       f"{world_pack.active().agent.name}'s programs")
-    if bool(logs) != ("event" in out["proposes"]):
+    if (bool(logs) != ("event" in out["proposes"])) if v1 else (logs and "event" not in out["proposes"]):   # api 2's event may be just a line
         raise Refused("`logs` and the `event` proposal go together: say which public events it logs")
     if logs:
         out["logs"] = list(logs)
@@ -297,9 +310,10 @@ def _belongings(b) -> dict:
     kinds = set(world_content.kinds())
     if not isinstance(b, dict) or set(b) - {"takes", "gives", "most", "coins"} or not _number(b.get("most"), 1, 20) \
             or not _number(b.get("coins", 0), 0, COINS_MOST) \
-            or not all(isinstance(b.get(k, []), list) and all(isinstance(x, str) and x in kinds for x in b.get(k, [])) for k in ("takes", "gives")):
-        raise Refused(f"`belongings` is {{takes?, gives?, most, coins?}}: kinds of thing ({', '.join(sorted(kinds)) or 'this world has none'}), at most 1 to 20 "
-                      f"at a time, and coins (at most {COINS_MOST} a call)")
+            or not all(isinstance(b.get(k, []), list) and all(isinstance(x, str) and (x in kinds or k == "takes" and x == "creation") for x in b.get(k, []))
+                       for k in ("takes", "gives")):
+        raise Refused(f"`belongings` is {{takes?, gives?, most, coins?}}: kinds of thing ({', '.join(sorted(kinds)) or 'this world has none'}; it may "
+                      f"also take a creation, one of the agent's things going to someone), at most 1 to 20 at a time, and coins (at most {COINS_MOST} a call)")
     return {"takes": list(b.get("takes", [])), "gives": list(b.get("gives", [])), "most": int(b["most"]), **({"coins": int(b["coins"])} if b.get("coins") else {})}
 
 
@@ -480,6 +494,9 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
                       else f"it returned {', '.join(extra)}, which its manifest doesn't propose")
     if "refuse" in result:                                    # a module asked to do something says why it won't
         raise Refused(_text(result["refuse"], "refuse"))
+    legacy = []
+    if man.get("api", 1) == 1:                              # a manifest from before api 2
+        result, legacy = _from_api1(state, m, result)
     if "state" in result:
         if not isinstance(result["state"], dict) or _size(result["state"]) > STATE_MAX:
             raise Refused(f"`state` is an object of at most {STATE_MAX} bytes")
@@ -493,6 +510,10 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
             if budget[key] >= cap[key]:
                 raise Refused(f"it has used today's {cap[key]} `{key}` lines")
             changes.append((key, _log(result[key]) if key == "log" else _text(result[key], key)))
+    if isinstance(result.get("event"), str):                  # an event that is only a line for the record (api 1's `log`): a line, as it was
+        if budget["log"] >= cap["log"]:
+            raise Refused(f"it has used today's {cap['log']} lines for the record")
+        changes.append(("log", _text(result["event"], "event")))
     if "store" in result:
         changes.append(("store", _store(state, m["name"], result["store"])))
     if "status" in result:
@@ -511,17 +532,13 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
         changes.append(("deplete", _deplete(state, result["deplete"])))
     if "doing" in result:
         changes.append(("doing", _doing(result["doing"])))
-    if "coins" in result:
-        changes.append(("coins", _coins(state, man, result["coins"])))
-    if "part_with" in result:
-        changes.append(("part_with", _part_with(state, result["part_with"])))
     if "whereabouts" in result:
         changes.append(("whereabouts", _whereabouts(state, result["whereabouts"])))
     if "creation" in result:
         if budget["creation"] >= cap["creation"]:
             raise Refused(f"it has made {cap['creation']} things today")
         changes.append(("creation", _creation_made(result["creation"])))
-    if "event" in result:
+    if "event" in result and not isinstance(result["event"], str):
         if budget["event"] >= cap["event"]:
             raise Refused(f"it has logged {cap['event']} public events today")
         changes.append(("event", _event(man, result["event"])))
@@ -551,8 +568,6 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
                 isinstance(o, dict) and OFFER_NAME.match(str(o.get("name") or "")) and isinstance(o.get("help"), str) for o in offers):
             raise Refused(f"`offer` is a list of at most {OFFERS_MAX} {{name, help}}; a name is a few lowercase words")
         changes.append(("offers", [{"name": o["name"], "help": _text(o["help"], "offer help")} for o in offers]))
-    if "consume" in result:
-        changes.append(("consume", _consume(state, man["consumes"], result["consume"])))
     if "runtime" in result:
         changes.append(("runtime", _runtime(result["runtime"])))
     if "show" in result:
@@ -589,11 +604,14 @@ def plan(state, m: dict, result: dict, now: float, hook: str, settings=None) -> 
             raise Refused(str(e)) from None
         p = result["happen"]
         changes.append(("happen", {k: p[k] for k in ("category", "tone", "severity", "effects", "about", "names", "fallback", "night") if k in p}))
-    for key in ("affect", "find"):
-        if key in result:
-            if budget[key] >= cap[key]:
-                raise Refused(f"it has used today's {cap[key]} `{key}`")
-            changes.append((key, EFFECTS[key](man, result[key])))
+    if "affect" in result:
+        if budget["affect"] >= cap["affect"]:
+            raise Refused(f"it has used today's {cap['affect']} `affect`")
+        changes.append(("affect", _affect(result["affect"])))
+    for key, _ in legacy:                                     # an api 1 module's old proposals, checked and counted as api 2's
+        if budget[key] >= cap[key]:
+            raise Refused(f"it has used today's {cap[key]} `{key}`")
+    changes += legacy
     if "reply" in result:
         changes.append(("reply", _text(result["reply"], "reply", REPLY_MAX)))
     return changes
@@ -603,7 +621,7 @@ def _number(v, lo: float, hi: float) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
 
 
-def _affect(man, v) -> dict:
+def _affect(v) -> dict:
     """How the agent is: a little of any of its stats either way (the world's own: stats.py), a mood."""
     names = list(stats_mod.declared())
     if not isinstance(v, dict) or not v or set(v) - {*names, "mood"}:
@@ -629,7 +647,42 @@ def _find(man, v) -> dict:
     return {"item": item, "qty": qty}
 
 
-EFFECTS = {"affect": _affect, "find": _find}
+def _from_api1(state, m: dict, result: dict) -> tuple[dict, list]:
+    """An api 1 module's old proposals made into api 2's (docs/DESIGN-engine-audit.md, D), held to the old limits: what it uses up
+    (`consume`, as its `consumes` allows) and parts with go out as a `take`, what it finds (`find`, only its `finds`) comes in as a
+    `give`, coins either way. Returns the rest of what it proposed and the checked changes."""
+    man, rest = m["manifest"], {k: v for k, v in result.items() if k not in ("consume", "find", "coins", "part_with")}
+    take, give = [], []
+    if "consume" in result:
+        want, may = result["consume"], man.get("consumes") or {}
+        if not isinstance(want, dict):
+            raise Refused("`consume` maps item names to quantities")
+        for name, qty in want.items():
+            limit = may.get(name, may.get("*"))
+            if limit is None:
+                raise Refused(f"its manifest doesn't let it use up {name}")
+            if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= limit:
+                raise Refused(f"it may use up 1 to {limit} {name} at a time")
+            take += _take(state, {"belongings": {"takes": ["material"], "most": limit}}, [{"item": name, "qty": qty, "kind": "material"}])
+    if "part_with" in result:
+        v = result["part_with"]
+        if not isinstance(v, dict) or set(v) != {"creation", "to"} or not isinstance(v["creation"], str):
+            raise Refused("`part_with` is {creation, to}")
+        take += _take(state, {"belongings": {"takes": ["creation"]}}, [v])
+    if "coins" in result:
+        v, most = result["coins"], (man.get("belongings") or {}).get("coins", 0)
+        if not isinstance(v, int) or isinstance(v, bool) or v == 0 or abs(v) > most:
+            raise Refused(f"`coins` is a whole number of coins to the agent (or less than 0, from it), at most {most} either way")
+        if v < 0:
+            take += _take(state, {"belongings": {"coins": most}}, [{"coins": -v}])
+        else:
+            give.append({"coins": v})
+    if "find" in result:
+        f = _find(man, result["find"])
+        give.append({"item": f["item"], "qty": f["qty"], "kind": "material", "description": f"found by your {man.get('subject') or m['name']}",
+                     "attrs": {}})
+    return rest, [(k, v) for k, v in (("take", take), ("give", give)) if v]
+
 
 
 def _log(v):
@@ -690,24 +743,56 @@ def _status(v) -> dict:
             **({"next_at": float(v["next_at"])} if v.get("next_at") is not None else {})}
 
 
+TAKE_SHAPE = "each thing in `take` is {item, qty?, kind?}, {coins} or {creation, to}"
+
+
+def _coins_of(key: str, b: dict, v) -> int:
+    most = b.get("coins", 0)
+    if not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= most:
+        raise Refused(f"`{key}` coins is a whole number from 1 to {most}")
+    return v
+
+
 def _take(state, man: dict, v) -> list:
-    """Things to take from the agent's belongings: only kinds the manifest takes, only what the agent has."""
-    b = man["belongings"]
-    if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES or not all(isinstance(x, dict) and isinstance(x.get("item"), str) for x in v):
-        raise Refused(f"`take` is a list of up to {GIVE_LINES} {{item, qty}}")
-    out = []
+    """What goes out of the agent's belongings (api 2): things of the kinds the manifest takes, only what the agent has ({id, qty,
+    name}); coins, at most the manifest's `coins` a call ({coins}); one of the agent's creations, to someone ({creation, to})."""
+    b, name = man["belongings"], world_pack.active().agent.name
+    if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES:
+        raise Refused(f"`take` is a list of up to {GIVE_LINES} {{item, qty}}, {{coins}} or {{creation, to}}")
+    out, coins = [], 0
     for x in v:
-        qty = x.get("qty", 1)
+        if not isinstance(x, dict) or not (set(x) == {"coins"} or "creation" in x and set(x) <= {"creation", "to"}
+                                           or isinstance(x.get("item"), str) and set(x) <= {"item", "qty", "kind"}):
+            raise Refused(TAKE_SHAPE)
+        if "coins" in x:
+            coins += _coins_of("take", b, x["coins"])
+            if state.coins() < coins:
+                raise Refused(f"{name} has only {state.coins()} coins")
+            out.append({"coins": x["coins"]})
+            continue
+        if "creation" in x:
+            if "creation" not in b["takes"]:
+                raise Refused(f"it can only take: {', '.join(b['takes']) or 'nothing'}")
+            if not isinstance(x["creation"], str) or "to" not in x:
+                raise Refused("`take` of a creation is {creation, to}: who has it now")
+            c = _creation(state, x["creation"])
+            if not c:
+                raise Refused(f"{name} has no creation called {x['creation']!r}")
+            out.append({"creation": c["name"], "to": _text(x["to"], "take.to")})
+            continue
+        qty, kind = x.get("qty", 1), x.get("kind")
         if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= b["most"]:
             raise Refused(f"`take` qty is 1 to {b['most']}")
-        item, err = state.find_item(x["item"])
-        if not item:
-            raise Refused(err)
-        if item["kind"] not in b["takes"]:
+        if kind is not None and kind not in b["takes"]:
             raise Refused(f"it can only take: {', '.join(b['takes']) or 'nothing'}")
-        if item["qty"] < qty:
-            raise Refused(f"there are only {item['qty']} {item['name']}")
-        out.append((item["id"], qty, item["name"]))
+        item, err = state.find_item(x["item"], kind=kind)
+        if not item and err.startswith("which one"):
+            raise Refused(err)
+        if item and item["kind"] not in b["takes"]:
+            raise Refused(f"it can only take: {', '.join(b['takes']) or 'nothing'}")
+        if not item or item["qty"] < qty:
+            raise Refused(f"you need {qty} {item['name'] if item else x['item']} for that" + (f" (you have {item['qty']})" if item else ""))
+        out.append({"id": item["id"], "qty": qty, "name": item["name"]})
     return out
 
 
@@ -717,14 +802,18 @@ def _built_in_places() -> set:
 
 
 def _give(state, man: dict, v) -> list:
-    """Things to give the agent: only kinds the manifest gives, a few at a time, with plain attributes."""
+    """What comes into the agent's belongings (api 2): things of the kinds the manifest gives, a few at a time, with plain attributes;
+    coins, at most the manifest's `coins` a call ({coins})."""
     b = man["belongings"]
     if not isinstance(v, list) or not 1 <= len(v) <= GIVE_LINES:
         raise Refused(f"`give` is a list of up to {GIVE_LINES} {{item, qty, kind, description?, attrs?}}")
     out = []
     for x in v:
+        if isinstance(x, dict) and set(x) == {"coins"}:                     # coins to the agent
+            out.append({"coins": _coins_of("give", b, x["coins"])})
+            continue
         if not isinstance(x, dict) or set(x) - {"item", "qty", "kind", "description", "attrs", "at"}:
-            raise Refused("each thing in `give` is {item, qty, kind, description?, attrs?, at?}")
+            raise Refused("each thing in `give` is {item, qty, kind, description?, attrs?, at?} or {coins}")
         if x.get("at") is not None and (not isinstance(x["at"], str) or not state.place_row(x["at"]) and x["at"] not in _built_in_places()):
             raise Refused("`give.at` is the key of the place it was found")
         name = _text(x.get("item"), "give.item")
@@ -875,24 +964,8 @@ def _letter(state, v) -> dict:
     return {"from": ch["name"]}
 
 
-def _coins(state, man: dict, v) -> int:
-    """Coins to the agent (more than 0) or from it (less): at most the manifest's `belongings.coins` a call, and never more than it has."""
-    most = (man.get("belongings") or {}).get("coins", 0)
-    if not isinstance(v, int) or isinstance(v, bool) or v == 0 or abs(v) > most:
-        raise Refused(f"`coins` is a whole number of coins to the agent (or less than 0, from it), at most {most} either way")
-    if v < 0 and state.coins() < -v:
-        raise Refused(f"{world_pack.active().agent.name} has only {state.coins()} coins")
-    return v
 
 
-def _part_with(state, v) -> dict:
-    """One of the agent's creations goes to someone else (sold, given): it is theirs after that."""
-    if not isinstance(v, dict) or set(v) != {"creation", "to"} or not isinstance(v["creation"], str):
-        raise Refused("`part_with` is {creation, to}")
-    c = _creation(state, v["creation"])
-    if not c:
-        raise Refused(f"{world_pack.active().agent.name} has no creation called {v['creation']!r}")
-    return {"creation": c["name"], "to": _text(v["to"], "part_with.to")}
 
 
 def _whereabouts(state, v) -> dict:
@@ -974,7 +1047,7 @@ def _read(v) -> dict:
         out["feel"] = dict(feel)
     firsts = given("firsts", [])
     if not isinstance(firsts, list) or len(firsts) > READ_FIRSTS or not all(
-            isinstance(f, dict) and set(f) <= {"key", "label", "major"} and isinstance(f.get("key"), str) and STORE_KEY.match(f["key"])
+            isinstance(f, dict) and set(f) <= {"key", "label", "major"} and isinstance(f.get("key"), str) and FIRST_KEY.match(f["key"])
             and isinstance(f.get("label"), str) and f["label"].strip() and len(f["label"]) <= 120 and isinstance(f.get("major", False), bool) for f in firsts):
         raise Refused(f"`event.read.firsts` is up to {READ_FIRSTS} {{key, label, major?}}: label reads after \"the first time you\"")
     if firsts:
@@ -1188,22 +1261,6 @@ def _show(objs) -> list:
     return out
 
 
-def _consume(state, may: dict, want) -> list:
-    """Materials to take from the agent's belongings: only what the manifest allows, and only what the agent has."""
-    if not isinstance(want, dict):
-        raise Refused("`consume` maps item names to quantities")
-    take = []
-    for name, qty in want.items():
-        limit = may.get(name, may.get("*"))
-        if limit is None:
-            raise Refused(f"its manifest doesn't let it use up {name}")
-        if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= limit:
-            raise Refused(f"it may use up 1 to {limit} {name} at a time")
-        item, _ = state.find_item(name, kind="material")
-        if not item or item["qty"] < qty:
-            raise Refused(f"you need {qty} {name} for that")
-        take.append((item["id"], qty, item["name"]))
-    return take
 
 
 def _runtime(rt) -> dict:
@@ -1238,11 +1295,19 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "standing":
             fields["standing"] = val
         elif kind == "take":
-            for item_id, qty, _ in val:
-                state.take_item(item_id, qty)
+            for x in val:
+                if "coins" in x:
+                    state.add_coins("agent", -x["coins"])
+                elif "creation" in x:
+                    state.give_creation(_creation(state, x["creation"])["id"], x["to"])
+                else:
+                    state.take_item(x["id"], x["qty"])
             budget["take"] += 1
         elif kind == "give":
             for g in val:
+                if "coins" in g:
+                    state.add_coins("agent", g["coins"])
+                    continue
                 state.add_item(g["item"], g["qty"], g["kind"], g["description"], _as_known(g))
                 if g.get("at"):
                     state.add_find(g["at"], g["item"], now)
@@ -1267,11 +1332,6 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             ch = next(c for c in state.correspondents() if c["name"] == val["from"])
             state.update_character(ch["id"], next_chatter_at=now)            # written on the engine's next step, as letters are answered
             budget["letter"] += 1
-        elif kind == "coins":
-            state.add_coins("agent", val)
-        elif kind == "part_with":
-            c = _creation(state, val["creation"])
-            state.give_creation(c["id"], val["to"])
         elif kind in ("whereabouts", "notes"):
             fields[kind] = val
         elif kind == "source":
@@ -1291,9 +1351,6 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
         elif kind == "wake":
             out["wake"] = True
             budget["wake"] += 1
-        elif kind == "consume":
-            for item_id, qty, _ in val:
-                state.take_item(item_id, qty)
         elif kind == "runtime":
             c = _creation(state, m["manifest"]["subject"])
             if c:
@@ -1306,9 +1363,6 @@ def apply(state, m: dict, changes: list, now: float) -> dict:
             a = state.agent()
             state.update_agent(**{k: (v if k == "mood" else clamp(a[k] + v)) for k, v in val.items() if k == "mood" or k in a})
             budget["affect"] += 1
-        elif kind == "find":
-            state.add_item(val["item"], val["qty"], "material", f"found by your {m['manifest'].get('subject') or m['name']}")
-            budget["find"] += 1
         elif kind == "voices":
             fields["voices"] = val
         elif kind == "happen":
@@ -1712,7 +1766,8 @@ def program_manifest(source: str, creation: dict, events=None) -> dict:
         raise Refused("on_event needs `events`: the kinds of thing that happen it listens for" if "on_event" in hooks
                       else "`events` is only for a program with on_event")
     man = {"name": f"{slug(creation['name'])}-by-agent", "kind": "thing", "api": API, "subject": creation["name"], "hooks": hooks,
-           "reads": list(AGENT_READS), "proposes": list(AGENT_PROPOSES), "events": events, "consumes": {"*": 2}}
+           "reads": list(AGENT_READS), "proposes": list(AGENT_PROPOSES), "events": events,
+           "belongings": {"takes": ["material"], "gives": [], "most": 2}}               # what it uses up: materials, two at a time
     if "upkeep" in creation["spec"]["capabilities"]:
         man["tends"] = "tend"                                       # if the program offers "tend", the tend tool uses it
     return man
@@ -1827,7 +1882,7 @@ async def propose(state, settings, runner, author: str, manifest: dict, source: 
         return {"error": f"there is no module #{replaces} called {man['name']} by {author} to replace"}
     if not old and any(o["name"] == man["name"] and o["status"] in ("proposed", "waiting", "live", "disabled") for o in state.modules()):
         return {"error": f"a module called {man['name']} already exists; send a new version of it instead"}
-    mid = state.add_module(name=man["name"], kind=man["kind"], author=author, api=API, subject=man.get("subject", ""), manifest=man,
+    mid = state.add_module(name=man["name"], kind=man["kind"], author=author, api=man["api"], subject=man.get("subject", ""), manifest=man,
                            source=source, reason=str(reason or "")[:500], status="proposed", version=(old["version"] + 1) if old else 1,
                            replaces=replaces, created_at=now)
     if old and old["status"] in ("proposed", "waiting"):
@@ -1949,7 +2004,8 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
                 report["refused"].append(f"{hook}: {r['refused']}")
             if r["reply"]:
                 report["replies"].append(f"{extra.get('action')}: {r['reply']}")
-            report["logged"] += [e["data"]["text"] for e in world.events(after_id=last) if e["kind"] == "module"]
+            report["logged"] += [e["data"]["text"] if e["kind"] == "module" else e["data"]["read"]["line"] for e in world.events(after_id=last)
+                                 if e["kind"] == "module" or e["data"].get("by") and (e["data"].get("read") or {}).get("line")]   # a line, or its own event
             report["spoken"] += [f"{e['data']['name']}: {e['data']['text']}" for e in world.events(after_id=last) if e["kind"] == "companion"]
             sim.update(world.module(sim["id"]))
             if sim.get("happen"):                                       # what would happen, not written on a trial
@@ -2083,7 +2139,7 @@ WORKS = {"upkeep": "it stops when it runs down, and can be tended", "timekeeper"
 
 
 def workings_manifest(c: dict) -> tuple[dict, str]:
-    """The shipped workings for one creation: (manifest, source), with only the hooks, effects and finds its capabilities need."""
+    """The shipped workings for one creation: (manifest, source), with only the hooks and effects its capabilities need."""
     man, source = library("workings")
     caps = c["spec"]["capabilities"]
     talks, news = "companion" in caps, caps.get("provides", {}).get("ability") == "news"
@@ -2092,9 +2148,8 @@ def workings_manifest(c: dict) -> tuple[dict, str]:
         + (["on_answer"] if talks or news else []) + (["on_request"] if "upkeep" in caps else [])     # a thing that needs tending can be stopped
     finds = caps.get("helper", {}).get("finds") or []
     out = {**man, "name": f"{slug(c['name'])}-workings", "subject": c["name"], "hooks": hooks,
-           "reads": man["reads"] + (["weather"] if news else []),
-           "proposes": [p for p in man["proposes"] if (p != "find" or finds) and (p not in ("voices", "speak") or talks) and (p != "ask" or talks or news)],
-           **({"finds": finds} if finds else {})}
+           "proposes": [p for p in man["proposes"] if (p != "give" or finds) and (p not in ("voices", "speak") or talks) and (p != "ask" or talks or news)],
+           "belongings": {**man["belongings"], "gives": man["belongings"]["gives"] if finds else []}}    # it gives what it finds
     if "upkeep" not in caps:
         out.pop("tends")
         out.pop("answers")

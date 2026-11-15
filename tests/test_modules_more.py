@@ -80,7 +80,7 @@ def test_the_context_word_for_word(tmp_path):
     st.update_agent(activity="sleeping", location="workshop")
     off = live(st, rule(name="gone", proposes=["publish"]), "x")
     st.update_module(off["id"], facts={"x": 1}, status="disabled")
-    m = live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS)), "x")
+    m = live(st, rule(kind="thing", name="all", subject="Gear Clock", reads=list(M.READS_V1)), "x")             # api 1: the weather too
     ctx = M.context(st, s, m, NOW)
     t = datetime.fromtimestamp(NOW)
     assert ctx["time"] == {"hour": t.hour, "minute": t.minute, "weekday": t.strftime("%A"), "season": "",
@@ -103,7 +103,7 @@ def test_the_referees_edges(tmp_path):
     s, st, agent = modular(tmp_path)
     st.add_item("oil", 2, "material", "")
     st.add_item("apple", 3, "food", "")
-    m = live(st, rule(proposes=list(M.PROPOSES[:7]), consumes={"*": 5}), "x")
+    m = live(st, rule(proposes=list(M.PROPOSES_V1[:7]), consumes={"*": 5}), "x")
     ref = lambda r, hook="on_tick": refusal(M.plan, st, m, r, NOW, hook)
     assert ref({"runtime": 1, "wake": 1}) == "it returned runtime, wake, which its manifest doesn't propose"
     big = {"x": "y" * (M.STATE_MAX - len('{"x": ""}'))}
@@ -118,8 +118,8 @@ def test_the_referees_edges(tmp_path):
     assert M.plan(st, m, {"offer": four}, NOW, "on_tick")[0][1] == four
     assert ref({"offer": [{"name": "ring", "help": ""}]}) == "`offer help` is a line of text"
     assert ref({"consume": {"apple": 1}}) == "you need 1 apple for that"                         # food isn't a material
-    assert M.plan(st, m, {"consume": {"oil": 2}}, NOW, "on_tick")[0][1][0][1] == 2                 # exactly what Pip has
-    assert ref({"consume": {"oil": 3}}) == "you need 3 oil for that"
+    assert M.plan(st, m, {"consume": {"oil": 2}}, NOW, "on_tick")[0][1][0]["qty"] == 2                 # exactly what Pip has
+    assert ref({"consume": {"oil": 3}}) == "you need 3 oil for that (you have 2)"
     m["manifest"]["proposes"].append("runtime")
     assert ref({"runtime": {"x": 1}}) == "`runtime` can only set: clock_set_at, clock_offset, tended_until, halted_at, stop_logged, needs_part"
     assert ref({"reply": ""}, "on_action") == "`reply` is a line of text"
@@ -135,7 +135,7 @@ async def test_budgets_add_up_and_a_due_time_ends_on_its_moment(tmp_path):
     for _ in range(2):
         r = await M.call(st, s, agent.runner, m, "on_tick", NOW)
     assert r == {"ok": True, "error": "", "refused": "", "wake": True, "reply": "", "changed": True}
-    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "source": 0, "event": 0, "creation": 0, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "find": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
+    assert m["budget"] == st.module(m["id"])["budget"] == {"day": M._day(NOW), "calls": 2, "source": 0, "event": 0, "creation": 0, "perceive": 2, "log": 2, "wake": 2, "affect": 0, "ask": 0, "speak": 0, "happen": 0, "take": 0, "give": 0, "request": 0, "character": 0, "letter": 0}
     got = st.module(m["id"])
     assert got["due"] is None and [l["text"] for l in got["lines"]] == ["a", "a"]
     calls = st.module_calls(m["id"])

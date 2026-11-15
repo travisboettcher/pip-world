@@ -10,7 +10,7 @@ from tests.test_modules import NOW, live, rule, shipped_layouts
 from tests.test_projects import make, report
 
 BELL = ('def on_install(ctx):\n    return {"schedule": ctx["now"] + 3600}\n'
-        'def on_time(ctx):\n    return {"log": "The bell in the square rings.", "schedule": ctx["now"] + 3600}\n')
+        'def on_time(ctx):\n    return {"event": "The bell in the square rings.", "schedule": ctx["now"] + 3600}\n')
 BROKEN = 'def on_tick(ctx):\n    return 1/0\n'
 
 
@@ -132,7 +132,7 @@ def test_the_pieces(tmp_path):
     assert B.name_of("Market Bell!") == "market-bell" and B.name_of("9 lives") == "rule-9-lives" and B.name_of("") == "thing"
     assert B.name_of("ab") == "ab-rule"
     man = B.manifest("def on_event(ctx):\n    pass\ndef on_time(ctx):\n    pass\n", "x-rule", ["world_changed", 3])
-    assert man == {"name": "x-rule", "kind": "rule", "api": 1, "hooks": ["on_event", "on_time"], "reads": list(B.RULE_READS),
+    assert man == {"name": "x-rule", "kind": "rule", "api": 2, "hooks": ["on_event", "on_time"], "reads": list(B.RULE_READS),
                    "proposes": list(B.RULE_PROPOSES), "events": ["world_changed"]}
     assert B.manifest("def on_time(ctx):\n    pass\n", "y", ["world_changed"])["events"] == []
     assert "subject" not in B.RULE_READS and "places" in B.RULE_READS
@@ -293,7 +293,7 @@ async def test_the_nights_edges(tmp_path):
         gm.queue(draft(name=f"chime {i}", reason="x" * 600), FITS)
         r = await night(st, s, agent, NOW + (10 + i) * 86400)
         assert r["outcome"] == "proposed" and len(st.module(r["module"])["reason"]) == 500
-    gm.queue(draft(name="ears", code='def on_event(ctx):\n    return {"log": "heard"}\n', events=["world_changed"]), FITS)
+    gm.queue(draft(name="ears", code='def on_event(ctx):\n    return {"event": "heard"}\n', events=["world_changed"]), FITS)
     r = await night(st, s, agent, NOW + 20 * 86400)
     assert st.module(r["module"])["manifest"]["events"] == ["world_changed"]
     gm.queue(draft(), report(fits=False, why="w" * 400))

@@ -77,20 +77,20 @@ def test_how_an_event_says_it_reads_is_checked():
     assert len(M._read({"counts": {f"c{chr(97 + i)}": 1 for i in range(8)}})["counts"]) == 8
     assert refused(M._read, {"feel": {"glee": 1}}) == ("`event.read.feel` maps emotions (joy, sadness, anger, fear, trust, disgust, surprise, "
                                                        "anticipation) to whole numbers from -20 to 20")
-    assert refused(M._read, {"tally": "x"}) == "`event.read.tally` is up to 8 {group (craft, ability), name, outcome (good, neutral, bad)}"
+    assert refused(M._read, {"tally": "x"}) == "`event.read.tally` is up to 8 {group (craft, ability, tool), name, outcome (good, neutral, bad)}"
     for bad, why in (
             ({"x": 1}, "`event.read` is {line?, moment?, importance?, feel?, firsts?, goal?, tally?, counts?, public?}"), ("x", "`event.read` is"),
             ({"line": "x" * (M.READ_TEXT + 1)}, "`event.read.line`"), ({"moment": 3}, "`event.read.moment`"), ({"goal": " "}, "`event.read.goal`"),
-            ({"public": "x" * 601}, "`event.read.public`"),
+            ({"public": "x" * (M.READ_TEXT + 1)}, "`event.read.public`"),
             ({"importance": 0}, "`event.read.importance` is a whole number from 1 to 9"), ({"importance": 10}, "`event.read.importance`"),
             ({"importance": True}, "`event.read.importance`"), ({"importance": 2.0}, "`event.read.importance`"),
             ({"feel": {"glee": 1}}, "`event.read.feel` maps emotions"), ({"feel": {"joy": 21}}, "`event.read.feel`"), ({"feel": {"joy": -21}}, "`event.read.feel`"),
             ({"feel": {"joy": True}}, "`event.read.feel`"), ({"feel": {"joy": 1.5}}, "`event.read.feel`"), ({"feel": []}, "`event.read.feel`"),
-            ({"firsts": [{"key": "k", "label": "l"}] * 4}, "`event.read.firsts` is up to 3"), ({"firsts": [{"key": "k k!", "label": "l"}]}, "`event.read.firsts`"),
+            ({"firsts": [{"key": "k", "label": "l"}] * 9}, "`event.read.firsts` is up to 8"), ({"firsts": [{"key": " k", "label": "l"}]}, "`event.read.firsts`"),
             ({"firsts": [{"key": "k", "label": " "}]}, "`event.read.firsts`"), ({"firsts": [{"key": "k", "label": "l" * 121}]}, "`event.read.firsts`"),
             ({"firsts": [{"key": "k", "label": "l", "major": 1}]}, "`event.read.firsts`"), ({"firsts": [{"key": "k", "label": "l", "x": 1}]}, "`event.read.firsts`"),
             ({"firsts": [{"label": "l"}]}, "`event.read.firsts`"), ({"firsts": "x"}, "`event.read.firsts`"),
-            ({"tally": [{"group": "tool", "name": "x", "outcome": "good"}]}, "`event.read.tally` is up to 8"),
+            ({"tally": [{"group": "skill", "name": "x", "outcome": "good"}]}, "`event.read.tally` is up to 8"),
             ({"tally": [{"group": "craft", "name": " ", "outcome": "good"}]}, "`event.read.tally`"),
             ({"tally": [{"group": "craft", "name": "n" * 41, "outcome": "good"}]}, "`event.read.tally`"),
             ({"tally": [{"group": "craft", "name": "x", "outcome": "fine"}]}, "`event.read.tally`"),

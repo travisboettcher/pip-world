@@ -78,6 +78,11 @@ def fit(text, most=200):
     return text if len(text) <= most else text[:most - 3].rstrip() + "..."
 
 
+def moment(kind, data, line, feel=None):
+    """One of trade's events (`logs`), read as a moment of the agent's day, and shown on the public page."""
+    return {"kind": kind, "data": data, "read": {"line": line, "moment": line, "public": line, **({"feel": feel} if feel else {})}}
+
+
 def coins_text(n):
     return str(n) + " coin" + ("" if n == 1 else "s")
 
@@ -357,8 +362,8 @@ class Market:
                 where[n["name"]] = {"at": away, "doing": fit("minding a stall at " + label(away) + " today (" + sells + ")")}
         out["whereabouts"], out["notes"] = where, notes
         out["publish"] = self.facts()
-        if self.coins:
-            out["coins"] = self.coins
+        if self.coins:                                        # the purse, either way
+            out.setdefault("give" if self.coins > 0 else "take", []).append({"coins": abs(self.coins)})
         store = self.store()
         if store:
             out["store"] = store
@@ -501,9 +506,9 @@ def sell(m, args):
         m.coins += pay
         keeper = place[:-len(HOME_SUFFIX)] if place.endswith(HOME_SUFFIX) else "the keeper at " + label(place)
         return ("you sold " + thing["name"] + " for " + coins_text(pay) + " (" + str(m.coins_now()) + " now); it is theirs now",
-                {"part_with": {"creation": thing["name"], "to": keeper},
-                 "log": {"text": fit("You sold " + thing["name"] + " at " + label(place) + " for " + coins_text(pay) + "."), "kind": "sold_creation",
-                         "feel": {"joy": 3}}})
+                {"take": [{"creation": thing["name"], "to": keeper}],
+                 "event": moment("sold", {"name": thing["name"], "place": place, "coins": pay},
+                                 fit("You sold " + thing["name"] + " at " + label(place) + " for " + coins_text(pay) + "."), {"joy": 3})})
     if not have:
         return "error: " + err, {}
     qty = min(qty, have["qty"], MOST)
@@ -633,10 +638,10 @@ def _customers(m):
             m.drop("stall", k)
         sales.append((units, r["name"], coins))
     if sales:
-        m.out["log"] = {"text": fit("At your stall you sold " + "; ".join(str(u) + " " + n + " for " + coins_text(c) for u, n, c in sales) + "."),
-                        "kind": "stall_sale", "feel": {"joy": 2}, "items": [{"name": n, "qty": u} for u, n, _ in sales]}
+        m.out["event"] = moment("sold_at_stall", {"items": [{"name": n, "qty": u} for u, n, _ in sales]},
+                                fit("At your stall you sold " + "; ".join(str(u) + " " + n + " for " + coins_text(c) for u, n, c in sales) + "."), {"joy": 2})
     if gone:
-        m.out["part_with"] = {"creation": gone[0], "to": "a buyer at " + label(here["key"])}
+        m.out.setdefault("take", []).extend({"creation": g, "to": "a buyer at " + label(here["key"])} for g in gone[:4])
 
 
 def _clean_wares(m, raw):
@@ -703,7 +708,8 @@ def on_answer(ctx):
         wares = _clean_wares(m, (got.get("data") or {}).get("wares"))
         if wares:
             m.put("wares", slot(name), {"name": name, "wares": wares})
-            m.out["log"] = {"text": fit(name + " has things for sale: " + ", ".join(w["name"] for w in wares) + "."), "kind": "wares"}
+            m.out["event"] = moment("wares", {"name": name, "wares": [w["name"] for w in wares]},
+                                    fit(name + " has things for sale: " + ", ".join(w["name"] for w in wares) + "."))
     return m.finish(m.out)
 
 

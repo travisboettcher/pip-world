@@ -127,7 +127,9 @@ async def use(agent, name, **args):
 
 
 def moment(st):
-    return next(e["data"] for e in st.events(20) if e["kind"] == "module" and e["data"].get("tool") == "read")
+    """The last reading, as the reading module's event says it reads (0.53.0): its line, and the kind of moment it was."""
+    e = next(e for e in st.events(20) if e["kind"] in ("read", "finished_book") and e["data"].get("by") == "reading")
+    return {**e["data"], "text": e["data"]["read"]["line"], "moment": e["kind"]}
 
 
 async def finish(agent):

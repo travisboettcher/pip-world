@@ -62,13 +62,13 @@ Kinds:
 
 A manifest:
 ```json
-{"name": "gear-clock-workings", "kind": "thing", "api": 1, "subject": "Gear Clock",
+{"name": "gear-clock-workings", "kind": "thing", "api": 2, "subject": "Gear Clock",
  "hooks": ["on_install", "on_time", "on_action"], "reads": ["subject"],
- "proposes": ["schedule", "offer", "runtime", "log", "perceive", "wake", "consume"],
- "consumes": {"*": 5}, "tends": "tend"}
+ "proposes": ["schedule", "offer", "runtime", "event", "perceive", "wake", "take"],
+ "belongings": {"takes": ["material"], "gives": [], "most": 5}, "tends": "tend"}
 ```
 
-## The hooks (API version 1)
+## The hooks (API version 1; version 2 below)
 Code is Python, in one source file per module, defining any of these functions. Each gets one `ctx` dict and returns a dict (or nothing).
 
 | Hook | When | Input beyond the usual |
@@ -113,6 +113,29 @@ What a hook may return (each key needs a matching entry in `proposes`):
 - `show`: what to draw in the scene (next section).
 
 Anything outside this list, or over a limit, is refused for that call. The module carries on, and the refusal is logged and told to its author.
+
+## API version 2 (0.53.0)
+The engine audit (DESIGN-engine-audit.md, D) found thirty-four proposals and nineteen reads, added one feature at a time, several doing
+the same thing under different names. Version 2 folds those together; everything else is unchanged.
+- **Belongings go out by `take`, in by `give`.** A `take` holds `{item, qty?, kind?}` (things of the kinds the manifest's `belongings`
+  takes; `kind` says which, when a name could be more than one: a part to mend with is a material), `{coins}` (at most the manifest's
+  `belongings.coins` a call, never more than the agent has) and `{creation, to}` (one of the agent's creations goes to someone: the
+  manifest takes `creation`). A `give` holds `{item, qty, kind, description?, attrs?, at?}` and `{coins}`. These were `consume`,
+  `coins` (either way), `part_with` and `find`. Short of something: "you need 2 brass wire for that (you have 1)".
+- **A line for the record or a whole event is an `event`.** A string is a line for the day's record (api 1's `log` line: stored as the
+  engine's `module` event, counted against the day's lines); `{kind, data, read?, expect?}` is a whole event of a kind the manifest
+  `logs`, read as it says (`read`: line, moment, importance, feel, firsts, tally, counts, goal, public). A tally may now be of a `tool`
+  (how a module's tool went), and up to eight firsts. Any module event's kind may be named a first in the pack's `module_firsts`
+  (`garden:ripe`), as api 1's moments were.
+- **The weather is a fact.** The `weather` read is gone: the sky module publishes `weather` like any fact, and a module reads `facts`.
+- Twenty-nine proposals and eighteen reads. The rest stay because each does one thing no other does: people (`character`, `letter`,
+  `whereabouts`, `notes`), words to the agent (`status` standing, `perceive` once, `speak` as a voice), the agent (`affect`,
+  `practice`, `doing`, `session`), things (`offer`, `runtime`, `show`) and the world (`publish`, `store`, `schedule`, `wake`, `happen`,
+  `request`, `source`, `deplete`, `creation`, `voices`, `ask`).
+- **Version 1 is still taken** (for a few releases): an api 1 module's `consume`, `find`, `coins` and `part_with` are made into `take`
+  and `give`, held to their old limits (`consumes`, `finds`, `belongings.coins`); its `log` (a line, or a moment `{text, kind, feel,
+  items, tool}`) is kept as it was; it still reads `weather`. Every module the engine and the two packs ship, the builder's rules and
+  the agent's own programs are written in version 2.
 
 ## Showing things: objects and anchors
 `show` returns scene objects:

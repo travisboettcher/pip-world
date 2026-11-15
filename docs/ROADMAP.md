@@ -147,7 +147,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           0.35.0 to 0.42.0 removed (a database that never moved its old tables must be started on 0.44 once first)
     - [x] 7b (0.46.0): a module's events say how the engine reads them (`read`: remembered, the day's moment, weight, feelings,
           firsts, turning points, crafts and abilities, the day's counts, the feed); none of the engine's readers knows crafting's kinds
-- [ ] The engine audit (docs/DESIGN-engine-audit.md, 2026-11-14; decisions taken): the small leaks and `pip` renamed completely; the
+- [x] The engine audit (docs/DESIGN-engine-audit.md, 2026-11-14; decisions taken): the small leaks and `pip` renamed completely; the
       dashboard into Pip's pack; the night pass and the guide; people (characters of any role, talk scenes and letters as engine machinery
       any module's characters use); capabilities and happenings' effects from the pack; the module API consolidated (`api: 2`)
     - [x] 1 (0.47.0): the small leaks; `pip` is `agent` everywhere in the engine, with a migration and no aliases
@@ -165,7 +165,11 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           words: `ready:`, `next:`, `low:`, `request:`, `affect:`), offered only where the world can run it; a happening loses some of
           any kind of thing (`loss`), stops a thing through its workings (`request` `stop`) and brings news of anyone; Ashfall's
           water filter works
+    - [x] 7 (0.53.0): the module API consolidated (`api: 2`): `take` and `give` for all belongings (coins and creations among them),
+          `event` for a line or a whole event, the weather a published fact; `api: 1` still taken, its old proposals made into the new
 - [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
+- [ ] Drop `api: 1` a few releases after 0.53.0 (once nothing live is written in it): `_from_api1`, the `log` path and its `module`
+      moments in firsts, memory and the day go, and the `weather` read with them
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 

@@ -132,7 +132,7 @@ identity, places and walking, the map, creations as things, the module runtime a
 - **Fine as they are:** drawing and writing (`draw`, `write_piece`, `look`, the gallery), programs (`program`), invented places,
   wishes, recall, the night pass's note ops, reflection, emotions.
 
-### D. The module API
+### D. The module API — *built (0.53.0)*
 Nine hooks, nineteen reads and thirty-four proposals, added one feature at a time. What the shipped modules and Ashfall use:
 - **Used by one module:** the proposals `perceive`, `offer`, `consume`, `runtime` and `find` (`workings`, the creations' runtime), `deplete`
   (`gathering`), `event` and `creation` (`crafting`); `character` and `letter` (`neighborhood`), `coins`, `part_with`, `whereabouts` and
@@ -219,6 +219,18 @@ Each a release with tests, mutation testing on what changed, Pip's world running
    happenings module asks the creation's workings, whose name the `creations` read now gives. *Decided while building:* `news` stays
    the engine's intent, for anyone the agent knows of any role, not a request to the neighbourhood module: people are the engine's
    machinery (C1's decision), and someone's life moving on is part of them, as letters are.
-7. **The API consolidated** (D, `api: 2`), last, once the releases above have shown which proposals are really needed.
+7. **The API consolidated** (D, `api: 2`), last, once the releases above have shown which proposals are really needed. *Built
+   (0.53.0):* manifests are `api: 2`. Belongings go out by `take` (things, `{coins}`, `{creation, to}`: what `consume`, `coins` and
+   `part_with` did) and in by `give` (things, `{coins}`: what `find` and `coins` did); a line for the record or a whole event is an
+   `event` (a string, or `{kind, data, read?, expect?}`: what `log` did), a `read` may tally a `tool` and name up to eight firsts, and
+   any module event's kind may be one of the pack's `module_firsts`; the `weather` read is gone (the sky publishes it as a fact).
+   Twenty-nine proposals and eighteen reads. *Decided while building:* the rest stay, each doing one thing no other does (the list is in
+   DESIGN-modules.md, "API version 2"); `event` keeps a plain-line form, because the simplest modules (the builder's rules, the
+   agent's own programs) only ever wanted a line for the day's record, and making them declare kinds and a `read` for it would be the
+   anemic engine the owner warned against, pushed onto every author. `api: 1` is still taken: its `consume`, `find`, `coins` and
+   `part_with` are made into `take` and `give` under their old limits, its `log` is kept as it was, and it still reads `weather`.
+   Every module the engine and both packs ship, the builder's rules and the agent's programs moved to version 2 in this release: the
+   garden's ripening, gathering's hauls (`haul`: the engine's own `gathered` kind is reserved), reading and trade's sales are events
+   that say how they read. A sale at the stall now parts with every creation sold, not just the first.
 
 Later, not in this plan: the engine's abstract dashboard, with components worlds reuse and panels they plug in.

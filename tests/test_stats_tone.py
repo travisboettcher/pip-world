@@ -87,9 +87,9 @@ def test_effects_stored_before_stats_were_the_worlds_still_read():
 
 def test_a_module_may_affect_any_stat_the_world_declares(wasteland):
     from app.modules import Refused, _affect
-    assert _affect({}, {"radiation": -0.1, "mood": "grim"}) == {"radiation": -0.1, "mood": "grim"}
+    assert _affect({"radiation": -0.1, "mood": "grim"}) == {"radiation": -0.1, "mood": "grim"}
     with pytest.raises(Refused, match=r"`affect` is \{radiation\?, stamina\?, food\?, mood\?\}"):
-        _affect({}, {"energy": 0.1})
+        _affect({"energy": 0.1})
 
 
 def test_the_worlds_tone_sets_the_words_and_sizes(wasteland):

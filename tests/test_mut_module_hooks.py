@@ -54,7 +54,7 @@ def test_a_tools_arguments_at_their_limits():
 def test_belongings_at_their_limits():
     assert M._belongings({"most": 1}) == {"takes": [], "gives": [], "most": 1}
     assert M._belongings({"gives": ["food"], "most": 20})["gives"] == ["food"]
-    why = ("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (food, material, seed, tool), at most 1 to 20 at a time, and coins (at "
+    why = ("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (food, material, seed, tool; it may also take a creation, one of the agent's things going to someone), at most 1 to 20 at a time, and coins (at "
            "most 500 a call)")
     for bad in ({"most": 0}, {"most": 21}, {"most": 2, "x": 1}, [], {"gives": ["gold"], "most": 1}, {"takes": "seed", "most": 1}):
         assert refused(M._belongings, bad) == why
@@ -66,7 +66,7 @@ def test_belongings_in_a_world_with_no_kinds(tmp_path):
     from tests.test_world_pack import pack_dir
     try:
         W.set_active(W.load(Settings(world_pack=str(pack_dir(tmp_path)))))
-        assert refused(M._belongings, {"takes": ["seed"], "most": 1}).startswith("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (this world has none)")
+        assert refused(M._belongings, {"takes": ["seed"], "most": 1}).startswith("`belongings` is {takes?, gives?, most, coins?}: kinds of thing (this world has none; it may")
     finally:
         W.set_active(W.load(Settings()))
 
@@ -108,12 +108,12 @@ def test_taking_and_giving_at_their_limits(tmp_path):
     man = m["manifest"]
     st.add_item("pea seeds", 1, "seed", "")
     st.add_item("oat seeds", 4, "seed", "")
-    assert M._take(st, man, [{"item": "pea seeds"}])[0][1] == 1                       # one, unless it says
+    assert M._take(st, man, [{"item": "pea seeds"}])[0]["qty"] == 1                       # one, unless it says
     st.add_item("oat seeds", 4, "seed", "")
     assert len(M._take(st, man, [{"item": "oat seeds"}] * 8)) == 8
-    assert refused(M._take, st, man, [{"item": "oat seeds"}] * 9) == "`take` is a list of up to 8 {item, qty}"
-    assert refused(M._take, st, man, ["oat seeds"]) == "`take` is a list of up to 8 {item, qty}"
-    assert refused(M._take, st, man, []) == "`take` is a list of up to 8 {item, qty}"
+    assert refused(M._take, st, man, [{"item": "oat seeds"}] * 9) == "`take` is a list of up to 8 {item, qty}, {coins} or {creation, to}"
+    assert refused(M._take, st, man, ["oat seeds"]) == M.TAKE_SHAPE
+    assert refused(M._take, st, man, []) == "`take` is a list of up to 8 {item, qty}, {coins} or {creation, to}"
     st.add_item("brass", 1, "material", "")
     two = {**man, "belongings": {**man["belongings"], "takes": ["seed", "tool"]}}
     assert refused(M._take, st, two, [{"item": "brass"}]) == "it can only take: seed, tool"
@@ -124,8 +124,8 @@ def test_taking_and_giving_at_their_limits(tmp_path):
     shape = "`give` is a list of up to 8 {item, qty, kind, description?, attrs?}"
     for bad in ([g] * 9, [], "ab"):
         assert refused(M._give, st, man, bad) == shape
-    assert refused(M._give, st, man, [{**g, "x": 1}]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?}"
-    assert refused(M._give, st, man, ["pea"]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?}"
+    assert refused(M._give, st, man, [{**g, "x": 1}]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?} or {coins}"
+    assert refused(M._give, st, man, ["pea"]) == "each thing in `give` is {item, qty, kind, description?, attrs?, at?} or {coins}"
     assert refused(M._give, st, man, [{**g, "item": None}]) == "`give.item` is a line of text"
     assert refused(M._give, st, man, [{**g, "item": "p" * 41}]) == "`give.item` is a name of at most 40 characters"
     assert refused(M._give, st, man, [{**g, "description": 5}]) == "`give.description` is a line of text"

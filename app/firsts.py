@@ -55,6 +55,13 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
     def you(what):  # "the first time you <what>"
         return f"the first time you {what}"
 
+    def pack_first(key):  # "garden:ripe": the same first as when the feature was the engine's
+        said = module_firsts().get(key)
+        if isinstance(said, dict):                        # {as, said}: the first it was when the feature was the engine's ("book_finished")
+            key, said = said.get("as") or key, said.get("said")
+        if said:
+            add(key, you(said))
+
     if kind == "tool":
         t, a = canonical(d.get("tool")), d.get("args") or {}
         if not d.get("noop") and _ok(d.get("result")):
@@ -128,13 +135,10 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
     elif kind == "companion":
         if d.get("name"):
             add(f"companion:{d['name']}", you(f"heard {d['name']} speak"))
-    elif kind == "module" and d.get("moment"):          # a module's kind of moment: a first if the pack names it (content.json `module_firsts`)
-        key = f"{d.get('name')}:{d['moment']}"
-        said = module_firsts().get(key)
-        if isinstance(said, dict):                        # {as, said}: the first it was when the feature was the engine's ("book_finished")
-            key, said = said.get("as") or key, said.get("said")
-        if said:
-            add(key, you(said))                           # "garden:ripe": the same first as when the garden was the engine's
+    elif kind == "module" and d.get("moment"):          # an api 1 module's kind of moment: a first if the pack names it
+        pack_first(f"{d.get('name')}:{d['moment']}")
+    if d.get("by"):                                       # a module's event: a first if the pack names it (content.json `module_firsts`)
+        pack_first(f"{d['by']}:{kind}")
     if kind == "module":
         for it in d.get("items") or []:                   # what came of a module's moment: each thing found, the first time
             add(f"found:{it['name']}", you(f"found {it['name']}"))

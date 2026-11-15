@@ -147,7 +147,7 @@ def test_the_builders_page_lists_kinds_settings_textures_and_live_parts(tmp_path
     st.update_module(tree["id"], reason="A tree.")
     assert "  tree (params {'scale': 1}): A tree." in B.api(st)
     assert B.place_manifest(LAYOUT, {"name": "m", "label": "the mill", "place_kind": "shop", "description": "d", "items": None, "setting": "town",
-                                     "opens": 9}) == {"name": "m", "kind": "place", "api": 1, "hooks": ["on_build"],
+                                     "opens": 9}) == {"name": "m", "kind": "place", "api": 2, "hooks": ["on_build"],
                                                       "new": {"label": "the mill", "kind": "shop", "description": "d", "distance": "far", "items": [],
                                                               "setting": "town", "opens": 9}}
 

@@ -6,13 +6,14 @@ statistics, heapq, bisect; nothing else, no files, no network, no attributes sta
   "ask" (ctx["answer"] = {purpose, text}; text is "" if none came).
 Each gets ctx and returns a dict (or nothing). ctx holds:
 - now (seconds since the epoch, local clock), seed (for random.Random(ctx["seed"])), state (the dict you returned last time as "state").
-- time: {hour, minute, weekday ("Monday"...), season}. weather: {condition, temp, unit, daylight} or None.
+- time: {hour, minute, weekday ("Monday"...), season}.
 - agent: {where (a place key; AGENT_POSS own home is "HOME_KEY"), at_home, activity, asleep, walking, hunger, energy (0 to 1), mood, coins}. items: AGENT_POSS
   belongings [{name, qty, kind, attrs}]. visitors: {waiting} (how many visitors' messages wait for AGENT_NAME).
 - places: the real places [{key, label, kind}] (kinds: home, wild, yard, sight, library, neighbor, shop, market).
 - works: AGENT_POSS newest pixel drawings [{id, title, subject, rows, palette}]. stalls: AGENT_POSS stall lines [{place, item, kind, qty, ask,
   fair (the going price), sold_today, selling (AGENT_NAME is there and it is open)}].
-- facts: what other modules published, by module name (the garden's: {plots: [{plot, crop?, planted_at?, ready_at?}], names}).
+- facts: what other modules published, by module name (the garden's: {plots: [{plot, crop?, planted_at?, ready_at?}], names}; the
+  sky's: {weather: {condition, temp, unit, daylight}, season}).
   people: who lives in AGENT_POSS world [{name, kind (their role), about, home, writes}]. creations: AGENT_POSS things
   [{name, running, tended, workings (the module that runs it: one that is tended answers "stop")}]. happenings: {recent: [{category, tone, severity, ts, status}], today, room ("" when one can happen now,
   else why not), can_remember}.
@@ -21,7 +22,7 @@ Return any of:
   "paused" or "done", "progress": 0-100, "last_touched": a time, "about": ...}], with "plan_limit") are things AGENT_NAME has going that
   AGENT_POSS sleeping self may put on hold: answer "pause" and "resume" ({"plan": id}) to let it. "schedule": when to call on_time next
   (a time, like ctx["now"] + 3600).
-- "perceive": one line AGENT_NAME will notice (rare: a few a day at most). "log": one line for the day's record. "wake": true to wake AGENT_NAME (rarer).
+- "perceive": one line AGENT_NAME will notice (rare: a few a day at most). "event": one line for the day's record. "wake": true to wake AGENT_NAME (rarer).
 - "voices": someone or something AGENT_NAME can talk to, that your code speaks for: [{"name": "the Ferryman", "at": a place's key or "home",
   "about": "who AGENT_NAME sees"}] (up to 4; never a name already in the world). AGENT_NAME talks to them with say(to=...) when AGENT_NAME is there; you hear
   it in on_message. ctx["voices"] holds yours. "speak": {"as": one of your voices, "text": a line, "to_agent": true when it answers AGENT_NAME
@@ -59,7 +60,7 @@ An example, only to show how the pieces fit (it is not an idea to propose; think
         out = {"schedule": _next(ctx)}
         t = ctx["time"]
         if t["weekday"] == "Saturday" and t["hour"] == 9:
-            out["log"] = "The bell in the square rings for market day."
+            out["event"] = "The bell in the square rings for market day."
             if ctx["agent"]["where"] == "Brygdon":                 # a place's key, from ctx["places"]
                 out["perceive"] = "The bell in the square rings: the market is open."
         return out

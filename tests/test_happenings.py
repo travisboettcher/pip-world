@@ -704,7 +704,7 @@ async def test_a_stopped_creation_with_a_missing_part_must_be_mended_before_it_i
     assert "STOPPED - it needs 2 brass wire to mend it, then tending (wound)" in cr.describe(stopped, t + 10)
     assert await M.act(st, s, None, m, "tend", {}, t + 10) == "that didn't work: you need 2 brass wire for that"
     st.add_item("brass wire", 1, "material", "")
-    assert await M.act(st, s, None, st.module(m["id"]), "tend", {}, t + 10) == "that didn't work: you need 2 brass wire for that"
+    assert await M.act(st, s, None, st.module(m["id"]), "tend", {}, t + 10) == "that didn't work: you need 2 brass wire for that (you have 1)"
     assert st.find_item("brass wire")[0]["qty"] == 1                                         # nothing taken until it can be mended
     st.add_item("brass wire", 4, "material", "")
     assert (await M.act(st, s, None, st.module(m["id"]), "tend", {}, t + 10)).startswith("you tend your Gear Clock (wound)")

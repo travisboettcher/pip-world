@@ -123,9 +123,14 @@ async def test_the_garden_is_shown_every_time_and_a_ripe_crop_wakes_the_agent(tm
     ripen(st)
     assert await step(st, s, agent) is True                              # ripe: the agent wakes
     assert M.status_lines(st)[1] == "- plot 1: tomatoes are RIPE - harvest them" and M.standing(st)[0]["ready"]
-    ev = next(e["data"] for e in st.events(5) if e["kind"] == "module")
-    assert (ev["name"], ev["moment"], ev["text"], ev["feel"]) == ("garden", "ripe", "Your tomatoes in plot 1 ripened", {"joy": 3})
-    assert [f["key"] for f in ev["firsts"]] == ["garden:ripe"]
+    ev = next(e["data"] for e in st.events(5) if e["kind"] == "ripe")                  # the garden's own event (0.53.0)
+    assert (ev["by"], ev["crop"], ev["plot"]) == ("garden", "tomatoes", 1)
+    said = "Your tomatoes in plot 1 ripened"
+    assert ev["read"] == {"line": said, "moment": said, "public": said, "feel": {"joy": 3}}                # public, as its moment was
+    assert [f["key"] for f in ev["firsts"]] == ["garden:ripe"]                         # the pack's first, as when it was a moment
+    from app import public_view as pv
+    shown = pv.public_event(next(e for e in st.events(5) if e["kind"] == "ripe"))
+    assert shown["data"] == {"by": "garden", "text": "Your tomatoes in plot 1 ripened"}
     assert plots(st)["1"]["notified"] is True
     assert await step(st, s, agent) is False                             # told once
     assert agent._free_time(time.time()) == []                           # something waits: no free time

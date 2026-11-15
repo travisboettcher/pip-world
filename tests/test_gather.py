@@ -68,7 +68,9 @@ async def call_gather(agent, **args):
 
 
 def haul(st):
-    return next(e["data"] for e in st.events(20) if e["kind"] == "module" and e["data"].get("moment") == "gathered")
+    """The last haul, as gathering's event says it reads (0.53.0): its line, what came of it and the tool it tallies."""
+    d = next(e["data"] for e in st.events(20) if e["kind"] == "haul")
+    return {**d, "text": d["read"]["line"], "tool": d["read"]["tally"][0]["name"]}
 
 
 def code():
@@ -249,7 +251,7 @@ async def test_finds_feed_firsts_recall_and_capabilities(tmp_path):
     s, st, gm, agent = setup(tmp_path, [report(text="You dig out a coil of brass wire.")])
     await gather(agent)
     await finish(agent, s)
-    ev = next(e for e in st.events(20) if e["kind"] == "module" and e["data"].get("moment") == "gathered")
+    ev = next(e for e in st.events(20) if e["kind"] == "haul")
     first = ev["data"]["items"][0]["name"]
     assert any(f["key"] == f"found:{first}" for f in ev["data"]["firsts"])
     assert st.recall("brass wire") or st.recall(first)

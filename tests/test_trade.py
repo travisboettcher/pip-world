@@ -91,8 +91,9 @@ async def tick(st, s, now=NOW):
     await M.step(st, s, None, now)
 
 
-def moments(st, moment):
-    return [e["data"] for e in st.events(300) if e["kind"] == "module" and e["data"].get("moment") == moment]
+def moments(st, kind):
+    """Trade's own events of a kind (0.53.0: `sold`, `sold_at_stall`, `wares`), each with the line it reads as."""
+    return [{**e["data"], "text": e["data"]["read"]["line"]} for e in st.events(300) if e["kind"] == kind and e["data"].get("by") == "trade"]
 
 
 # --- the small things ---------------------------------------------------------------------------------------------------------------
@@ -401,11 +402,11 @@ async def test_customers_stop_while_pip_is_there_and_pay_the_ask(tmp_path):
     assert stall(st)[0]["qty"] == 10
     for h in range(1, 11):
         await tick(st, s, NOW + h * HOUR)
-    sold = sum(sum(i["qty"] for i in e["items"]) for e in moments(st, "stall_sale"))
+    sold = sum(sum(i["qty"] for i in e["items"]) for e in moments(st, "sold_at_stall"))
     assert 1 <= sold <= G["STALL_DAILY_UNITS"] and st.coins() == 10 + sold * fair
     row = stall(st)[0]
     assert (row["qty"], row["sold"], row["earned"], row["sold_today"], row["day"]) == (10 - sold, sold, sold * fair, sold, TODAY)
-    assert all(e["text"].startswith("At your stall you sold ") for e in moments(st, "stall_sale"))
+    assert all(e["text"].startswith("At your stall you sold ") for e in moments(st, "sold_at_stall"))
     assert view(st, s, NOW + 10 * HOUR).local("Brygdon", "tomatoes") < 1
 
 
@@ -419,7 +420,7 @@ async def test_nobody_stops_at_a_silly_price_or_while_pip_is_away(tmp_path):
     st.update_agent(location="woods")
     for h in range(6, 12):
         await tick(st, s, NOW + h * HOUR)
-    assert stall(st)[0]["qty"] == 10 and trade(st)["fails"] == 0 and moments(st, "stall_sale") == []
+    assert stall(st)[0]["qty"] == 10 and trade(st)["fails"] == 0 and moments(st, "sold_at_stall") == []
 
 
 async def test_the_market_only_takes_so_many_of_one_thing_a_day(tmp_path, monkeypatch):
@@ -440,7 +441,7 @@ async def test_a_creation_sold_to_a_keeper_is_theirs_and_one_the_till_cant_pay_f
     pay = int(priced(25, item="Brass Walker") * 0.6)
     assert await use(st, s, "sell", item="Brass Walker") == f"you sold Brass Walker for {G['coins_text'](pay)} ({10 + pay} now); it is theirs now"
     assert st.creation(c["id"])["given_to"] == "the keeper at Brygdon" and not st.creations()
-    assert moments(st, "sold_creation")[0]["text"] == f"You sold Brass Walker at Brygdon for {G['coins_text'](pay)}."
+    assert moments(st, "sold")[0]["text"] == f"You sold Brass Walker at Brygdon for {G['coins_text'](pay)}."
     st.add_creation("Gold Bird", "it sings", None, "masterwork", {"capabilities": {}}, {})
     st.merge_store("trade", {"tills": {slot("Brygdon"): {"booth": "Brygdon", "day": TODAY, "coins": 3}}})
     assert (await use(st, s, "sell", item="Gold Bird")).startswith("error: Brygdon's till can't pay for Gold Bird today") and st.creations()
