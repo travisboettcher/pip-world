@@ -80,6 +80,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        world_pack.set_active(world_pack.load(settings))   # first: the State reads the world it starts in (its belongings, its migrations)
         state = State(settings)
         agent = Agent(settings, state, backend or get_backend(settings), get_policy(settings))
         app.state.agent = agent

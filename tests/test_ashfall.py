@@ -370,3 +370,19 @@ def test_a_wild_place_with_nothing_listed_has_nothing_to_find(tmp_path):
         assert [e[0] for e in H._tables("sight")] == ["bolts"]                         # none of that kind: anything the world has
     finally:
         W.set_active(W.load(Settings()))
+
+
+def test_the_app_starts_ashfall_with_ashfalls_belongings(tmp_path):
+    """Live, 2026-11-15: the app made its State before the agent set the active world, so Wren started with Pip's seeds."""
+    from fastapi.testclient import TestClient
+    from app.llm.fake import FakeBackend
+    from app.main import create_app
+    W.set_active(W.load(Settings()))                                            # whatever ran before: Pip's world
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "a.db"), persona_path="/x", pacing="manual")
+    try:
+        with TestClient(create_app(s, FakeBackend())) as c:
+            st = c.app.state.agent.state
+            assert sorted(i["name"] for i in st.items()) == ["crowbar", "rad pills", "tinned beans"]
+            assert st.agent()["location"] == "shelter"
+    finally:
+        W.set_active(W.load(Settings()))
