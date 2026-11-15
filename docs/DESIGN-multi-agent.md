@@ -74,11 +74,16 @@ The engine's plain page and Pip's page show one agent at a time, with a switcher
 rest take `?agent=`. The scene draws every agent at its place. Public pages, if a world has them, show all.
 
 ## Releases (each tested, mutation-tested, deployed to the experimental stack only)
-1. **The world's database and the agent's** (one agent, no visible change): storage split, migration, `World` and `Agent` apart. *Built
-   so far:* the storage split. The world's tables (`state.WORLD_TABLES`: places, the map, modules and their store and calls, characters,
+1. **The world's database and the agent's** (one agent, no visible change): storage split, migration, `World` and `Agent` apart. *Built (0.54.0):*
+   the storage split. The world's tables (`state.WORLD_TABLES`: places, the map, modules and their store and calls, characters,
    purses) live in `WORLD_DB_PATH`, by default beside the agent's file (`agent.db`: `agent-world.db`), attached to each agent's
    connection as `world` (WAL); an install from before moves them out once, rows and ids and all. `events`, `meta` and `place_finds`
-   stay the agent's for now. A module's dry run copies both files. A deployment's backups must now take both files.
+   stay the agent's for now. A module's dry run copies both files. A deployment's backups must now take both files. And `loop.World`
+   (0.54.0): the pack, the narrator, the library and the module runner, the world's steps once a beat (the shipped modules offered,
+   modules' calls, answers and happenings, the owner told, layouts, the map) and the builder's night; it supervises its agents, starting
+   again one whose loop dies (said in that agent's log). `loop.Agent` keeps its own steps (decay and feelings, stakes, a walk or session
+   ending, its happenings, wishes, letters, reflection); alone it makes a world of its own, and its `gm`, `runner` and `library` are its
+   world's. Until release 3 the world acts through its first agent's State, and owner notices go through that agent's channel.
 2. **Several agents**: `agents` in world.json, a loop and budget each, the dashboard's switcher, a second survivor in Ashfall who
    doesn't yet meet Wren on purpose.
 3. **Meeting**: presence, `say` between agents, letters and parcels between them, modules' `agents` read and `to`.

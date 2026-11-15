@@ -83,10 +83,10 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         world_pack.set_active(world_pack.load(settings))   # first: the State reads the world it starts in (its belongings, its migrations)
         state = State(settings)
         agent = Agent(settings, state, backend or get_backend(settings), get_policy(settings))
-        app.state.agent = agent
+        app.state.agent, app.state.world = agent, agent.world
         state.log("start", backend=agent.backend.name, model=settings.llm_model,
                   pacing=agent.pacing.name, tools=list(agent.tools))
-        task = asyncio.create_task(agent.run())
+        task = asyncio.create_task(agent.world.run())             # the world's steps, and its agents' loops (supervised)
         yield
         task.cancel()
 

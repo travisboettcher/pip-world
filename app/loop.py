@@ -58,22 +58,84 @@ def clock_line(now: float) -> str:
     return "It is " + time.strftime("%A %-d %B, %-I:%M %p", time.localtime(now)).replace("AM", "am").replace("PM", "pm") + "."
 
 
+class World:
+    """The world one engine runs (docs/DESIGN-multi-agent.md): the pack, the narrator, the library and the module runner its agents share,
+    and the world's own steps (modules, layouts, the map), run once a beat whatever the number of agents. It is its agents' supervisor:
+    each runs its own loop, and one whose loop dies is started again without stopping the world or the others. Until the world has a
+    handle of its own (release 3) its steps act through its first agent's State, which has the world's file attached."""
+
+    def __init__(self, settings: Settings, backend: LLMBackend, state: State):
+        self.s, self.state = settings, state
+        self.pack = world_pack.load(settings)
+        world_pack.set_active(self.pack)                     # one engine runs one world: what has no settings at hand asks world_pack.active()
+        self.gm = GameMaster(backend, state, system=self.pack.narrator_system(), agent=self.pack.agent)
+        self.library = lib.open_library(settings)
+        self.runner = modules.runner_for(settings)
+        self.agents: list["Agent"] = []
+        sources.wire(self)                                     # the books and the like modules may ask (sources.py)
+
+    def wake(self) -> None:
+        for a in self.agents:
+            a.request_wake()
+
+    def check(self) -> None:
+        worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
+
+    async def step(self) -> None:
+        """The world's updates, once a beat: the modules it ships, their calls and answers and what they say happens, the owner told of
+        them, places laid out. Anything that happened wakes the agents."""
+        await modules.offer_library(self.state, self.s, self.runner)
+        woke = await modules.step(self.state, self.s, self.runner)
+        woke = await modules.answer(self.state, self.s, self.gm, self.runner) or woke     # the model's words for what modules asked
+        woke = await happenings.from_modules(self.state, self.s, self.gm) or woke        # what modules said happens, written and recorded
+        if self.agents:
+            await modules.notify_owner(self.state, self.s, self.agents[0].outreach)       # the owner's channel is the first agent's for now
+        await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
+        if woke:
+            self.wake()
+
+    async def night(self) -> None:
+        """The world's own turn at night, after an agent's reflection: perhaps one new rule (builder.py)."""
+        try:
+            await builder.night(self.state, self.s, self.gm, self.runner)
+        except Exception as e:
+            log.exception("builder failed")
+            self.state.log("error", error=f"builder: {type(e).__name__}: {e}")
+
+    async def run(self) -> None:
+        """Supervise: every agent's loop, started again (and said, in its own log) if it dies; the world's steps every beat."""
+        tasks = {a: asyncio.create_task(a.run()) for a in self.agents}
+        try:
+            while True:
+                await asyncio.sleep(self.s.monitor_seconds)
+                for a, t in list(tasks.items()):
+                    if t.done() and not t.cancelled():
+                        e = t.exception()
+                        a.state.log("error", error=f"the agent's loop stopped ({type(e).__name__}: {e}); started again" if e
+                                    else "the agent's loop stopped; started again")
+                        tasks[a] = asyncio.create_task(a.run())
+                try:
+                    self.check()
+                    await self.step()
+                except Exception:
+                    log.exception("world step failed")
+        finally:
+            for t in tasks.values():
+                t.cancel()
+
+
 class Agent:
     def __init__(self, settings: Settings, state: State, backend: LLMBackend, pacing: PacingPolicy,
-                 gm_backend: LLMBackend | None = None, rng: random.Random | None = None):
+                 gm_backend: LLMBackend | None = None, rng: random.Random | None = None, world: World | None = None):
         self.s, self.state, self.backend, self.pacing = settings, state, backend, pacing
         self.tools = enabled_tools(settings)
         self.rng = rng or random.Random()
-        self.pack = world_pack.load(settings)
-        world_pack.set_active(self.pack)                     # one engine runs one world: what has no settings at hand asks world_pack.active()
-        self.gm = GameMaster(gm_backend or backend, state, system=self.pack.narrator_system(), agent=self.pack.agent)
-        self.library = lib.open_library(settings)
-        sources.wire(self)                                     # the books and the like modules may ask (sources.py)
+        self.world = world or World(settings, gm_backend or backend, state)     # alone, an agent has a world of its own
+        self.world.agents.append(self)
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
         invented.backfill(state)
         invented.backfill_stock(state)
-        self.runner = modules.runner_for(settings)
         self.ctx = ToolContext(state, settings, gm=self.gm, rng=self.rng, library=self.library, outreach=self.outreach,
                                vision=bool(getattr(self.backend, "vision", False)), runner=self.runner)
         self.last_tick = 0.0
@@ -87,6 +149,12 @@ class Agent:
         self._reflecting = asyncio.Lock()
         self._told_tries: dict = {}  # neighbors whose told-backfill failed, this run (neighbors.recall_told)
         self._finishing = asyncio.Lock()  # the monitor and a tick may both try to resolve the same session
+
+    # --- what the world shares (a narrator, runner or library swapped on an agent is its world's) ----------------------------------
+    pack = property(lambda self: self.world.pack)
+    gm = property(lambda self: self.world.gm, lambda self, v: setattr(self.world, "gm", v))
+    runner = property(lambda self: self.world.runner, lambda self, v: setattr(self.world, "runner", v))
+    library = property(lambda self: self.world.library, lambda self, v: setattr(self.world, "library", v))
 
     # --- wake control ------------------------------------------------
     def receive(self, text: str, sender: str, source: str = "web", conversation: str = "", external_id: str = "") -> int | None:
@@ -161,35 +229,36 @@ class Agent:
             await self.outreach.stop()
 
     async def _monitor(self) -> None:
-        """Cheap, LLM-free: advance stats, and wake the agent when something needs it."""
+        """Cheap, LLM-free: advance the agent's stats, and wake it when something needs it (the world's steps are its World's)."""
         while True:
             await asyncio.sleep(self.s.monitor_seconds)
             try:
-                self.check_world()
-                await self.resolve_world()
+                self.check()
+                await self.step()
             except Exception:
                 log.exception("monitor failed")
 
-    def check_world(self) -> None:
+    def check(self) -> None:
         for alert in self.state.apply_decay():
             self.state.log("alert", stat=alert)
             self.request_wake()
         emo.drift(self.state, self.s)
-        worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
+
+    def check_world(self) -> None:
+        """The agent's checks and its world's (one agent alone)."""
+        self.check()
+        self.world.check()
 
     async def resolve_world(self) -> None:
-        """World updates that may need the GM (LLM): finished work sessions and projects, companions talking."""
-        await modules.offer_library(self.state, self.s, self.runner)
+        """The world's steps, then the agent's (one agent alone: as the monitors run them)."""
+        await self.world.step()
+        await self.step()
+
+    async def step(self) -> None:
+        """The agent's own updates that may need the narrator: a stat run out, a walk or session ended, its happenings, wishes shared,
+        the letters people write to it, its reflection at night."""
         if await stakes.step(self.state, self.s):                          # a stat that ran out, or the agent recovering
             self.request_wake()
-        if await modules.step(self.state, self.s, self.runner):
-            self.request_wake()
-        if await modules.answer(self.state, self.s, self.gm, self.runner):     # the model's words for what modules asked
-            self.request_wake()
-        if await happenings.from_modules(self.state, self.s, self.gm):        # what modules said happens, written and recorded
-            self.request_wake()
-        await modules.notify_owner(self.state, self.s, self.outreach)
-        await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
         if await self.finish_work():
             self.request_wake()
         if await happenings.step(self.state, self.s, self.gm):
@@ -227,11 +296,7 @@ class Agent:
                 except Exception as e:  # never let it break the reflection
                     log.exception("night pass failed")
                     self.state.log("error", error=f"night pass: {type(e).__name__}: {e}")
-            try:                                     # then the world's own turn: perhaps one new rule (builder.py)
-                await builder.night(self.state, self.s, self.gm, self.runner)
-            except Exception as e:
-                log.exception("builder failed")
-                self.state.log("error", error=f"builder: {type(e).__name__}: {e}")
+            await self.world.night()                 # then the world's own turn: perhaps one new rule
             return result
 
     # --- one tick ----------------------------------------------------
