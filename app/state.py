@@ -17,6 +17,27 @@ from . import world_pack
 
 log = logging.getLogger("state")
 
+# The world's tables (docs/DESIGN-multi-agent.md): in a file of their own, attached to each agent's as `world`, so agents can share a world
+# and keep their minds apart. SQLite finds a table in the agent's file first, then the world's, so queries name them as before.
+WORLD_TABLES = ("places", "map_places", "modules", "module_store", "module_calls", "characters", "purses")
+
+
+def world_path(settings: Settings, path: str | None = None) -> str:
+    """The world's file: WORLD_DB_PATH, or beside the agent's (agent.db: agent-world.db)."""
+    if settings.world_db_path:
+        return settings.world_db_path
+    base = path or settings.db_path
+    stem, dot, ext = base.rpartition(".")
+    return f"{stem}-world.{ext}" if dot and "/" not in ext else f"{base}-world"
+
+
+def _world_schema(schema: str) -> str:
+    """The schema with the world's tables (and their indexes) made in the world's file: an unqualified CREATE would shadow them."""
+    for t in WORLD_TABLES:
+        schema = re.sub(rf"CREATE TABLE IF NOT EXISTS {t} \(", f"CREATE TABLE IF NOT EXISTS world.{t} (", schema)
+        schema = re.sub(rf"CREATE INDEX IF NOT EXISTS (\w+) ON {t} ", rf"CREATE INDEX IF NOT EXISTS world.\1 ON {t} ", schema)
+    return schema
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -221,10 +242,13 @@ class State:
         self.s = settings
         self.lock = threading.RLock()
         self.listeners: list = []   # callables(kind, data, ts) run after each logged event; they must not break logging
-        self.db = sqlite3.connect(path or settings.db_path, check_same_thread=False)
+        self.db = sqlite3.connect(path or settings.db_path, check_same_thread=False, timeout=30)
         self.db.row_factory = sqlite3.Row
         with self.lock:
-            self.db.executescript(SCHEMA)
+            self.db.execute("ATTACH DATABASE ? AS world", (world_path(settings, path),))
+            self.db.execute("PRAGMA world.journal_mode = WAL")        # shared by every agent's connection
+            self._world_moved_out()
+            self.db.executescript(_world_schema(SCHEMA))
             # DBs created before a column existed
             for table, col, ddl in (
                 ("agent", "description", "TEXT NOT NULL DEFAULT ''"),
@@ -692,6 +716,21 @@ class State:
             self.db.commit()
 
     # --- an install from before its features were modules ----------------
+    def _world_moved_out(self) -> None:
+        """Once (0.54.0): an install from before kept the world's tables in the agent's file; they move into the world's, rows, ids and all."""
+        here = {r["name"]: r["sql"] for r in self.db.execute("SELECT name, sql FROM main.sqlite_master WHERE type = 'table'")}
+        there = {r["name"] for r in self.db.execute("SELECT name FROM world.sqlite_master WHERE type = 'table'")}
+        moving = [t for t in WORLD_TABLES if t in here and t not in there]
+        if not moving:
+            return
+        self.db.execute("BEGIN")
+        for t in moving:
+            self.db.execute(re.sub(rf"^CREATE TABLE \"?{t}\"?", f"CREATE TABLE world.{t}", here[t]))
+            self.db.execute(f"INSERT INTO world.{t} SELECT * FROM main.{t}")
+            self.db.execute(f"DROP TABLE main.{t}")
+        self.db.execute("COMMIT")
+        log.info("moved the world's tables into their own file: %s", ", ".join(moving))
+
     OLD_TABLES = ("garden", "market_prices", "stalls", "tills", "bookmarks", "projects", "skills")
 
     def _from_before_modules(self) -> None:

@@ -53,8 +53,16 @@ MIGRATED = {
 }
 
 
-def columns(path, table):
+def raw(path):
+    """The agent's file with the world's attached, as the engine opens it (state.WORLD_TABLES)."""
+    from app.state import world_path
     db = sqlite3.connect(path)
+    db.execute("ATTACH DATABASE ? AS world", (world_path(Settings(db_path=path)),))
+    return db
+
+
+def columns(path, table):
+    db = raw(path)
     try:
         return {r[1]: (r[2], r[4]) for r in db.execute(f"PRAGMA table_info({table})")}
     finally:
@@ -64,7 +72,7 @@ def columns(path, table):
 def test_every_late_column_is_added_to_an_old_database_with_its_type_and_default(tmp_path, clock):
     path = str(tmp_path / "old.db")
     State(Settings(db_path=path, sleep=False)).db.close()
-    db = sqlite3.connect(path)
+    db = raw(path)
     for table, col in MIGRATED:
         db.execute(f"ALTER TABLE {table} DROP COLUMN {col}")
     db.commit()
@@ -79,7 +87,7 @@ def test_every_late_column_is_added_to_an_old_database_with_its_type_and_default
 def test_migrated_defaults_apply_to_rows_that_already_existed(tmp_path, clock):
     path = str(tmp_path / "old.db")
     State(Settings(db_path=path, sleep=False)).db.close()
-    db = sqlite3.connect(path)
+    db = raw(path)
     db.execute("INSERT INTO inbox (ts, text) VALUES (1, 'old hello')")
     db.execute("ALTER TABLE inbox DROP COLUMN sender")
     db.execute("ALTER TABLE inbox DROP COLUMN source")
@@ -95,7 +103,7 @@ def test_old_neighbors_and_letters_read_with_empty_memory(tmp_path, clock):
     st.add_character("Briar", "neighbor", None, "A shore warden.", 60, 0)
     st.add_letter("Briar", "Pip", "The blue door rattles.", 1)
     st.db.close()
-    db = sqlite3.connect(path)
+    db = raw(path)
     db.execute("ALTER TABLE characters DROP COLUMN told")
     db.execute("ALTER TABLE characters DROP COLUMN upcoming")
     db.execute("ALTER TABLE letters DROP COLUMN gist")

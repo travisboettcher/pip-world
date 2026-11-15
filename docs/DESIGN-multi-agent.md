@@ -74,7 +74,11 @@ The engine's plain page and Pip's page show one agent at a time, with a switcher
 rest take `?agent=`. The scene draws every agent at its place. Public pages, if a world has them, show all.
 
 ## Releases (each tested, mutation-tested, deployed to the experimental stack only)
-1. **The world's database and the agent's** (one agent, no visible change): storage split, migration, `World` and `Agent` apart.
+1. **The world's database and the agent's** (one agent, no visible change): storage split, migration, `World` and `Agent` apart. *Built
+   so far:* the storage split. The world's tables (`state.WORLD_TABLES`: places, the map, modules and their store and calls, characters,
+   purses) live in `WORLD_DB_PATH`, by default beside the agent's file (`agent.db`: `agent-world.db`), attached to each agent's
+   connection as `world` (WAL); an install from before moves them out once, rows and ids and all. `events`, `meta` and `place_finds`
+   stay the agent's for now. A module's dry run copies both files. A deployment's backups must now take both files.
 2. **Several agents**: `agents` in world.json, a loop and budget each, the dashboard's switcher, a second survivor in Ashfall who
    doesn't yet meet Wren on purpose.
 3. **Meeting**: presence, `say` between agents, letters and parcels between them, modules' `agents` read and `to`.

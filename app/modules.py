@@ -1979,13 +1979,14 @@ async def dry_run(state, settings, runner, m: dict, now: float) -> dict:
     if m["kind"] in ("part", "place"):
         return await _try_build(state, settings, runner, m, now)
     tmp = Path(tempfile.mkdtemp(prefix="module-dry-"))
-    copy_db = tmp / "world.db"
+    copy_db, copy_world = tmp / "agent.db", tmp / "world.db"
     try:
         with state.lock:
-            dst = sqlite3.connect(copy_db)
-            state.db.backup(dst)
-            dst.close()
-        world = State(replace(settings, db_path=str(copy_db)))
+            for path, name in ((copy_db, "main"), (copy_world, "world")):          # the agent's file and the world's (state.WORLD_TABLES)
+                dst = sqlite3.connect(path)
+                state.db.backup(dst, name=name)
+                dst.close()
+        world = State(replace(settings, db_path=str(copy_db), world_db_path=str(copy_world)))
         world.update_module(m["id"], status="live", cursor=(world.events(limit=1) or [{"id": 0}])[0]["id"])
         sim = world.module(m["id"])
         report = {"calls": 0, "errors": [], "refused": [], "perceived": [], "logged": [], "replies": [], "offers": [], "slowest_ms": 0,
