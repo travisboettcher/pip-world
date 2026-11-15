@@ -4,8 +4,11 @@ import { SceneView } from './world/scene.js';
 
 const $ = (id) => document.getElementById(id);
 const h = (tag, attrs = {}, ...kids) => { const e = Object.assign(document.createElement(tag), attrs); e.append(...kids.filter((k) => k != null)); return e; };
+// In a world of several agents (docs/DESIGN-multi-agent.md) the page shows one at a time: ?agent=<key>, chosen in the header.
+const agentKey = new URLSearchParams(location.search).get('agent') || '';
+const withAgent = (path) => (agentKey ? `${path}${path.includes('?') ? '&' : '?'}agent=${encodeURIComponent(agentKey)}` : path);
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  const r = await fetch(withAgent(path), opts);
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
@@ -59,11 +62,21 @@ $('say').addEventListener('submit', async (ev) => {
   catch (e) { $('said').textContent = e.message; }
 });
 
+async function agentPicker() {
+  const { agents } = await api('/agents');
+  if (agents.length < 2) return;
+  const pick = h('select', { id: 'agent-pick', ariaLabel: 'Whose page' },
+    ...agents.map((a) => h('option', { value: a.key, textContent: a.name, selected: a.key === (agentKey || agents[0].key) })));
+  pick.addEventListener('change', () => { location.search = `?agent=${encodeURIComponent(pick.value)}`; });
+  $('name').after(pick);
+}
+
 (async () => {
   try { $('talk').hidden = (await api('/mode')).public; } catch { /* the page still shows */ }
+  try { await agentPicker(); } catch { /* one agent's page still shows */ }
   await refresh();
   let timer = null;
-  const stream = new EventSource('/stream');
+  const stream = new EventSource(withAgent('/stream'));
   stream.onmessage = () => { clearTimeout(timer); timer = setTimeout(refresh, 1500); };
   setInterval(() => scene?.moment(), 30000);
   setInterval(refresh, 5 * 60000);

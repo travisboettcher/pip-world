@@ -20,13 +20,27 @@ from .text import clip  # noqa: F401  (re-exported: callers use gm.clip)
 
 log = logging.getLogger("gm")
 
-SYSTEM = world_pack.active().narrator_system()   # Pip's world's narrator; a GameMaster takes its pack's
+SYSTEM = world_pack.default().narrator_system()  # Pip's world's narrator (whatever world is active when this is imported); a GameMaster takes its pack's
 
 
 class GameMaster:
     def __init__(self, backend: LLMBackend, state: State, max_tokens: int = 1024, system: str = SYSTEM, agent: world_pack.Agent | None = None):
         self.backend, self.state, self.max_tokens, self.system = backend, state, max_tokens, system
-        self.agent = agent or world_pack.active().agent
+        self._agent = agent
+
+    # The narrator a world's agents share speaks of, and spends from, the agent it is working for now (world_pack.acting); the world's
+    # own steps, of its first (docs/DESIGN-multi-agent.md).
+    @property
+    def state(self) -> State:
+        return world_pack.acting_state() or self._state
+
+    @state.setter
+    def state(self, state: State) -> None:
+        self._state = state
+
+    @property
+    def agent(self) -> world_pack.Agent:
+        return self._agent or world_pack.active().agent
 
     async def ask(self, task: str, properties: dict, required: list[str], purpose: str,
                   system: str | None = None, max_tokens: int | None = None) -> dict | None:

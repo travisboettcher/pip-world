@@ -302,7 +302,7 @@ class State:
             if not self.db.execute("SELECT 1 FROM agent").fetchone():
                 self.db.execute(
                     "INSERT INTO agent (id, mood, location, activity, updated_at) VALUES (1, 'curious', ?, 'idle', ?)",
-                    (world_pack.load(self.s).data("places").get("home", {}).get("key", "home"), time.time()),
+                    (self.home_key(), time.time()),
                 )
             have = {r["name"] for r in self.db.execute("SELECT name FROM stats")}
             for name, d in stats_mod.declared(self.s).items():   # a world's stats, once each, from where the world starts them
@@ -356,7 +356,7 @@ class State:
             hours = max(0.0, now - a["updated_at"]) / 3600
             sess = self.session()
             working = bool(sess and sess["kind"] == "module" and sess["stage"])           # a module's session that is work (crafting)
-            away = a["location"] != world_pack.load(self.s).data("places").get("home", {}).get("key", "home") or bool(sess and sess["kind"] == "walk")
+            away = a["location"] != self.home_key() or bool(sess and sess["kind"] == "walk")
             new, fields = [], {"updated_at": now}
             for name, d in stats_mod.declared(self.s).items():
                 if name not in a:
@@ -1100,6 +1100,15 @@ class State:
         return b
 
     # --- meta (small key/value facts) ------------------------------------------
+    def identity(self) -> world_pack.Agent:
+        """Which of the world's agents this State is (its settings' `agent_key`; the first by default)."""
+        pack = world_pack.load(self.s)
+        return pack.agent_named(self.s.agent_key) or pack.agent
+
+    def home_key(self) -> str:
+        """This agent's home: its own (world.json `agents`), else the world's."""
+        return self.identity().home_place.get("key") or world_pack.load(self.s).data("places").get("home", {}).get("key", "home")
+
     def meta(self, key: str) -> str | None:
         with self.lock:
             row = self.db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()

@@ -386,3 +386,26 @@ def test_the_app_starts_ashfall_with_ashfalls_belongings(tmp_path):
             assert st.agent()["location"] == "shelter"
     finally:
         W.set_active(W.load(Settings()))
+
+
+def test_ashfall_has_two_agents_and_each_has_a_home_and_a_view(tmp_path):
+    from fastapi.testclient import TestClient
+    from app.llm.fake import FakeBackend
+    from app.main import create_app
+    pack = W.load(Settings(world_pack=str(ASHFALL)))
+    assert [a.key for a in pack.agents] == ["wren", "ivo"] and pack.agent.name == "Wren"
+    ivo = pack.agent_named("ivo")
+    assert ivo.home_place["key"] == "lockup" and pack.persona(ivo).startswith("You are Ivo, a scavenger")
+    os.makedirs(tmp_path / "data")
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual")
+    try:
+        with TestClient(create_app(s, FakeBackend())) as c:
+            assert c.get("/state?agent=ivo").json()["agent"]["location"] == "lockup"
+            assert c.get("/state").json()["agent"]["location"] == "shelter"
+            ivos = c.app.state.world.agents[1].state
+            assert sorted(i["name"] for i in ivos.items()) == ["crowbar", "rad pills", "tinned beans"]
+            for path in ("/world/scene", "/world/map", "/standing", "/events?limit=5"):
+                assert c.get(f"{path}{'&' if '?' in path else '?'}agent=ivo").status_code == 200, path
+            assert c.get("/world/scene?agent=ivo").json()["agent"]["name"] == "Ivo"
+    finally:
+        W.set_active(W.load(Settings()))

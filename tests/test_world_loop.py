@@ -90,7 +90,8 @@ def test_the_app_runs_the_world(tmp_path):
     from fastapi.testclient import TestClient
     from app.main import create_app
     with TestClient(create_app(settings(tmp_path), FakeBackend())) as c:
-        assert c.app.state.world is c.app.state.agent.world and c.app.state.world.agents == [c.app.state.agent]
+        world = c.app.state.world
+        assert world is c.app.state.agent.world and [a.state for a in world.agents] == [c.app.state.agent.state]   # the first, by default
 
 
 def test_the_world_has_the_packs_narrator_and_its_own_runner_and_library(tmp_path):

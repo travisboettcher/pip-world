@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import time
+from dataclasses import replace
 
 from . import invented_places as invented
 from . import abilities
@@ -32,7 +33,7 @@ from .config import Settings
 from .gm import GameMaster
 from .llm.base import LLMBackend, assistant_message
 from .pacing import PacingPolicy
-from .state import State, clean_sender
+from .state import State, clean_sender, world_path
 from .text import clip, coins_text, span
 from .toolnames import canonical
 from .tools import SCOPES, ToolContext, enabled_tools, is_here, module_specs, module_tool, specs_for
@@ -68,7 +69,7 @@ class World:
         self.s, self.state = settings, state
         self.pack = world_pack.load(settings)
         world_pack.set_active(self.pack)                     # one engine runs one world: what has no settings at hand asks world_pack.active()
-        self.gm = GameMaster(backend, state, system=self.pack.narrator_system(), agent=self.pack.agent)
+        self.gm = GameMaster(backend, state, system=self.pack.narrator_system())     # of whichever agent it works for now
         self.library = lib.open_library(settings)
         self.runner = modules.runner_for(settings)
         self.agents: list["Agent"] = []
@@ -124,6 +125,29 @@ class World:
                 t.cancel()
 
 
+def build(settings: Settings, backend: LLMBackend, gm_backend: LLMBackend | None = None) -> World:
+    """The world the settings choose, with its agents (AGENTS, else all of the pack's), each with its own file (the first agent's is
+    DB_PATH, the others' agents/<key>.db beside it), the world's file shared, its own budget (DAILY_TOKEN_BUDGET_<KEY>) and pacing.
+    Only the first of the pack's agents has the deployment's persona file and reaches the owner (outreach)."""
+    from .pacing import get_policy
+    pack = world_pack.load(settings)
+    world_pack.set_active(pack)                         # before any State: a State reads the world it starts in
+    keys = [a.key for a in pack.agents]
+    unknown = [k for k in settings.agents or [] if k not in keys]
+    if unknown:
+        raise ValueError(f"AGENTS names {', '.join(unknown)}, which this world doesn't have (it has {', '.join(keys)})")
+    world = None
+    for key in [k for k in keys if settings.agents is None or k in settings.agents]:
+        first = key == pack.agent.key
+        s = replace(settings, agent_key=key, world_db_path=world_path(settings),
+                    db_path=settings.db_path if first else os.path.join(os.path.dirname(settings.db_path), "agents", f"{key}.db"),
+                    daily_token_budget=settings.agent_budgets.get(key, settings.daily_token_budget),
+                    persona_path=settings.persona_path if first else "", outreach=settings.outreach if first else "off")
+        os.makedirs(os.path.dirname(s.db_path) or ".", exist_ok=True)
+        world = Agent(s, State(s), backend, get_policy(s), gm_backend=gm_backend, world=world).world
+    return world
+
+
 class Agent:
     def __init__(self, settings: Settings, state: State, backend: LLMBackend, pacing: PacingPolicy,
                  gm_backend: LLMBackend | None = None, rng: random.Random | None = None, world: World | None = None):
@@ -132,6 +156,7 @@ class Agent:
         self.rng = rng or random.Random()
         self.world = world or World(settings, gm_backend or backend, state)     # alone, an agent has a world of its own
         self.world.agents.append(self)
+        self.identity = state.identity()                                         # which of the world's agents this is
         self.outreach = Outreach(settings, state, receive=self.receive)
         emo.attach(state, settings)
         invented.backfill(state)
@@ -212,7 +237,15 @@ class Agent:
                 return "timer"
 
     # --- background tasks --------------------------------------------
+    def acting(self):
+        """Whatever runs now runs as this agent: it is the one named, and the narrator spends from its State (world_pack.acting)."""
+        return world_pack.acting(self.identity, self.state)
+
     async def run(self) -> None:
+        with self.acting():                                      # the monitor below, a task of this one, acts as this agent too
+            await self._run()
+
+    async def _run(self) -> None:
         monitor = asyncio.create_task(self._monitor())
         await self.outreach.start()
         try:
@@ -257,6 +290,10 @@ class Agent:
     async def step(self) -> None:
         """The agent's own updates that may need the narrator: a stat run out, a walk or session ended, its happenings, wishes shared,
         the letters people write to it, its reflection at night."""
+        with self.acting():
+            await self._step()
+
+    async def _step(self) -> None:
         if await stakes.step(self.state, self.s):                          # a stat that ran out, or the agent recovering
             self.request_wake()
         if await self.finish_work():
@@ -286,6 +323,10 @@ class Agent:
 
     async def reflect(self) -> dict | None:
         """The agent's nightly reflection (also triggered by POST /reflect). One at a time."""
+        with self.acting():
+            return await self._reflect()
+
+    async def _reflect(self) -> dict | None:
         async with self._reflecting:
             started, shown = time.time(), {}
             result = await mem.reflect(self.state, self.s, self.gm, self._system_prompt(), shown_out=shown)
@@ -301,6 +342,11 @@ class Agent:
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
+        """One wake, as this agent."""
+        with self.acting():
+            await self._wake_once(reason)
+
+    async def _wake_once(self, reason: str) -> None:
         """One wake. A visitor message the agent read but never answered gets one more look (see _second_chance)."""
         started, self._shown_inbox = time.time(), []
         try:
@@ -425,7 +471,7 @@ class Agent:
         if os.path.exists(self.s.persona_path):
             with open(self.s.persona_path) as f:
                 persona = f.read().strip()
-        return persona or self.pack.persona()
+        return persona or self.pack.persona(self.identity)
 
     def _system_prompt(self) -> str:
         """The persona followed by how the world works (the guide, built from what is enabled)."""

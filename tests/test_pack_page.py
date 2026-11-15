@@ -150,7 +150,7 @@ def test_a_module_command_may_have_digits_and_dashes(tmp_path):
 def test_the_world_json_sprite_and_look_reach_the_scene(tmp_path):
     d = pack_with_page(tmp_path, None)
     w = json.loads((d / "world.json").read_text())
-    w["agent"]["look"] = {"hair": "auburn", "top": "ochre", "height": "towering"}
+    w["agents"][0]["look"] = {"hair": "auburn", "top": "ochre", "height": "towering"}
     (d / "world.json").write_text(json.dumps(w))
     with client(tmp_path, world_pack=str(d)) as c:
         a = c.get("/world/scene").json()["agent"]
@@ -204,7 +204,7 @@ def test_a_packs_sprite_and_look_are_checked_when_it_loads(tmp_path):
     p = world_pack.load(Settings(world_pack=str(d)))
     assert p.sprite()["frames"] == good["frames"] and (p.sprite()["w"], p.sprite()["h"]) == (16, 22)
     w = json.loads((d / "world.json").read_text())
-    w["agent"]["look"] = ["auburn"]
+    w["agents"][0]["look"] = ["auburn"]
     (d / "world.json").write_text(json.dumps(w))
     with pytest.raises(world_pack.PackError) as e:
         world_pack._load.cache_clear() or world_pack.load(Settings(world_pack=str(d)))
@@ -226,7 +226,7 @@ def test_a_look_the_pack_leaves_partly_open_is_filled_from_the_agents_name_and_p
     from app import looks, world_view as WV
     d = pack_with_page(tmp_path, None)
     w = json.loads((d / "world.json").read_text())
-    w["agent"]["look"] = {"hair": "auburn"}
+    w["agents"][0]["look"] = {"hair": "auburn"}
     (d / "world.json").write_text(json.dumps(w))
     (d / "persona.md").write_text("You are Wren. You wear glasses and a grey coat.")
     world_pack.set_active(world_pack.load(Settings(world_pack=str(d))))

@@ -85,8 +85,22 @@ rest take `?agent=`. The scene draws every agent at its place. Public pages, if 
    ending, its happenings, wishes, letters, reflection); alone it makes a world of its own, and its `gm`, `runner` and `library` are its
    world's. Until release 3 the world acts through its first agent's State, and owner notices go through that agent's channel.
 2. **Several agents**: `agents` in world.json, a loop and budget each, the dashboard's switcher, a second survivor in Ashfall who
-   doesn't yet meet Wren on purpose.
-3. **Meeting**: presence, `say` between agents, letters and parcels between them, modules' `agents` read and `to`.
+   doesn't yet meet Wren on purpose. *Built (0.55.0):* world.json may list `agents` (each an `agent` entry with a `key`, and optionally
+   a `home` of its own, shaped as places.json's `home`, and a `persona` file in the pack); `agent` stays the one-agent shorthand. The
+   engine (`loop.build`) runs those AGENTS names (default all), each with its own file (the first agent's is DB_PATH, the others'
+   `agents/<key>.db` beside it), the world's shared, its own budget (`DAILY_TOKEN_BUDGET_<KEY>`), and its own home to start in; only the
+   first has the deployment's persona file and reaches the owner. Whatever names "the agent" names the one acting:
+   `world_pack.acting(agent, state)` sets it for an agent's loop, ticks, steps and reflection (a context variable, so each asyncio task
+   has its own), `world_pack.active().agent`, `places.home()` and the narrator's State follow it, and the world's own steps act as its
+   first agent. The app takes `?agent=<key>` on every endpoint (404 for one the world hasn't), lists them at `/agents`, and the plain
+   page has a picker. Ashfall names Ivo, a scavenger who lives in a lock-up off the ruins and trades at the village gate. *Decided while
+   building:* Ivo doesn't run yet (Ashfall's deployment sets `AGENTS=wren`). Modules are the world's and so is their working data (a
+   module's state, store, standing, published facts, offers), so a second agent would see Wren's crafting projects, her gathering trip
+   and her stall as his own, and could finish them: that would spoil the experiment. Release 3 gives modules' working data an owner
+   first, then Ivo starts.
+3. **Meeting**: modules' working data by agent (each agent's projects, trips, stall and status lines its own; what is the world's, such
+   as villagers brought or places laid out, stays shared), then presence, `say` between agents, letters and parcels between them,
+   modules' `agents` read and `to`. Ivo starts.
 4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world.
 
 ## Decisions (the owner, 2026-11-15)

@@ -44,6 +44,9 @@ def _float(name: str, default: float) -> float:
 class Settings:
     db_path: str = "/data/agent.db"
     world_db_path: str = ""                 # the world's tables (docs/DESIGN-multi-agent.md); "" is <db_path>-world.db beside it
+    agent_key: str = ""                     # which of the world's agents these settings are for ("": the first)
+    agents: list[str] | None = None        # which of the world's agents run (AGENTS); None: all of them
+    agent_budgets: dict = field(default_factory=dict)   # an agent's own daily token budget (DAILY_TOKEN_BUDGET_<KEY>)
     persona_path: str = "/srv/persona.md"
     world_pack: str = ""                    # the world pack's directory (docs/DESIGN-world-packs.md); "" is Pip's world, worlds/pip
 
@@ -169,6 +172,9 @@ class Settings:
         return cls(
             db_path=e("DB_PATH", "/data/agent.db"),
             world_db_path=e("WORLD_DB_PATH", ""),
+            agents=[k.strip() for k in e("AGENTS").split(",") if k.strip()] if e("AGENTS") else None,
+            agent_budgets={k[len("DAILY_TOKEN_BUDGET_"):].lower(): int(v) for k, v in os.environ.items()
+                           if k.startswith("DAILY_TOKEN_BUDGET_") and v.strip().isdigit()},
             happenings=(e("HAPPENINGS") or "on").lower() if (e("HAPPENINGS") or "on").lower() in ("on", "log", "off") else "on",
             happenings_chance=max(0.0, min(1.0, _float("HAPPENINGS_CHANCE", 0.10))),
             happenings_slot_hours=max(0.5, _float("HAPPENINGS_SLOT_HOURS", 3)),

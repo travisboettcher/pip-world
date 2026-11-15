@@ -106,7 +106,8 @@ def facets(kind: str, d: dict, settings, ts: float) -> list[tuple[str, str, str]
         if d.get("finished"):
             add("book_finished", you("finished a book"))
     elif kind == "arrived":
-        if d.get("place") and d["place"] != world_pack.active().data("places").get("home", {}).get("key", "home"):  # getting home is never new
+        from .places import home_key                  # places imports this module's neighbours: keep the import local
+        if d.get("place") and d["place"] != home_key():                                          # getting home is never new
             add(f"place:{d['place']}", you(f"were at {d['place']}"))
     elif kind == "revised_work":
         add("work:revised", you("looked at your own picture and redid it"), MAJOR)

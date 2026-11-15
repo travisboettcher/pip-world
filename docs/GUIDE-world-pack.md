@@ -53,6 +53,13 @@ needs them listed too (`std:outdoors` uses seven). The kinds of thing a module t
 seeds gathers none). A pack that names no `modules` runs everything the engine ships, as Pip's world does. The home (its key and label)
 is in `places.json`.
 
+**More than one agent** (0.55.0, experimental; docs/DESIGN-multi-agent.md): `agents` in place of `agent`, a list of the same entries,
+each with a `key` (a lower-case word; from the name by default), and optionally a `home` of its own (shaped as places.json's `home`:
+`key`, `description`, `called`, `aliases`, `about`, `offers`) and a `persona` file in the pack (`personas/ivo.md`). The first is the
+world's main agent: it lives in places.json's home, reads persona.md, and alone reaches the owner. `AGENTS=wren,ivo` chooses which
+run (default all), each with its own database and `DAILY_TOKEN_BUDGET_<KEY>`. Until release 3 of that design gives modules' working
+data an owner, a second agent shares the first's projects, trips and stall, so Ashfall runs Wren alone.
+
 **`persona.md`** (works today; `PERSONA_PATH` overrides it): who the agent is, in the second person, as the agent reads it every tick. Who she is,
 how she talks, what she cares about, what she wants. Not the world's rules: those come from the guide.
 

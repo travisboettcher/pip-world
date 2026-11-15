@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -27,6 +28,7 @@ from . import worldmap
 from . import world_view
 from .config import Settings
 from .llm import get_backend
+from . import loop
 from .loop import Agent
 from .pacing import get_policy
 from .state import SECTIONS, State, clean_sender
@@ -75,24 +77,56 @@ class PageFiles(NoCacheStaticFiles):
 logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request (every 30 s for Matrix sync) is just noise
 
 
+_asked: ContextVar = ContextVar("asked", default=None)    # the agent a request is about (?agent=<key>)
+
+
+class AskedAgent:
+    """What `app.state.agent` stands for: the agent the request asks about (?agent=<key>), else the world's first."""
+
+    def __init__(self, world):
+        self._world = world
+
+    def __getattr__(self, name):
+        return getattr(_asked.get() or self._world.agents[0], name)
+
+
 def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        world_pack.set_active(world_pack.load(settings))   # first: the State reads the world it starts in (its belongings, its migrations)
-        state = State(settings)
-        agent = Agent(settings, state, backend or get_backend(settings), get_policy(settings))
-        app.state.agent, app.state.world = agent, agent.world
-        state.log("start", backend=agent.backend.name, model=settings.llm_model,
-                  pacing=agent.pacing.name, tools=list(agent.tools))
-        task = asyncio.create_task(agent.world.run())             # the world's steps, and its agents' loops (supervised)
+        world = loop.build(settings, backend or get_backend(settings))       # the world and its agents (docs/DESIGN-multi-agent.md)
+        app.state.world, app.state.agent = world, AskedAgent(world)
+        for a in world.agents:
+            a.state.log("start", backend=a.backend.name, model=settings.llm_model, pacing=a.pacing.name, tools=list(a.tools))
+        task = asyncio.create_task(world.run())                   # the world's steps, and its agents' loops (supervised)
         yield
         task.cancel()
 
     app = FastAPI(title="pip-world", lifespan=lifespan)
     app.state.settings = settings
     app.state.public_streams = 0
+
+    @app.middleware("http")
+    async def asked_agent(request: Request, call_next):
+        """?agent=<key>: the request is about that agent (app.state.agent, and whatever names the agent); else the world's first."""
+        key, world = request.query_params.get("agent"), getattr(app.state, "world", None)
+        if not key or world is None:
+            return await call_next(request)
+        a = next((x for x in world.agents if x.identity.key == key), None)
+        if a is None:
+            return JSONResponse({"error": f"no agent called {key!r} in this world"}, status_code=404)
+        token = _asked.set(a)
+        try:
+            with a.acting():
+                return await call_next(request)
+        finally:
+            _asked.reset(token)
+
+    @app.get("/agents")
+    def agents():
+        """Who lives in this world with a mind of their own."""
+        return {"agents": [{"key": a.identity.key, "name": a.identity.name} for a in app.state.world.agents]}
 
     @app.middleware("http")
     async def public_view(request: Request, call_next):

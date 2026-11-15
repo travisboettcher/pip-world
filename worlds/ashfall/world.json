@@ -1,20 +1,56 @@
 {
  "name": "Ashfall",
  "api": 1,
- "agent": {
-  "name": "Wren",
-  "pronoun": "she",
-  "kind": "a survivor",
-  "lives": "lives alone in a shelter under a dead city",
-  "look": {
-   "height": "medium",
-   "hair": "auburn",
-   "skin": "olive",
-   "top": "grey",
-   "bottom": "brown",
-   "accessory": "scarf"
+ "agents": [
+  {
+   "key": "wren",
+   "name": "Wren",
+   "pronoun": "she",
+   "kind": "a survivor",
+   "lives": "lives alone in a shelter under a dead city",
+   "look": {
+    "height": "medium",
+    "hair": "auburn",
+    "skin": "olive",
+    "top": "grey",
+    "bottom": "brown",
+    "accessory": "scarf"
+   }
+  },
+  {
+   "key": "ivo",
+   "name": "Ivo",
+   "pronoun": "he",
+   "kind": "a scavenger",
+   "lives": "lives alone in a lock-up off the ruins, trading salvage at the village gate",
+   "look": {
+    "height": "tall",
+    "hair": "black",
+    "skin": "brown",
+    "top": "ochre",
+    "bottom": "black",
+    "accessory": "satchel"
+   },
+   "persona": "personas/ivo.md",
+   "home": {
+    "key": "lockup",
+    "description": "your home: a lock-up garage off the ruins, its shutter half-rusted shut",
+    "called": "lock-up",
+    "aliases": [
+     "home",
+     "lock-up",
+     "lockup",
+     "garage",
+     "my lock-up"
+    ],
+    "about": "a steel-shuttered lock-up crammed with salvage",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   }
   }
- },
+ ],
  "modules": [
   "std:cutaway",
   "std:scrap-heap",

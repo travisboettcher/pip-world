@@ -84,6 +84,6 @@ def snapshot(state, settings, library, now: float | None = None) -> dict:
                       "distance_minutes": place.walk_minutes})
     point, walking = _walk(state, spots, now)
     at = None if walking else state.agent()["location"]
-    home = world_pack.active().data("places").get("home", {})
+    home = places.home()
     return {"home": places.HOME, "home_called": home.get("called", "home"), "places": shown,
             "agent": {"name": world_pack.active().agent.name, "x": point[0], "y": point[1], "at": at, "walking": walking}}

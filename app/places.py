@@ -21,9 +21,16 @@ def _data() -> dict:
     return world_pack.active().data("places")
 
 
-def home_key() -> str:
+def home(agent=None) -> dict:
+    """The agent's home, as places.json's `home` says one is (key, description, called, aliases, about, offers): the acting agent's own
+    (world.json `agents`: docs/DESIGN-multi-agent.md) or else the world's."""
+    agent = agent or world_pack.active().agent
+    return agent.home_place or _data().get("home", {})
+
+
+def home_key(agent=None) -> str:
     """The key of the agent's home (the pack's places.json `home`: "workshop" in Pip's world)."""
-    return _data().get("home", {}).get("key", "home")
+    return home(agent).get("key", "home")
 
 
 def __getattr__(name):            # the old constant name, from the active world
@@ -170,8 +177,8 @@ def registry(state, settings, library) -> dict[str, Place]:
     """Every place the agent can go, as records: home, the library (if mounted), each neighbor's home."""
     walk = settings.walk_minutes if settings else 10.0
     d = _data()
-    home = d.get("home", {})
-    out = {home_key(): Place(home_key(), home.get("description", "your home"), walk, offers=tuple(home.get("offers", ("sleep",))))}
+    mine = home()
+    out = {home_key(): Place(home_key(), mine.get("description", "your home"), walk, offers=tuple(mine.get("offers", ("sleep",))))}
     lib_place = d.get("library")
     if library and library.available() and lib_place:          # the world's library, when there are books to read
         out[lib_place["key"]] = _built_in({**lib_place, "kind": library_kind()}, walk)
@@ -245,7 +252,7 @@ def available(state, library) -> dict[str, str]:
 
 def find(state, library, query) -> str | None:
     q = str(query or "").strip().lower().removeprefix("the ").removeprefix("my ")
-    if q in _data().get("home", {}).get("aliases", ("home",)):
+    if q in home().get("aliases", ("home",)):
         return home_key()
     places = available(state, library)
     names = [(p, p.lower()) for p in places] + [(r["key"], a) for r in invented.records(state) if r["key"] in places
