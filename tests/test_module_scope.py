@@ -156,3 +156,4 @@ def test_a_new_version_may_speak_as_its_old_versions_voices(world):
     other = live(wren.state, rule(name="other-hut", proposes=["voices"], scope="world"), "x")
     with pytest.raises(M.Refused, match="^someone called the radio is already in the world$"):
         M._voices(wren.state, other, [{"name": "the radio", "at": "home"}])
+

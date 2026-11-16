@@ -59,13 +59,13 @@
   },
   {
    "key": "village",
-   "description": "the walled village by the reservoir, where the survivors keep a gate and a radio",
+   "description": "the walled village by the reservoir, where the survivors keep a gate, trade what comes in and listen to the radio",
    "walk": 40,
    "offers": [],
    "daylight_only": true,
    "verbs": {},
    "about": "a walled village by the reservoir",
-   "kind": "sight",
+   "kind": "market",
    "tag": "people"
   }
  ],
@@ -160,6 +160,36 @@
    ],
    "trades": false,
    "stalls": false
+  },
+  "market": {
+   "help": "somewhere to barter: a village gate, a trading post, a market under the tarps",
+   "words": [
+    "gate",
+    "market",
+    "post",
+    "trading"
+   ],
+   "verbs": {
+    "browse": [
+     "see what the gate has to trade today, and at what price",
+     null
+    ]
+   },
+   "loot_kinds": [
+    "tool",
+    "material",
+    "food"
+   ],
+   "max_tools": 2,
+   "capacity": 80,
+   "refill": 4,
+   "shop_hours": true,
+   "session": [
+    15,
+    60
+   ],
+   "trades": true,
+   "stalls": true
   }
  },
  "fallback_kind": "sight",

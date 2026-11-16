@@ -202,6 +202,104 @@
     "grey river clay",
     {}
    ]
+  ],
+  "village": [
+   [
+    "lamp oil",
+    "material",
+    12,
+    [
+     1,
+     2
+    ],
+    "a can of oil that hasn't gone to tar",
+    {}
+   ],
+   [
+    "clean tins",
+    "material",
+    10,
+    [
+     2,
+     4
+    ],
+    "tins scrubbed out for storing things",
+    {}
+   ],
+   [
+    "rope",
+    "material",
+    8,
+    [
+     1,
+     2
+    ],
+    "a coil of braided rope",
+    {}
+   ],
+   [
+    "candles",
+    "material",
+    8,
+    [
+     1,
+     3
+    ],
+    "stubby tallow candles",
+    {}
+   ],
+   [
+    "water ration",
+    "food",
+    14,
+    [
+     1,
+     3
+    ],
+    "a stoppered bottle of boiled reservoir water",
+    {
+     "food_value": 0.2
+    }
+   ],
+   [
+    "smoked fish",
+    "food",
+    10,
+    [
+     1,
+     2
+    ],
+    "fish from the reservoir, smoked over the gate fire",
+    {
+     "food_value": 0.45
+    }
+   ],
+   [
+    "rad pills",
+    "food",
+    4,
+    [
+     1,
+     1
+    ],
+    "a strip of iodine pills from the village stores",
+    {
+     "restores": {
+      "radiation": 0.3
+     }
+    }
+   ],
+   [
+    "knife",
+    "tool",
+    3,
+    [
+     1,
+     1
+    ],
+    "a sharpened kitchen knife with a taped handle",
+    {}
+   ]
   ]
  },
  "gerunds": {

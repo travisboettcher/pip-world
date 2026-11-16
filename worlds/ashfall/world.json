@@ -60,9 +60,13 @@
   "std:bench",
   "std:standing-stones",
   "std:lighthouse",
+  "std:stall",
+  "std:well",
   "std:outdoors",
+  "std:market",
   "std:gathering",
   "std:crafting",
+  "std:trade",
   "ashfall:shelter",
   "ashfall:raids",
   "ashfall:village"

@@ -18,8 +18,8 @@ from app.llm.base import LLMResponse, ToolCall, Usage
 
 ASHFALL = Path(__file__).resolve().parent.parent / "worlds" / "ashfall"
 PIPS_WORLD = re.compile(r"\b(Pip|Pip's|workshop|gardens?|tomato\w*|carrot\w*|Marigold|junkyard|woods|brass|clockwork|cottage|library)\b", re.I)
-MODULES = ["cutaway", "scrap-heap", "shed", "round-tree", "pine-tree", "bench", "standing-stones", "lighthouse", "outdoors", "gathering",
-           "crafting", "shelter", "raids", "village"]
+MODULES = ["cutaway", "scrap-heap", "shed", "round-tree", "pine-tree", "bench", "standing-stones", "lighthouse", "stall", "well", "outdoors",
+           "market", "gathering", "crafting", "trade", "shelter", "raids", "village"]
 
 
 class Recorder:
@@ -429,5 +429,35 @@ async def test_both_homes_are_laid_out_and_on_the_map(tmp_path):
             with a.acting():
                 scene = world_view.scene_view(a.state, s, None, home)
             assert scene["place"]["key"] == home and len(scene["layout"]["shapes"]) > 20, home     # Ashfall's shelter layout, for any home
+    finally:
+        W.set_active(W.load(Settings()))
+
+
+@pytest.mark.asyncio
+async def test_the_village_gate_is_a_market_where_salvage_sells(tmp_path, monkeypatch):
+    """Live, 2026-11-16: Ivo stood at the gate for an hour and a half trying to sell copper wire to villagers who could only talk."""
+    import datetime as dt
+    from app import loop, places
+    from app.llm.fake import FakeBackend
+    from app.llm.base import ToolCall
+    noon = dt.datetime.combine(dt.date.today(), dt.time(12)).timestamp()                 # the gate keeps hours
+    monkeypatch.setattr(time, "time", lambda: noon)
+    os.makedirs(tmp_path / "data")
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual",
+                 module_library="on", modules="on")
+    try:
+        world = loop.build(s, FakeBackend())
+        await world.step()
+        ivo = world.agents[1]
+        ivo.state.update_agent(location="village")
+        ivo.state.add_item("copper wire", 5, "material", "wire stripped from a wall")
+        await ivo.step()
+        with ivo.acting():
+            assert places.kind_of(ivo.state, "village") == "market" and {"browse", "buy", "sell"} <= ivo.tool_names()
+            wares = (await ivo._run_tool(ToolCall(id="1", name="browse", arguments={}), 0))["content"]
+            sold = (await ivo._run_tool(ToolCall(id="2", name="sell", arguments={"item": "copper wire", "quantity": 5}), 0))["content"]
+        assert wares.startswith("In stock at the village today: "), wares
+        assert sold.startswith("you sold 5 copper wire for "), sold
+        assert ivo.state.find_item("copper wire")[0] is None and ivo.state.coins() > 0
     finally:
         W.set_active(W.load(Settings()))

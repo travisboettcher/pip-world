@@ -115,9 +115,9 @@ def test_place_kinds_are_the_worlds(tmp_path):
     assert set(layouts.kinds()) == {"home", "neighbor", "library", "wild", "yard", "shop", "market", "sight"}
     W.set_active(W.load(Settings(world_pack=str(ROOT / "worlds" / "ashfall"))))
     try:
-        assert set(layouts.kinds()) == {"home", "dwelling", "wild", "yard", "sight"}               # no library, no market: none in that world
+        assert set(layouts.kinds()) == {"home", "dwelling", "wild", "yard", "sight", "market"}     # no library in that world; a market at the gate
         with pytest.raises(M.Refused) as e:
-            M.check_manifest({"name": "stalls", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["market"]}, "world")
+            M.check_manifest({"name": "stacks", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["library"]}, "world")
         assert str(e.value).startswith("`kinds` is a list drawn from: ")
     finally:
         W.set_active(W.load(Settings()))
