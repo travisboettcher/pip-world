@@ -397,3 +397,18 @@ def test_two_modules_offering_a_tool_of_one_name_list_it_once(tmp_path):
     live(st, rule(name="aaa", hooks=["on_action"], tools=[{"name": "dig_deep", "help": "first", "params": SHOP}]), "x")
     live(st, rule(name="bbb", hooks=["on_action"], tools=[{"name": "dig_deep", "help": "second", "params": SHOP}]), "x")
     assert [(sp.name, sp.description) for sp in T.module_specs(st, "woods")] == [("dig_deep", "first")]
+
+
+def test_a_world_keeps_a_modules_right_to_take_creations():
+    from app import world_pack as W
+    from app.config import Settings
+    """Live, 2026-11-16: the world's copy of trade dropped `creation` from what it takes (only the world's item kinds were kept), so
+    selling a creation was refused."""
+    trade = M.world_modules(Settings())["trade"][0]
+    assert "creation" in trade["belongings"]["takes"] and "creation" not in trade["belongings"]["gives"]
+    W.set_active(W.load(Settings(world_pack=str(W.DEFAULT.parent / "ashfall"))))      # the world running is the one whose kinds count
+    try:
+        ash = M.world_modules(Settings(world_pack=str(W.DEFAULT.parent / "ashfall")))
+        assert all("seed" not in m["belongings"].get(k, []) for m, _ in ash.values() if m.get("belongings") for k in ("takes", "gives"))
+    finally:
+        W.set_active(W.load(Settings()))

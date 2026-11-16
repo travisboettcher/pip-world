@@ -2113,7 +2113,8 @@ def world_modules(settings) -> dict:
         if man.get("belongings"):                            # only the kinds of thing this world has (a world without seeds gathers none)
             from . import world as world_content
             kinds, b = set(world_content.kinds()), man["belongings"]
-            man = {**man, "belongings": {**b, **{k: [x for x in b[k] if x in kinds] for k in ("takes", "gives") if k in b}}}
+            keep = lambda k, x: x in kinds or k == "takes" and x == "creation"   # noqa: E731  (a creation isn't a kind of item: it's always the world's)
+            man = {**man, "belongings": {**b, **{k: [x for x in b[k] if keep(k, x)] for k in ("takes", "gives") if k in b}}}
         out[name] = (man, source)
     return out
 
