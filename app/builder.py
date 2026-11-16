@@ -67,7 +67,7 @@ def manifest(source: str, name: str, events) -> dict:
     tree = sandbox.check(source)
     hooks = [n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in M.HOOKS]
     events = [e for e in (events or []) if isinstance(e, str)]
-    return {"name": name, "kind": "rule", "api": M.API, "hooks": hooks, "reads": list(RULE_READS), "proposes": list(RULE_PROPOSES),
+    return {"name": name, "kind": "rule", "api": M.API, "scope": "world", "hooks": hooks, "reads": list(RULE_READS), "proposes": list(RULE_PROPOSES),
             "events": events if "on_event" in hooks else []}
 
 

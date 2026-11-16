@@ -326,11 +326,12 @@ async def record(state, settings, gm, c: dict, w: dict, now: float, slot: str, n
     return row
 
 
-async def from_modules(state, settings, gm, now: float | None = None) -> bool:
-    """Write and record the happenings live modules proposed. True when one happened (The agent should hear of it)."""
+async def from_modules(state, settings, gm, now: float | None = None, scope: str | None = None) -> bool:
+    """Write and record the happenings live modules (of a scope, when given) proposed. True when one happened (The agent should hear of
+    it)."""
     now, made = now or time.time(), False
     for m in state.modules("live"):
-        if m.get("happen"):
+        if m.get("happen") and modules.ours(state, m, scope):
             state.update_module(m["id"], happen=[])
             made |= await from_module(state, settings, gm, m["name"], m["happen"][0], now) is not None
     return made

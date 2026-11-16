@@ -150,7 +150,7 @@ def check_manifest(m, author: str, state=None) -> dict:
             if not isinstance(m.get("place"), str) or not m["place"].strip():
                 raise Refused("a place module names the place it lays out: `place` (or describes a new one: `new`, or covers `kinds`)")
             out["place"] = m["place"].strip()[:60]
-        out.update(events=[], consumes={})
+        out.update(events=[], consumes={}, scope="world")
         return out
     if author == "agent":
         if kind != "thing":
@@ -159,6 +159,12 @@ def check_manifest(m, author: str, state=None) -> dict:
             + [v for v in out["proposes"] if v not in (AGENT_PROPOSES_V1 if v1 else AGENT_PROPOSES)]
         if extra:
             raise Refused(f"your programs can't use: {', '.join(extra)}")
+    scope = m.get("scope", "agent")                    # whose its working data is (docs/DESIGN-multi-agent.md)
+    if scope not in ("agent", "world"):
+        raise Refused("`scope` is agent (each agent has its own working data) or world (one, the world's)")
+    if scope == "world" and kind != "rule":
+        raise Refused("only a rule's working data can be the world's: a thing's is its maker's")
+    out["scope"] = scope
     subject = str(m.get("subject") or "").strip()
     if kind == "thing":
         if not subject:
@@ -1451,14 +1457,35 @@ def misfires(state, m: dict, hook: str, now: float) -> bool:
 
 
 # --- the engine's step -----------------------------------------------------------------------------------------------------------
-async def step(state, settings, runner, now: float | None = None) -> bool:
-    """Run every live module's hooks that are due: its tick, its scheduled time, the events it listens for. True if the agent should wake."""
+def ours(state, m: dict, scope: str | None) -> bool:
+    """Whether a step for `scope` runs this module (None: every one): the world's step the world's modules, an agent's step its own, and
+    a thing's workings only for the agent whose creation it is (docs/DESIGN-multi-agent.md)."""
+    if scope is None:
+        return True
+    if state.scope_of(m["kind"], m["manifest"]) != scope:
+        return False
+    return not (m["kind"] == "thing" and not _creation(state, m["manifest"].get("subject", "")))
+
+
+async def step(state, settings, runner, now: float | None = None, scope: str | None = None) -> bool:
+    """Run every live module's hooks that are due (of a scope, when given): its tick, its scheduled time, the events it listens for. An
+    agent new to an agent-scoped module is installed first, from now. True if the agent should wake."""
     now, wake, local = now or time.time(), False, LocalRunner()
     for m in state.modules("live"):
+        if not ours(state, m, scope):
+            continue
         hooks = m["manifest"]["hooks"]
         run = runner or (local if m["author"] == SHIPPED else None)       # shipped modules run even without the runner
         if run is None:
             continue
+        if m.get("fresh"):
+            last = state.events(limit=1)
+            m["cursor"] = last[0]["id"] if last else 0
+            state.update_module(m["id"], cursor=m["cursor"])
+            m.update(state.module(m["id"]))
+            if "on_install" in hooks:
+                wake |= (await call(state, settings, run, m, "on_install", now))["wake"]
+                m.update(state.module(m["id"]))
         if "on_time" in hooks and m["due"] and m["due"] <= now and m["status"] == "live":
             wake |= (await call(state, settings, run, m, "on_time", now, due=m["due"]))["wake"]
         if "on_event" in hooks and m["status"] == "live":
@@ -1633,10 +1660,13 @@ def status_lines(state) -> list[str]:
     return out
 
 
-async def answer(state, settings, gm, runner, now: float | None = None) -> bool:
-    """Ask the model what live modules asked for, and hand each its words (empty when there were none). True if the agent should wake."""
+async def answer(state, settings, gm, runner, now: float | None = None, scope: str | None = None) -> bool:
+    """Ask the model what live modules (of a scope, when given) asked for, and hand each its words (empty when there were none). True if
+    the agent should wake."""
     now, wake, local = now or time.time(), False, LocalRunner()
     for m in state.modules("live"):
+        if not ours(state, m, scope):
+            continue
         run = runner or (local if m["author"] == SHIPPED else None)
         if not m.get("asks") or run is None:
             continue
@@ -2161,7 +2191,7 @@ def slug(text: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:28] or "thing"
 
 
-async def offer_library(state, settings, runner, now: float | None = None) -> list[int]:
+async def offer_library(state, settings, runner, now: float | None = None, rules: bool = True, things: bool = True) -> list[int]:
     """The modules shipped with the engine (module_library/), proposed once each whatever the owner later decides: its rules, parts and
     layouts (RULES), and for a timekeeper that needs tending, its clock's workings. They're the engine's own code, so they go live without
     waiting for approval when their trial is clean, and run in a local sandbox when there is no runner. When a new release changes one
@@ -2174,7 +2204,7 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
     for m in state.modules("live"):                        # one the engine shipped and ships no more (it became part of another), or one
         if m["author"] == SHIPPED and m["kind"] != "thing" and m["name"] not in runs:     # this world doesn't run, steps aside
             disable(state, m["id"], "the engine no longer ships it" if m["name"] not in RULES else "this world doesn't include it", now)
-    for name, (man, source) in runs.items():                 # the world's own rules, once each, and again when one changes
+    for name, (man, source) in (runs.items() if rules else ()):                 # the world's own rules, once each, and again when one changes
         reason = man.pop("reason", "")
         last = ([o for o in state.modules() if o["name"] == name] or [None])[-1]
         if last and not (last["author"] in (SHIPPED, "world") and last["status"] == "live"           # once shipped as the world's
@@ -2185,7 +2215,7 @@ async def offer_library(state, settings, runner, now: float | None = None) -> li
             made.append(r["id"])
         else:
             log.warning("library module %s refused: %s", name, r["error"])
-    for c in state.creations():                              # a creation's workings, for each one that does something on its own
+    for c in (state.creations() if things else ()):                              # a creation's workings, for each one that does something on its own
         caps = c["spec"]["capabilities"]
         if not set(caps) & RUNS and caps.get("provides", {}).get("ability") != "news":
             continue

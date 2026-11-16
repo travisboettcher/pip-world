@@ -44,15 +44,15 @@ async def test_the_worlds_steps_run_once_and_wake_every_agent(tmp_path, monkeypa
     b = agent(tmp_path, "tomas.db", world=a.world)
     ran = []
 
-    async def step(state, settings, runner, now=None):
-        ran.append(state)
+    async def step(state, settings, runner, now=None, scope=None):
+        ran.append((state, scope))
         return True                                                # something happened
     monkeypatch.setattr(loop.modules, "step", step)
     woke = []
     for x in (a, b):
         monkeypatch.setattr(x, "request_wake", lambda force=False, urgent=False, x=x: woke.append(x))
     await a.world.step()
-    assert len(ran) == 1 and woke == [a, b]
+    assert ran == [(a.state, "world")] and woke == [a, b]                           # the world's modules, once
 
 
 @pytest.mark.asyncio

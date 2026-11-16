@@ -128,6 +128,17 @@ CREATE TABLE IF NOT EXISTS module_store (
   module TEXT NOT NULL, collection TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
   PRIMARY KEY (module, collection, key)
 );
+CREATE TABLE IF NOT EXISTS module_runtime ( -- an agent-scoped module's working data, this agent's (docs/DESIGN-multi-agent.md)
+  module_id INTEGER PRIMARY KEY, state TEXT NOT NULL DEFAULT '{}', offers TEXT NOT NULL DEFAULT '[]', facts TEXT NOT NULL DEFAULT '{}',
+  lines TEXT NOT NULL DEFAULT '[]', due REAL, cursor INTEGER NOT NULL DEFAULT 0, show TEXT NOT NULL DEFAULT '[]',
+  budget TEXT NOT NULL DEFAULT '{}', voices TEXT NOT NULL DEFAULT '[]', heard TEXT NOT NULL DEFAULT '[]', asks TEXT NOT NULL DEFAULT '[]',
+  happen TEXT NOT NULL DEFAULT '[]', standing TEXT NOT NULL DEFAULT '{}', requests TEXT NOT NULL DEFAULT '[]',
+  whereabouts TEXT NOT NULL DEFAULT '{}', notes TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS agent_module_store ( -- an agent-scoped module's store, this agent's
+  module TEXT NOT NULL, collection TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+  PRIMARY KEY (module, collection, key)
+);
 CREATE TABLE IF NOT EXISTS module_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT, module_id INTEGER NOT NULL, ts REAL NOT NULL, hook TEXT NOT NULL, ok INTEGER NOT NULL,
   ms INTEGER NOT NULL, summary TEXT NOT NULL
@@ -309,6 +320,7 @@ class State:
                 if name not in have:
                     self.db.execute("INSERT INTO stats (name, value, alerted) VALUES (?, ?, 0)", (name, d.get("start", 0.5)))
             self._from_before_modules()
+            self._runtime_moved()
             self._backfill_reads()
             self._name_the_agent()
             self._plans_named()
@@ -967,54 +979,118 @@ class State:
 
     # --- modules (docs/DESIGN-modules.md) ----------------------------------------------
     _MODULE_JSON = ("manifest", "state", "offers", "facts", "lines", "report", "budget", "show", "built", "voices", "heard", "asks", "happen", "standing", "requests", "whereabouts", "notes")
+    # An agent-scoped module's working data is each agent's own, in its file (docs/DESIGN-multi-agent.md, "Modules' working data"); its
+    # definition, and a world-scoped module's working data, are the world's row.
+    RUNTIME = {"state": {}, "offers": [], "facts": {}, "lines": [], "due": None, "cursor": 0, "show": [], "budget": {}, "voices": [], "heard": [],
+               "asks": [], "happen": [], "standing": {}, "requests": [], "whereabouts": {}, "notes": {}}
 
-    def _module(self, row) -> dict:
-        return {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}
+    @staticmethod
+    def scope_of(kind: str, manifest: dict) -> str:
+        """Whose a module's working data is: "world" for parts and places and a rule that says so, else "agent"."""
+        return "world" if kind in ("part", "place") else manifest.get("scope", "agent")
+
+    def _module(self, row, mine: dict | None = None) -> dict:
+        m = {k: json.loads(row[k]) if k in self._MODULE_JSON else row[k] for k in row.keys()}
+        if self.scope_of(m["kind"], m["manifest"]) == "agent":           # this agent's working data, or none yet (new to it)
+            m.update(self.RUNTIME, **({k: json.loads(mine[k]) if k in self._MODULE_JSON else mine[k] for k in self.RUNTIME} if mine else {}),
+                     fresh=mine is None)
+        return m
+
+    def _runtime(self, ids) -> dict:
+        ids = list(ids)
+        if not ids:
+            return {}
+        rows = self.db.execute(f"SELECT * FROM main.module_runtime WHERE module_id IN ({', '.join('?' for _ in ids)})", ids)
+        return {r["module_id"]: r for r in rows}
+
+    def _agent_scoped(self, module_id: int) -> bool:
+        row = self.db.execute("SELECT kind, manifest FROM world.modules WHERE id = ?", (module_id,)).fetchone()
+        return bool(row) and self.scope_of(row["kind"], json.loads(row["manifest"])) == "agent"
+
+    def _set_runtime(self, module_id: int, fields: dict) -> None:
+        vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
+        if not vals:                                                     # nothing to set: it is this agent's now, as it starts
+            self.db.execute("INSERT OR IGNORE INTO main.module_runtime (module_id) VALUES (?)", (module_id,))
+            return
+        self.db.execute(f"INSERT INTO main.module_runtime (module_id, {', '.join(vals)}) VALUES (?, {', '.join('?' for _ in vals)}) "
+                        f"ON CONFLICT(module_id) DO UPDATE SET {', '.join(f'{k} = excluded.{k}' for k in vals)}", (module_id, *vals.values()))
 
     def add_module(self, **fields) -> int:
         vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
         with self.lock:
             cur = self.db.execute(f"INSERT INTO modules ({', '.join(vals)}) VALUES ({', '.join('?' for _ in vals)})", tuple(vals.values()))
+            if self._agent_scoped(cur.lastrowid):                          # what it starts with is the agent's who made it
+                self._set_runtime(cur.lastrowid, {k: v for k, v in fields.items() if k in self.RUNTIME})
             self.db.commit()
             return cur.lastrowid
 
     def module(self, module_id: int) -> dict | None:
         with self.lock:
             row = self.db.execute("SELECT * FROM modules WHERE id = ?", (module_id,)).fetchone()
-        return self._module(row) if row else None
+            return self._module(row, self._runtime([module_id]).get(module_id)) if row else None
 
     def modules(self, status: str | tuple | None = None) -> list[dict]:
         """Oldest first (the order hooks run in), optionally only those with a status (or one of several)."""
         statuses = (status,) if isinstance(status, str) else status
         q = "SELECT * FROM modules" + (f" WHERE status IN ({', '.join('?' for _ in statuses)})" if statuses else "") + " ORDER BY id"
         with self.lock:
-            return [self._module(r) for r in self.db.execute(q, statuses or ())]
+            rows = self.db.execute(q, statuses or ()).fetchall()
+            mine = self._runtime(r["id"] for r in rows)
+            return [self._module(r, mine.get(r["id"])) for r in rows]
 
     def update_module(self, module_id: int, **fields) -> None:
-        vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
         with self.lock:
-            self.db.execute(f"UPDATE modules SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), module_id))
+            if self._agent_scoped(module_id):
+                runtime = {k: v for k, v in fields.items() if k in self.RUNTIME}
+                fields = {k: v for k, v in fields.items() if k not in self.RUNTIME}
+                if runtime:
+                    self._set_runtime(module_id, runtime)
+            vals = {k: json.dumps(v) if k in self._MODULE_JSON else v for k, v in fields.items()}
+            if vals:
+                self.db.execute(f"UPDATE modules SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), module_id))
             self.db.commit()
+
+    def _store_table(self, module: str) -> str:
+        """Where a module's store is: this agent's (agent-scoped, and any module the world doesn't know) or the world's."""
+        row = self.db.execute("SELECT kind, manifest FROM world.modules WHERE name = ? ORDER BY id DESC LIMIT 1", (module,)).fetchone()
+        return "world.module_store" if row and self.scope_of(row["kind"], json.loads(row["manifest"])) == "world" else "main.agent_module_store"
 
     def store(self, module: str) -> dict:
         """A module's collections (by its name, so a new version keeps them): {collection: {key: value}}."""
         out: dict = {}
         with self.lock:
-            for r in self.db.execute("SELECT collection, key, value FROM module_store WHERE module = ? ORDER BY collection, key", (module,)):
+            for r in self.db.execute(f"SELECT collection, key, value FROM {self._store_table(module)} WHERE module = ? ORDER BY collection, key",
+                                     (module,)):
                 out.setdefault(r["collection"], {})[r["key"]] = json.loads(r["value"])
         return out
 
     def merge_store(self, module: str, changes: dict) -> None:
         """Set each key of each collection (None deletes it)."""
         with self.lock:
+            table = self._store_table(module)
             for coll, keys in changes.items():
                 for key, value in keys.items():
                     if value is None:
-                        self.db.execute("DELETE FROM module_store WHERE module = ? AND collection = ? AND key = ?", (module, coll, key))
+                        self.db.execute(f"DELETE FROM {table} WHERE module = ? AND collection = ? AND key = ?", (module, coll, key))
                     else:
-                        self.db.execute("INSERT OR REPLACE INTO module_store (module, collection, key, value) VALUES (?, ?, ?, ?)",
+                        self.db.execute(f"INSERT OR REPLACE INTO {table} (module, collection, key, value) VALUES (?, ?, ?, ?)",
                                         (module, coll, key, json.dumps(value)))
             self.db.commit()
+
+    def _runtime_moved(self) -> None:
+        """Once (0.56.0): before modules' working data had an owner it was the world's row and store. The world's first agent keeps what
+        its agent-scoped modules had; an agent after it starts fresh."""
+        if self.meta("module_runtime_moved") == "1":
+            return
+        first = self.s.agent_key in ("", world_pack.load(self.s).agent.key)
+        rows = self.db.execute("SELECT * FROM world.modules").fetchall() if first else []
+        mine = [r for r in rows if self.scope_of(r["kind"], json.loads(r["manifest"])) == "agent"]
+        for r in mine:
+            self._set_runtime(r["id"], {k: json.loads(r[k]) if k in self._MODULE_JSON else r[k] for k in self.RUNTIME})
+        for name in sorted({r["name"] for r in mine}):
+            self.db.execute("INSERT OR REPLACE INTO main.agent_module_store SELECT * FROM world.module_store WHERE module = ?", (name,))
+            self.db.execute("DELETE FROM world.module_store WHERE module = ?", (name,))
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('module_runtime_moved', '1')")
 
     def add_module_call(self, module_id: int, ts: float, hook: str, ok: bool, ms: int, summary: str, keep: int = 200) -> None:
         """One hook call, for the module's history (the newest `keep` are kept)."""

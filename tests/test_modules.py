@@ -229,7 +229,7 @@ def test_module_settings_from_the_environment(monkeypatch):
 def test_a_manifest_is_held_to_what_the_engine_offers(tmp_path):
     s, st, agent = modular(tmp_path)
     ok = M.check_manifest(rule(events=[], extra="ignored"), "world")
-    assert ok == {"name": "bells", "kind": "rule", "api": 1, "hooks": ["on_tick"], "reads": ["time"], "proposes": ["state", "perceive"],
+    assert ok == {"name": "bells", "kind": "rule", "api": 1, "scope": "agent", "hooks": ["on_tick"], "reads": ["time"], "proposes": ["state", "perceive"],
                   "events": [], "consumes": {}}
 
     def bad(m, author="world"):

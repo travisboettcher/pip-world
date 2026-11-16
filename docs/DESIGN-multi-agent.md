@@ -73,6 +73,24 @@ Shipped modules that assume one agent (gathering's trip, reading's bookmark, cra
 The engine's plain page and Pip's page show one agent at a time, with a switcher when there are several; `/state`, `/events` and the
 rest take `?agent=`. The scene draws every agent at its place. Public pages, if a world has them, show all.
 
+### Modules' working data (addendum, before release 3)
+A module's definition (its code, manifest, version and status, its trial, its layout if it builds a place) is the world's. Its working
+data is someone's: a manifest's `scope` says whose.
+- **`agent`** (the default for rules and things): each agent has its own. The working data (`state`, `offers`, `facts`, `lines`,
+  `due`, `cursor`, `show`, `budget`, `voices`, `heard`, `asks`, `happen`, `standing`, `requests`, `whereabouts`, `notes`) lives in
+  that agent's file (`module_runtime`, keyed by the module's name so a new version keeps it, as the store is), and so does its store
+  (`agent_module_store`). Crafting's projects, gathering's trips, reading's bookmarks, the garden's plots, trade's stall and tills,
+  the happenings, raids and every status line are each agent's own. Such a module is stepped in each agent's step, as that agent; an
+  agent with no data for it yet is new to it, and its `on_install` runs first. A thing (a creation's workings) is stepped only for the
+  agent whose creation it is.
+- **`world`** (parts and places always; rules that keep the world itself): one set of working data on the module's row and the world's
+  store, stepped once in the world's step (as its first agent, until a proposal can say whom it is for). Pip's sky, Ashfall's village
+  and Pip's neighbourhood are the world's, and so are the rules the world's builder writes.
+
+The State routes this itself (`module`, `modules`, `update_module`, `store`, `merge_store`): every caller already passes the State of
+the agent it acts for, so what it reads and writes is that agent's. An install from before gives the world's first agent the working
+data and store its agent-scoped modules had; later agents start fresh.
+
 ## Releases (each tested, mutation-tested, deployed to the experimental stack only)
 1. **The world's database and the agent's** (one agent, no visible change): storage split, migration, `World` and `Agent` apart. *Built (0.54.0):*
    the storage split. The world's tables (`state.WORLD_TABLES`: places, the map, modules and their store and calls, characters,
@@ -100,7 +118,11 @@ rest take `?agent=`. The scene draws every agent at its place. Public pages, if 
    first, then Ivo starts.
 3. **Meeting**: modules' working data by agent (each agent's projects, trips, stall and status lines its own; what is the world's, such
    as villagers brought or places laid out, stays shared), then presence, `say` between agents, letters and parcels between them,
-   modules' `agents` read and `to`. Ivo starts.
+   modules' `agents` read and `to`. Ivo starts. *Built so far (0.56.0):* modules' working data has an owner, as the addendum
+   above says: `scope` in a manifest (`agent` by default, `world` for parts, places, Pip's sky and neighbourhood, Ashfall's village and
+   the builder's rules), `module_runtime` and `agent_module_store` in each agent's file, the State routing every read and write, a step
+   per scope (`modules.ours`), an agent new to a module installed from now, things stepped only for their maker, and an install from
+   before giving its first agent what its modules had.
 4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world.
 
 ## Decisions (the owner, 2026-11-15)

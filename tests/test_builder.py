@@ -132,7 +132,7 @@ def test_the_pieces(tmp_path):
     assert B.name_of("Market Bell!") == "market-bell" and B.name_of("9 lives") == "rule-9-lives" and B.name_of("") == "thing"
     assert B.name_of("ab") == "ab-rule"
     man = B.manifest("def on_event(ctx):\n    pass\ndef on_time(ctx):\n    pass\n", "x-rule", ["world_changed", 3])
-    assert man == {"name": "x-rule", "kind": "rule", "api": 2, "hooks": ["on_event", "on_time"], "reads": list(B.RULE_READS),
+    assert man == {"name": "x-rule", "kind": "rule", "api": 2, "scope": "world", "hooks": ["on_event", "on_time"], "reads": list(B.RULE_READS),
                    "proposes": list(B.RULE_PROPOSES), "events": ["world_changed"]}
     assert B.manifest("def on_time(ctx):\n    pass\n", "y", ["world_changed"])["events"] == []
     assert "subject" not in B.RULE_READS and "places" in B.RULE_READS

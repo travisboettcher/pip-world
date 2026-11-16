@@ -85,10 +85,10 @@ class World:
     async def step(self) -> None:
         """The world's updates, once a beat: the modules it ships, their calls and answers and what they say happens, the owner told of
         them, places laid out. Anything that happened wakes the agents."""
-        await modules.offer_library(self.state, self.s, self.runner)
-        woke = await modules.step(self.state, self.s, self.runner)
-        woke = await modules.answer(self.state, self.s, self.gm, self.runner) or woke     # the model's words for what modules asked
-        woke = await happenings.from_modules(self.state, self.s, self.gm) or woke        # what modules said happens, written and recorded
+        await modules.offer_library(self.state, self.s, self.runner, things=False)      # a creation's workings are its agent's to offer
+        woke = await modules.step(self.state, self.s, self.runner, scope="world")
+        woke = await modules.answer(self.state, self.s, self.gm, self.runner, scope="world") or woke     # the model's words they asked for
+        woke = await happenings.from_modules(self.state, self.s, self.gm, scope="world") or woke        # what they said happens
         if self.agents:
             await modules.notify_owner(self.state, self.s, self.agents[0].outreach)       # the owner's channel is the first agent's for now
         await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
@@ -294,6 +294,13 @@ class Agent:
             await self._step()
 
     async def _step(self) -> None:
+        await modules.offer_library(self.state, self.s, self.runner, rules=False)     # its creations' workings
+        if await modules.step(self.state, self.s, self.runner, scope="agent"):         # its own modules (each agent's own working data)
+            self.request_wake()
+        if await modules.answer(self.state, self.s, self.gm, self.runner, scope="agent"):
+            self.request_wake()
+        if await happenings.from_modules(self.state, self.s, self.gm, scope="agent"):
+            self.request_wake()
         if await stakes.step(self.state, self.s):                          # a stat that ran out, or the agent recovering
             self.request_wake()
         if await self.finish_work():

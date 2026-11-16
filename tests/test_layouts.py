@@ -149,7 +149,7 @@ def place_man(name="glade", place="woods"):
 
 def test_parts_and_places_are_the_worlds_and_only_build(tmp_path):
     s, st, agent = modular(tmp_path)
-    assert M.check_manifest(part_man(), "world") == {"name": "tree", "kind": "part", "api": 1, "hooks": ["on_build"], "reads": [], "proposes": [],
+    assert M.check_manifest(part_man(), "world") == {"name": "tree", "kind": "part", "api": 1, "scope": "world", "hooks": ["on_build"], "reads": [], "proposes": [],
                                                     "params": {"scale": 1}, "events": [], "consumes": {}}
     assert M.check_manifest(place_man(place=" woods "), "world")["place"] == "woods"
 
