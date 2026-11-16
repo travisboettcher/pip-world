@@ -33,7 +33,7 @@ def clock(st):
 def test_api_2_proposes_fewer_things_and_reads_the_weather_as_a_fact():
     assert M.API == 2 and M.APIS == (1, 2)
     assert set(M.PROPOSES_V1) - set(M.PROPOSES) == FOLDED and set(M.PROPOSES) <= set(M.PROPOSES_V1) and len(M.PROPOSES) == 29
-    assert set(M.READS_V1) - set(M.READS) == {"weather"} and len(M.READS) == 18
+    assert set(M.READS_V1) - set(M.READS) == {"weather"} and len(M.READS) == 19
     for old in sorted(FOLDED):
         with pytest.raises(M.Refused, match="^`proposes` is a list drawn from: state, publish"):
             M.check_manifest(v2(proposes=["state", old]), "world")

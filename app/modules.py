@@ -28,7 +28,7 @@ API, APIS = 2, (1, 2)                                 # api 1 manifests are stil
 KINDS = ("thing", "rule", "part", "place")
 HOOKS = ("on_install", "on_tick", "on_time", "on_event", "on_action", "on_message", "on_answer", "on_request", "on_source")
 READS_V1 = ("time", "weather", "agent", "subject", "items", "facts", "works", "places", "visitors", "people", "creations", "happenings", "here", "abilities", "made",
-            "answers", "making", "found", "wishes")
+            "answers", "making", "found", "wishes", "agents")
 PROPOSES_V1 = ("state", "publish", "perceive", "log", "schedule", "offer", "consume", "runtime", "wake", "show", "affect", "find", "voices",
                "ask", "speak", "happen", "store", "status", "take", "give", "request", "session", "practice", "deplete", "doing",
                "character", "letter", "coins", "part_with", "whereabouts", "notes", "source", "event", "creation")
@@ -433,6 +433,9 @@ def context(state, settings, m: dict, now: float, **extra) -> dict:
         from . import creations as cr
         ctx["making"] = {"capabilities": cr.menu(False, state), "companion": cr.menu(True)[-1], "companion_from": cr.COMPANION_MIN_DIFFICULTY,
                          "qualities": list(QUALITIES_MADE)}
+    if "agents" in reads:                                   # the world's agents, as anyone could see them (others.py: no one's mind)
+        from . import others
+        ctx["agents"] = others.read(state)
     if "answers" in reads:                                  # what each live module can be asked to do (a `request` to one that can't is refused)
         ctx["answers"] = {x["name"]: sorted(x["manifest"].get("answers") or {}) for x in state.modules("live") if x["manifest"].get("answers")}
     if "made" in reads:                                     # the agent's works: what it drew and wrote

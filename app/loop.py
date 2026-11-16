@@ -18,6 +18,7 @@ from . import layouts
 from . import modules
 from . import sources
 from . import neighbors as nb
+from . import others
 from . import nightpass as np
 from .outreach import Outreach
 from . import places
@@ -73,6 +74,7 @@ class World:
         self.library = lib.open_library(settings)
         self.runner = modules.runner_for(settings)
         self.agents: list["Agent"] = []
+        others.use(self)                                       # who else lives here, for code acting as one of them
         sources.wire(self)                                     # the books and the like modules may ask (sources.py)
 
     def wake(self) -> None:
@@ -92,6 +94,7 @@ class World:
         if self.agents:
             await modules.notify_owner(self.state, self.s, self.agents[0].outreach)       # the owner's channel is the first agent's for now
         await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
+        others.deliver()                                       # letters between agents that are due (each wakes its reader)
         if woke:
             self.wake()
 
@@ -849,8 +852,13 @@ class Agent:
         def visitor(m):
             if m["gift"]:
                 return f"- {m['text']}"
+            if m.get("source") == "agent":                       # another agent, here: answered with say(to=...)
+                return f"- {m['sender']} (here with you) said: {m['text']} (answer with say(to=\"{m['sender']}\"))"
+            if m.get("source") == "letter":                      # another agent's letter, by the world's post
+                return f"- a letter from {m['sender']}: {m['text']} (write_letter to answer)"
             via = f" (via {m['source']})" if m.get("source", "web") != "web" else ""
             return f"- {m['sender']}{via}: {m['text']}"
+        lines += others.seen(self.state)                         # the other agents here (meeting them, the first time)
         lines += self._talk(inbox)
         fresh, again = [m for m in inbox if not m.get("offers")], [m for m in inbox if m.get("offers")]
         if fresh:

@@ -122,7 +122,15 @@ data and store its agent-scoped modules had; later agents start fresh.
    above says: `scope` in a manifest (`agent` by default, `world` for parts, places, Pip's sky and neighbourhood, Ashfall's village and
    the builder's rules), `module_runtime` and `agent_module_store` in each agent's file, the State routing every read and write, a step
    per scope (`modules.ours`), an agent new to a module installed from now, things stepped only for their maker, and an install from
-   before giving its first agent what its modules had.
+   before giving its first agent what its modules had. Then the meeting (0.57.0, `others.py`): the World registers itself, so code acting for one
+   agent can find the others. Agents at the same place see each other in their perception ("Ivo is here (a scavenger, digging)"), and
+   the first time they meet: both remember it (`met:<key>`) and log a `met` event. `say(to=<agent>)` is heard only in person: it
+   arrives in their inbox as speech (`source: agent`, shown as "said, here with you", answered with `say(to=...)`) and wakes them.
+   `write_letter` to an agent one has met goes by the world's post (`agent_post`, a world table): two to six hours, then their inbox
+   (`source: letter`), with one thing tucked inside moving between belongings (a creation stays with its maker: it lives in its maker's
+   file); the day's letters count either kind. Modules may read `agents` (each one's key, name, where, activity, asleep; no one's
+   mind). *Decided while building:* a world module's proposals still act on its first agent: `to` waits until a world module needs it,
+   as none of the shipped ones does.
 4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world.
 
 ## Decisions (the owner, 2026-11-15)

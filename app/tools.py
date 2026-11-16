@@ -19,6 +19,7 @@ from . import memory as mem
 from . import modules
 from . import reminders
 from . import neighbors as nb
+from . import others
 from . import places
 from . import search
 from . import wishes
@@ -296,6 +297,8 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     mine = [e["data"]["text"] for e in ctx.state.events(100) if e["kind"] == "say" and time.time() - e["ts"] < SAY_LOOKBACK][:6]
     if conv.repeats(text, mine):
         return ToolResult("not said: you said that a moment ago. Say something new, ask something, or say goodbye.", followup=True)
+    if args.get("to") and (other := others.named(args["to"])):                     # another agent, with a mind of their own
+        return ToolResult(others.say(ctx.state, other, text), followup=True)
     if args.get("to") and (hit := modules.voice_named(ctx.state, args["to"])):     # someone a module speaks for
         m, v = hit
         if modules.voice_where(ctx.state, m, v) != places.present_at(ctx.state):
@@ -578,6 +581,9 @@ async def recall(ctx: ToolContext, args: dict) -> ToolResult:
            ["to", "text"]))
 async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
     st = ctx.state
+    other = others.named(args["to"])
+    if other and others.met(st, other):                                           # another agent you've met: the world's post
+        return _post(ctx, other, args)
     ch = st.find_character(args["to"])
     if not ch or not ch["writes"]:
         names = ", ".join(c["name"] for c in st.correspondents()) or "nobody yet"
@@ -602,6 +608,28 @@ async def write_letter(ctx: ToolContext, args: dict) -> ToolResult:
     nb.send(st, ctx.settings, ctx.rng, ch, text, enclosed)
     gift = f", with {enclosed.split(',')[0].split(' (')[0]} tucked inside" if enclosed else ""
     return ToolResult(f"your letter to {ch['name']} is on its way{gift}; it'll take a few hours to arrive")
+
+
+def _post(ctx: ToolContext, other, args: dict) -> ToolResult:
+    """A letter to another agent (others.py), with one thing tucked inside if you like (not a creation: it stays with its maker)."""
+    st, me = ctx.state, world_pack.active().agent
+    text = str(args.get("text") or "").strip()
+    if not text:
+        return ToolResult("error: the letter is empty", followup=True)
+    if st.letters_since(me.name, time.time() - nb.DAY) + others.posted_since(st, time.time() - nb.DAY) >= ctx.settings.letters_per_day:
+        return ToolResult("you've written plenty of letters today; wait for the post to catch up", followup=True)
+    inside = None
+    if args.get("enclose"):
+        item, err = st.find_item(args["enclose"])
+        if not item:
+            made = st.find_creation(args["enclose"])[0]
+            why = f"{made['name']} is yours to keep: only things fit in a letter" if made else err
+            return ToolResult(f"error: {why} (nothing was sent)", followup=True)
+        st.take_item(item["id"])
+        inside = {"name": item["name"], "qty": 1, "kind": item["kind"], "description": item["description"], "attrs": item["attrs"]}
+    others.post(st, other, text, inside, ctx.rng)
+    gift = f", with {inside['name']} tucked inside" if inside else ""
+    return ToolResult(f"your letter to {other.identity.name} is on its way{gift}; it'll take a few hours to arrive")
 
 
 # --- places and the library ---------------------------------------------------------

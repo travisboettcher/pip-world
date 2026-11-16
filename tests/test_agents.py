@@ -21,8 +21,9 @@ def two(tmp_path, **world):
     d = pack_dir(tmp_path, agents=[WREN, IVO], **world)
     (d / "personas").mkdir()
     (d / "personas" / "ivo.md").write_text("You are Ivo, who trades salvage at the gate.\n")
+    (d / "items.json").write_text(json.dumps({"kinds": ["tool", "material", "food"]}))
     (d / "places.json").write_text(json.dumps({"home": {"key": "shelter", "description": "your home: a shelter", "called": "shelter"},
-                                              "start": [{"key": "ruins", "kind": "yard", "about": "broken blocks"}]}))
+                                              "start": [{"key": "ruins", "kind": "yard", "about": "broken blocks", "description": "the broken blocks"}]}))
     return d
 
 

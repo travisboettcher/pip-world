@@ -19,7 +19,7 @@ log = logging.getLogger("state")
 
 # The world's tables (docs/DESIGN-multi-agent.md): in a file of their own, attached to each agent's as `world`, so agents can share a world
 # and keep their minds apart. SQLite finds a table in the agent's file first, then the world's, so queries name them as before.
-WORLD_TABLES = ("places", "map_places", "modules", "module_store", "module_calls", "characters", "purses")
+WORLD_TABLES = ("places", "map_places", "modules", "module_store", "module_calls", "characters", "purses", "agent_post")
 
 
 def world_path(settings: Settings, path: str | None = None) -> str:
@@ -138,6 +138,10 @@ CREATE TABLE IF NOT EXISTS module_runtime ( -- an agent-scoped module's working 
 CREATE TABLE IF NOT EXISTS agent_module_store ( -- an agent-scoped module's store, this agent's
   module TEXT NOT NULL, collection TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
   PRIMARY KEY (module, collection, key)
+);
+CREATE TABLE IF NOT EXISTS agent_post ( -- letters between a world's agents, on their way (others.py)
+  id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT NOT NULL, recipient TEXT NOT NULL, text TEXT NOT NULL, enclosed TEXT NOT NULL DEFAULT '',
+  sent_at REAL NOT NULL, deliver_at REAL NOT NULL, delivered_at REAL
 );
 CREATE TABLE IF NOT EXISTS module_calls (
   id INTEGER PRIMARY KEY AUTOINCREMENT, module_id INTEGER NOT NULL, ts REAL NOT NULL, hook TEXT NOT NULL, ok INTEGER NOT NULL,

@@ -29,7 +29,7 @@ def test_the_world_keeps_its_own_file_next_to_the_agents(tmp_path):
     assert set(WORLD_TABLES) <= tables(world_path(s)) and not set(WORLD_TABLES) & tables(s.db_path)
     assert {"items", "memories", "agent", "events"} <= tables(s.db_path) and not {"items", "agent"} & tables(world_path(s))
     assert st.place_row("hollin")["kind"] == "wild" and st.find_item("acorn")[0]["qty"] == 2
-    assert set(WORLD_TABLES) == {"places", "map_places", "modules", "module_store", "module_calls", "characters", "purses"}
+    assert set(WORLD_TABLES) == {"places", "map_places", "modules", "module_store", "module_calls", "characters", "purses", "agent_post"}
 
 
 def test_two_agents_share_a_world_and_keep_their_own_things(tmp_path):
@@ -79,4 +79,4 @@ def test_moving_the_worlds_tables_is_said(tmp_path, caplog):
     old.close()
     with caplog.at_level("INFO", logger="state"):
         State(s)
-    assert "moved the world's tables into their own file: places, map_places, modules, module_store, module_calls, characters, purses" in caplog.messages
+    assert "moved the world's tables into their own file: places, map_places, modules, module_store, module_calls, characters, purses, agent_post" in caplog.messages
