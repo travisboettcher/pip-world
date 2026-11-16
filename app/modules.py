@@ -1186,7 +1186,7 @@ def _voices(state, m: dict, v) -> list:
         raise Refused("two voices can't share a name")
     own = _creation(state, m["manifest"]["subject"]) if m["manifest"].get("subject") else None
     taken = {c["name"].lower() for c in state.characters() if not (own and c["kind"] == "creation" and c["creation_id"] == own["id"])} \
-        | {x["name"].lower() for o in state.modules("live") if o["id"] != m["id"] for x in o["voices"]}
+        | {x["name"].lower() for o in state.modules("live") if o["name"] != m["name"] for x in o["voices"]}   # its own other versions are it
     for x in v:
         if x["name"].strip().lower() in taken:
             raise Refused(f"someone called {x['name'].strip()} is already in the world")

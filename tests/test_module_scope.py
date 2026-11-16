@@ -145,3 +145,14 @@ def test_only_the_worlds_first_agent_gets_what_its_modules_had_and_only_once(tmp
     assert i2.module(a["id"])["fresh"] and i2.meta("module_runtime_moved") == "1" == w2.meta("module_runtime_moved")
     w2.update_module(a["id"], state={"n": 8})
     assert State(wren.s).module(a["id"])["state"] == {"n": 8}                                  # a second start moves nothing again
+
+
+def test_a_new_version_may_speak_as_its_old_versions_voices(world):
+    wren, _ = world.agents
+    old = live(wren.state, rule(name="radio-hut", proposes=["voices"], scope="world"), "x")
+    wren.state.update_module(old["id"], voices=[{"name": "the radio", "at": "home", "about": "a receiver"}])
+    new = live(wren.state, rule(name="radio-hut", proposes=["voices"], scope="world"), "x")
+    assert M._voices(wren.state, new, [{"name": "the radio", "at": "home"}])[0]["name"] == "the radio"
+    other = live(wren.state, rule(name="other-hut", proposes=["voices"], scope="world"), "x")
+    with pytest.raises(M.Refused, match="^someone called the radio is already in the world$"):
+        M._voices(wren.state, other, [{"name": "the radio", "at": "home"}])
