@@ -409,3 +409,25 @@ def test_ashfall_has_two_agents_and_each_has_a_home_and_a_view(tmp_path):
             assert c.get("/world/scene?agent=ivo").json()["agent"]["name"] == "Ivo"
     finally:
         W.set_active(W.load(Settings()))
+
+
+@pytest.mark.asyncio
+async def test_both_homes_are_laid_out_and_on_the_map(tmp_path):
+    from app import loop, world_view
+    from app.llm.fake import FakeBackend
+    os.makedirs(tmp_path / "data")
+    s = Settings(world_pack=str(ASHFALL), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual",
+                 module_library="on", modules="on")
+    try:
+        world = loop.build(s, FakeBackend())
+        await world.step()
+        world.check()
+        wren, ivo = world.agents
+        spots = wren.state.map_positions()
+        assert spots["shelter"] == (0.0, 0.0) and spots["lockup"] != (0.0, 0.0)               # the middle is the first home's
+        for a, home in ((wren, "shelter"), (ivo, "lockup")):
+            with a.acting():
+                scene = world_view.scene_view(a.state, s, None, home)
+            assert scene["place"]["key"] == home and len(scene["layout"]["shapes"]) > 20, home     # Ashfall's shelter layout, for any home
+    finally:
+        W.set_active(W.load(Settings()))

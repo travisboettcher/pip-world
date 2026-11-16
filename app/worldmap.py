@@ -44,7 +44,8 @@ def sync(state, settings, library) -> dict[str, tuple[float, float]]:
     out = {}
     for key, place in places.registry(state, settings, library).items():
         if key not in spots:
-            spots[key] = (0.0, 0.0) if key == places.HOME else place_new(list(spots.values()), key, place.walk_minutes)
+            first_home = key == places.HOME and (0.0, 0.0) not in spots.values()     # the middle is the first home's; another agent's is a place
+            spots[key] = (0.0, 0.0) if first_home else place_new(list(spots.values()), key, place.walk_minutes)
             state.set_map_position(key, *spots[key])
         out[key] = spots[key]
     return out

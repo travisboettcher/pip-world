@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import os
 import random
@@ -82,7 +83,11 @@ class World:
             a.request_wake()
 
     def check(self) -> None:
-        worldmap.sync(self.state, self.s, self.library)  # a new place gets its spot on the map as soon as it exists
+        for a in self.agents:                                 # a new place gets its spot on the map as soon as it exists, whoever's it is
+            with a.acting():
+                worldmap.sync(a.state, self.s, self.library)
+        if not self.agents:
+            worldmap.sync(self.state, self.s, self.library)
 
     async def step(self) -> None:
         """The world's updates, once a beat: the modules it ships, their calls and answers and what they say happens, the owner told of
@@ -93,7 +98,9 @@ class World:
         woke = await happenings.from_modules(self.state, self.s, self.gm, scope="world") or woke        # what they said happens
         if self.agents:
             await modules.notify_owner(self.state, self.s, self.agents[0].outreach)       # the owner's channel is the first agent's for now
-        await layouts.step(self.state, self.s, self.runner, library=self.library)   # build (or rebuild) places laid out by modules
+        for a in self.agents or [None]:                        # build (or rebuild) places laid out by modules: every agent's (a home of its own)
+            with (a.acting() if a else contextlib.nullcontext()):
+                await layouts.step(a.state if a else self.state, self.s, self.runner, library=self.library)
         others.deliver()                                       # letters between agents that are due (each wakes its reader)
         if woke:
             self.wake()

@@ -119,7 +119,7 @@ async def test_the_worlds_step_does_the_worlds_work_with_its_own_pieces(tmp_path
     assert seen["offer_library"][0] == (w.state, w.s, w.runner) and seen["step"][0] == (w.state, w.s, w.runner)
     assert seen["answer"][0] == (w.state, w.s, w.gm, w.runner) and seen["from_modules"][0] == (w.state, w.s, w.gm)
     assert seen["notify_owner"][0] == (w.state, w.s, a.outreach)                    # the first agent's channel
-    assert seen["layouts"] == ((w.state, w.s, w.runner), {"library": w.library})
+    assert seen["layouts"] == ((b.state, w.s, w.runner), {"library": w.library})                   # each agent's places, the last's here
     assert w.state.modules("live")                                                  # the library was offered for real
     w.check()
     assert w.state.map_positions()                                                  # and the map has its places
