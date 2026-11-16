@@ -338,9 +338,10 @@ def _wait_minutes(raw) -> int | None:
 
 
 @tool("set_activity",
-      "Choose what you are doing right now. `activity` is a short label (1-3 words, e.g. "
-      "'tinkering', 'painting'); `description` is one sentence about what exactly you're doing. If you are waiting on "
-      "something slow (a crop, a letter, a clock), give `minutes` so you are left alone for that long.",
+      "Say what you're doing, when no other tool does it (tidying, sorting things, watching the weather). It changes nothing "
+      "by itself: no work gets done and you don't go anywhere; making things, going places and gathering have tools of their "
+      "own. `activity` is a short label (1-3 words); `description` is one sentence about what exactly you're doing. If you "
+      "are waiting on something slow (a crop, a letter, a clock), give `minutes` so you are left alone for that long.",
       _obj({"activity": {"type": "string", "description": "short label, max ~3 words"},
             "description": {"type": "string", "description": "one sentence of detail"},
             "mood": {"type": "string"},

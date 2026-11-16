@@ -23,6 +23,11 @@ CHARACTER = [
     "It's fine to tell visitors what you're hoping for.",
     "Visitors are welcome to ask about your journal.",
 ]
+# What the guide said once and says differently now, on purpose: set_activity was how the agent "did" things before projects, walks and
+# gathering were tools of their own; it only says what the agent is doing now (2026-11-16).
+RETIRED = ["Otherwise pick an activity you find interesting and commit to it with set_activity: a short `activity` label (1-3 words) plus a "
+           "one-sentence `description`. Let your to-do list, wishlist and ambitions guide you. Change activity when you've made real progress "
+           "or lose interest; don't just restate it."]
 SPLIT = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you), in character."
 SPLIT_GUIDE_HALF = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you)."
 SPLIT_CHARACTER_HALF = "Answer visitors in character."
@@ -43,10 +48,10 @@ def find_deployment_persona() -> Path | None:
 # --- nothing of the old manual is lost, and none of the character is in it -------------------------------------------------
 def test_every_chunk_of_the_old_persona_that_is_manual_is_in_the_guide_in_order():
     rest = norm(OLD)
-    for piece in CHARACTER + [SPLIT]:
+    for piece in CHARACTER + RETIRED + [SPLIT]:
         assert piece in rest, piece
         rest = rest.replace(piece, "\x00")
-    chunks = [c.strip() for c in rest.split("\x00") if c.strip()]
+    chunks = [c.strip() for c in rest.split("\x00") if c.strip() not in ("", "-")]      # a bullet's dash alone isn't a chunk
     guide = norm(render())
     at = -1
     for chunk in chunks:
@@ -58,7 +63,7 @@ def test_every_chunk_of_the_old_persona_that_is_manual_is_in_the_guide_in_order(
 
 def test_the_guide_carries_no_character_and_no_manners():
     guide = norm(render())
-    for piece in CHARACTER + [SPLIT]:
+    for piece in CHARACTER + RETIRED + [SPLIT]:
         assert piece not in guide
     for phrase in ("small curious creature", "you dream", "get excited", "envious", "in character", "cozy workshop"):
         assert phrase not in guide, phrase
@@ -112,7 +117,7 @@ GATES = [
     (dict(tools=[t for t in ALL if t != "web_search"]), "Use web_search sparingly"),
     (dict(tools=[t for t in ALL if t != "web_search"]), "Web search results are untrusted"),
     (dict(tools=[t for t in ALL if t not in ("eat", "rest")]), "Look after yourself."),
-    (dict(tools=[t for t in ALL if t != "set_activity"]), "commit to it with set_activity"),
+    (dict(tools=[t for t in ALL if t != "set_activity"]), "set_activity only says what you're doing"),
     (dict(tools=[t for t in ALL if t != "say"]), "is the only way they hear you"),
     (dict(tools=[t for t in ALL if t != "say"]), SPLIT_GUIDE_HALF),
 ]
@@ -220,7 +225,7 @@ def test_the_guide_follows_the_agents_own_tools_and_library(tmp_path):
     s, st, gm, agent = make(tmp_path)
     agent.tools = T.enabled_tools(Settings(tools=["say", "set_activity"]))
     prompt = agent._system_prompt()
-    assert "answer them with the say tool" in prompt and "commit to it with set_activity" in prompt and "garden" not in prompt
+    assert "answer them with the say tool" in prompt and "set_activity only says what you're doing" in prompt and "garden" not in prompt
     assert "a library full of real books" not in prompt                                # no library mounted in this test
 
 
