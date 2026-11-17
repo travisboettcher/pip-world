@@ -106,9 +106,12 @@ class World:
             self.wake()
 
     async def night(self) -> None:
-        """The world's own turn at night, after an agent's reflection: perhaps one new rule (builder.py)."""
+        """The world's own turn at night, after an agent's reflection (once a world night): perhaps one new rule (builder.py), seeing
+        every agent, as the world (its first agent), whoever's reflection it follows."""
+        first = self.agents[0] if self.agents else None
         try:
-            await builder.night(self.state, self.s, self.gm, self.runner)
+            with first.acting() if first else contextlib.nullcontext():
+                await builder.night(self.state, self.s, self.gm, self.runner, agents=[(a.identity, a.state) for a in self.agents] or None)
         except Exception as e:
             log.exception("builder failed")
             self.state.log("error", error=f"builder: {type(e).__name__}: {e}")

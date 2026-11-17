@@ -223,6 +223,14 @@ It proposes one module, or a revision of one of its own, with a reason. Gaps are
 mentioning, a market with nothing happening on market day, a place heard of with no parts that fit it. Pace and a coherence check (a second
 GM pass: "does this fit the world bible and what's already here?") keep the world from filling with noise.
 
+**What it sees, from 0.57.4** (2026-11-17, after a week of every night ending "nothing": in Ashfall it saw only Wren, and called her
+wishes Ivo's when his reflection came first; it couldn't tell a wish the world will answer from one it never can): once a world night, as
+the world, every agent by name, each one's recent events, open wishes with how long each has been open, oldest open to-dos and what its
+sleeping self chose to focus on (`minds`); and what the world can produce, by place (`produce`: each place's finds, which is also what a
+market's booths sell). Its instruction names the gap to look hardest for: something wanted for days that nothing in the world can give,
+or a concern someone keeps returning to that the world never answers; otherwise nothing is still a fine answer. The check, the trial and
+the owner's approval are unchanged.
+
 ## The sandbox
 A separate container, **`pip-runner`** (the same image, `python -m app.runner_service`):
 - **no network at all** (`network_mode: none`). The engine reaches it on a Unix socket in a volume they share (`pip-runner-socket`,

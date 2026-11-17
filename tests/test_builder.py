@@ -6,6 +6,7 @@ import pytest
 
 from app import builder as B
 from app import modules as M
+from app import world_pack as W
 from tests.test_modules import NOW, live, rule, shipped_layouts
 from tests.test_projects import make, report
 
@@ -162,8 +163,8 @@ async def test_the_nightly_reflection_gives_the_builder_its_turn(tmp_path, monke
     s, st, gm, agent = world(tmp_path)
     seen = []
 
-    async def fake_night(state, settings, gm_, runner, now=None):
-        seen.append((state is st, runner is agent.runner))
+    async def fake_night(state, settings, gm_, runner, now=None, agents=None):
+        seen.append((state is st, runner is agent.runner and agents == [(agent.identity, st)]))
     monkeypatch.setattr(B, "night", fake_night)
     from app import memory as mem
 
@@ -260,10 +261,14 @@ async def test_the_builders_three_questions_word_for_word(tmp_path, monkeypatch)
     monkeypatch.setattr(B, "lately", lambda *a: "LATELY")
     r = await B.night(st, s, agent.gm, agent.runner, NOW)
     draft, fits, fix = asked
-    assert draft == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nLATELY\n\nHow a module works:\n{B.api(st)}\n\n"
+    me = [(W.active().agent, st)]
+    assert draft == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nLATELY\n\n"
+                     f"What they keep coming back to:\n{B.minds(me, NOW)}\n\n{B.produce(st, s)}\n\nHow a module works:\n{B.api(st)}\n\n"
                      "You may add one small rule module tonight (or, rarely, a new place), revise one of yours (by its name), or add nothing. Fill a real gap: something the "
-                     "world is missing that fits it, answering to what has been happening; not a copy of what exists. Most nights, nothing is a fine "
-                     "answer. Report action, reason, and for propose or revise the name and the code.", B.DRAFT, ["action", "reason"], "builder", B.SYSTEM, 4000)
+                     "world is missing that fits it, answering to what has been happening; not a copy of what exists. Look hardest at what someone has "
+                     "wanted for days that nothing in the world can give (see what can be had, above), and at what someone keeps coming back to that the "
+                     "world never answers: that is a gap worth filling, within what this world is. When there is no such gap, nothing is a fine answer. "
+                     "Report action, reason, and for propose or revise the name and the code.", B.DRAFT, ["action", "reason"], "builder", B.SYSTEM, 4000)
     assert fits == (f"What this world is:\n{B.bible(s)}\n\nModules that already exist:\n(none yet)\n\nProposed: dusk: Dusk.\n\nCode:\n{BROKEN}\n\n"
                     "Does this fit the world as described, add something the existing modules don't, and stay quiet enough (rarely speaking to Pip)? "
                     "Report fits (true or false) and why, in one sentence.", {"fits": {"type": "boolean"}, "why": {"type": "string"}}, ["fits", "why"],
@@ -349,4 +354,5 @@ def test_lately_edges(tmp_path, monkeypatch):
     st.db.commit()
     text = B.lately(st, s, NOW)
     assert "right on the edge" in text and "a diary line" not in text and "wish 8" not in text
-    assert "Pip's open wishes: " + "; ".join(f"wish {i}" for i in range(8)) in text
+    wishes = text.split("Pip's open wishes: ")[1].split("\n")[0].split("; ")
+    assert [w.split(" (open ")[0] for w in wishes] == [f"wish {i}" for i in range(8)] and all(w.endswith(" days)") for w in wishes)   # and how long

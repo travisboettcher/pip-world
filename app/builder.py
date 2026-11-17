@@ -1,7 +1,9 @@
 """The builder: the world adding to itself, one small rule at a time (docs/DESIGN-modules.md, "The builder").
 
-Once a night, after the agent's reflection, the GM is shown the world bible (what this world is and isn't), the modules that already exist (and
-what the owner said about its own), what happened lately, open wishes and places only heard of, and the module API. It may propose one rule
+Once a world night, after an agent's reflection, the GM is shown the world bible (what this world is and isn't), the modules that already exist
+(and what the owner said about its own), for every agent what happened lately, its open wishes and how long each has been open, its oldest
+open to-dos and what its sleeping self chose to focus on, what the world can produce (each place's finds, which booths sell), places only
+heard of, and the module API. It may propose one rule
 module, revise one of its own, or propose nothing. A second, separate GM call checks the idea against the bible and what is already there; a
 proposal that doesn't fit is dropped. One that fits goes through the usual dry run (modules.propose); if the trial goes wrong the builder gets
 one go at fixing it. Then it waits for the owner like any other module. Every night's outcome is logged as a `builder` event.
@@ -101,8 +103,14 @@ def catalogue(state) -> str:
     return "\n".join(out)
 
 
-def lately(state, settings, now: float) -> str:
-    """What happened recently, in public terms, plus open wishes and places only heard of."""
+def _open(ts: float, now: float) -> str:
+    days = max(0, int((now - ts) // 86400))
+    return f" (open {days} day{'' if days == 1 else 's'})"
+
+
+def lately(state, settings, now: float, who=None) -> str:
+    """What happened recently to an agent (`who`, else the one acting), in public terms, plus its open wishes (and how long each has been
+    open) and places only heard of."""
     from . import worldmap
     lines = []
     for e in reversed(state.events(limit=300)):
@@ -113,11 +121,40 @@ def lately(state, settings, now: float) -> str:
         text = d.get("text") or d.get("title") or d.get("summary") or d.get("label") or d.get("name") or ""
         lines.append(f"- {datetime.fromtimestamp(e['ts']).strftime('%a %H:%M')} {e['kind']}: {str(text)[:140]}")
     lines = lines[-RECENT_EVENTS:]
-    wishes = [m["text"] for m in state.memories("wishlist", status="open", limit=8)]
+    me = who or world_pack.active().agent
+    wishes = [m["text"] + _open(m["ts"], now) for m in state.memories("wishlist", status="open", limit=8)]
     heard = [p["label"] for p in worldmap.snapshot(state, settings, None, now)["places"] if p["heard_only"]]
-    return "\n".join(["Lately:", *(lines or ["- (quiet)"]),
-                      f"{world_pack.active().agent.possessive} open wishes: " + ("; ".join(wishes) if wishes else "none"),
-                      f"Places {world_pack.active().agent.name} has only heard of: " + (", ".join(heard) if heard else "none")])
+    return "\n".join([f"Lately for {who.name}:" if who else "Lately:", *(lines or ["- (quiet)"]),
+                      f"{me.possessive} open wishes: " + ("; ".join(wishes) if wishes else "none"),
+                      f"Places {me.name} has only heard of: " + (", ".join(heard) if heard else "none")])
+
+
+def minds(agents, now: float) -> str:
+    """What each agent keeps coming back to: its open wishes and oldest open to-dos, with how long each has been open, and what its
+    sleeping self chose to focus on (the night pass). A gap shows here: something wanted for days, a concern the world never answers."""
+    out = []
+    for who, st in agents:
+        wishes = [m["text"] + _open(m["ts"], now) for m in st.memories("wishlist", status="open", limit=8)]
+        todos = sorted(st.memories("todo", status="open", limit=50), key=lambda m: m["ts"])[:4]
+        focus = [f["text"] for f in st.focus("open", limit=5)]
+        out += [f"{who.possessive} open wishes: " + ("; ".join(wishes) or "none"),
+                f"{who.possessive} oldest open to-dos: " + ("; ".join(m["text"] + _open(m["ts"], now) for m in todos) or "none"),
+                f"What {who.possessive} sleeping self chose to focus on: " + (" / ".join(focus) or "nothing yet")]
+    return "\n".join(out)
+
+
+def produce(state, settings) -> str:
+    """What the world can produce, by place: what turns up there or its booths sell (finds, an invented place's own), so a wish nothing
+    can answer shows as one."""
+    from . import finds, places
+    loot, lines = finds.loot(), []
+    for key in places.registry(state, settings, None):
+        row = state.place_row(key)
+        table = loot.get(key) or (row or {}).get("loot") or []
+        names = list(dict.fromkeys(e[0] for e in table))[:12]
+        if names:
+            lines.append(f"- {places.label(key)}: {', '.join(names)}")
+    return "\n".join(["What can be had in this world (where, and what turns up or is sold there):", *(lines or ["- (nothing yet)"])])
 
 
 DRAFT = {"action": {"type": "string", "enum": ["propose", "revise", "nothing"]},
@@ -133,11 +170,15 @@ DRAFT = {"action": {"type": "string", "enum": ["propose", "revise", "nothing"]},
          "code": {"type": "string", "description": "the whole module"}}
 
 
-async def _draft(state, settings, gm, now: float) -> dict | None:
-    task = (f"What this world is:\n{bible(settings)}\n\nModules that already exist:\n{catalogue(state)}\n\n{lately(state, settings, now)}\n\n"
+async def _draft(state, settings, gm, now: float, agents) -> dict | None:
+    each = "\n\n".join(lately(st, settings, now, who if len(agents) > 1 else None) for who, st in agents)
+    task = (f"What this world is:\n{bible(settings)}\n\nModules that already exist:\n{catalogue(state)}\n\n{each}\n\n"
+            f"What they keep coming back to:\n{minds(agents, now)}\n\n{produce(state, settings)}\n\n"
             f"How a module works:\n{api(state)}\n\nYou may add one small rule module tonight (or, rarely, a new place), revise one of yours (by its name), or add nothing. "
             "Fill a real gap: something the world is missing that fits it, answering to what has been happening; not a copy of what "
-            "exists. Most nights, nothing is a fine answer. Report action, reason, and for propose or revise the name and the code.")
+            "exists. Look hardest at what someone has wanted for days that nothing in the world can give (see what can be had, above), and "
+            "at what someone keeps coming back to that the world never answers: that is a gap worth filling, within what this world is. "
+            "When there is no such gap, nothing is a fine answer. Report action, reason, and for propose or revise the name and the code.")
     return await gm.ask(task, DRAFT, ["action", "reason"], "builder", system=SYSTEM, max_tokens=MAX_TOKENS)
 
 
@@ -176,14 +217,16 @@ def _done(state, outcome: str, **data) -> dict:
     return {"outcome": outcome, **data}
 
 
-async def night(state, settings, gm, runner, now: float | None = None) -> dict | None:
-    """The builder's turn, once a night (see the module docstring). Returns what happened, or None if it wasn't its turn."""
+async def night(state, settings, gm, runner, now: float | None = None, agents=None) -> dict | None:
+    """The builder's turn, once a night (see the module docstring), seeing every one of `agents` ((identity, State) each; else the one
+    acting). Returns what happened, or None if it wasn't its turn."""
+    agents = agents or [(world_pack.active().agent, state)]
     now = now or time.time()
     day = datetime.fromtimestamp(now).date().isoformat()
     if settings.module_builder != "on" or runner is None or gm is None or state.meta("builder_day") == day:
         return None
     state.set_meta(builder_day=day)                                  # once a night, whatever happens
-    draft = await _draft(state, settings, gm, now)
+    draft = await _draft(state, settings, gm, now, agents)
     if not draft:
         return _done(state, "failed", why="the GM gave no answer")
     if draft["action"] == "nothing" or not draft.get("code"):

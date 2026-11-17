@@ -130,15 +130,16 @@ async def test_the_worlds_night_is_the_builders_turn_and_a_failure_is_said(tmp_p
     w = agent(tmp_path).world
     seen = []
 
-    async def night(*args):
-        seen.append(args)
+    async def night(*args, agents=None):
+        seen.append((*args, agents))
         if len(seen) == 2:
             raise RuntimeError("no ideas")
     monkeypatch.setattr(loop.builder, "night", night)
     await w.night()
     with caplog.at_level("ERROR", logger="agent"):
         await w.night()
-    assert seen == [(w.state, w.s, w.gm, w.runner)] * 2 and "builder failed" in caplog.messages
+    one = w.agents[0]
+    assert seen == [(w.state, w.s, w.gm, w.runner, [(one.identity, one.state)])] * 2 and "builder failed" in caplog.messages
     assert next(e["data"] for e in w.state.events(5) if e["kind"] == "error")["error"] == "builder: RuntimeError: no ideas"
 
 
