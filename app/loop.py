@@ -586,7 +586,7 @@ class Agent:
         for a, b in ((self, other), (other, self)):
             a.state.set_meta(**{f"talked:{b.identity.key}": str(now)})
             with a.acting():
-                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended)
+                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended, agent=True)
             a.request_wake()                                                 # each world turn takes it from here
         return True
 

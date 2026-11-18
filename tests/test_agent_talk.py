@@ -68,7 +68,7 @@ async def test_a_line_from_an_agent_here_becomes_a_scene_with_each_speaking_for_
     assert lines(ivo, "inbox") == [("Wren", "Some, by the river."), ("Wren", "Done. Safe roads.")]
     assert wren.state.pending_inbox() == [] == ivo.state.pending_inbox()
     talks = {a.identity.name: next(e["data"] for e in a.state.events(10) if e["kind"] == "talk") for a in world.agents}
-    assert talks == {"Wren": {"name": "Ivo", "turns": 3, "ended": "Wren"}, "Ivo": {"name": "Wren", "turns": 3, "ended": "Wren"}}
+    assert talks == {"Wren": {"name": "Ivo", "turns": 3, "ended": "Wren", "agent": True}, "Ivo": {"name": "Wren", "turns": 3, "ended": "Wren", "agent": True}}
     assert wren.state.meta("talked:ivo") and ivo.state.meta("talked:wren")
     assert wren._wake.is_set() and ivo._wake.is_set()                                          # each world turn takes it from here
     assert not wren.talking.locked() and not ivo.talking.locked()
@@ -218,3 +218,27 @@ async def test_a_talk_can_close_a_deal_and_the_world_turn_after_sees_it_all(worl
     p = backend.calls[-1]["messages"][0]["content"]
     assert "Talking with Ivo (this visit, oldest first):" in p and "  You: (hand Ivo 4 coins)" in p and "  You: And your coins." in p
     assert "Your conversation with Ivo so far" not in p                                             # the talk, once: not as a visitor's chat too
+
+
+@pytest.mark.asyncio
+async def test_a_talk_lifts_each_once_not_every_line(world, monkeypatch):
+    """Found on Ashfall (2026-11-18): each line heard from another agent was appraised as a visitor writing (joy +5, trust +4,
+    sadness -6), so a chatty day put everyone's joy and trust at 100, grumpy Hester's too. The owner: a talk counts once, as company;
+    how it felt beyond that is the agent's own `feel`. A visitor's message still lifts as before."""
+    from app import emotions as emo
+    wren, ivo = world.agents
+    before = {a.identity.key: emo.levels(a.state) for a in world.agents}
+    wren.backend.script = [says(f"Line {i}.") for i in range(7)] + [says("Bye.", goodbye=True)]
+    opens(ivo, wren, "Hello.")
+    with wren.acting():
+        await wren.tick("event")
+    for a in world.agents:
+        with a.acting():
+            now = emo.levels(a.state)
+        moved = {n: round(now[n] - before[a.identity.key][n]) for n in ("joy", "trust", "sadness")}
+        assert moved == {"joy": 4, "trust": 2, "sadness": -3}, (a.identity.name, moved)
+    causes = [r for r in wren.state.db.execute("SELECT emotion, delta, cause FROM emotion_log WHERE emotion = 'joy'").fetchall()]
+    assert [(r["delta"], r["cause"]) for r in causes] == [(4.0, "talked with Ivo")]
+    with wren.acting():
+        wren.receive("A visitor's hello.", "Morgan")                                           # a visitor still lifts, as before
+    assert [r["cause"] for r in wren.state.db.execute("SELECT cause FROM emotion_log WHERE emotion = 'joy' ORDER BY rowid")][-1] == "Morgan wrote"

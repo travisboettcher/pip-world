@@ -40,6 +40,12 @@ A table in code, like the creation capabilities, scaled by the event's importanc
 | a tool refused / a failed attempt | small anger/sadness |
 Some events appraise differently by context (a surprise that is better than expected vs worse), using signals we already compute.
 
+Other agents (0.62.0; the owner, 2026-11-18): a line another agent says in a talk is not a visitor writing, and moves nothing by
+itself. Every line used to count as one ("someone wrote": joy +5, trust +4, sadness -6), so a day of talk on Ashfall put everyone's
+joy and trust at 100, a grumpy agent's too. A finished talk with another agent counts once, as company (`TALKED`: joy +4, trust +2,
+sadness -3); how it felt beyond that is the agent's own `feel`. A gift handed over is still a gift. An agent's temperament
+(world.json) moves where each feeling rests.
+
 ## How they inform behaviour ("combined")
 Mostly through the model, a little through the engine, nothing scripted:
 1. **Pip sees them.** A compact readout in the prompt (the strongest few, plus the blend and valence/arousal in words), so what it chooses is coloured by
