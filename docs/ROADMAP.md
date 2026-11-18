@@ -10,14 +10,27 @@ Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an e
 | M1.5 | Local LLM backend experiment | Not started (optional) |
 | M2a | Web dashboard + chat (same info as `pipchat`) | Done |
 | M1.6 | Projects, living creations, companions ([design](DESIGN-creations.md)) | Deployed |
-| M2b | Visual world (2D) | Not started |
-| M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-2 deployed; 3-4 open |
+| M2b | Visual world: HD-2D scenes and the parchment map ([design](DESIGN-world-view.md)) | Steps 1-4 deployed; step 5 open |
+| M3 | Long-term memory ([design](DESIGN-memory.md)) | Steps 1-3 deployed; step 4 open |
 | M3.5 | A neighbor and slow letters ([design](DESIGN-neighbor.md)) | Deployed |
 | M3.6 | Places + the library (Calibre) ([design](DESIGN-library.md)) | Deployed |
 | M3.7 | Day/night and sleep ([design](DESIGN-sleep.md)) | Deployed |
-| M3.8 | Sense of self: firsts, cited reflections, portraits, expectations, turning points, capabilities, night pass | Deployed (first night pending) |
-| M4 | Richer tools, optional exposure | Not started |
-| M5 | World packs: a world-neutral engine ([design](DESIGN-world-packs.md), [guide](GUIDE-world-pack.md)) | Designed |
+| M3.8 | Sense of self: firsts, cited reflections, portraits, expectations, turning points, capabilities, night pass | Deployed |
+| M4 | Richer tools: drawing, modules and the builder ([design](DESIGN-modules.md)) | Deployed |
+| M5 | World packs: a world-neutral engine ([design](DESIGN-world-packs.md), [guide](GUIDE-world-pack.md)) | Deployed (0.46.0); engine audit done (0.53.0) |
+| M6 | Multiple agents in one world ([design](DESIGN-multi-agent.md)) | Releases 1-3 built (0.54-0.57), on Ashfall only; release 4 (a week of watching) under way |
+
+## Next
+- [ ] **A shared dashboard in the engine** (owner, 2026-11-17): components worlds reuse and panels they plug in, so a world without a
+      page of its own (Ashfall) gets more than the plain page, and Pip's page is built from the same parts
+- [ ] Multiple agents, release 4: watch Ashfall to about 2026-11-22, fix what it shows, then the owner decides about moving Pip's world
+      to the main line (its deployment's backups must take the world's file, `agent-world.db`, as well as `agent.db`)
+- [ ] Is the builder proposing yet? 0.57.4 shows it every agent's wishes with how long they've been open, their oldest to-dos and
+      night-pass focus, and what each place yields, and names a long-unmet want as a gap; its first night (2026-11-17) still chose
+      nothing, missing Ivo's chain (which nothing in Ashfall yields). If it keeps missing such gaps, it should check each wanted
+      thing against what can be had, not against which modules exist
+- [ ] Drop `api: 1` a few releases after 0.53.0 (once nothing live is written in it): `_from_api1`, the `log` path and its `module`
+      moments in firsts, memory and the day go, and the `weather` read with them
 
 ## M1 - Headless brain (done)
 - [x] Python/FastAPI service, plain asyncio loop, SQLite state in a named volume
@@ -83,7 +96,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
 
 ## M4 - Richer tools and exposure
 - [x] Image generation (canvas/drawing): pixel drawing, occasions as facts, drawings in the world (0.16.0; DESIGN-art.md)
-- [ ] Modules: the world and Pip write features as sandboxed code against hooks, with owner approval at first (**designed: [DESIGN-modules.md](DESIGN-modules.md)**; replaces "sandboxed code execution")
+- [x] Modules: the world and Pip write features as sandboxed code against hooks, with owner approval at first (**designed: [DESIGN-modules.md](DESIGN-modules.md)**; replaces "sandboxed code execution")
   - [x] Step 1: runner, protocol, dry run, approval (Work tab, `pipchat modules`); the gear clock as a module (0.17.0)
   - [x] Step 2: show and anchors; wall and stall pictures as modules (0.18.0)
   - [x] Step 3: Pip programs its creations; a Matrix notice when a module waits for approval (0.19.0)
@@ -100,7 +113,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] `happen`: happenings any module can propose, with the engine's checks; the dice as a shipped rule (0.28.0)
   - [x] Remove the engine's built-in fallbacks for what now runs as shipped modules: creations' workings and companions (0.29.0);
         stall customers and happenings' dice (0.30.0)
-- [ ] World packs: a world-neutral engine; everything that makes a world *that* world comes from a pack, and features are modules a world
+- [x] World packs (done 0.46.0): a world-neutral engine; everything that makes a world *that* world comes from a pack, and features are modules a world
       includes (**designed: [DESIGN-world-packs.md](DESIGN-world-packs.md)**, from the 2026-11-11 audit; bootstrapping guide:
       [GUIDE-world-pack.md](GUIDE-world-pack.md))
   - [x] Phase 1: the pack with Pip's world in it (0.31.0: the loader, `WORLD_PACK`, persona, narrator, bible and guide in `worlds/pip/`;
@@ -113,7 +126,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
   - [x] Phase 4 (0.35.0): hooks for features as modules: tools, storage, belongings, status, logged moments, requests between
         modules (and from happenings and world effects), sessions; proved on the garden, now a shipped module (the engine's garden
         removed; an older install's plots move into its store). The market moves in phase 5
-  - [ ] Phase 5: features move, one a release (DESIGN-world-packs.md, "Phase 5 in detail")
+  - [x] Phase 5: features move, one a release (DESIGN-world-packs.md, "Phase 5 in detail")
     - [x] 5a (0.36.0): gathering as a shipped module, on the engine's place data (`app/finds.py`: find tables, stock, glimpses); the
           `here` and `abilities` reads, `practice`, `deplete`, `doing`, a moment's `items` and `tool`, tools offered where a place lists
           them, and `owe` (until the market moves)
@@ -167,15 +180,14 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
           water filter works
     - [x] 7 (0.53.0): the module API consolidated (`api: 2`): `take` and `give` for all belongings (coins and creations among them),
           `event` for a line or a whole event, the weather a published fact; `api: 1` still taken, its old proposals made into the new
-- [ ] Later: an abstract dashboard in the engine, with components worlds reuse and panels they plug in
-- [ ] Drop `api: 1` a few releases after 0.53.0 (once nothing live is written in it): `_from_api1`, the `log` path and its `module`
-      moments in firsts, memory and the day go, and the `weather` read with them
-- [ ] Multiple agents in one world (owner, 2026-11-15): more than one agent living in the same world, each with its own persona, loop,
-      memory, stats, belongings and diary, meeting in person and writing through the same people machinery the characters use. Today
-      the engine has one agent row and one loop, so this needs an agent id carried through state, the loop, tools, the narrator and
-      modules (the `agent` read becomes "this agent", `people` gains the other agents), and a token budget per agent. Designed:
-      [DESIGN-multi-agent.md](DESIGN-multi-agent.md) (a world database and one per agent; one process, supervisor and actors; four
-      releases, tried on Ashfall with a second survivor first)
+- [x] Multiple agents in one world (owner, 2026-11-15; [DESIGN-multi-agent.md](DESIGN-multi-agent.md): a world database and one per
+      agent; one process, supervisor and actors; private minds; meeting left to chance), tried on Ashfall with Ivo, a scavenger trader
+    - [x] 1 (0.54.0): the world's tables in their own file; `loop.World` and `loop.Agent`
+    - [x] 2 (0.55.0): several agents (world.json `agents`, `AGENTS`, a budget each, `?agent=`, the plain page's picker)
+    - [x] 3 (0.56.0, 0.57.0): modules' working data by agent (`scope`), then meeting (`others.py`: presence, `say`, letters and parcels
+          by the world's post, the `agents` read)
+    - [x] 0.57.4: the builder runs once a world night as the world and sees every agent
+    - [ ] 4: the experiment (see Next)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening
 
@@ -239,7 +251,7 @@ is in my notes, not in the gears".
       the ability while it owns a working object that provides it (a stopped clock gives no time).
 
 ### Social
-- [ ] More agents (owner, 2026-11-08): other individual agents living in the world alongside Pip, each with its own loop, memory and needs, rather than GM-voiced characters. The engine is single-agent today (one `agent` row, one loop); this needs agent ids through state, tools and the world view.
+- [x] More agents (owner, 2026-11-08): other individual agents in the world, each with its own loop, memory and needs: built as M6 (above)
 - [x] **Pip can reach out** (DESIGN-outreach.md): a pluggable two-way `Channel` (contract-tested), `send_postcard` (2 new threads a day, replies free
       in the thread, never at night), the Matrix channel, and a Matrix homeserver stack (outside this project) with a bootstrap script and a backup.
       Live since 2026-10-30. A message Pip reads but doesn't answer is put back once.
@@ -319,7 +331,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
       continuity audit over memory, goals, self-correction, style and persona (Natangelo); the support check's verdicts trended over time
 - [ ] Delayed-self recognition test: show Pip an old undated entry or portrait and see whether it recognizes its voice
 - [ ] Rare open-question prompts, not scripted performances
-- [ ] Watch the first nights (2026-10-30 onward): reflection prompt size and cost, the live shape of `changed`/`turning_points`,
+- [x] Watch the first nights (2026-10-30 onward): reflection prompt size and cost, the live shape of `changed`/`turning_points`,
       the support check's verdicts, and what the night pass decides
 
 ### Typed-decision model (idea, 2026-10-30)
@@ -341,7 +353,8 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] Plutchik's eight, 0-100, with baselines and half-lives; appraisal from events; loneliness; waking eases; every move logged with its cause (`emotion_log`);
       valence, arousal and a blend derived; shown to Pip as a short readout (prompt only: no mechanical effect yet); `settle` tool; `GET /emotions`, `pipchat emotions`,
       Matrix `/emotions`, Now-tab meters. Deploy: add `look,settle` to `TOOLS` in `.env`; `EMOTIONS=on|quiet|off`, `EMOTION_SETTLE_PER_DAY`.
-- [ ] Watch it for a few days: do the numbers feel right, is the readout noise, does Pip use `settle`? Then decide on step 3.
+- [ ] Watch it for a few days: do the numbers feel right, is the readout noise, does Pip use `settle`? Then decide on step 3 (the
+      watching is long past: this waits on the owner's call)
 - [ ] Step 3: small capped effects (dice +-0.05, wake pace, event importance), each behind a setting. Step 4: nightly emotional arc for the reflection, a turning-point signal
       from big swings, optional `feel` self-report vs the engine's numbers.
 - [ ] The dashboard changes (Now-tab meters, feed lines) were checked by parsing the JS and exercising the API, not seen in a real browser.
@@ -363,7 +376,7 @@ Not scheduled unless marked built; each needs a DESIGN doc first. Prior art is n
 - [x] Verified the backup script against the live container and restored a snapshot (2026-10-30: integrity ok, 1013 events)
 - [ ] `pipchat` interactive terminal mode (spinner, line editing, `/watch`) has only been exercised via pipes
 - [ ] Pip's diary entries still drift toward status logs sometimes; keep an eye on it after prompt changes
-- [ ] Briar's letters are getting repetitive (owner, 2026-10-30). **Designed 2026-10-31: [DESIGN-neighbor-memory.md](DESIGN-neighbor-memory.md)** (she sees gists of her own letters and a list of what Pip already knows, not her own sentences; no matching; the notes below are the earlier thinking). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
+- [x] Briar's letters are getting repetitive (owner, 2026-10-30; parts 1-2 built in 0.9.0; part 3, a self-check, not built). **Designed 2026-10-31: [DESIGN-neighbor-memory.md](DESIGN-neighbor-memory.md)** (she sees gists of her own letters and a list of what Pip already knows, not her own sentences; no matching; the notes below are the earlier thinking). Likely causes in `gm.neighbor_letter`: nothing tells the GM to avoid
       repeating openings/topics, each letter shares one `life_update` sentence so Briar's life barely moves, and the prompt shows only the
       correspondence so far. Owner likes the storytelling; the specific problem is a verbatim recurring line ("If you come over the marsh, the blue
       door is the one that rattles") that reads as forgetful, not as a deliberate motif. Fix target: no verbatim repeat of a sentence from recent
