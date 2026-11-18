@@ -517,6 +517,14 @@ class State:
             rows = self.db.execute(q, args).fetchall()
         return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
 
+    def events_of(self, kinds, limit: int = 50) -> list[dict]:
+        """The newest events of these kinds, newest first."""
+        kinds = list(kinds)
+        with self.lock:
+            rows = self.db.execute(f"SELECT * FROM events WHERE kind IN ({','.join('?' * len(kinds))}) ORDER BY id DESC LIMIT ?",
+                                   (*kinds, limit)).fetchall()
+        return [{**dict(r), "data": json.loads(r["data"])} for r in rows]
+
     def events_since(self, ts: float, limit: int = 2000) -> list[dict]:
         """Events newer than ts, oldest first."""
         with self.lock:

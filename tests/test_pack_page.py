@@ -89,29 +89,30 @@ def pack_with_page(tmp_path, files: dict | None) -> Path:
     return d
 
 
-def test_the_page_is_the_packs_and_the_renderer_is_the_engines(tmp_path):
-    d = pack_with_page(tmp_path, {"index.html": "<title>Wren</title>", "app.js": "// the pack's", "world/scene.js": "// a pack's own scene"})
+def test_the_page_is_the_engines_and_the_pack_adds_to_it_at_ui_pack(tmp_path):
+    d = pack_with_page(tmp_path, {"index.html": "<title>Wren</title>", "theme.css": "/* the pack's */", "world/scene.js": "// a pack's own scene"})
     with client(tmp_path, world_pack=str(d)) as c:
-        assert "<title>Wren</title>" in c.get("/ui/").text and c.get("/ui/app.js").text == "// the pack's"
+        assert "<title>Wren</title>" not in c.get("/ui/").text and c.get("/ui/pack/theme.css").text == "/* the pack's */"
         assert "export class SceneView" in c.get("/ui/world/scene.js").text           # the engine's renderer can't be replaced
         assert c.get("/ui/vendor/three/three.min.js").status_code == 200 and c.get("/ui/fonts/OFL.txt").status_code == 200
-        assert c.get("/ui/app.js").headers["cache-control"] == "no-cache"
+        assert c.get("/ui/dashboard.js").headers["cache-control"] == "no-cache" == c.get("/ui/pack/theme.css").headers["cache-control"]
 
 
-def test_a_pack_without_a_page_gets_the_engines_plain_one(tmp_path):
+def test_a_pack_without_a_page_gets_the_engines_dashboard(tmp_path):
     with client(tmp_path, world_pack=str(pack_with_page(tmp_path, None))) as c:
         page = c.get("/ui/").text
-        assert c.get("/ui/").status_code == 200 and 'src="plain.js"' in page and "Pip" not in page
-        js = c.get("/ui/plain.js").text
-        for path in ("/standing", "/events", "/mode", "/inbox", "/stream"):                   # what every world has (and the scene)
-            assert f"'{path}" in js, path
-        assert "./world/scene.js" in js and c.get("/ui/plain.css").status_code == 200
+        assert c.get("/ui/").status_code == 200 and 'src="dashboard.js"' in page and "Pip" not in page
+        js = "".join(c.get(f"/ui/{f}").text for f in ("dashboard.js", "panels.js", "core.js", "chat.js", "feed.js"))
+        for path in ("/standing", "/events", "/mode", "/inbox", "/stream", "/state", "/world/agents", "/world/between", "/world/doings"):
+            assert f"'{path}" in js or f"`{path}" in js, path
+        assert "./world/scene.js" in js and c.get("/ui/dashboard.css").status_code == 200
 
 
-def test_pips_world_ships_its_own_page(tmp_path):
+def test_pips_world_says_only_what_its_page_needs(tmp_path):
     with client(tmp_path) as c:
-        assert "<title>Pip</title>" in c.get("/ui/").text and "plain.js" not in c.get("/ui/").text
-    assert (ROOT / "worlds" / "pip" / "web" / "index.html").is_file() and not (ROOT / "web" / "index.html").exists()
+        assert 'src="dashboard.js"' in c.get("/ui/").text
+        assert c.get("/ui/pack/dashboard.json").json()["give"]["seed"][0]["attr"] == "grow_minutes"
+    assert sorted(p.name for p in (ROOT / "worlds" / "pip" / "web").iterdir()) == ["dashboard.json"]
 
 
 def test_a_module_is_a_command_showing_its_standing(tmp_path):

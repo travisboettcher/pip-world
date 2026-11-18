@@ -1,0 +1,9 @@
+{
+  "give": {
+    "seed": [{"attr": "grow_minutes", "label": "Grows in (min)", "placeholder": "1440"}, {"attr": "yield", "label": "Yield", "placeholder": "3"}]
+  },
+  "items": {
+    "seed": "grows {crop}, ~{grow_minutes} min, yields {yield}",
+    "food": "fills {food_value|0.3}"
+  }
+}

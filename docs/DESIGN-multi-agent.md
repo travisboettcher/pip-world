@@ -131,7 +131,9 @@ data and store its agent-scoped modules had; later agents start fresh.
    file); the day's letters count either kind. Modules may read `agents` (each one's key, name, where, activity, asleep; no one's
    mind). *Decided while building:* a world module's proposals still act on its first agent: `to` waits until a world module needs it,
    as none of the shipped ones does.
-4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world.
+4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world. *Found so far:* the
+   builder saw only the first agent (0.57.4: it sees every agent); each agent kept its own look of a shared place, so the layouts were
+   rebuilt every beat (0.58.0: a place's look is the world's; DESIGN-dashboard.md, "Found while building").
 
 ## Decisions (the owner, 2026-11-15)
 - **One process**, supervisor and actors in shape (above); separate processes maybe later.

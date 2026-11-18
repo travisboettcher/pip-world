@@ -16,6 +16,7 @@ from . import library as lib
 from . import memory as mem
 from . import builder
 from . import layouts
+from . import looks
 from . import modules
 from . import sources
 from . import neighbors as nb
@@ -158,6 +159,7 @@ def build(settings: Settings, backend: LLMBackend, gm_backend: LLMBackend | None
                     persona_path=settings.persona_path if first else "", outreach=settings.outreach if first else "off")
         os.makedirs(os.path.dirname(s.db_path) or ".", exist_ok=True)
         world = Agent(s, State(s), backend, get_policy(s), gm_backend=gm_backend, world=world).world
+    looks.gather_scenes(world.agents)                   # each place looks one way to everyone: the world's
     return world
 
 

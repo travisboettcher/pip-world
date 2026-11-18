@@ -71,8 +71,8 @@ def test_ui_is_served_and_root_redirects(tmp_path):
         r = c.get("/", follow_redirects=False)
         assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
         page = c.get("/ui/")
-        assert page.status_code == 200 and "<title>Pip</title>" in page.text
-        assert c.get("/ui/app.js").status_code == 200 and c.get("/ui/style.css").status_code == 200
+        assert page.status_code == 200 and 'src="dashboard.js"' in page.text                  # the engine's dashboard, named from /state
+        assert c.get("/ui/dashboard.js").status_code == 200 and c.get("/ui/dashboard.css").status_code == 200
         # the JSON API is unaffected by the static mount
         assert c.get("/healthz").json() == {"ok": True}
 

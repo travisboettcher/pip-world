@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The agent</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <!-- The engine's dashboard (docs/DESIGN-dashboard.md): the tabs and their cards are built from the world pack's web/dashboard.json, or
+       the engine's own; the names, stats and item kinds come from the world. -->
+  <header class="top">
+    <div class="who"><span id="conn" class="dot" title="connecting"></span><h1 id="name">…</h1></div>
+    <div id="now" class="now">loading…</div>
+    <div id="meters" class="meters"></div>
+    <div class="usage-wrap owner-only">
+      <button id="usage-pill" class="pill" type="button" aria-expanded="false" aria-controls="usage-pop" title="Token usage today">
+        <span id="usage-text">…</span>
+        <span class="bar mini"><i id="usage-bar"></i></span>
+      </button>
+      <div id="usage-pop" class="pop" role="status" hidden></div>
+    </div>
+    <button id="wake" class="owner-only" type="button">Wake</button>
+  </header>
+
+  <nav id="tabbar" class="tabbar" role="tablist" aria-label="Sections"></nav>
+  <main id="tabs"></main>
+
+  <aside id="chat-panel" class="chatpanel" hidden>
+    <div class="chat-head">
+      <h2 id="chat-title">Chat</h2>
+      <button id="chat-close" class="ghost" type="button" aria-label="Hide chat">Hide</button>
+    </div>
+    <div id="chat" class="chat" role="log" aria-live="polite"></div>
+    <form id="chat-form" class="row chat-form">
+      <label class="sr" for="chat-input">Message</label>
+      <input id="chat-input" autocomplete="off" maxlength="2000">
+      <button type="submit">Send</button>
+    </form>
+  </aside>
+  <button id="chat-toggle" class="fab owner-only" type="button" aria-expanded="false" aria-controls="chat-panel">
+    Chat <span id="chat-badge" class="badge" hidden>0</span>
+  </button>
+
+  <footer class="version"><span id="version" title="What is running">pip-world</span></footer>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

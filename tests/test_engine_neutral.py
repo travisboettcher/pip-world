@@ -96,15 +96,16 @@ THE_OLD_NAME = {"state.py": "_name_the_agent", "config.py": "_approval"}   # whe
 
 def engine_text():
     """Every file of the engine: its code (comments and docstrings too), the shipped modules, the builder's page, the renderer and the
-    plain page (a pack's own page is the pack's: worlds/<pack>/web/)."""
+    dashboard (a pack's own additions are the pack's: worlds/<pack>/web/)."""
     yield from (p for p in sorted(APP.rglob("*")) if p.suffix in (".py", ".json", ".md") and "__pycache__" not in p.parts)
     yield from sorted(p for p in (ROOT / "web").rglob("*") if p.suffix in (".js", ".html", ".css") and "vendor" not in p.parts)
 
 
-def test_the_engines_renderer_and_plain_page_name_no_world():
-    """The page a world without its own gets, and the renderer every page shares: no garden, workshop or crop of anyone's world."""
-    words = re.compile(r"(?i)garden|\bcrops?\b|\bplots?\b|workshop|tomato|neighbou?r|letters?\b")
-    found = [f"{p.relative_to(ROOT)}:{i}: {line.strip()[:90]}" for p in [ROOT / "web" / "plain" / f for f in ("index.html", "plain.js", "plain.css")]
+def test_the_engines_renderer_and_dashboard_name_no_world():
+    """The dashboard every world gets, and the renderer it shares: no garden, workshop or crop of anyone's world (letters and people
+    are the engine's own machinery, DESIGN-engine-audit.md B4-B5)."""
+    words = re.compile(r"(?i)garden|\bcrops?\b|\bplots?\b|workshop|tomato|neighbou?r|hunger")
+    found = [f"{p.relative_to(ROOT)}:{i}: {line.strip()[:90]}" for p in sorted((ROOT / "web" / "dashboard").iterdir())
              + [ROOT / "web" / "world" / f for f in ("layout.js", "scene.js", "art.js", "kit.js")]
              for i, line in enumerate(p.read_text().splitlines(), 1) if words.search(line)]
     assert not found, "\n".join(found)

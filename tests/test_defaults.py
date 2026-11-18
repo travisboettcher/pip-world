@@ -32,9 +32,8 @@ def test_the_test_channel_has_a_neutral_default_sender():
 def test_the_dashboard_does_not_assume_who_is_giving_things(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
-        page, js = c.get("/ui/index.html").text, c.get("/ui/app.js").text
-    assert 'id="g-from" maxlength="40" value="visitor"' in page and "store.get('giver', 'visitor')" in js
-    assert 'value="Morgan"' not in page and "'Morgan'" not in js
+        js = c.get("/ui/panels.js").text + c.get("/ui/chat.js").text
+    assert "value: store.get('giver', 'visitor')" in js and "sender: store.get('giver', 'visitor')" in js and "Morgan" not in js
 
 
 def test_pipchat_defaults_to_a_local_pip_and_a_neutral_name(monkeypatch):
@@ -64,6 +63,6 @@ def test_every_pipchat_command_is_a_command_not_a_message(monkeypatch):
 def test_what_came_to_mind_is_its_own_feed_filter_off_by_default(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
-        js = c.get("/ui/app.js").text
+        js = c.get("/ui/feed.js").text
     assert "['recall', 'Recall']" in js and "recall: false" in js
     assert "case 'reminded': return d.shown && d.shown.length ? { group: 'recall'" in js

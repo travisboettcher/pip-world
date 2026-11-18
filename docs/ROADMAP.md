@@ -19,10 +19,13 @@ Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an e
 | M4 | Richer tools: drawing, modules and the builder ([design](DESIGN-modules.md)) | Deployed |
 | M5 | World packs: a world-neutral engine ([design](DESIGN-world-packs.md), [guide](GUIDE-world-pack.md)) | Deployed (0.46.0); engine audit done (0.53.0) |
 | M6 | Multiple agents in one world ([design](DESIGN-multi-agent.md)) | Releases 1-3 built (0.54-0.57), on Ashfall only; release 4 (a week of watching) under way |
+| M7 | The engine's dashboard ([design](DESIGN-dashboard.md)) | Built (0.58.0), on Ashfall only |
 
 ## Next
-- [ ] **A shared dashboard in the engine** (owner, 2026-11-17): components worlds reuse and panels they plug in, so a world without a
-      page of its own (Ashfall) gets more than the plain page, and Pip's page is built from the same parts
+- [x] **A shared dashboard in the engine** (owner, 2026-11-17; built 0.58.0, [DESIGN-dashboard.md](DESIGN-dashboard.md)): Pip's page
+      as the engine's panels, a pack's `dashboard.json` choosing tabs and adding its own; Everyone (each agent side by side, what passes
+      between them) and the world's doings (the builder's nights, failing module calls). On Ashfall; Pip's world gets it with the move
+- [ ] The map shows only the agent whose page it is; with several agents it could show everyone
 - [ ] Multiple agents, release 4: watch Ashfall to about 2026-11-22, fix what it shows, then the owner decides about moving Pip's world
       to the main line (its deployment's backups must take the world's file, `agent-world.db`, as well as `agent.db`)
 - [ ] Is the builder proposing yet? 0.57.4 shows it every agent's wishes with how long they've been open, their oldest to-dos and

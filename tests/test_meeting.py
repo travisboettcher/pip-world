@@ -1,5 +1,6 @@
 """Agents meeting (docs/DESIGN-multi-agent.md, release 3): they see each other where they are and meet the first time, hear each other
 in person, write to each other by the world's post, and modules can see where everyone is (never what anyone thinks)."""
+import json
 import os
 import time
 
@@ -207,3 +208,30 @@ async def test_a_letter_to_an_agent_at_its_edges(world, monkeypatch):
     monkeypatch.setattr(wren.s, "letters_per_day", 2)                                  # one to Marta, one to Ivo: the day's two
     r = await use(wren, "write_letter", to="Ivo", text="Another.")
     assert r.text.startswith("you've written plenty of letters today") and r.followup is True
+
+
+@pytest.mark.asyncio
+async def test_each_place_is_laid_out_by_one_agent_and_not_again_every_beat(world):
+    """Found on Ashfall (2026-11-17): the kind layouts were rebuilt every beat, each agent's view of a place (its home is "home" to one,
+    "the lock-up" to the other) making them stale for the next. Shared places are the world's to lay out; an agent's home, its own."""
+    import shutil
+    wren, ivo = world.agents
+    shutil.copy(W.DEFAULT.parent / "ashfall" / "scene.json", W.active().dir / "scene.json")
+    W._data.cache_clear()
+    world.runner = M.LocalRunner()
+    src = 'def on_build(ctx):\n    return {"shapes": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "material": {"color": "#000"}}]}\n'
+    live(wren.state, {"name": "everywhere", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["yard", "home"]}, src)
+    look = {"setting": "town", "walls": "stone", "roof": "slate", "palette": "slate", "props": ["tin"]}
+    wren.state.set_meta(**{"scene:ruins": json.dumps(look)})
+    ivo.state.set_meta(**{"scene:ruins": json.dumps({**look, "props": ["rope"]}), "scene:lockup": json.dumps({**look, "walls": "brick"})})
+    from app import looks
+    looks.gather_scenes(world.agents)                                              # as a start does: what only one agent had, the world keeps
+    assert json.loads(wren.state.meta("scene:lockup"))["walls"] == "brick" and json.loads(wren.state.meta("scene:ruins"))["props"] == ["tin"]
+    for _ in range(3):
+        await world.step()
+    built = {a.identity.name: sorted(e["data"]["place"] for e in a.state.events(50) if e["kind"] == "layout_built") for a in world.agents}
+    assert built == {"Wren": ["ruins", "shelter"], "Ivo": ["lockup"]}
+    from app import world_view
+    for a in world.agents:                                                          # everyone sees the world's look of a place
+        with a.acting():
+            assert world_view.place_details(a.state, a.s, "ruins", "yard")["props"] == ["tin"]

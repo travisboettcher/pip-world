@@ -15,12 +15,15 @@ from pydantic import BaseModel, Field
 
 from . import art
 from . import creations as cr
+from . import dashboard
 from . import emotions as emo
 from . import invented_places as invented
 from . import happenings
 from . import modules
 from . import places
 from . import stakes
+from . import stats as stats_mod
+from . import world as world_content
 from . import world_pack
 from . import public_view as pv
 from . import projects as proj
@@ -63,8 +66,8 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 class PageFiles(NoCacheStaticFiles):
-    """The page at /ui (docs/DESIGN-engine-audit.md, B5): the engine's shared files first (the scene and map renderer, three.js, the
-    fonts), so a pack can't replace them, then the page itself: the world pack's `web/`, or the engine's plain page when it has none."""
+    """The page at /ui (docs/DESIGN-dashboard.md): the engine's shared files (the scene and map renderer, three.js, the fonts) and its
+    dashboard; a world pack's own `web/` (its dashboard.json, theme and panels) is served beside it at /ui/pack/, adding, never replacing."""
 
     def __init__(self, dirs: list[Path]):
         self.dirs = dirs
@@ -128,6 +131,21 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
         """Who lives in this world with a mind of their own."""
         return {"agents": [{"key": a.identity.key, "name": a.identity.name} for a in app.state.world.agents]}
 
+    @app.get("/world/agents")
+    def world_agents():
+        """Everyone at a glance (docs/DESIGN-dashboard.md): where, doing, how, today's tokens; nothing of anyone's mind."""
+        return dashboard.glance(app.state.world)
+
+    @app.get("/world/between")
+    def world_between(limit: int = 60):
+        """What happens between the agents, and the post on its way."""
+        return dashboard.between(app.state.world, min(limit, 300))
+
+    @app.get("/world/doings")
+    def world_doings(limit: int = 40):
+        """The world's own doings: the builder's nights, modules live, off or turned down, people brought, modules failing."""
+        return dashboard.doings(app.state.world, min(limit, 300))
+
     @app.middleware("http")
     async def public_view(request: Request, call_next):
         """Requests on a PUBLIC_HOSTS host: default-deny, read-only, names hidden, cacheable (see public_view.py)."""
@@ -180,8 +198,12 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     @app.get("/state")
     def get_state(request: Request):
         agent: Agent = app.state.agent
+        who = agent.identity
         full = {
             "agent": agent.state.agent(),
+            "identity": {"key": who.key, "name": who.name, "they": who.they, "kind": who.kind, "home": places.home_key(who)},
+            "stats": [{**s, "good": stats_mod.declared(agent.s)[s["name"]].get("good", "high")} for s in world_view.stat_list(agent.state, agent.s)],
+            "item_kinds": list(world_content.kinds()),
             "usage": agent.state.usage_today(),
             "pending_inbox": len(agent.state.pending_inbox()),
             "coins": agent.state.coins(),
@@ -191,7 +213,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
             "pacing": agent.pacing.name,
             "tools": list(agent.tools),
             "condition": stakes.condition(agent.state),             # a stat that ran out: knocked out, or weak (stakes.py)
-            "session": _session(agent.state),
+            "session": dashboard.session(agent.state),
         }
         return pv.public_state(full) if request.state.public else full
 
@@ -466,20 +488,15 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     web_dir = Path(os.environ.get("WEB_DIR") or Path(__file__).resolve().parent.parent / "web")
     if web_dir.is_dir():
         page = world_pack.load(settings).dir / "web"
-        app.mount("/ui", PageFiles([web_dir, page if page.is_dir() else web_dir / "plain"]), name="ui")
+        if page.is_dir():
+            app.mount("/ui/pack", NoCacheStaticFiles(directory=page), name="pack")
+        app.mount("/ui", PageFiles([web_dir, web_dir / "dashboard"]), name="ui")
 
         @app.get("/", include_in_schema=False)
         def root():
             return RedirectResponse("/ui/")
 
     return app
-
-
-def _session(state) -> dict | None:
-    """What the agent is busy with in real time (a walk, a module's session), for a page to show."""
-    s = state.session()
-    return {"kind": s["kind"], "about": s["about"], "label": s["expect"], "target": s["target"], "started_at": s["started_at"],
-            "ends_at": s["ends_at"]} if s else None
 
 
 app = create_app()

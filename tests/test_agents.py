@@ -123,15 +123,15 @@ def test_the_app_shows_any_agent_and_lists_them(tmp_path, restore):
         assert c.get("/state?agent=nobody").status_code == 404
 
 
-def test_the_plain_page_lets_you_choose_whose_page_it_is(tmp_path, restore):
+def test_the_dashboard_lets_you_choose_whose_page_it_is(tmp_path, restore):
     from fastapi.testclient import TestClient
     from app.main import create_app
     d = two(tmp_path)
     os.makedirs(tmp_path / "data")
     s = Settings(world_pack=str(d), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual")
     with TestClient(create_app(s, FakeBackend())) as c:
-        js = c.get("/ui/plain.js").text
-    assert "api('/agents')" in js and "withAgent('/stream')" in js and "fetch(withAgent(path), opts)" in js
+        js = c.get("/ui/dashboard.js").text + c.get("/ui/core.js").text
+    assert "api('/agents')" in js and "withAgent(`/stream?after_id=" in js and "fetch(withAgent(path), opts)" in js
 
 
 def test_an_agents_entry_at_its_edges(tmp_path):

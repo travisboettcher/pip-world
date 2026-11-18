@@ -99,10 +99,29 @@ def clean_scene(raw, key: str, kind: str, text: str) -> dict:
     return out
 
 
+def keeper(state):
+    """Whose file keeps the world's choice of each place's look: the world's first agent, so every agent sees a place the same way (and
+    a layout built from it stays built), or the agent alone."""
+    from . import others
+    everyone = others.everyone()
+    return everyone[0].state if everyone else state
+
+
+def gather_scenes(agents) -> None:
+    """At a start: a place's look that only another agent's file has (chosen before the world kept them, 0.57.5) becomes the world's."""
+    if not agents:
+        return
+    world = agents[0].state
+    for a in agents[1:]:
+        for r in a.state.db.execute("SELECT key, value FROM meta WHERE key LIKE 'scene:%'").fetchall():
+            if world.meta(r["key"]) is None:
+                world.set_meta(**{r["key"]: r["value"]})
+
+
 def place_scene(state, key: str, kind: str, text: str) -> dict:
-    """A place's scene details: the ones chosen and kept, or the fallback until they are."""
+    """A place's scene details: the ones chosen and kept (the world's), or the fallback until they are."""
     import json
-    kept = state.meta(f"scene:{key}")
+    kept = keeper(state).meta(f"scene:{key}")
     return json.loads(kept) if kept else fallback_scene(key, kind, text)
 
 
@@ -112,17 +131,17 @@ async def ensure_scenes(state, settings, gm, library, now: float) -> None:
     from . import worldmap
     if settings.place_scenes != "on":
         return
-    snap = worldmap.snapshot(state, settings, library, now)
+    snap, kept = worldmap.snapshot(state, settings, library, now), keeper(state)
     for p in snap["places"]:
-        if p["heard_only"] or state.meta(f"scene:{p['key']}"):
+        if p["heard_only"] or kept.meta(f"scene:{p['key']}"):
             continue
         text = place_text(state, p["key"])
-        tries = int(state.meta(f"scene_tries:{p['key']}") or 0)
+        tries = int(kept.meta(f"scene_tries:{p['key']}") or 0)
         raw = await gm.invent_scene(p["label"], p["kind"], text) if gm and tries < 2 else None
         if raw is None and tries < 2:
-            state.set_meta(**{f"scene_tries:{p['key']}": str(tries + 1)})
+            kept.set_meta(**{f"scene_tries:{p['key']}": str(tries + 1)})
             continue
-        state.set_meta(**{f"scene:{p['key']}": json.dumps(clean_scene(raw, p["key"], p["kind"], text))})
+        kept.set_meta(**{f"scene:{p['key']}": json.dumps(clean_scene(raw, p["key"], p["kind"], text))})
 
 
 def place_text(state, key: str) -> str:

@@ -5,13 +5,13 @@
 :root {
   --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d8;
   --accent: #2f6f5e; --accent-ink: #ffffff; --warn: #b3541e; --bad: #b3261e;
-  --pip: #e8f1ec; --you: #e9eaf4; --bar: #e3e1d8; --good: #2f6f5e; --shadow: 0 8px 28px rgba(0, 0, 0, .18);
+  --agent: #e8f1ec; --you: #e9eaf4; --bar: #e3e1d8; --good: #2f6f5e; --shadow: 0 8px 28px rgba(0, 0, 0, .18);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #151614; --card: #1f201d; --ink: #ecebe5; --muted: #9a998f; --line: #34352f;
     --accent: #6fbfa8; --accent-ink: #10201b; --warn: #e0925f; --bad: #f08b84;
-    --pip: #23302b; --you: #272a3a; --bar: #34352f; --good: #6fbfa8; --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+    --agent: #23302b; --you: #272a3a; --bar: #34352f; --good: #6fbfa8; --shadow: 0 8px 28px rgba(0, 0, 0, .5);
   }
 }
 * { box-sizing: border-box; }
@@ -22,7 +22,7 @@ h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: 
 h3 { font-size: .85rem; margin: .9rem 0 .3rem; color: var(--muted); }
 .sr { position: absolute; left: -9999px; }
 
-/* header: identity, what Pip is doing, meters, usage, wake */
+/* header: identity, what the agent is doing, meters, usage, wake */
 .top { display: flex; align-items: center; gap: .7rem 1rem; flex-wrap: wrap; padding: .6rem 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .who { display: flex; align-items: center; gap: .5rem; }
 .now { flex: 1 1 14rem; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -74,7 +74,7 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
   .top { padding: .5rem 12px; } .tabbar { padding: .4rem 12px 0; } main { padding: 10px 12px 96px; }
 }
 .msg { max-width: 85%; padding: .45rem .7rem; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.msg.pip { background: var(--pip); align-self: flex-start; border-bottom-left-radius: 3px; }
+.msg.agent { background: var(--agent); align-self: flex-start; border-bottom-left-radius: 3px; }
 .msg.you { background: var(--you); align-self: flex-end; border-bottom-right-radius: 3px; }
 .msg.sys { align-self: center; color: var(--muted); font-size: .85rem; max-width: 100%; text-align: center; }
 .msg time { display: block; font-size: .7rem; color: var(--muted); }
@@ -93,7 +93,7 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 
 .bar { height: .55rem; border-radius: 999px; background: var(--bar); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--accent); }
-.bar.hunger > i { background: var(--warn); }
+.bar.low-good > i { background: var(--warn); }
 .meta { display: grid; grid-template-columns: auto 1fr; gap: .15rem .8rem; margin: 0; font-size: .85rem; }
 .meta dt { color: var(--muted); } .meta dd { margin: 0; overflow-wrap: anywhere; }
 
@@ -106,7 +106,7 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .notes small, .plain small { color: var(--muted); display: block; }
 .empty { color: var(--muted); font-style: italic; }
 .done { text-decoration: line-through; color: var(--muted); }
-.plot { margin-bottom: .6rem; } .plot span { font-size: .85rem; display: flex; justify-content: space-between; gap: .5rem; }
+.project { margin-bottom: .6rem; } .project span { font-size: .85rem; display: flex; justify-content: space-between; gap: .5rem; }
 .give { display: grid; gap: .6rem; }
 .give label { display: grid; gap: .2rem; font-size: .85rem; color: var(--muted); }
 .give input, .give select { color: var(--ink); }
@@ -168,3 +168,13 @@ input, select { font: inherit; color: inherit; background: var(--bg); border: 1p
 .module.waiting .mstatus { color: var(--ink); border-color: currentColor; }
 .module .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .module pre.code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; max-height: 24rem; overflow-y: auto; margin: .4rem 0 0; }
+
+/* the agent picker, and the Everyone tab: each agent side by side (docs/DESIGN-dashboard.md) */
+.picker { font-size: .9rem; padding: .2rem .4rem; }
+.everyone { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }
+.someone { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; }
+.someone h3 { margin: 0 0 .2rem; color: var(--ink); font-size: 1rem; } .someone h3 small { color: var(--muted); font-weight: normal; }
+.someone .stat { font-size: .75rem; margin-top: .3rem; }
+.stat > span { display: flex; justify-content: space-between; gap: .5rem; } .stat > span b { font-weight: normal; font-variant-numeric: tabular-nums; }
+.between li small, .doings li small { display: block; color: var(--muted); }
+.failing { color: var(--warn); }
