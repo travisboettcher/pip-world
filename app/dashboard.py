@@ -40,7 +40,7 @@ def between(world, limit: int = 60) -> dict:
             d, who = e["data"], a.identity.name
             if e["kind"] == "met" and names[d["name"]] > i:                              # both remember it: once, from the first of the two
                 out.append({"ts": e["ts"], "kind": "met", "who": who, "to": d["name"], "text": "", "place": d["place"]})
-            elif e["kind"] == "say" and d["to_name"] in names:
+            elif e["kind"] == "say" and d.get("to_name") in names:                      # a reply to a visitor names no one
                 out.append({"ts": e["ts"], "kind": "said", "who": who, "to": d["to_name"], "text": d["text"]})
             elif e["kind"] == "letter_sent" and d["to"] in names:
                 out.append({"ts": e["ts"], "kind": "letter", "who": who, "to": d["to"], "text": d["text"], "enclosed": d["enclosed"]})

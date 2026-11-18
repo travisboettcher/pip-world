@@ -74,6 +74,7 @@ def test_what_happens_between_them_meetings_once_words_and_the_post(app):
         others.say(ivo.state, wren, "Some.")
         others.post(ivo.state, wren, "Here's the wire.", {"name": "copper wire", "qty": 1, "kind": "material"}, now=time.time())
     wren.state.log("say", text="to myself", to=[], to_name="")                  # not between them
+    wren.state.log("say", text="Hello, visitor.", to=[3])                         # a reply to a visitor (it names no one)
     got = app.get("/world/between").json()
     lines = [(x["kind"], x["who"], x["to"], x["text"]) for x in got["happened"]]
     assert lines == [("letter", "Ivo", "Wren", "Here's the wire."), ("said", "Ivo", "Wren", "Some."),
