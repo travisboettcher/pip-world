@@ -1,10 +1,15 @@
 """The conversation scene (docs/DESIGN-conversation.md, part 2).
 
+Between two agents (docs/DESIGN-multi-agent.md, "Talk between agents"), the scene is the listener's turn's: each speaks in turn from the same
+small prompt, its own (its persona, its notes on the other, the talk so far), and each line is heard at once.
+
 When someone the agent is with in person (whoever is where it is: someone at home, a villager at the village) has spoken this visit, the talk runs as its own short scene instead of
 through Pip's world turn: The agent's turns get a small prompt (who it is with, why it came, what it has with it, the date, and the talk so far) and only
 `say` and `feel`; the other side answers at once; it goes on until either says goodbye, the agent falls silent, or SCENE_TURNS of the agent's lines. Then the agent's
 world turn picks up with the whole talk in view.
 """
+import time
+
 from . import conversation as conv
 from . import places
 from .llm.base import ToolSpec
@@ -12,6 +17,9 @@ from .state import State
 from .text import clip
 
 SCENE_TURNS = 6
+AGENT_LINES = 8               # a talk between two agents: lines in all, both sides
+AGENT_QUIET_MINUTES = 30      # after one, their words to each other are heard but don't wake the other
+LOCK_WAIT = 30.0              # seconds to wait for the other to finish a turn of its own
 TRANSCRIPT = 12
 TODOS_SHOWN = 3
 CARRIED_SHOWN = 8
@@ -35,6 +43,20 @@ def waiting(state) -> dict | None:
         return None
     spoke = any(e["kind"] == "companion" and e["data"].get("name") == ch["name"] and e["ts"] >= float(visit) for e in state.events(50))
     return ch if spoke else None
+
+
+def lately(state, other, now: float | None = None) -> bool:
+    """Whether the agent acting now and another agent talked lately (as a scene): for a while, their words don't wake each other."""
+    return (now or time.time()) - float(state.meta(f"talked:{other.identity.key}") or 0) < AGENT_QUIET_MINUTES * 60
+
+
+def agent_waiting(state, inbox: list[dict]):
+    """The agent to talk with now, as a scene: one who spoke to the agent acting now (its inbox), is here, and hasn't talked with it
+    lately; or None."""
+    from . import others
+    here = {a.identity.name: a for a in others.here(places.present_at(state))}
+    return next((here[m["sender"]] for m in inbox if m.get("source") == "agent" and m.get("sender") in here
+                 and not lately(state, here[m["sender"]])), None)
 
 
 def specs(tools) -> list[ToolSpec]:

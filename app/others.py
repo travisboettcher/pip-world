@@ -93,7 +93,8 @@ def say(state, other, text: str) -> str:
         return f"{other.identity.name} can't hear you from here" + ("; write_letter to reach them" if met(state, other) else "") \
             + (f" (they're at {said})" if met(state, other) and said else "")
     meet(state, other)
-    other.receive(text, me.name, source="agent")
+    from . import talk
+    other.receive(text, me.name, source="agent", wake=not talk.lately(state, other))   # just after a talk: heard, not woken
     state.log("say", text=text, to=[], to_name=other.identity.name)
     return f"said it to {other.identity.name}; {other.identity.they} heard you"
 

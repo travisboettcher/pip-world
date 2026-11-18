@@ -63,7 +63,8 @@ export function describe(e) {
     case 'module_live': return { group: 'system', text: `Module ${d.name} (v${d.version}, ${d.author === 'world' ? 'by the world' : d.author === 'library' ? 'shipped' : `by ${N}`}) is live` };
     case 'module_disabled': return { group: 'system', cls: 'warn', text: `Module ${d.name} was switched off${d.why ? `: ${d.why}` : ''}` };
     case 'module_rejected': return { group: 'system', text: `Module ${d.name} v${d.version} was turned down${d.note ? `: ${d.note}` : ''}` };
-    case 'talk': return { group: 'world', cls: 'world', text: `${N} and ${d.name} talked (${d.turns} of ${N}'s lines; ${d.ended === 'agent' ? `${N} said goodbye` : d.ended === d.name ? `${d.name} said goodbye` : d.ended})` };
+    case 'talk': return { group: 'world', cls: 'world', text: `${N} and ${d.name} talked (${d.turns} turn${d.turns === 1 ? '' : 's'}; ${['agent', N].includes(d.ended) ? `${N} said goodbye`
+      : d.ended === d.name ? `${d.name} said goodbye` : { silence: 'it trailed off', turns: 'talked out', budget: 'out of tokens', parted: 'one of them left' }[d.ended] || d.ended})` };
     case 'reflection': return { group: 'journal', text: `${N} slept on it: ${d.summary}` };
     case 'reflection_error': return { group: 'system', cls: 'warn', text: `${N}'s nightly reflection failed; it'll retry in an hour` };
     case 'inbox': return d.letter ? { group: 'world', cls: 'world', text: d.text }

@@ -181,6 +181,7 @@ class Agent:
                                vision=bool(getattr(self.backend, "vision", False)), runner=self.runner)
         self.last_tick = 0.0
         self._wake = asyncio.Event()
+        self.talking = asyncio.Lock()                        # held for a turn, or while another agent talks with this one
         self._force = False
         self._urgent = False
         self._shown_inbox: list[int] = []
@@ -198,9 +199,10 @@ class Agent:
     library = property(lambda self: self.world.library, lambda self, v: setattr(self.world, "library", v))
 
     # --- wake control ------------------------------------------------
-    def receive(self, text: str, sender: str, source: str = "web", conversation: str = "", external_id: str = "") -> int | None:
-        """A visitor's message arrives (the web UI, or a channel): queue it, record it and wake the agent. A channel message
-        already seen (same source and id) is ignored, so a replay can't answer twice."""
+    def receive(self, text: str, sender: str, source: str = "web", conversation: str = "", external_id: str = "",
+                wake: bool = True) -> int | None:
+        """A visitor's message arrives (the web UI, or a channel): queue it, record it and wake the agent (unless `wake` is False: it
+        waits for the agent's next turn). A channel message already seen (same source and id) is ignored, so a replay can't answer twice."""
         if external_id and self.state.inbox_has(source, external_id):
             return None
         sender = clean_sender(sender)
@@ -208,7 +210,8 @@ class Agent:
         self.state.log("inbox", id=inbox_id, text=text, sender=sender, **({"source": source, "conversation": conversation}
                                                                           if source != "web" else {}))
         invented.from_chat(self.state, sender, text)  # a visitor can point the agent somewhere new, like a character
-        self.request_wake(urgent=True)
+        if wake:
+            self.request_wake(urgent=True)
         return inbox_id
 
     def request_wake(self, force: bool = False, urgent: bool = False) -> None:
@@ -365,9 +368,10 @@ class Agent:
 
     # --- one tick ----------------------------------------------------
     async def tick(self, reason: str) -> None:
-        """One wake, as this agent."""
-        with self.acting():
-            await self._wake_once(reason)
+        """One wake, as this agent (never while another agent's talk has it)."""
+        async with self.talking:
+            with self.acting():
+                await self._wake_once(reason)
 
     async def _wake_once(self, reason: str) -> None:
         """One wake. A visitor message the agent read but never answered gets one more look (see _second_chance)."""
@@ -411,6 +415,8 @@ class Agent:
         if self.s.talk_scenes == "on" and not inbox and self.gm and (ch := talk.waiting(self.state)):
             await self._converse(ch)
             return
+        if self.s.talk_scenes == "on" and (other := talk.agent_waiting(self.state, inbox)) and await self._talk_with(other, inbox):
+            return
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
         specs = self._specs()
@@ -444,7 +450,8 @@ class Agent:
             self.state.log("tick", reason=reason, step=step, text=resp.text,
                            tokens=resp.usage.input_tokens + resp.usage.output_tokens,
                            tools=[c.name for c in resp.tool_calls])
-            if inbox and resp.text:  # plain-text reply (the `say` tool is the reliable path)
+            if inbox and resp.text and not any(c.name == "say" for c in resp.tool_calls):  # a plain-text reply (`say` is the reliable path;
+                # beside a `say`, the words are the agent's own closing thoughts, not a second reply)
                 self.state.log("say", text=resp.text, to=[m["id"] for m in inbox])
                 await self.outreach.route_reply(resp.text, [m["id"] for m in inbox])
             if not resp.tool_calls:
@@ -544,6 +551,67 @@ class Agent:
         self.state.log("talk", name=ch["name"], turns=turns, ended=ended)
         self.request_wake()                                              # the world turn takes it from here
         return ended
+
+    async def _talk_with(self, other: "Agent", inbox: list[dict]) -> bool:
+        """A talk with another agent who is here and spoke to this one, as one scene (talk.py, "between agents"): each speaks in turn
+        from its own small prompt, heard at once, until a goodbye, a silence, enough lines, or one of them runs out. False if the other
+        couldn't be had (mid-turn): the words are answered in a world turn, the old way."""
+        try:
+            await asyncio.wait_for(other.talking.acquire(), talk.LOCK_WAIT)
+        except asyncio.TimeoutError:
+            return False
+        try:
+            self.state.consume_inbox([m["id"] for m in inbox if m.get("source") == "agent" and m.get("sender") == other.identity.name])
+            speaker, listener, lines, ended = self, other, 0, "turns"
+            while lines < talk.AGENT_LINES:
+                if speaker.state.budget_exceeded():
+                    ended = "budget"
+                    break
+                with speaker.acting():
+                    said, bye = await speaker._scene_line(listener)
+                lines += 1
+                if not said:
+                    ended = "silence"
+                    break
+                if bye:
+                    ended = speaker.identity.name
+                    break
+                if places.present_at(listener.state) != places.present_at(speaker.state):
+                    ended = "parted"
+                    break
+                speaker, listener = listener, speaker
+        finally:
+            other.talking.release()
+        now = time.time()
+        for a, b in ((self, other), (other, self)):
+            a.state.set_meta(**{f"talked:{b.identity.key}": str(now)})
+            with a.acting():
+                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended)
+            a.request_wake()                                                 # each world turn takes it from here
+        return True
+
+    async def _scene_line(self, listener: "Agent") -> tuple[bool, bool]:
+        """This agent's line in a talk with another agent: (said something, said goodbye). Its words are heard at once."""
+        partner = {"name": listener.identity.name, "about": listener.identity.kind}
+        on_mind = reminders.step(self.state, self.s, reminders.cue(self.state, [], time.time(), partner), time.time(), 1)
+        resp = await self.backend.complete(system=talk.system(self._persona(), partner),
+                                           messages=[{"role": "user", "content": talk.prompt(self.state, partner, clock_line(time.time()), time.time(), on_mind)}],
+                                           tools=talk.specs(self.tools), max_tokens=self.s.llm_max_tokens)
+        self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
+        self.state.log("tick", reason="talk", step=0, text=resp.text, tokens=resp.usage.input_tokens + resp.usage.output_tokens,
+                       tools=[c.name for c in resp.tool_calls])
+        said, bye = False, False
+        for i, call in enumerate(resp.tool_calls):
+            if call.name == "say" and not said and str(call.arguments.get("text") or "").strip():
+                text = clip(str(call.arguments["text"]).strip(), 600)
+                self.state.log("say", text=text, to=[], to_name=listener.identity.name)
+                with listener.acting():
+                    mid = listener.receive(text, self.identity.name, source="agent", wake=False)
+                    listener.state.consume_inbox([mid])
+                said, bye = True, call.arguments.get("goodbye") is True
+            elif call.name != "say":
+                await self._run_tool(call, i)
+        return said, bye
 
     def _free_time(self, now: float) -> list[str]:
         """At home with nothing due for a while: say so, with what the agent has said it wants to do. Facts, not orders."""
@@ -670,10 +738,13 @@ class Agent:
 
         Deterministic about *when* something is worth a diary line; The agent decides what (if anything) to write.
         """
-        if "note_to_self" not in self.tools:
+        if "note_to_self" not in self.tools or places.present_at(self.state) != places.home_key():   # the diary is written at home
             return []
-        last = self.state.memories("diary", limit=1)
-        since = max(time.time() - self.s.moment_window_minutes * 60, last[0]["ts"] if last else 0)
+        last, now, window = self.state.memories("diary", limit=1), time.time(), self.s.moment_window_minutes * 60
+        start, left, back = now - window, float(self.state.meta("left_home_at") or 0), float(self.state.meta("arrived_at") or 0)
+        if left and back >= left and now - back < window:                  # just home: what happened on the trip
+            start = min(start, left)
+        since = max(start, last[0]["ts"] if last else 0)
         moments, visit_ids, visitors, visit_inbox = [], [], [], []
         window = self.state.events_since(since)
         said_to = {i for e in window if e["kind"] == "say" for i in e["data"].get("to", [])}

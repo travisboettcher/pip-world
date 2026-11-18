@@ -5,6 +5,8 @@ import zipfile
 
 import pytest
 
+from app import tools as T
+
 from app import library as lib
 from app import tools as tools_mod
 from app.config import Settings
@@ -198,7 +200,8 @@ async def test_walking_to_the_library_and_location_rules(world):
     assert "about 4 books" in gm.calls[0]["messages"][0]["content"]  # described from the real shelves
     p = agent._perception("event", [])
     assert "You are at: the library - Tall shelves, a hush" in p and "Places you can go (go_to):\n- workshop, 10 min - your home: your workshop and garden [projects, garden, sleep]" in p
-    assert "You went to the library for the first time" in p and "Here you can: browse (look for books" in p and "read (settle in and read a book for a while)" in p
+    assert "Here you can: browse (look for books" in p and "read (settle in and read a book for a while)" in p
+    assert "You went to the library for the first time" not in p                                  # a diary moment: it waits for home
     assert "go_to home first" in (await call(agent, "tend", creation="x")).text
     assert "already at the library" in (await call(agent, "go_to", place="library")).text
     await call(agent, "go_to", place="home")
@@ -233,7 +236,7 @@ async def test_browse_and_read_with_a_bookmark(world):
     assert await use(agent, "read", book="#9") == "error: there's no book #9 here"
     assert await use(agent, "read", book="#1", minutes=30) == "you settle in with The Beekeeper's Year by Ada Comb (from the start) for 30 min"  # 300 chars
     assert st.agent()["activity"] == "reading" and st.session()["kind"] == "module"
-    assert "reading The Beekeeper's Year" in (await call(agent, "go_to", place="home")).text
+    assert "reading The Beekeeper's Year" in T.busy(agent.ctx)                                     # setting off would cut it short
     await finish(agent)
     task = gm.calls[1]["messages"][0]["content"]
     assert "The bees wake at dawn." in task and "Honey" not in task

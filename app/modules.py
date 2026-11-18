@@ -1619,8 +1619,8 @@ def busy_line(state, now: float) -> str:
     if sess["kind"] == "walk":
         return f"you're on your way to {places.label(sess['target'])} (about {left} min to go)"
     if sess["kind"] == "module":
-        return f"you're {busy_with(sess)} (about {left} min left); rest stops early"
-    return f"you're in the middle of something (about {left} min left); rest stops early"
+        return f"you're {busy_with(sess)} (about {left} min left); rest, or going somewhere, stops it early"
+    return f"you're in the middle of something (about {left} min left); rest, or going somewhere, stops it early"
 
 
 async def end_session(state, settings, runner, interrupted: bool = False, now: float | None = None) -> dict | None:

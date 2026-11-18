@@ -195,6 +195,18 @@ async def test_resting_cuts_a_gather_short_with_a_smaller_haul(tmp_path):
     assert gm.calls == []                                                            # cut short: not narrated
 
 
+async def test_setting_off_somewhere_cuts_a_gather_short_but_a_walk_still_takes_its_time(tmp_path):
+    """Found on Ashfall (2026-11-18): Wren, scavenging, asked Sela back to look at her vent and couldn't leave: go_to was refused until
+    the gathering ended. Setting off cuts it short, as resting does; a walk still has to be finished."""
+    s, st, gm, agent = setup(tmp_path, speed=1)
+    await gather(agent, minutes=60)
+    r = await call(agent, "go_to", place="home")
+    assert r.text.startswith("you set off for home; you'll be there in about") and r.text.endswith("(you stopped out scavenging at the junkyard early)")
+    assert st.session()["kind"] == "walk" and haul(st)["text"].endswith("(You cut it short.)")
+    r = await call(agent, "go_to", place="junkyard")
+    assert r.text.startswith("you're on your way to home (about") and st.session()["target"] == P.home_key()
+
+
 async def test_gathering_needs_a_place_that_offers_it_and_daylight(tmp_path):
     s, st, gm, agent = setup(tmp_path, where="workshop")
     assert await gather(agent) == "there's nothing to gather at home"

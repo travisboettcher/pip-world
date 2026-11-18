@@ -53,7 +53,7 @@ class ToolContext:
 
 
 async def stop_working(ctx: "ToolContext") -> str:
-    """Cut a module's session short (when the agent rests instead): work, reading, gathering. Returns a note for the result."""
+    """Cut a module's session short (when the agent rests or sets off instead): work, reading, gathering. Returns a note for the result."""
     sess = ctx.state.session()
     if not sess:
         return ""
@@ -445,7 +445,7 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 @tool("note_to_self",
-      "Write in your journal. Sections: diary (rare, important moments only: discoveries and your reflections on them, visitors), todo (concrete tasks "
+      "Write in your journal. Sections: diary (written at home: rare, important moments only, discoveries and your reflections on them, visitors), todo (concrete tasks "
       "you plan to do soon), wishlist (anything you wish for: something to have, something you'd like to do, something you wish you could do but can't, "
       "something you wish you understood), ambitions (bigger goals you want to work toward over time), "
       "learned (facts or skills you picked up). Entries are remembered across wakes.",
@@ -463,6 +463,9 @@ async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
         kind = str(args.get("kind") or "thing").strip().lower()
         if kind not in wishes.KINDS:
             return ToolResult(f"error: a wish's kind is one of {', '.join(wishes.KINDS)}", followup=True)
+    if section == "diary" and places.present_at(ctx.state) != places.home_key():   # the owner (2026-11-18): writing up the day is done at home
+        return ToolResult("not written: you write your diary at home. Jot a to-do or something learned now if it can't wait, and write "
+                          "the day up when you're back", followup=True)
     if problem := check_note(ctx, section, text):
         return ToolResult(f"not written: {problem}")
     ctx.state.add_memory(text, section, kind)
@@ -648,10 +651,12 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
     if not place:
         known = ", ".join(places.available(ctx.state, ctx.library))
         return ToolResult(f"error: you don't know a place called {args['place']!r} (you know: {known})", followup=True)
-    if why := busy(ctx):  # first: mid-walk, the location is still where the agent set off from
-        return ToolResult(why, followup=True)
+    sess = ctx.state.session()
+    if sess and sess["kind"] == "walk":  # first: mid-walk, the location is still where the agent set off from
+        return ToolResult(busy(ctx), followup=True)
     if place == ctx.state.agent()["location"]:
         return ToolResult(f"you're already at {places.label(place)}", followup=True)
+    stopped = await stop_working(ctx)  # setting off cuts short whatever the agent was doing here (scavenging, working)
     record = places.registry(ctx.state, ctx.settings, ctx.library).get(place)
     minutes = places.start_walk(ctx.state, ctx.settings, place, record.walk_minutes if record else None)
     closed = (" It's closed right now (it's dark), so there will be nothing to do there until morning."
@@ -660,7 +665,7 @@ async def go_to(ctx: ToolContext, args: dict) -> ToolResult:
         closed = f" It'll be shut when you get there; it opens at {record.hours[0]}:00."
     if record and record.invented and not closed and sleepmod.is_night(ctx.settings, time.time() + 2 * minutes * 60):
         closed = " It'll be dark before you could get back."  # a warning, not a refusal
-    return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min.{closed}")
+    return ToolResult(f"you set off for {places.label(place)}; you'll be there in about {minutes} min.{closed}{stopped}")
 
 
 @tool("browse", "Look over what is lying about where you are, to see what's worth digging for (nothing is taken).",

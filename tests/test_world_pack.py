@@ -181,7 +181,7 @@ def test_a_worlds_content_is_its_packs(tmp_path):
         assert list(world_effects.EFFECTS) == ["wall"] and list(abilities.ABILITIES) == ["radio"] and projects.abilities() == ("grit",)
         assert firsts.happening_firsts() == {"raid": "had a raid"} and "shelter" in IP.reserved() and "camp" in IP.trade_words()
         assert IP.chat_mentions("go to the old ruins") and not IP.chat_mentions("go to the old marsh")
-        nobody = type("S", (), {"place_row": lambda self, k: None, "characters": lambda self, kind=None: []})()
+        nobody = type("S", (), {"meta": lambda self, k: None, "place_row": lambda self, k: None, "characters": lambda self, kind=None: []})()
         assert looks.place_text(nobody, "ruins") == "a collapsed mall"
         assert places.find(nobody, None, "bunker") == "shelter"
     finally:
@@ -203,7 +203,7 @@ def test_a_pack_with_no_content_gets_plain_defaults(tmp_path):
         assert (place_kinds.registry(), place_kinds.fallback(), place_kinds.SHOP_DEFAULT_HOURS, place_kinds.OPENS, place_kinds.CLOSES) == ({}, "sight", (9, 17), (7, 10), (16, 19))
         assert place_kinds.guess("a mill") == "sight" and place_kinds.check("shop", "a shop") == "sight"
         assert places.home_key() == "home" and places.HOME == "home"
-        reg = places.registry(type("S", (), {"characters": lambda self, kind=None: [], "place_rows": lambda self: []})(), Settings(), None)
+        reg = places.registry(type("S", (), {"meta": lambda self, k: None, "characters": lambda self, kind=None: [], "place_rows": lambda self: []})(), Settings(), None)
         assert list(reg) == ["home"] and (reg["home"].blurb, reg["home"].offers) == ("your home", ("sleep",))
         assert (looks.look_lists(), looks.prop_words(), looks.scene_lists(), looks.scene_props_max(), looks.props("a lighthouse")) == ({}, {}, {}, 4, [])
         assert world_view.coastal().search("the sea") and not world_view.coastal().search("the marsh")
@@ -247,7 +247,7 @@ def test_a_half_filled_pack_and_values_that_differ_from_the_defaults(tmp_path):
     (d / "places.json").write_text(json.dumps({"home": {"key": "shelter"}, "kinds": {"camp": {"help": "a camp", "shop_hours": True}}}))
     (d / "content.json").write_text(json.dumps({"world_effects": {"wall": {"help": "a wall", "does": "add_plot", "note": "x", "min_difficulty": 4}},
                                                 "abilities": {"radio": {"help": "r", "per_day": 3, "min_difficulty": 5, "proposable": False}}}))
-    nobody = type("S", (), {"place_row": lambda self, k: None, "characters": lambda self, kind=None: [], "place_rows": lambda self: []})()
+    nobody = type("S", (), {"meta": lambda self, k: None, "place_row": lambda self, k: None, "characters": lambda self, kind=None: [], "place_rows": lambda self: []})()
     try:
         W.set_active(W.load(Settings(world_pack=str(d))))
         got = looks.fallback_scene("Keep", "camp", "a plaster hut with a slate roof")

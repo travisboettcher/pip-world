@@ -115,11 +115,11 @@ def test_busy_says_what_pip_is_in_the_middle_of(tmp_path, clock):
     st.start_session(0, 0, 10, clock[0] + 90, kind="walk", target="library")
     assert "about 2 min to go" in T.busy(ctx)
     st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="gathering", expect="out foraging at the woods")
-    assert T.busy(ctx) == "you're out foraging at the woods (about 30 min left); rest stops early"
+    assert T.busy(ctx) == "you're out foraging at the woods (about 30 min left); rest, or going somewhere, stops it early"
     st.start_session(0, 0, 30, clock[0] + 1800, kind="module", target="crafting")
-    assert T.busy(ctx) == "you're something (about 30 min left); rest stops early"
+    assert T.busy(ctx) == "you're something (about 30 min left); rest, or going somewhere, stops it early"
     st.start_session(5, 0, 30, clock[0] + 1800, kind="work")                     # a kind from before its feature was a module
-    assert T.busy(ctx) == "you're in the middle of something (about 30 min left); rest stops early"
+    assert T.busy(ctx) == "you're in the middle of something (about 30 min left); rest, or going somewhere, stops it early"
 
 
 async def test_stop_working_reports_what_was_cut_short(tmp_path, clock):

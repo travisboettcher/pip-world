@@ -137,7 +137,24 @@ data and store its agent-scoped modules had; later agents start fresh.
    2026-11-18, to make meetings likelier and see how the engine takes different dispositions): three villagers who live inside the
    walls and spend their days at the village (Hester the cooper, grumpy; Tobin the water-runner, sunny; Sela the herbalist, anxious),
    each with a `temperament` (where its feelings rest) and knowing each other from the start (`knows`); Wren and Ivo meet them, and
-   each other, by chance (0.59.0).
+   each other, by chance (0.59.0). *Found next* (owner, 2026-11-18): the talk worked (Wren met Sela and asked her to
+   look at her vent) but cost a day's budget by morning: every line one agent said to another woke the listener for a whole world
+   turn (about 11,500 tokens), a line every fifteen seconds. 0.60.0 runs it as a scene (below); and an agent's closing words beside a
+   `say` are no longer logged as a second line, setting off somewhere cuts a gathering short, and the diary is written at home.
+
+## Talk between agents (0.60.0)
+When an agent's turn finds words from another agent who is here (its inbox, `source: agent`), and they haven't talked lately, the turn
+runs the talk as one scene (`Agent._talk_with`): the two speak in turn, the listener first, each from the talk scene's small prompt,
+its own (its persona, what it thinks of the other, its to-dos about them, the talk so far as it heard it). A line is logged as the
+speaker's `say` and arrives in the listener's log at once (`inbox`, consumed), waking no one. It ends on a goodbye, a silence,
+`AGENT_LINES` lines in all, either running out of budget, or one leaving; both log `talk` and have a world turn. For
+`AGENT_QUIET_MINUTES` after (`talked:<key>`), words between them are heard but don't wake the listener, so a world turn doesn't start
+the ping-pong again. Each agent holds a lock (`talking`) for its turns, and a scene holds the other's; if the other is mid-turn for
+`LOCK_WAIT` seconds, the words are answered the old way. Minds stay private: each line comes from its speaker's own State.
+
+Meeting someone, an agent learns where they live (0.60.0; found when Sela promised to look at Wren's vent and had no way to get there):
+another agent's home is a place it can go once they have met (`places.agents_homes`), found by its key or by its owner's name
+("Wren's"), a home in kind. Arriving while they're in, the two see each other, and a word starts a talk.
 
 ## Decisions (the owner, 2026-11-15)
 - **One process**, supervisor and actors in shape (above); separate processes maybe later.

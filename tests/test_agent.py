@@ -206,6 +206,22 @@ async def test_say_tool_replies_to_visitor(tmp_path):
     assert any(e["kind"] == "inbox_read" and e["data"]["ids"] == [mid] for e in evs)
 
 
+@pytest.mark.asyncio
+async def test_words_alongside_a_say_are_the_agents_own_not_a_second_reply(tmp_path):
+    """Found on Ashfall (2026-11-18): an agent answering with `say` and closing its turn in its own words ("I've answered Wren...")
+    had those words logged as a second reply, so the feed showed it speaking twice. Plain text is a reply only without a `say`."""
+    said = LLMResponse("I've answered them and I'm getting on.", [ToolCall("1", "say", {"text": "Hello!"})], Usage(1, 1))
+    plain = LLMResponse("Hi there.", [], Usage(1, 1))
+    s, st, backend, agent = make(tmp_path, [said, plain])
+    agent.tools = tools_mod.enabled_tools(Settings(tools=["say"]))
+    st.add_inbox("hi")
+    await agent.tick("test")
+    assert [e["data"]["text"] for e in st.events(20) if e["kind"] == "say"] == ["Hello!"]
+    mid = st.add_inbox("still there?")
+    await agent.tick("test")
+    assert [(e["data"]["text"], e["data"]["to"]) for e in st.events(20) if e["kind"] == "say"][0] == ("Hi there.", [mid])   # no say: the words are the reply
+
+
 # --- journal ---------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_sections_shown_in_perception_and_resolvable(tmp_path):
@@ -438,6 +454,59 @@ async def test_moments_expire_after_a_few_showings(tmp_path):
         await agent.tick("t")
     shown = ["this happened:" in backend.calls[i]["messages"][0]["content"] for i in range(3)]
     assert shown == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_the_diary_is_written_at_home_and_its_moments_wait_for_it(tmp_path):
+    """The owner (2026-11-18): away from home most diary entries were running commentary on what the agent was doing. The diary is
+    written at home; to-dos, wishes and the rest can be jotted anywhere; what happened while out is offered for the diary once home."""
+    from app import places, tools as T
+    s, st, backend, agent = make(tmp_path)
+    ctx = agent.ctx
+    st.update_agent(location="ruins")
+    r = await T.REGISTRY["note_to_self"][1](ctx, {"section": "diary", "text": "Out in the ruins and it is grey."})
+    assert r.text == ("not written: you write your diary at home. Jot a to-do or something learned now if it can't wait, and write "
+                      "the day up when you're back") and r.followup and st.memories("diary") == []
+    for section in ("todo", "learned", "wishlist", "ambitions"):
+        assert (await T.REGISTRY["note_to_self"][1](ctx, {"section": section, "text": f"a {section} jotted in the ruins"})).text == f"wrote in {section}"
+    st.start_session(0, 0, 10, time.time() + 600, kind="walk", target=places.home_key())                 # on the road: not home yet
+    st.update_agent(location=places.home_key())
+    assert (await T.REGISTRY["note_to_self"][1](ctx, {"section": "diary", "text": "x"})).text.startswith("not written: you write your diary at home")
+    st.end_session()
+    st.log("gift", sender="Morgan", item="tiny needle file", qty=1, item_kind="tool")
+    st.update_agent(location="ruins")
+    await agent.tick("out")
+    assert "this happened:" not in prompt_of(backend)                                                  # nothing offered while out
+    st.update_agent(location=places.home_key())
+    await agent.tick("home")
+    assert "Morgan gave you 1 x tiny needle file" in prompt_of(backend)
+    assert (await T.REGISTRY["note_to_self"][1](ctx, {"section": "diary", "text": "Home at last, with a file."})).text == "wrote in diary"
+
+
+@pytest.mark.asyncio
+async def test_a_trips_moments_are_offered_in_the_hour_after_getting_home(tmp_path):
+    from app import places
+    s, st, backend, agent = make(tmp_path, moment_window_minutes=60)
+    st.update_agent(location=places.home_key())
+    places.start_walk(st, s, "ruins")                                                                   # leaving home: the trip starts
+    left = float(st.meta("left_home_at"))
+    assert time.time() - 5 < left <= time.time()
+    st.end_session()
+    st.update_agent(location="ruins")
+    places.start_walk(st, s, "flats")                                                                   # a second leg: not leaving home
+    assert float(st.meta("left_home_at")) == left
+    st.end_session()
+    st.log("gift", sender="Morgan", item="old map", qty=1, item_kind="tool")
+    st.db.execute("UPDATE events SET ts = ? WHERE kind = 'gift'", (time.time() - 3 * 3600,))                     # three hours ago, out
+    st.set_meta(left_home_at=str(time.time() - 4 * 3600))
+    st.update_agent(location=places.home_key())
+    st.set_meta(arrived_at=str(time.time() - 120))                                                       # got home two minutes ago
+    await agent.tick("home")
+    assert "Morgan gave you 1 x old map" in prompt_of(backend)
+    st.set_meta(arrived_at=str(time.time() - 2 * 3600))                                                  # home for two hours: the trip is old
+    agent._moment_shown.clear()
+    await agent.tick("later")
+    assert "Morgan gave you 1 x old map" not in prompt_of(backend, -1)
 
 
 @pytest.mark.asyncio

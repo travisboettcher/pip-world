@@ -235,3 +235,30 @@ async def test_each_place_is_laid_out_by_one_agent_and_not_again_every_beat(worl
     for a in world.agents:                                                          # everyone sees the world's look of a place
         with a.acting():
             assert world_view.place_details(a.state, a.s, "ruins", "yard")["props"] == ["tin"]
+
+
+@pytest.mark.asyncio
+async def test_once_they_have_met_each_knows_where_the_other_lives(world):
+    """Found on Ashfall (2026-11-18): Sela promised to come and look at Wren's vent, but no agent knew where another lived, so she
+    couldn't. Meeting someone, you learn where they live: their home is a place you can go, by its name or theirs."""
+    from app import places
+    wren, ivo = world.agents
+    with wren.acting():
+        assert "lockup" not in places.available(wren.state, None) and places.find(wren.state, None, "Ivo's") is None
+    at(wren, "ruins")
+    at(ivo, "ruins")
+    with wren.acting():
+        others.seen(wren.state)
+        known = places.available(wren.state, None)
+        assert known["lockup"] == "where Ivo lives: a steel-shuttered lock-up crammed with salvage"
+        assert [places.find(wren.state, None, q) for q in ("Ivo's", "ivo", "Ivo's lock-up", "lockup", "home")] == ["lockup"] * 4 + ["shelter"]
+        assert places.kind_of(wren.state, "lockup") == "home" and places.kind_of(wren.state, "shelter") == "home"
+    with ivo.acting():
+        assert places.find(ivo.state, None, "Wren's") == "shelter" and places.find(ivo.state, None, "home") == "lockup"
+        assert places.available(ivo.state, None)["shelter"] == "where Wren lives"                       # her world's home says no more
+    at(ivo, "lockup")
+    r = await use(wren, "go_to", place="Ivo's")
+    assert r.text.startswith("you set off for the lockup")
+    with wren.acting():
+        await places.arrive(wren.state, wren.s, None, None)
+        assert others.seen(wren.state) == ['Ivo is here (a scavenger). They hear you if you say(to="Ivo").']

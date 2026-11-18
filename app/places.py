@@ -104,8 +104,8 @@ def present_at(state) -> str | None:
 def kind_of(state, key: str) -> str:
     """What kind of place a key is, all of them the world's: "home", an invented place's kind, a built-in place's (places.json), or a
     home of someone's own (places.json `dwellings`)."""
-    if key == home_key():
-        return "home"
+    if key == home_key() or any(key == home_key(a.identity) for a in _everyone()):
+        return "home"                                            # its own, or another agent's
     row = state.place_row(key)
     if row:
         return row["kind"]
@@ -193,7 +193,21 @@ def registry(state, settings, library) -> dict[str, Place]:
     for rec in invented.records(state):
         if rec["walk_minutes"] is not None and rec["key"] not in out:
             out[rec["key"]] = invented_place(rec)
+    for a, h in agents_homes(state):                               # where the other agents it has met live (DESIGN-multi-agent.md)
+        if h["key"] not in out:
+            out[h["key"]] = Place(h["key"], f"where {a.identity.name} lives" + (f": {h['about']}" if h.get("about") else ""), walk, kind="home")
     return out
+
+
+def _everyone() -> list:
+    from . import others
+    return others.everyone()
+
+
+def agents_homes(state) -> list[tuple]:
+    """(agent, its home) for each other agent the agent acting now has met: meeting someone, you learn where they live."""
+    from . import others
+    return [(a, home(a.identity)) for a in others.others() if others.met(state, a)]
 
 
 def _built_in(p: dict, walk: float) -> Place:
@@ -259,13 +273,17 @@ def find(state, library, query) -> str | None:
                                                 for a in r["aliases"]]
     hit = list(dict.fromkeys([p for p, n in names if n == q] or [p for p, n in names if q and (q in n or n in q)]))
     if not hit:  # "marigold", "marigold's", "visit marigold thistlewick": where someone lives
-        hit = list(dict.fromkeys(c["place"] for c in state.characters() if c["place"] in places
-                                 and any(w in q.replace("'s", " ").split() for w in c["name"].lower().split() if len(w) > 2)))
+        named = q.replace("'s", " ").split()
+        hit = list(dict.fromkeys([c["place"] for c in state.characters() if c["place"] in places
+                                  and any(w in named for w in c["name"].lower().split() if len(w) > 2)]
+                                 + [h["key"] for a, h in agents_homes(state) if a.identity.name.lower() in named]))
     return hit[0] if len(hit) == 1 else None
 
 
 def start_walk(state, settings, place: str, minutes: float | None = None) -> int:
     minutes = settings.walk_minutes if minutes is None else minutes
+    if state.agent()["location"] == home_key():
+        state.set_meta(left_home_at=str(time.time()))     # a trip starts: what happens on it waits for the diary at home
     state.start_session(0, 0, minutes, time.time() + minutes * 60 / settings.work_speed, kind="walk", target=place)
     state.update_agent(activity="walking", description="walking home" if place == home_key() else f"on the way to {label(place)}")
     return max(1, round(minutes / settings.work_speed))

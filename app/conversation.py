@@ -35,7 +35,7 @@ def visit_lines(state, name: str, since: float) -> list[str]:
         if e["ts"] < since:
             continue
         d = e["data"]
-        if e["kind"] == "companion" and d.get("name") == name:
+        if (e["kind"] == "companion" and d.get("name") == name) or (e["kind"] == "inbox" and d.get("source") == "agent" and d.get("sender") == name):
             out.append(f"{name}: {d['text']}")
         elif e["kind"] == "say" and d.get("to_name") == name:
             out.append(f"You: {d['text']}")
