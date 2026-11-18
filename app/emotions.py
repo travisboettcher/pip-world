@@ -1,7 +1,7 @@
 """Emotion state: eight numbers (0-100) the engine keeps, moved by logged events by fixed rules (see DESIGN-emotions.md).
 
 A functional model, not a claim that the agent feels: the numbers make its days more coherent. The engine owns them; The agent sees a short
-readout and decides what to do. Every move is logged with its cause. Each emotion decays toward a baseline with its own half-life.
+readout and decides what to do. Every move is logged with its cause. Each emotion decays toward a baseline with its own half-life; an agent's temperament (world.json) moves its baselines.
 """
 import time
 from datetime import datetime
@@ -33,6 +33,12 @@ def alert_feelings(stat: str) -> dict:
     return stats_mod.declared().get(stat, {}).get("alert_feelings", {})
 
 
+def baseline() -> dict[str, int]:
+    """Where the acting agent's feelings rest: the engine's baselines, with its own temperament over them (world.json)."""
+    from . import world_pack
+    return {**BASELINE, **dict(world_pack.active().agent.temperament)}
+
+
 def decayed(value: float, baseline: float, half_life_min: float, minutes: float) -> float:
     """`value` after `minutes`: the distance from baseline halves every half-life."""
     if minutes <= 0:
@@ -42,14 +48,14 @@ def decayed(value: float, baseline: float, half_life_min: float, minutes: float)
 
 def levels(state, now: float | None = None) -> dict[str, float]:
     now = now or time.time()
-    rows = state.emotion_rows()
+    rows, rest = state.emotion_rows(), baseline()
     out = {}
     for n in NAMES:
         if n in rows:
             v, ts = rows[n]
-            out[n] = decayed(v, BASELINE[n], HALF_LIFE_MIN[n], (now - ts) / 60)
+            out[n] = decayed(v, rest[n], HALF_LIFE_MIN[n], (now - ts) / 60)
         else:
-            out[n] = float(BASELINE[n])
+            out[n] = float(rest[n])
     return out
 
 
@@ -62,7 +68,7 @@ def nudge(state, deltas: dict, cause: str, now: float | None = None) -> dict[str
     now = now or time.time()
     current = levels(state, now)
     for name, delta in deltas.items():
-        if name not in BASELINE or not delta:
+        if name not in NAMES or not delta:
             continue
         before = current[name]
         after = _clamp(before + delta)
@@ -77,8 +83,8 @@ def nudge(state, deltas: dict, cause: str, now: float | None = None) -> dict[str
 def ease(state, fraction: float, cause: str, now: float | None = None) -> dict[str, float]:
     """Close `fraction` of every gap to baseline (a night's sleep)."""
     now = now or time.time()
-    current = levels(state, now)
-    return nudge(state, {n: (BASELINE[n] - current[n]) * fraction for n in NAMES}, cause, now)
+    current, rest = levels(state, now), baseline()
+    return nudge(state, {n: (rest[n] - current[n]) * fraction for n in NAMES}, cause, now)
 
 
 def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
@@ -159,29 +165,29 @@ def arousal_word(a: int) -> str:
 
 def blend(lv: dict) -> str | None:
     """The strongest Plutchik pair whose members are both clearly above their baselines."""
-    best, name = 0.0, None
+    best, name, rest = 0.0, None, baseline()
     for pair, word in DYADS.items():
-        strength = min(lv[n] - BASELINE[n] for n in pair)
+        strength = min(lv[n] - rest[n] for n in pair)
         if strength >= BLEND_MIN_EXCESS and strength > best:
             best, name = strength, word
     return name
 
 
 def snapshot(state, now: float | None = None) -> dict:
-    lv = levels(state, now)
+    lv, rest = levels(state, now), baseline()
     v, a = valence(lv), arousal(lv)
-    return {"emotions": [{"name": n, "value": round(lv[n]), "baseline": BASELINE[n]} for n in NAMES],
+    return {"emotions": [{"name": n, "value": round(lv[n]), "baseline": rest[n]} for n in NAMES],
             "valence": v, "arousal": a, "valence_word": valence_word(v), "arousal_word": arousal_word(a), "blend": blend(lv)}
 
 
 def readout(state, now: float | None = None) -> list[str]:
     """What the agent is shown: only what stands out, then the overall tone."""
-    lv = levels(state, now)
+    lv, rest = levels(state, now), baseline()
     v, a, b = valence(lv), arousal(lv), blend(lv)
-    notable = sorted((n for n in NAMES if abs(lv[n] - BASELINE[n]) >= NOTABLE), key=lambda n: -abs(lv[n] - BASELINE[n]))[:SHOWN]
+    notable = sorted((n for n in NAMES if abs(lv[n] - rest[n]) >= NOTABLE), key=lambda n: -abs(lv[n] - rest[n]))[:SHOWN]
     if not notable:
         return [f"Emotion state: close to your usual self ({valence_word(v)}, {arousal_word(a)})."]
-    shown = ", ".join(f"{n} {round(lv[n])} ({round(lv[n] - BASELINE[n]):+d})" for n in notable)
+    shown = ", ".join(f"{n} {round(lv[n])} ({round(lv[n] - rest[n]):+d})" for n in notable)
     tail = f"; it feels like {b}" if b else ""
     return [f"Emotion state (0-100): {shown}.", f"Overall: {valence_word(v)}, {arousal_word(a)}{tail}."]
 
@@ -198,14 +204,14 @@ def settle(state, settings, emotion: str, how: str = "", now: float | None = Non
     """The agent takes a quiet moment to ease one strong feeling. Limited per day; never below the usual level."""
     now = now or time.time()
     emotion = str(emotion or "").strip().lower()
-    if emotion not in BASELINE:
+    if emotion not in NAMES:
         return False, f"you can settle one of: {', '.join(NAMES)}"
     if len([e for e in state.events(500) if e["kind"] == "settled" and e["ts"] >= _today(now)]) >= settings.emotion_settle_per_day:
         return False, "you've taken enough quiet moments today; it will ease on its own"
-    before = levels(state, now)[emotion]
-    if before - BASELINE[emotion] < SETTLE_MIN_EXCESS:
+    before, rest = levels(state, now)[emotion], baseline()[emotion]
+    if before - rest < SETTLE_MIN_EXCESS:
         return False, f"you're already settled: {emotion} is near its usual level"
-    after = max(float(BASELINE[emotion]), before - SETTLE_EASE)
+    after = max(float(rest), before - SETTLE_EASE)
     state.set_emotion(emotion, after, now)
     state.add_emotion_log(now, emotion, after - before, after, "settled" + (f": {how}" if how else ""))
     state.log("settled", emotion=emotion, **{"from": round(before), "to": round(after)}, how=str(how or "")[:120])

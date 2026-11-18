@@ -59,6 +59,19 @@ def meet(state, other, now: float | None = None) -> bool:
     return True
 
 
+def acquainted(agents, now: float | None = None) -> None:
+    """At a start: the agents each one already knows (world.json `knows`, neighbours) have met, both ways, without a first meeting."""
+    now, running = now or time.time(), {a.identity.key: a for a in agents}
+    for a in agents:
+        for key in a.identity.knows:
+            other = running.get(key)
+            if other is None:
+                continue
+            for x, y in ((a, other), (other, a)):
+                if not met(x.state, y):
+                    x.state.set_meta(**{f"met:{y.identity.key}": str(now)})
+
+
 def seen(state, now: float | None = None) -> list[str]:
     """The perception's lines for the other agents here (and they meet, the first time)."""
     out = []

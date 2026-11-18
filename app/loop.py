@@ -160,6 +160,7 @@ def build(settings: Settings, backend: LLMBackend, gm_backend: LLMBackend | None
         os.makedirs(os.path.dirname(s.db_path) or ".", exist_ok=True)
         world = Agent(s, State(s), backend, get_policy(s), gm_backend=gm_backend, world=world).world
     looks.gather_scenes(world.agents)                   # each place looks one way to everyone: the world's
+    others.acquainted(world.agents)                     # neighbours know each other from the start
     return world
 
 

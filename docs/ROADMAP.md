@@ -190,6 +190,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 3 (0.56.0, 0.57.0): modules' working data by agent (`scope`), then meeting (`others.py`: presence, `say`, letters and parcels
           by the world's post, the `agents` read)
     - [x] 0.57.4: the builder runs once a world night as the world and sees every agent
+    - [x] 0.59.0: Ashfall's three villagers (agents of their own), with temperaments and neighbours who know each other
     - [ ] 4: the experiment (see Next)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

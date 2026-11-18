@@ -133,7 +133,11 @@ data and store its agent-scoped modules had; later agents start fresh.
    as none of the shipped ones does.
 4. **The experiment**: watch Ashfall for a week; fix what it shows; then the owner decides about Pip's world. *Found so far:* the
    builder saw only the first agent (0.57.4: it sees every agent); each agent kept its own look of a shared place, so the layouts were
-   rebuilt every beat (0.58.0: a place's look is the world's; DESIGN-dashboard.md, "Found while building").
+   rebuilt every beat (0.58.0: a place's look is the world's; DESIGN-dashboard.md, "Found while building"). *More agents* (owner,
+   2026-11-18, to make meetings likelier and see how the engine takes different dispositions): three villagers who live inside the
+   walls and spend their days at the village (Hester the cooper, grumpy; Tobin the water-runner, sunny; Sela the herbalist, anxious),
+   each with a `temperament` (where its feelings rest) and knowing each other from the start (`knows`); Wren and Ivo meet them, and
+   each other, by chance (0.59.0).
 
 ## Decisions (the owner, 2026-11-15)
 - **One process**, supervisor and actors in shape (above); separate processes maybe later.

@@ -388,12 +388,18 @@ def test_the_app_starts_ashfall_with_ashfalls_belongings(tmp_path):
         W.set_active(W.load(Settings()))
 
 
-def test_ashfall_has_two_agents_and_each_has_a_home_and_a_view(tmp_path):
+def test_ashfall_has_five_agents_and_each_has_a_home_and_a_view(tmp_path):
     from fastapi.testclient import TestClient
     from app.llm.fake import FakeBackend
     from app.main import create_app
     pack = W.load(Settings(world_pack=str(ASHFALL)))
-    assert [a.key for a in pack.agents] == ["wren", "ivo"] and pack.agent.name == "Wren"
+    assert [a.key for a in pack.agents] == ["wren", "ivo", "hester", "tobin", "sela"] and pack.agent.name == "Wren"
+    homes = {a.key: a.home_place.get("key") for a in pack.agents[2:]}
+    assert homes == {"hester": "cooperage", "tobin": "loft", "sela": "stillroom"}
+    assert all(pack.persona(a).startswith(f"You are {a.name}, ") for a in pack.agents[2:])
+    rests = {a.key: dict(a.temperament) for a in pack.agents}
+    assert rests["hester"]["anger"] > rests["sela"].get("anger", 8) and rests["tobin"]["trust"] > rests["hester"]["trust"]   # grumpy, sunny
+    assert rests["sela"]["fear"] > rests["tobin"]["fear"] and not rests["wren"] and not rests["ivo"]                         # and anxious
     ivo = pack.agent_named("ivo")
     assert ivo.home_place["key"] == "lockup" and pack.persona(ivo).startswith("You are Ivo, a scavenger")
     os.makedirs(tmp_path / "data")
@@ -407,6 +413,10 @@ def test_ashfall_has_two_agents_and_each_has_a_home_and_a_view(tmp_path):
             for path in ("/world/scene", "/world/map", "/standing", "/events?limit=5"):
                 assert c.get(f"{path}{'&' if '?' in path else '?'}agent=ivo").status_code == 200, path
             assert c.get("/world/scene?agent=ivo").json()["agent"]["name"] == "Ivo"
+            assert c.get("/state?agent=hester").json()["agent"]["location"] == "cooperage"
+            hester = c.app.state.world.agents[2].state
+            assert hester.meta("met:tobin") and hester.meta("met:sela") and hester.meta("met:wren") is None   # neighbours; strangers met by chance
+            assert [e["baseline"] for e in c.get("/emotions?agent=hester").json()["emotions"] if e["name"] == "anger"] == [25]
     finally:
         W.set_active(W.load(Settings()))
 
@@ -422,7 +432,7 @@ async def test_both_homes_are_laid_out_and_on_the_map(tmp_path):
         world = loop.build(s, FakeBackend())
         await world.step()
         world.check()
-        wren, ivo = world.agents
+        wren, ivo, *_ = world.agents
         spots = wren.state.map_positions()
         assert spots["shelter"] == (0.0, 0.0) and spots["lockup"] != (0.0, 0.0)               # the middle is the first home's
         for a, home in ((wren, "shelter"), (ivo, "lockup")):

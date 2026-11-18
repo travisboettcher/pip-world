@@ -49,6 +49,139 @@
      "sleep"
     ]
    }
+  },
+  {
+   "key": "hester",
+   "name": "Hester",
+   "pronoun": "she",
+   "kind": "the village cooper",
+   "lives": "lives in a cooperage built into the village wall, and mends the village's barrels and buckets",
+   "look": {
+    "height": "short",
+    "hair": "grey",
+    "skin": "pale",
+    "top": "brown",
+    "bottom": "black",
+    "accessory": "apron"
+   },
+   "persona": "personas/hester.md",
+   "temperament": {
+    "baseline": {
+     "anger": 25,
+     "disgust": 15,
+     "trust": 30,
+     "joy": 30,
+     "anticipation": 25
+    }
+   },
+   "knows": [
+    "tobin",
+    "sela"
+   ],
+   "home": {
+    "key": "cooperage",
+    "description": "your home: a cooperage built into the village wall, staves and iron hoops on every hook",
+    "called": "cooperage",
+    "aliases": [
+     "home",
+     "cooperage",
+     "my cooperage"
+    ],
+    "about": "a cooper's cramped workroom in the village wall",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   }
+  },
+  {
+   "key": "tobin",
+   "name": "Tobin",
+   "pronoun": "he",
+   "kind": "the village's water-runner",
+   "lives": "sleeps in the loft over the village stores, and runs water and messages around the village",
+   "look": {
+    "height": "short",
+    "hair": "fair",
+    "skin": "light",
+    "top": "green",
+    "bottom": "blue",
+    "accessory": "hat"
+   },
+   "persona": "personas/tobin.md",
+   "temperament": {
+    "baseline": {
+     "joy": 60,
+     "trust": 70,
+     "anticipation": 50,
+     "fear": 6,
+     "sadness": 8
+    }
+   },
+   "knows": [
+    "hester",
+    "sela"
+   ],
+   "home": {
+    "key": "loft",
+    "description": "your home: the loft over the village stores, a straw pallet under the eaves",
+    "called": "loft",
+    "aliases": [
+     "home",
+     "loft",
+     "my loft",
+     "the stores"
+    ],
+    "about": "a loft over the village stores",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   }
+  },
+  {
+   "key": "sela",
+   "name": "Sela",
+   "pronoun": "she",
+   "kind": "the village's herbalist",
+   "lives": "lives in a stillroom against the reservoir wall, and keeps the village's remedies",
+   "look": {
+    "height": "medium",
+    "hair": "black",
+    "skin": "dark",
+    "top": "plum",
+    "bottom": "navy",
+    "accessory": "shawl"
+   },
+   "persona": "personas/sela.md",
+   "temperament": {
+    "baseline": {
+     "fear": 25,
+     "sadness": 20,
+     "trust": 40,
+     "joy": 35,
+     "anticipation": 25
+    }
+   },
+   "knows": [
+    "hester",
+    "tobin"
+   ],
+   "home": {
+    "key": "stillroom",
+    "description": "your home: a stillroom against the reservoir wall, bundles of herbs drying from the beams",
+    "called": "stillroom",
+    "aliases": [
+     "home",
+     "stillroom",
+     "my stillroom"
+    ],
+    "about": "a herbalist's stillroom by the reservoir",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   }
   }
  ],
  "modules": [

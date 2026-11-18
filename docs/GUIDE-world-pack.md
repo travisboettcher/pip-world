@@ -57,8 +57,14 @@ is in `places.json`.
 each with a `key` (a lower-case word; from the name by default), and optionally a `home` of its own (shaped as places.json's `home`:
 `key`, `description`, `called`, `aliases`, `about`, `offers`) and a `persona` file in the pack (`personas/ivo.md`). The first is the
 world's main agent: it lives in places.json's home, reads persona.md, and alone reaches the owner. `AGENTS=wren,ivo` chooses which
-run (default all), each with its own database and `DAILY_TOKEN_BUDGET_<KEY>`. Until release 3 of that design gives modules' working
-data an owner, a second agent shares the first's projects, trips and stall, so Ashfall runs Wren alone.
+run (default all), each with its own database and `DAILY_TOKEN_BUDGET_<KEY>`. Each has its own projects, trips and stall (a
+module's working data is its agent's, 0.56.0).
+
+An agent may also have (0.59.0) a `temperament`, `{"baseline": {"anger": 25, "trust": 30}}`: where its feelings rest, over the engine's
+baselines (joy 45, sadness 15, anger 8, fear 10, trust 55, disgust 5, surprise 10, anticipation 35), so a grumpy agent's anger settles
+higher than another's and a night's sleep brings it back there; its persona says the same in words. And `knows`: the other agents it
+already knows when the world starts, by key (neighbours), so they never meet for the first time; everyone else is met by chance.
+Ashfall's villagers (Hester the cooper, grumpy; Tobin the water-runner, sunny; Sela the herbalist, anxious) know each other this way.
 
 **`persona.md`** (works today; `PERSONA_PATH` overrides it): who the agent is, in the second person, as the agent reads it every tick. Who she is,
 how she talks, what she cares about, what she wants. Not the world's rules: those come from the guide.

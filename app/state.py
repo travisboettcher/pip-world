@@ -1591,7 +1591,7 @@ class State:
     def _context_now(self, source: str, data: dict) -> dict:
         """Where the agent is, with whom, doing what, feeling how: a memory's context, captured as it is written."""
         from . import places
-        from .emotions import BASELINE, NOTABLE
+        from .emotions import NOTABLE, baseline
         a = self.db.execute("SELECT * FROM agent WHERE id = 1").fetchone()
         sess = self.db.execute("SELECT * FROM work_session WHERE id = 1").fetchone()
         place = None if sess and sess["kind"] == "walk" else a["location"]
@@ -1599,7 +1599,8 @@ class State:
         project = None
         if sess and sess["kind"] == "module" and sess["about"]:            # a module's session about something (a project)
             project = sess["about"]
-        excess = {r["name"]: r["value"] - BASELINE[r["name"]] for r in self.db.execute("SELECT name, value FROM emotions")}
+        rest = baseline()
+        excess = {r["name"]: r["value"] - rest[r["name"]] for r in self.db.execute("SELECT name, value FROM emotions")}
         feeling = max(excess, key=excess.get, default=None)
         return {"place": place, "people": list(dict.fromkeys(people)), "activity": a["activity"],
                 "mood": a["mood"], "feeling": feeling if feeling and excess[feeling] >= NOTABLE else None,

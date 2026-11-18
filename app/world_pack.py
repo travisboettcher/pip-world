@@ -50,6 +50,8 @@ class Agent:
     key: str = ""                  # which agent this is, in a world of several (docs/DESIGN-multi-agent.md): a word, from the name by default
     home: str = ""                 # its own home (json, shaped as places.json's `home`), or "" for the world's
     persona_file: str = ""         # its persona in the pack, or "" for persona.md
+    temperament: tuple = ()        # where its feelings rest: (emotion, 0-100) pairs over the engine's baselines (emotions.baseline)
+    knows: tuple = ()              # the other agents it already knows when the world starts (neighbours), by key; the rest it meets by chance
 
     @property
     def home_place(self) -> dict:
@@ -191,6 +193,8 @@ def _load(path: str, changed: float = 0.0) -> Pack:
     dup = next((k for k in keys if keys.count(k) > 1), None)
     if dup:
         raise bad(f"two agents can't share the key {dup!r}")
+    if any(k not in keys or k == a.key for a in agents for k in a.knows):
+        raise bad("an agent's `knows` lists other agents of this world by key")
     try:
         _sprite(str(d / "sprite.json"))
     except ValueError as e:
@@ -226,8 +230,17 @@ def _agent(d: Path, a, bad) -> Agent:
     persona = a.get("persona") or ""
     if persona and not (d / persona).is_file():
         raise bad(f"the agent {key}'s persona {persona} isn't in the pack")
+    from .emotions import NAMES
+    temper = a.get("temperament", {"baseline": {}})
+    rest = temper.get("baseline") if isinstance(temper, dict) and set(temper) <= {"baseline"} else None
+    if not isinstance(rest, dict) or any(k not in NAMES or not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 100
+                                         for k, v in rest.items()):
+        raise bad(f"an agent's `temperament` is {{\"baseline\": {{emotion: 0-100}}}}, emotions among {', '.join(NAMES)}")
+    knows = a.get("knows", [])
+    if not isinstance(knows, list) or not all(isinstance(k, str) for k in knows):
+        raise bad("an agent's `knows` lists other agents of this world by key")
     return Agent(name, pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""), tuple(look.items()), key,
-                 json.dumps(home, sort_keys=True) if home else "", persona)
+                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows))
 
 
 @lru_cache(maxsize=8)
