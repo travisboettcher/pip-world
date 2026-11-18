@@ -642,11 +642,13 @@ class Agent:
     def _talk(self, inbox: list[dict]) -> list[str]:
         """The conversations the agent is in, in full: a visit under way, and the chat so far with each visitor who is waiting for an answer."""
         now, lines = time.time(), []
-        for ch in places.company_at(self.state, places.present_at(self.state)):         # whoever is here, of any role
-            if said := conv.visit_lines(self.state, ch["name"], float(self.state.meta("arrived_at") or 0)):
-                lines += [f"Talking with {ch['name']} (this visit, oldest first):"] + [f"  {l}" for l in said]
+        here = places.present_at(self.state)
+        agents = [a.identity.name for a in others.here(here)]                         # another agent here: a talk, maybe just had
+        for name in [ch["name"] for ch in places.company_at(self.state, here)] + agents:  # whoever is here, of any role
+            if said := conv.visit_lines(self.state, name, float(self.state.meta("arrived_at") or 0)):
+                lines += [f"Talking with {name} (this visit, oldest first):"] + [f"  {l}" for l in said]
         waiting = {m["id"] for m in inbox}
-        for sender in dict.fromkeys(m["sender"] for m in inbox if not m["gift"]):
+        for sender in dict.fromkeys(m["sender"] for m in inbox if not m["gift"] and m["sender"] not in agents):
             if said := conv.thread_lines(self.state, sender, now, skip_ids=waiting):
                 lines += [f"Your conversation with {sender} so far (oldest first):"] + [f"  {l}" for l in said]
         return lines

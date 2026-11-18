@@ -156,6 +156,13 @@ Meeting someone, an agent learns where they live (0.60.0; found when Sela promis
 another agent's home is a place it can go once they have met (`places.agents_homes`), found by its key or by its owner's name
 ("Wren's"), a home in kind. Arriving while they're in, the two see each other, and a word starts a talk.
 
+Handing things over (0.61.0; found when Ivo and Hester agreed a price for his wire in a talk and had no way to keep the deal): `give`
+hands someone here something the agent carries, and/or coins (`others.hand`); both remember it (`gave`, `gift`), and it is offered in
+a talk scene too, where it shows in the talk as it happened ("Ivo: (hands you 11 x copper wire)"). A creation stays with its maker.
+Each agent has a purse of its own (the world's first agent's is `agent`, as before; another's `agent:<key>`): until 0.61.0 every
+agent's coins were one purse. After a talk, each world turn is shown it (the talk with whoever is here), as after a talk with a
+character; without that, Ivo asked Hester his question again the moment it ended. And a scene shows the other agents who are there.
+
 ## Decisions (the owner, 2026-11-15)
 - **One process**, supervisor and actors in shape (above); separate processes maybe later.
 - **Minds are private.** An agent's diary, notes, emotions, reflections and memories are its own: no other agent and no module reads

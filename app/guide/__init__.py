@@ -11,7 +11,8 @@ costs fewer tokens:
 
 `when` is one or more conditions joined by "and": `always`; `tool a|b` (any of those tools is enabled); `setting name` (that setting is
 on: set, and not "off") or `setting name=value`; `library` (books are mounted); `stakes` (one of the world's stats can run out);
-`reflection` (the agent reflects at night). Pages go in `order` (a page without front matter applies always, after the rest), and
+`reflection` (the agent reflects at night); `role a|b` (the agent's `role` in world.json is one of those: what it does in this world,
+as its persona says who it is). Pages go in `order` (a page without front matter applies always, after the rest), and
 `bullet: yes` puts one in the closing "Guidelines" list instead of a paragraph. The engine keeps only the conditions; which page needs
 what is the page's. It is a manual in a neutral voice; it never says who the agent is, how it feels or how it should behave towards
 people. That is the *persona* (the pack's `persona.md`, or the deployment's `PERSONA_PATH`), put in front of the guide.
@@ -59,8 +60,10 @@ def _condition(c: str) -> tuple[str, str]:
         return kind, arg
     if kind == "setting" and arg.partition("=")[0] in _settings() and " " not in arg:
         return kind, arg
+    if kind == "role" and re.fullmatch(r"[a-z][a-z0-9_-]*(\|[a-z][a-z0-9_-]*)*", arg):
+        return kind, arg
     raise ValueError(f"`when` is conditions joined by \"and\": always, tool a|b, setting name (or name=value: one of the engine's "
-                     f"settings), library, stakes, reflection; not {c.strip()!r}")
+                     f"settings), role a|b (the agent's role, world.json), library, stakes, reflection; not {c.strip()!r}")
 
 
 def parse(name: str, raw: str) -> Page:
@@ -91,6 +94,8 @@ def applies(page: Page, tools: set, settings, library: bool) -> bool:
     def holds(kind, arg):
         if kind == "tool":
             return any(t in tools for t in arg.split("|"))
+        if kind == "role":                                     # the role of the agent acting now: what it does here (its persona is who it is)
+            return world_pack.active().agent.role in arg.split("|")
         if kind == "setting":
             name, eq, want = arg.partition("=")
             value = getattr(settings, name)

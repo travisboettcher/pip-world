@@ -15,7 +15,8 @@
     "top": "grey",
     "bottom": "brown",
     "accessory": "scarf"
-   }
+   },
+   "role": "survivor"
   },
   {
    "key": "ivo",
@@ -48,7 +49,8 @@
      "projects",
      "sleep"
     ]
-   }
+   },
+   "role": "scavenger"
   },
   {
    "key": "hester",
@@ -92,7 +94,8 @@
      "projects",
      "sleep"
     ]
-   }
+   },
+   "role": "villager"
   },
   {
    "key": "tobin",
@@ -137,7 +140,8 @@
      "projects",
      "sleep"
     ]
-   }
+   },
+   "role": "villager"
   },
   {
    "key": "sela",
@@ -181,7 +185,8 @@
      "projects",
      "sleep"
     ]
-   }
+   },
+   "role": "villager"
   }
  ],
  "modules": [

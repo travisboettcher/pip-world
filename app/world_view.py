@@ -130,6 +130,11 @@ def scene_view(state, settings, library, place: str | None = None, now: float | 
     from . import looks
     look = lambda c: c.get("look") or looks.fallback(c["name"], c["persona"])           # not chosen yet: drawn from the persona for now
     present = [{"name": c["name"], "kind": c["kind"], "about": c["about"], "look": look(c)} for c in places.company_at(state, key)]
+    from . import others
+    for o in others.here(key):                                          # the other agents here, as they look (world.json's `look`)
+        doing = o.state.agent()["activity"]
+        present.append({"name": o.identity.name, "kind": "agent", "about": o.identity.kind + (f", {doing}" if doing not in ("idle", "") else ""),
+                        "look": looks.clean(dict(o.identity.look), o.identity.name, world_pack.active().persona(o.identity))})
     trade = {}                                          # what live modules add to this place's scene (`scene` facts: booths, a stall, wares)
     for m in state.modules("live"):
         mine = ((m["facts"] or {}).get("scene") or {}).get(key) if isinstance((m["facts"] or {}).get("scene"), dict) else None

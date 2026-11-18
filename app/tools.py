@@ -637,6 +637,34 @@ def _post(ctx: ToolContext, other, args: dict) -> ToolResult:
 
 
 # --- places and the library ---------------------------------------------------------
+@tool("give", "Hand something you carry, or coins, to someone here who has a life of their own (another person like you): it's "
+      "theirs at once. To buy from or sell to a booth, use buy and sell.",
+      _obj({"to": {"type": "string"}, "item": {"type": "string", "description": "optional: something you carry"},
+            "quantity": {"type": "integer", "description": "optional; default 1"}, "coins": {"type": "integer", "description": "optional"}},
+           ["to"]))
+async def give(ctx: ToolContext, args: dict) -> ToolResult:
+    other = others.named(args["to"])
+    if other is None or other not in others.here(places.present_at(ctx.state)):
+        return ToolResult(f"error: there's no one called {args['to']!r} here to give it to", followup=True)
+    query, coins, qty = args.get("item"), int(args.get("coins") or 0), int(args.get("quantity", 1) if args.get("item") else 0)
+    if not query and "coins" not in args:
+        return ToolResult("error: give something (an item, or coins)", followup=True)
+    if (query and qty < 1) or ("coins" in args and coins < 1):
+        return ToolResult("error: give at least one", followup=True)
+    item = None
+    if query:
+        item, err = ctx.state.find_item(query)
+        if item is None:
+            made = ctx.state.find_creation(query)[0]
+            return ToolResult(f"error: {made['name']} is yours to keep: only things you carry change hands" if made else f"error: {err}",
+                              followup=True)
+        if qty > item["qty"]:
+            return ToolResult(f"error: you have only {item['qty']} x {item['name']}", followup=True)
+    if coins > ctx.state.coins():
+        return ToolResult(f"error: you have only {ctx.state.coins()} coins", followup=True)
+    return ToolResult(others.hand(ctx.state, other, item, qty, coins))
+
+
 @tool("go_to", "Walk somewhere: home, or any place you know (someone's home, to visit them). It "
       "takes a little while.",
       _obj({"place": {"type": "string"}}, ["place"]))

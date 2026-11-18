@@ -60,7 +60,7 @@ def agent_waiting(state, inbox: list[dict]):
 
 
 def specs(tools) -> list[ToolSpec]:
-    return [SAY] + ([tools["feel"][0]] if "feel" in tools else [])
+    return [SAY] + [tools[n][0] for n in ("feel", "give") if n in tools]       # give: a deal struck can be kept on the spot
 
 
 def system(persona: str, ch: dict) -> str:

@@ -262,3 +262,81 @@ async def test_once_they_have_met_each_knows_where_the_other_lives(world):
     with wren.acting():
         await places.arrive(wren.state, wren.s, None, None)
         assert others.seen(wren.state) == ['Ivo is here (a scavenger). They hear you if you say(to="Ivo").']
+
+
+@pytest.mark.asyncio
+async def test_handing_things_over_in_person(world):
+    """Found on Ashfall (2026-11-18): Ivo and Hester agreed a price for his wire and scrap in a talk, and then had no way to hand
+    anything over (trade is with booths; a letter carries one thing). `give` hands things you carry, or coins, to someone here."""
+    wren, ivo = world.agents
+    at(wren, "ruins")
+    at(ivo, "ruins")
+    wren.state.add_item("copper wire", 11, "material", "stripped bright")
+    gear = wren.state.add_creation("Gear Clock", "a clock", None, "sound", {"capabilities": {}, "quirks": []}, {})
+    r = await use(wren, "give", to="Ivo", item="copper wire", quantity=4)
+    assert r.text == "you hand Ivo 4 x copper wire" and not r.followup
+    assert wren.state.find_item("copper wire")[0]["qty"] == 7 and ivo.state.find_item("copper wire")[0]["qty"] == 4
+    assert ivo.state.find_item("copper wire")[0]["description"] == "stripped bright"
+    r = await use(ivo, "give", to="Wren", coins=6)
+    assert r.text == "you hand Wren 6 coins"
+    assert (wren.state.coins(), ivo.state.coins()) == (16, 4)                                     # a purse each
+    r = await use(wren, "give", to="Ivo", item="copper wire", quantity=2, coins=3)
+    assert r.text == "you hand Ivo 2 x copper wire and 3 coins"
+    gave = [{k: e["data"][k] for k in ("to_name", "item", "qty", "coins")} for e in reversed(wren.state.events(30)) if e["kind"] == "gave"]
+    assert gave == [{"to_name": "Ivo", "item": "copper wire", "qty": 4, "coins": 0}, {"to_name": "Ivo", "item": "copper wire", "qty": 2, "coins": 3}]
+    got = [{k: e["data"][k] for k in ("sender", "item", "qty", "coins")} for e in reversed(ivo.state.events(30)) if e["kind"] == "gift"]
+    assert got == [{"sender": "Wren", "item": "copper wire", "qty": 4, "coins": 0}, {"sender": "Wren", "item": "copper wire", "qty": 2, "coins": 3}]
+    assert woke(ivo)
+    for args, why in (({"to": "Ivo"}, "error: give something (an item, or coins)"),
+                      ({"to": "Ivo", "item": "moonstone"}, "error: you don't have 'moonstone'"),
+                      ({"to": "Ivo", "item": "copper wire", "quantity": 99}, "error: you have only 5 x copper wire"),
+                      ({"to": "Ivo", "item": "copper wire", "quantity": 0}, "error: give at least one"),
+                      ({"to": "Ivo", "coins": 999}, "error: you have only 13 coins"),
+                      ({"to": "Ivo", "coins": -5}, "error: give at least one"),
+                      ({"to": "Ivo", "item": "Gear Clock"}, "error: Gear Clock is yours to keep: only things you carry change hands"),
+                      ({"to": "Nobody", "item": "copper wire"}, "error: there's no one called 'Nobody' here to give it to")):
+        r = await use(wren, "give", **args)
+        assert (r.text, r.followup) == (why, True), args
+    at(ivo, "lockup")
+    assert (await use(wren, "give", to="Ivo", coins=1)).text == "error: there's no one called 'Ivo' here to give it to"
+    assert wren.state.coins() == 13 and gear
+
+
+def test_the_world_view_shows_the_other_agents_who_are_here(world):
+    import shutil
+    from app import world_view
+    shutil.copy(W.DEFAULT.parent / "ashfall" / "scene.json", W.active().dir / "scene.json")
+    W._data.cache_clear()
+    wren, ivo = world.agents
+    at(wren, "ruins")
+    at(ivo, "ruins")
+    ivo.state.update_agent(activity="digging")
+    with wren.acting():
+        present = world_view.scene_view(wren.state, wren.s, None)["present"]
+    (him,) = [p for p in present if p["name"] == "Ivo"]
+    assert him["kind"] == "agent" and him["about"] == "a scavenger, digging" and set(him["look"]) >= {"hair", "top"}
+    assert him["look"]["accessory"] == "satchel"                                                   # his own look, from world.json
+    ivo.state.start_session(0, 0, 10, time.time() + 600, kind="walk", target="lockup")                # passing through: not here
+    with wren.acting():
+        assert not [p for p in world_view.scene_view(wren.state, wren.s, None)["present"] if p["name"] == "Ivo"]
+
+
+@pytest.mark.asyncio
+async def test_handing_over_at_its_edges(world):
+    from app import conversation as conv
+    wren, ivo = world.agents
+    at(wren, "ruins")
+    at(ivo, "ruins")
+    wren.state.add_item("old cell", 2, "material", "", {"charge": 3})
+    assert (await use(wren, "give", to="Ivo", item="old cell")).text == "you hand Ivo 1 x old cell"
+    assert ivo.state.find_item("old cell")[0]["attrs"] == {"charge": 3} and ivo.state.find_item("old cell")[0]["description"] == ""
+    assert (await use(wren, "give", to="Ivo", coins=1)).text == "you hand Ivo 1 coin"
+    gave = next(e["data"] for e in wren.state.events(5) if e["kind"] == "gave")
+    got = next(e["data"] for e in ivo.state.events(5) if e["kind"] == "gift")
+    assert (gave["item"], gave["qty"], gave["coins"]) == ("", 0, 1) and (got["item"], got["qty"], got["item_kind"], got["coins"]) == ("", 0, "", 1)
+    assert wren.state.coins("Marta") == 0 and ivo.state.coins() == 11                         # a character's purse starts empty
+    wren.state.log("gave", to_name="Marta", item="x", qty=1, coins=0, text="1 x x")              # to someone else
+    wren.state.log("gift", sender="Ivo", item="y", qty=1, item_kind="", coins=0, text="1 x y")   # not by hand (a visitor's gift)
+    wren.state.log("gift", sender="Marta", item="z", qty=1, item_kind="", coins=0, text="1 x z", source="agent")
+    lines = conv.visit_lines(wren.state, "Ivo", 0)
+    assert lines == ["You: (hand Ivo 1 x old cell)", "You: (hand Ivo 1 coin)"]

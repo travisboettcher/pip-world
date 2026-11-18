@@ -105,3 +105,36 @@ def test_knowing_skips_whoever_isnt_running_and_dates_it(tmp_path):
         assert float(ivo.state.meta("met:tobin")) > 5.0
     finally:
         W.set_active(W.load(Settings()))
+
+
+def test_an_agents_role_chooses_its_guide_pages(tmp_path):
+    """The owner (2026-11-18): the guide can tell an agent its role (a villager's work is inside the walls), as the persona tells who it
+    is. An agent's `role` in world.json; a guide page's `when: role villager|trader`. A page that names no role is everyone's."""
+    from app import guide
+    tobin = {"key": "tobin", "name": "Tobin", "pronoun": "he", "kind": "a water-runner", "role": "villager"}
+    d = pack_dir(tmp_path, agents=[{**WREN, "role": "survivor"}, {**IVO, "persona": "", "role": "trader"}, tobin])
+    (d / "guide" / "village.md").write_text("---\norder: 5\nwhen: role villager|trader\n---\nThe village is yours.\n")
+    (d / "guide" / "shelter.md").write_text("---\norder: 6\nwhen: role survivor and always\n---\nHome is your shelter.\n")
+    s = Settings(world_pack=str(d))
+    pack = W.load(s)
+    assert [a.role for a in pack.agents] == ["survivor", "trader", "villager"]
+    W.set_active(pack)
+    try:
+        seen = {}
+        for a in pack.agents:
+            with W.acting(a, None):
+                seen[a.key] = guide.render([], s, False)
+        assert "The village is yours." in seen["tobin"] and "The village is yours." in seen["ivo"] and "village" not in seen["wren"]
+        assert "Home is your shelter." in seen["wren"] and "shelter" not in seen["tobin"]
+        assert all("You act on your own." in v for v in seen.values())                              # a page for everyone
+    finally:
+        W.set_active(W.load(Settings()))
+    assert guide._condition("role villager|trader") == ("role", "villager|trader")
+    for bad in ("role", "role Villager", "role a b"):
+        with pytest.raises(ValueError, match="role a|b"):
+            guide._condition(bad)
+    for bad in ("Villager", 3, "two words"):
+        d2 = pack_dir(tmp_path / f"r{abs(hash(str(bad)))}", agent={**WREN, "role": bad})
+        with pytest.raises(ValueError, match=re.escape("an agent's `role` is a word in lower case")):
+            W.load(Settings(world_pack=str(d2)))
+    assert W.load(Settings(world_pack=str(pack_dir(tmp_path / "none", agent=WREN)))).agent.role == ""

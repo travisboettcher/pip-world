@@ -39,6 +39,10 @@ def visit_lines(state, name: str, since: float) -> list[str]:
             out.append(f"{name}: {d['text']}")
         elif e["kind"] == "say" and d.get("to_name") == name:
             out.append(f"You: {d['text']}")
+        elif e["kind"] == "gave" and d.get("to_name") == name:                     # things handed over in person (others.hand)
+            out.append(f"You: (hand {name} {d['text']})")
+        elif e["kind"] == "gift" and d.get("source") == "agent" and d.get("sender") == name:
+            out.append(f"{name}: (hands you {d['text']})")
     return out[-VISIT_LINES:]
 
 

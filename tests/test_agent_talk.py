@@ -190,3 +190,31 @@ def test_how_long_a_talk_keeps_them_from_waking_each_other(world):
         wren._wake.clear()
         others.say(ivo.state, wren, "Never talked, so this wakes her.")
     assert wren._wake.is_set()
+
+
+@pytest.mark.asyncio
+async def test_a_talk_can_close_a_deal_and_the_world_turn_after_sees_it_all(world):
+    """Found on Ashfall (2026-11-18): Ivo and Hester struck a deal in a talk; then each world turn, not shown the talk, asked again."""
+    from app import tools as T
+    wren, ivo = world.agents
+    for a in world.agents:
+        a.tools["give"] = T.REGISTRY["give"]
+    ivo.state.add_item("copper wire", 11, "material", "clean")
+    backend = wren.backend
+    backend.script = [says("Four coins for the lot."),
+                      LLMResponse("", [ToolCall("g", "give", {"to": "Wren", "item": "copper wire", "quantity": 11}),
+                                       ToolCall("s", "say", {"text": "Done. There it is."})], Usage(10, 5)),
+                      LLMResponse("", [ToolCall("g", "give", {"to": "Ivo", "coins": 4}), ToolCall("s", "say", {"text": "And your coins.", "goodbye": True})], Usage(10, 5)),
+                      QUIET]
+    opens(ivo, wren, "Copper wire, eleven lengths. Interested?")
+    with wren.acting():
+        await wren.tick("event")
+    assert "give" in backend.calls[1]["tools"]                                                      # offered in a talk
+    assert wren.state.find_item("copper wire")[0]["qty"] == 11 and ivo.state.coins() == 14 and wren.state.coins() == 6
+    hers = backend.calls[2]["messages"][0]["content"]
+    assert "  Ivo: (hands you 11 x copper wire)\n  Ivo: Done. There it is." in hers                 # in the talk, as it happened
+    with wren.acting():
+        await wren.tick("event")                                                                    # her world turn: the whole talk in view
+    p = backend.calls[-1]["messages"][0]["content"]
+    assert "Talking with Ivo (this visit, oldest first):" in p and "  You: (hand Ivo 4 coins)" in p and "  You: And your coins." in p
+    assert "Your conversation with Ivo so far" not in p                                             # the talk, once: not as a visitor's chat too

@@ -684,13 +684,21 @@ class State:
     # --- coins (trade: module_library/trade.py) ----------------------------
     START_COINS = 10
 
+    def _purse(self, party: str) -> str:
+        """Whose purse "agent" means: this file's agent's (the world's first agent's is "agent", as before there were several)."""
+        if party != "agent" or not self.s.agent_key or self.s.agent_key == world_pack.load(self.s).agent.key:
+            return party
+        return f"agent:{self.s.agent_key}"
+
     def coins(self, party: str = "agent") -> int:
         with self.lock:
+            party = self._purse(party)
             row = self.db.execute("SELECT coins FROM purses WHERE party = ?", (party,)).fetchone()
-        return row["coins"] if row else (self.START_COINS if party == "agent" else 0)
+        return row["coins"] if row else (self.START_COINS if party == "agent" or party.startswith("agent:") else 0)
 
     def add_coins(self, party: str, delta: int) -> int:
         """Change a purse by `delta` coins (a purse never goes below zero). Returns the new total."""
+        party = self._purse(party)
         with self.lock:
             total = self.coins(party) + int(delta)
             if total < 0:

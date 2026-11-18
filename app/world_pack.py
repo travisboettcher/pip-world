@@ -52,6 +52,7 @@ class Agent:
     persona_file: str = ""         # its persona in the pack, or "" for persona.md
     temperament: tuple = ()        # where its feelings rest: (emotion, 0-100) pairs over the engine's baselines (emotions.baseline)
     knows: tuple = ()              # the other agents it already knows when the world starts (neighbours), by key; the rest it meets by chance
+    role: str = ""                 # what it does in this world (a word): guide pages may be for a role (`when: role villager`)
 
     @property
     def home_place(self) -> dict:
@@ -236,11 +237,14 @@ def _agent(d: Path, a, bad) -> Agent:
     if not isinstance(rest, dict) or any(k not in NAMES or not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 100
                                          for k, v in rest.items()):
         raise bad(f"an agent's `temperament` is {{\"baseline\": {{emotion: 0-100}}}}, emotions among {', '.join(NAMES)}")
+    role = a.get("role", "")
+    if not isinstance(role, str) or (role and not KEY.match(role)):
+        raise bad("an agent's `role` is a word in lower case")
     knows = a.get("knows", [])
     if not isinstance(knows, list) or not all(isinstance(k, str) for k in knows):
         raise bad("an agent's `knows` lists other agents of this world by key")
     return Agent(name, pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""), tuple(look.items()), key,
-                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows))
+                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows), role)
 
 
 @lru_cache(maxsize=8)

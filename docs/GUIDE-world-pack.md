@@ -65,6 +65,9 @@ baselines (joy 45, sadness 15, anger 8, fear 10, trust 55, disgust 5, surprise 1
 higher than another's and a night's sleep brings it back there; its persona says the same in words. And `knows`: the other agents it
 already knows when the world starts, by key (neighbours), so they never meet for the first time; everyone else is met by chance.
 Ashfall's villagers (Hester the cooper, grumpy; Tobin the water-runner, sunny; Sela the herbalist, anxious) know each other this way.
+And (0.61.0) a `role`, a word: what the agent does in this world, as its persona says who it is. A guide page for some roles says so in
+its front matter, `when: role villager|trader`; a page that names no role is everyone's. Ashfall's shelter page is the survivor's,
+its village page the villagers'.
 
 **`persona.md`** (works today; `PERSONA_PATH` overrides it): who the agent is, in the second person, as the agent reads it every tick. Who she is,
 how she talks, what she cares about, what she wants. Not the world's rules: those come from the guide.

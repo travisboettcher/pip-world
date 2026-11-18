@@ -99,6 +99,27 @@ def say(state, other, text: str) -> str:
     return f"said it to {other.identity.name}; {other.identity.they} heard you"
 
 
+def hand(state, other, item: dict | None, qty: int, coins: int) -> str:
+    """Hand another agent here something the agent acting now carries, and/or coins: theirs at once (both remember it). The tool's answer."""
+    from . import talk
+    me = world_pack.active().agent
+    if item:
+        state.take_item(item["id"], qty)
+        other.state.add_item(item["name"], qty, item["kind"], item.get("description", ""), item.get("attrs") or {})
+    if coins:
+        state.add_coins("agent", -coins)
+        other.state.add_coins("agent", coins)
+    what = " and ".join(([f"{qty} x {item['name']}"] if item else []) + ([f"{coins} coin{'' if coins == 1 else 's'}"] if coins else []))
+    name = item["name"] if item else ""
+    state.log("gave", to_name=other.identity.name, item=name, qty=qty if item else 0, coins=coins, text=what)
+    with other.acting():
+        other.state.log("gift", sender=me.name, item=name, qty=qty if item else 0, item_kind=item["kind"] if item else "", coins=coins,
+                        text=what, source="agent")
+    if not talk.lately(state, other):
+        other.request_wake()
+    return f"you hand {other.identity.name} {what}"
+
+
 def post(state, other, text: str, enclosed: dict | None, rng: random.Random | None = None, now: float | None = None) -> None:
     """A letter to another agent, by the world's post: it arrives in POST_HOURS (an item tucked inside goes with it)."""
     now, me, rng = now or time.time(), world_pack.active().agent, rng or random.Random()

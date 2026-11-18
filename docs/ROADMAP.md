@@ -192,6 +192,7 @@ Browser equivalent of `pipchat`, served by the existing service at `/ui/`
     - [x] 0.57.4: the builder runs once a world night as the world and sees every agent
     - [x] 0.59.0: Ashfall's three villagers (agents of their own), with temperaments and neighbours who know each other
     - [x] 0.60.0: talk between agents as a scene (about a sixth of the tokens a line); the diary written at home
+    - [x] 0.61.0: `give` between agents, a purse each, talks kept in view, agents in each other's scenes, guide pages by `role`
     - [ ] 4: the experiment (see Next)
 - [ ] Model escalation (Haiku -> bigger) for hard decisions
 - [ ] If ever public: Authentik, rate limiting, prompt-injection hardening

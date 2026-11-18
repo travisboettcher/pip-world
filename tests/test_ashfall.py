@@ -397,6 +397,7 @@ def test_ashfall_has_five_agents_and_each_has_a_home_and_a_view(tmp_path):
     homes = {a.key: a.home_place.get("key") for a in pack.agents[2:]}
     assert homes == {"hester": "cooperage", "tobin": "loft", "sela": "stillroom"}
     assert all(pack.persona(a).startswith(f"You are {a.name}, ") for a in pack.agents[2:])
+    assert {a.key: a.role for a in pack.agents} == {"wren": "survivor", "ivo": "scavenger", "hester": "villager", "tobin": "villager", "sela": "villager"}
     rests = {a.key: dict(a.temperament) for a in pack.agents}
     assert rests["hester"]["anger"] > rests["sela"].get("anger", 8) and rests["tobin"]["trust"] > rests["hester"]["trust"]   # grumpy, sunny
     assert rests["sela"]["fear"] > rests["tobin"]["fear"] and not rests["wren"] and not rests["ivo"]                         # and anxious
