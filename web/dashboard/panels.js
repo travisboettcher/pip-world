@@ -85,7 +85,7 @@ const emotions = {
 };
 
 // ---- journal ------------------------------------------------------------------------------------------------------------------------
-const SECTIONS = ['diary', 'todo', 'wishlist', 'ambitions', 'learned'];
+const SECTIONS = ['diary', 'todo', 'wishlist', 'ambitions', 'learned', 'calendar'];
 const journal = {
   title: () => 'Journal', wide: true,
   build(card) {
@@ -99,7 +99,8 @@ const journal = {
         onclick: () => { tab = s; store.set('noteTab', s); render(); } }, `${s} (${(notes[s] || []).filter(shown).length})`)));
       const items = (notes[tab] || []).filter(shown).reverse();
       list.replaceChildren(...(items.length ? items.map((m) => h('li', {},
-        h('div', { class: m.status === 'done' ? 'done' : '' }, `#${m.id} ${m.text}`, m.kind && m.kind !== 'thing' ? h('span', { class: 'tag' }, m.kind) : null),
+        h('div', { class: m.status === 'done' ? 'done' : '' }, `#${m.id} ${m.text}`, m.kind && m.kind !== 'thing' ? h('span', { class: 'tag' }, m.kind) : null,
+          m.due_at ? h('span', { class: 'tag' }, `${fmtDay(m.due_at)}${m.place ? ` · ${m.place}` : ''}${m.every ? ' · weekly' : ''}`) : null),
         h('small', {}, fmtDay(m.ts) + (m.status === 'done' ? ` · done${m.outcome ? `: ${m.outcome}` : ''}` : m.status === 'archived' ? ' · archived' : '')
           + (m.edited_at ? ` · edited ${fmtDay(m.edited_at)}` : '')))) : [h('li', { class: 'empty' }, 'nothing here')]));
     };

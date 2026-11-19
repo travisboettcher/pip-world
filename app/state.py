@@ -215,8 +215,8 @@ CREATE TABLE IF NOT EXISTS usage (
 NOTE_IMPORTANCE = {"diary": 4, "learned": 4, "ambitions": 4}  # other notes: 3
 USES_KEPT = 20                                                  # uses of a memory kept for its activation (reminders.py)
 RECALL_INDEX_VERSION = "2"  # bump to rebuild the recall index from stored data on the next start
-SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned")
-RESOLVABLE = ("todo", "wishlist", "ambitions")  # sections whose items can be crossed off
+SECTIONS = ("diary", "todo", "wishlist", "ambitions", "learned", "calendar")   # calendar: commitments with a time (calendar.py)
+RESOLVABLE = ("todo", "wishlist", "ambitions", "calendar")  # sections whose items can be crossed off
 EDITABLE = tuple(sec for sec in SECTIONS if sec != "diary")  # the diary is a record: never rewritten
 
 
@@ -272,6 +272,9 @@ class State:
                 ("memories", "outcome", "TEXT NOT NULL DEFAULT ''"),
                 ("memories", "kind", "TEXT NOT NULL DEFAULT ''"),
                 ("memories", "edited_at", "REAL"),
+                ("memories", "due_at", "REAL"),                          # a calendar entry's time (calendar.py)
+                ("memories", "place", "TEXT NOT NULL DEFAULT ''"),        # ...and where, if anywhere
+                ("memories", "every", "REAL NOT NULL DEFAULT 0"),         # ...and how often it comes round (seconds; 0: once)
                 ("inbox", "sender", "TEXT NOT NULL DEFAULT 'A visitor'"),
                 ("inbox", "gift", "INTEGER NOT NULL DEFAULT 0"),
                 ("characters", "about", "TEXT NOT NULL DEFAULT ''"),
@@ -570,14 +573,15 @@ class State:
             self.db.commit()
 
     # --- memories (the journal) ----------------------------------------
-    def add_memory(self, text: str, section: str = "diary", kind: str = "") -> int:
-        """Write a note; a wish may have a `kind` (see wishes.py)."""
+    def add_memory(self, text: str, section: str = "diary", kind: str = "", due_at: float | None = None, place: str = "",
+                   every: float = 0) -> int:
+        """Write a note; a wish may have a `kind` (see wishes.py), a calendar entry a time, a place and a repeat (calendar.py)."""
         if section not in SECTIONS:
             raise ValueError(f"unknown section {section!r}; options: {list(SECTIONS)}")
         with self.lock:
             now = time.time()
-            cur = self.db.execute(
-                "INSERT INTO memories (ts, text, section, kind) VALUES (?, ?, ?, ?)", (now, text, section, kind))
+            cur = self.db.execute("INSERT INTO memories (ts, text, section, kind, due_at, place, every) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                  (now, text, section, kind, due_at, place, every))
             self._index(f"note:{section}", cur.lastrowid, now, text, commit=False, importance=NOTE_IMPORTANCE.get(section, 3))
             self.db.commit()
             return cur.lastrowid
@@ -599,6 +603,12 @@ class State:
         with self.lock:
             rows = self.db.execute(q, args).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    def update_memory_due(self, memory_id: int, due_at: float) -> None:
+        """A weekly calendar entry, moved on to its next time."""
+        with self.lock:
+            self.db.execute("UPDATE memories SET due_at = ? WHERE id = ?", (due_at, memory_id))
+            self.db.commit()
 
     def resolve_memory(self, memory_id: int, outcome: str = "") -> str:
         """Mark a wishlist/ambition item done. Returns an error string, or '' on success."""

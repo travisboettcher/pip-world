@@ -15,6 +15,7 @@ from . import world_pack
 from . import library as lib
 from . import memory as mem
 from . import builder
+from . import calendar
 from . import layouts
 from . import looks
 from . import modules
@@ -293,6 +294,8 @@ class Agent:
     def check(self) -> None:
         for alert in self.state.apply_decay():
             self.state.log("alert", stat=alert)
+            self.request_wake()
+        if calendar.step(self.state, self.s, self.library):             # time to set off for a commitment (asleep: at waking)
             self.request_wake()
         emo.drift(self.state, self.s)
 
@@ -830,7 +833,7 @@ class Agent:
         learned = self.state.memories("learned", limit=LEARNED_SHOWN)
         if learned:
             lines += ["Things you've learned:"] + [fmt(m) for m in learned]
-        return lines
+        return lines + calendar.lines(self.state, self.s, self.library)       # commitments with a time: what's coming, what's due
 
     def _specs(self) -> list:
         """The tools to offer now: what can be done here, described for here. Mid-walk the agent is nowhere yet, so only what works anywhere."""

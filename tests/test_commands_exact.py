@@ -85,7 +85,7 @@ def test_notes_text(tmp_path):
     assert commands.answer(st, s, "/notes") == (
         f"Notes\nTodo:\n#{a} wind the clock\nWishlist:\n#{b} buy brass\nAmbitions:\n(none)")
     assert commands.answer(st, s, "/notes   DIARY ") == "Notes\nDiary:\n#3 a diary line"
-    assert commands.answer(st, s, "/notes bogus") == "No section 'bogus'. Options: diary, todo, wishlist, ambitions, learned."
+    assert commands.answer(st, s, "/notes bogus") == "No section 'bogus'. Options: diary, todo, wishlist, ambitions, learned, calendar."
 
 
 def test_notes_shows_only_the_ten_newest(tmp_path):

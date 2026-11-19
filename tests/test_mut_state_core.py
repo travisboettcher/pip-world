@@ -482,7 +482,7 @@ def test_resolve_memory_outcomes(tmp_path, clock):
     assert [h["text"] for h in st.recall("shed")] == ["paint the shed (done)"]
     assert st.resolve_memory(999) == "no note #999"
     err = st.resolve_memory(d)
-    assert err == f"note #{d} is in diary; only todo/wishlist/ambitions items can be resolved"
+    assert err == f"note #{d} is in diary; only todo/wishlist/ambitions/calendar items can be resolved"
     assert st.memory(d)["status"] == "open"
 
 

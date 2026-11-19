@@ -303,4 +303,4 @@ def test_edit_memory_refusals_explain_themselves(tmp_path, clock):
     st.resolve_memory(todo, "done")
     assert st.edit_memory(todo, "x") == (f"note #{todo} is already done", "")
     assert st.edit_memory(999, "x") == ("no note #999", "")
-    assert st.resolve_memory(diary) == f"note #{diary} is in diary; only todo/wishlist/ambitions items can be resolved"
+    assert st.resolve_memory(diary) == f"note #{diary} is in diary; only todo/wishlist/ambitions/calendar items can be resolved"

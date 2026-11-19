@@ -26,6 +26,7 @@ Autonomous AI agent ("Pip") in a small virtual world, started 2026-10-29 as an e
       as the engine's panels, a pack's `dashboard.json` choosing tabs and adding its own; Everyone (each agent side by side, what passes
       between them) and the world's doings (the builder's nights, failing module calls). On Ashfall; Pip's world gets it with the move
 - [ ] The map shows only the agent whose page it is; with several agents it could show everyone
+- [x] A calendar in the journal (owner, 2026-11-19; built 0.63.0, [DESIGN-calendar.md](DESIGN-calendar.md)): commitments with a time, woken to keep them
 - [ ] Multiple agents, release 4: watch Ashfall to about 2026-11-22, fix what it shows, then the owner decides about moving Pip's world
       to the main line (its deployment's backups must take the world's file, `agent-world.db`, as well as `agent.db`)
 - [ ] Is the builder proposing yet? 0.57.4 shows it every agent's wishes with how long they've been open, their oldest to-dos and

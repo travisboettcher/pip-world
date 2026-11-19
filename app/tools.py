@@ -29,6 +29,7 @@ from .toolnames import ALIASES, canonical
 from .config import Settings
 from .llm.base import ToolSpec
 from .memory import STOP_WORDS
+from . import calendar
 from .state import RESOLVABLE, SECTIONS, State, clamp
 from .text import clip, span
 from . import world as world_content
@@ -448,10 +449,14 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
       "Write in your journal. Sections: diary (written at home: rare, important moments only, discoveries and your reflections on them, visitors), todo (concrete tasks "
       "you plan to do soon), wishlist (anything you wish for: something to have, something you'd like to do, something you wish you could do but can't, "
       "something you wish you understood), ambitions (bigger goals you want to work toward over time), "
-      "learned (facts or skills you picked up). Entries are remembered across wakes.",
+      "learned (facts or skills you picked up), calendar (a commitment with a time: somewhere to be, someone to meet; give `when`, "
+      "and `where` if it's somewhere; it reminds you when it's time). Entries are remembered across wakes.",
       _obj({"section": {"type": "string", "enum": list(SECTIONS)},
             "text": {"type": "string", "description": "1-2 sentences"},
-            "kind": {"type": "string", "enum": list(wishes.KINDS), "description": "for the wishlist: a thing to have, an activity to do, an ability you wish you had, or an idea you wish you understood"}},
+            "kind": {"type": "string", "enum": list(wishes.KINDS), "description": "for the wishlist: a thing to have, an activity to do, an ability you wish you had, or an idea you wish you understood"},
+            "when": {"type": "string", "description": "for the calendar: like 'Thursday 16:30', 'tomorrow morning', 'Friday 4:30 pm'"},
+            "where": {"type": "string", "description": "for the calendar, optional: the place"},
+            "repeat": {"type": "string", "enum": ["weekly"], "description": "for the calendar, optional: every week"}},
            ["section", "text"]))
 async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
     section = args.get("section", "diary")
@@ -466,10 +471,38 @@ async def note_to_self(ctx: ToolContext, args: dict) -> ToolResult:
     if section == "diary" and places.present_at(ctx.state) != places.home_key():   # the owner (2026-11-18): writing up the day is done at home
         return ToolResult("not written: you write your diary at home. Jot a to-do or something learned now if it can't wait, and write "
                           "the day up when you're back", followup=True)
+    if section == "calendar":
+        return _calendar_entry(ctx, text, args)
     if problem := check_note(ctx, section, text):
         return ToolResult(f"not written: {problem}")
+    if section == "todo" and (booked := next((m for m in calendar.open_items(ctx.state) if overlapping(text, m["text"])), None)):
+        return ToolResult(f"not written: that's in your calendar (#{booked['id']}), which will remind you when it's time")
     ctx.state.add_memory(text, section, kind)
     return ToolResult(f"wrote in {section}")
+
+
+def _calendar_entry(ctx: "ToolContext", text: str, args: dict) -> ToolResult:
+    """A commitment with a time (calendar.py): when, maybe where, maybe every week."""
+    if not args.get("when"):
+        return ToolResult("error: a calendar entry needs `when` (like 'Thursday 16:30' or 'tomorrow morning')", followup=True)
+    due = calendar.parse(args["when"], time.time())
+    if due is None:
+        return ToolResult(f"error: I can't read {args['when']!r} as a time to come (try 'Thursday 16:30', 'tomorrow morning' or "
+                          "'2026-11-24 09:15')", followup=True)
+    place = ""
+    if args.get("where"):
+        place = places.find(ctx.state, ctx.library, args["where"]) or ""
+        if not place:
+            known = ", ".join(places.available(ctx.state, ctx.library))
+            return ToolResult(f"error: you don't know a place called {args['where']!r} (you know: {known})", followup=True)
+    if args.get("repeat") not in (None, "", "weekly"):
+        return ToolResult("error: repeat is weekly, or leave it out", followup=True)
+    weekly = args.get("repeat") == "weekly"
+    if problem := check_note(ctx, "calendar", text):
+        return ToolResult(f"not written: {problem}")
+    ctx.state.add_memory(text, "calendar", due_at=due, place=place, every=calendar.WEEK if weekly else 0)
+    return ToolResult(f"in your calendar: {calendar.say_when(due)}" + (f", {places.label(place) if place != places.home_key() else 'at home'}"
+                      .replace(", the", ", at the") if place else "") + (", every week" if weekly else ""))
 
 
 @tool("resolve_note",

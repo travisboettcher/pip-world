@@ -46,7 +46,7 @@ def test_notes_endpoint(tmp_path):
     with TestClient(create_app(s, FakeBackend())) as c:
         c.app.state.agent.state.add_memory("a wish", "wishlist")
         notes = c.get("/notes").json()
-        assert set(notes) == {"diary", "todo", "wishlist", "ambitions", "learned"}
+        assert set(notes) == {"diary", "todo", "wishlist", "ambitions", "learned", "calendar"}
         assert notes["wishlist"][0]["text"] == "a wish"
 
 
