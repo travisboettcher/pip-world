@@ -29,7 +29,10 @@ def _coastal(words: tuple) -> re.Pattern:
 
 
 def seed(state) -> int:
-    """The world's seed: made once, then the same forever, so the map always draws the same land."""
+    """The world's seed: made once, then the same forever, so the map always draws the same land. It is the world's, kept by its
+    first agent (looks.keeper), whoever asks: another agent's own seed from before is never used."""
+    from . import looks
+    state = looks.keeper(state)
     have = state.meta("world_seed")
     if have:
         return int(have)
@@ -59,7 +62,17 @@ def map_view(state, settings, library, now: float | None = None) -> dict:
     sess = state.session()
     if snap["agent"]["walking"] and sess:
         snap["agent"]["walking"].update(started_at=sess["started_at"], ends_at=sess["ends_at"])
-    return {**snap, "seed": seed(state), "now": moment(state, settings, now)}
+    return {**snap, "seed": seed(state), "land": land(state, rows), "now": moment(state, settings, now)}
+
+
+def land(state, rows: dict) -> dict:
+    """What the map's land is drawn from, the same for every agent (found on Ashfall, 2026-11-20: each agent's map had its own land):
+    the world's seed, every place's spot, known to this agent or not, which are by the water, and which are someone's home."""
+    from . import others
+    homes = sorted({places.home_key(a.identity) for a in others.everyone()} or {places.home_key()})
+    spots = [{"key": k, "x": x, "y": y, "coastal": k not in homes and bool(coastal().search(_words(state, k, rows)))}
+             for k, (x, y) in state.map_positions().items()]
+    return {"seed": seed(state), "spots": spots, "homes": homes}
 
 
 def moment(state, settings, now: float) -> dict:

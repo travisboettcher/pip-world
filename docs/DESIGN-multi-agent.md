@@ -163,6 +163,10 @@ Each agent has a purse of its own (the world's first agent's is `agent`, as befo
 agent's coins were one purse. After a talk, each world turn is shown it (the talk with whoever is here), as after a talk with a
 character; without that, Ivo asked Hester his question again the moment it ended. And a scene shows the other agents who are there.
 
+The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
+(kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it
+knows and paints only where it has walked.
+
 ## Decisions (the owner, 2026-11-15)
 - **One process**, supervisor and actors in shape (above); separate processes maybe later.
 - **Minds are private.** An agent's diary, notes, emotions, reflections and memories are its own: no other agent and no module reads

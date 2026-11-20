@@ -19,7 +19,10 @@ export function keyHash(key) { let h = 2166136261; for (const ch of key) h = Mat
 
 /* ---------- the land ---------- */
 export function land(data) {
-  const s = data.seed, ps = data.places;
+  // the land is the world's (data.land: its seed and every place's spot, the same for every agent); a server from before sends only
+  // the places the agent knows
+  const L = data.land || { seed: data.seed, spots: data.places, homes: [data.home] };
+  const s = L.seed, ps = L.spots;
   const cx = ps.reduce((a, p) => a + p.x, 0) / ps.length, cy = ps.reduce((a, p) => a + p.y, 0) / ps.length;
   const reach = Math.max(20, ...ps.map((p) => Math.hypot(p.x - cx, p.y - cy)));
   const coasts = ps.filter((p) => p.coastal && Math.hypot(p.x, p.y) > 0.5).map((p) => { const r = Math.hypot(p.x, p.y); return { p, ux: p.x / r, uy: p.y / r }; });
@@ -33,7 +36,7 @@ export function land(data) {
         if (along > 2) h -= Math.min(0.6, (along - 2) * 0.035) * Math.exp(-(side * side) / (2 * width * width));
       }
       for (const p of ps) {                                     // every place on land, in low, gentle country (peaks stand away from where people live)
-        const sigma = p.key === data.home ? 9 : 5, k = Math.exp(-(((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * sigma * sigma)));
+        const sigma = L.homes.includes(p.key) ? 9 : 5, k = Math.exp(-(((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * sigma * sigma)));
         h = h * (1 - k) + Math.min(0.22, Math.max(h, p.coastal ? 0.05 : 0.09)) * k;
       }
       return h;

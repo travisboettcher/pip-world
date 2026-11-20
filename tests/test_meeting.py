@@ -340,3 +340,29 @@ async def test_handing_over_at_its_edges(world):
     wren.state.log("gift", sender="Marta", item="z", qty=1, item_kind="", coins=0, text="1 x z", source="agent")
     lines = conv.visit_lines(wren.state, "Ivo", 0)
     assert lines == ["You: (hand Ivo 1 x old cell)", "You: (hand Ivo 1 coin)"]
+
+
+def test_the_land_is_the_worlds_and_looks_the_same_to_everyone(world):
+    """Found on Ashfall (2026-11-20): each agent's map drew different land (mountains on one, none on another). Its seed was each
+    agent's own, and the land was shaped by the places that agent knew. The land is the world's: its seed and every place's spot."""
+    from app import world_view
+    wren, ivo = world.agents
+    world.check()                                                                           # as the world does: every place gets its spot
+    with ivo.acting():
+        ivo.state.set_meta(world_seed="777")                                                # a seed of his own, from before
+        his = world_view.map_view(ivo.state, ivo.s, None)
+    with wren.acting():
+        hers = world_view.map_view(wren.state, wren.s, None)
+    assert hers["land"] == his["land"] and hers["seed"] == his["seed"] == hers["land"]["seed"] != 777
+    assert {s["key"] for s in hers["land"]["spots"]} == {"shelter", "ruins", "lockup"}       # every place in the world, known or not
+    assert {p["key"] for p in hers["places"]} == {"shelter", "ruins"}                       # what she knows is still what she's shown
+    assert sorted(hers["land"]["homes"]) == ["lockup", "shelter"]
+
+
+def test_one_agents_land_is_its_own_places_as_before(tmp_path):
+    from app import world_view
+    from tests.test_projects import make
+    s, st, gm, agent = make(tmp_path)
+    m = world_view.map_view(st, s, None)
+    assert [(p["key"], p["x"], p["y"], p["coastal"]) for p in m["places"]] == [(p["key"], p["x"], p["y"], p["coastal"]) for p in m["land"]["spots"]]
+    assert m["land"]["homes"] == [m["home"]] and m["land"]["seed"] == m["seed"]
