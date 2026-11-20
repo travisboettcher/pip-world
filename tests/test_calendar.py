@@ -3,7 +3,7 @@ four" at Oriel's as a to-do for weeks, restating it every wake and keeping it on
 morning with nothing to bring it back. A commitment has a time (the engine reads "Thursday 16:30"), maybe a place and a weekly repeat;
 the agent sees what's coming with when to set off, is woken when it's time to go, and the engine says whether it was kept."""
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -146,8 +146,10 @@ def test_the_calendar_at_its_edges(tmp_path):
     assert "(you know: " in r(section="calendar", text="x", when="tomorrow 9:00", where="Atlantis").text
     out = r(section="calendar", text="Gather at the woods", when="tomorrow 9:00", where="woods", repeat="")
     assert out.text.endswith(", at the woods") and not out.followup
-    assert r(section="calendar", text="Think quietly", when="tomorrow 10:00").text == "in your calendar: Friday 20 November, 10:00 am"   # no place
-    assert r(section="calendar", text="Sit by the fire", when="tomorrow 11:00").text.endswith("November, 11:00 am")
+    tomorrow = date.today() + timedelta(days=1)                                    # the tool reads "tomorrow" from the real clock, so the expected day must too
+    assert r(section="calendar", text="Think quietly", when="tomorrow 10:00").text == \
+        f"in your calendar: {tomorrow:%A} {tomorrow.day} {tomorrow:%B}, 10:00 am"   # no place
+    assert r(section="calendar", text="Sit by the fire", when="tomorrow 11:00").text.endswith(f"{tomorrow:%B}, 11:00 am")
     assert r(section="calendar", text="Gather at the woods", when="tomorrow 9:00").text.startswith("not written: too close to your note")
     rows = {m["text"]: m for m in st.memories("calendar")}
     assert rows["Gather at the woods"]["every"] == 0 and rows["Think quietly"]["place"] == "" and set(rows) == {"Gather at the woods", "Think quietly", "Sit by the fire"}
