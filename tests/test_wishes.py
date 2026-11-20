@@ -141,9 +141,10 @@ def test_a_wish_in_the_prompt_carries_the_hint_only_for_things(tmp_path):
     st.add_memory("A finer set of needle files for the gears.", "wishlist", "thing")
     st.add_memory("To understand why the needle files I have chatter.", "wishlist", "idea")
     st.add_memory("To work the lathe like a master.", "wishlist", "ability")
+    now = time.time()
+    publish(st, s, now)                                                                                   # the journal reads today's prices (it uses the real clock), so publish today's first
     lines = [l for l in agent._journal() if l.startswith("- #")]
-    publish(st, s, time.time())
-    price = market_price(st, s, "Brygdon", "needle file", time.time())
+    price = market_price(st, s, "Brygdon", "needle file", now)
     assert lines[0].endswith(f"  [you could try: Brygdon sells needle file ({price} coins)]")
     assert "you could try" not in lines[1] and "you could try" not in lines[2]
     st.add_memory("Some needle file stock.", "wishlist")                                                  # an older note with no kind is a thing
