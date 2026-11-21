@@ -102,7 +102,10 @@ async def test_a_talk_ends_on_silence_on_enough_lines_or_when_someone_runs_out(w
 
 
 @pytest.mark.asyncio
-async def test_after_a_talk_their_words_are_heard_without_waking_each_other_for_a_while(world):
+async def test_after_a_talk_their_words_wait_without_waking_and_resume_the_talk_as_a_scene(world):
+    """Found on Ashfall (2026-11-20): every talk ran to its line limit, then went on a line per world turn (about 15,000 tokens a line):
+    140 such lines in a day. The owner: let the talk continue rather than the world turns carry it. Words left after a talk still don't
+    wake the other for a while, but when the other's turn comes, they pick the talk up again as a scene."""
     wren, ivo = world.agents
     wren.backend.script = [says("Bye.", goodbye=True)]
     opens(ivo, wren, "Hello.")
@@ -111,12 +114,26 @@ async def test_after_a_talk_their_words_are_heard_without_waking_each_other_for_
     wren._wake.clear()
     assert opens(ivo, wren, "One more thing.") == "said it to Wren; she heard you"
     assert not wren._wake.is_set() and [m["text"] for m in wren.state.pending_inbox()] == ["One more thing."]
-    wren.backend.script = [QUIET]
+    calls = len(wren.backend.calls)
+    wren.backend.script = [says("Go on."), says("Later, then.", goodbye=True)]
     with wren.acting():
-        await wren.tick("timer")                                                              # within the while: a world turn, no scene
-    assert "Woke because" in wren.backend.calls[-1]["messages"][0]["content"]
-    wren.state.set_meta(**{"talked:ivo": str(time.time() - talk.AGENT_QUIET_MINUTES * 60 - 1)})
-    assert talk.agent_waiting(wren.state, [{"source": "agent", "sender": "Ivo"}]) is ivo           # after it: a scene again
+        await wren.tick("timer")                                                              # her turn: the talk again, not a world turn
+    assert all("Woke because" not in c["messages"][0]["content"] for c in wren.backend.calls[calls:])
+    assert [e["data"]["ended"] for e in wren.state.events(30) if e["kind"] == "talk"] == ["Ivo", "Wren"]
+    assert wren.state.pending_inbox() == []
+    assert talk.agent_waiting(wren.state, [{"source": "agent", "sender": "Ivo"}]) is ivo           # lately or not, words here are a talk
+
+
+@pytest.mark.asyncio
+async def test_a_long_talk_runs_to_its_goodbye(world):
+    """Found on Ashfall (2026-11-20): no talk between agents ended on a goodbye; all stopped at eight lines, mid-task."""
+    wren, ivo = world.agents
+    wren.backend.script = [says(f"Line {i}.") for i in range(14)] + [says("That's all.", goodbye=True)]
+    opens(ivo, wren, "Got a minute?")
+    with wren.acting():
+        await wren.tick("event")
+    assert [e["data"] for e in wren.state.events(80) if e["kind"] == "talk"][0] == {"name": "Ivo", "turns": 15, "ended": "Wren", "agent": True}
+    assert talk.AGENT_LINES == 20
 
 
 @pytest.mark.asyncio
@@ -242,3 +259,35 @@ async def test_a_talk_lifts_each_once_not_every_line(world, monkeypatch):
     with wren.acting():
         wren.receive("A visitor's hello.", "Morgan")                                           # a visitor still lifts, as before
     assert [r["cause"] for r in wren.state.db.execute("SELECT cause FROM emotion_log WHERE emotion = 'joy' ORDER BY rowid")][-1] == "Morgan wrote"
+
+
+@pytest.mark.asyncio
+async def test_talking_with_someone_lifts_once_a_day_not_every_talk(world):
+    """Found on Ashfall (2026-11-20): with a talk every half hour, each lifting joy and trust, grumpy Hester ended the days at joy 39,
+    71, 68 (her baseline 30) and trust 29, 48, 64. A day's company with someone lifts once; how a talk felt is the agent's own `feel`."""
+    def joys(agent):
+        return [r["delta"] for r in agent.state.db.execute("SELECT delta FROM emotion_log WHERE emotion = 'joy' AND cause = 'talked with Ivo'")]
+
+    wren, ivo = world.agents
+    for _ in range(2):
+        wren.backend.script = [says("Morning."), says("Bye.", goodbye=True)]
+        opens(ivo, wren, "Hello.")
+        with wren.acting():
+            await wren.tick("event")
+    assert joys(wren) == [4.0] and wren.state.meta("company:ivo") == time.strftime("%Y-%m-%d")
+    talks = [e["data"] for e in wren.state.events(40) if e["kind"] == "talk"]
+    assert [t.get("again", False) for t in talks] == [True, False]                       # newest first
+    wren.state.set_meta(**{"company:ivo": "2000-01-01"})                                      # a new day
+    wren.backend.script = [says("Morning."), says("Bye.", goodbye=True)]
+    opens(ivo, wren, "Hello.")
+    with wren.acting():
+        await wren.tick("event")
+    assert joys(wren) == [4.0, 4.0]
+
+
+def test_how_a_talk_is_appraised():
+    from app import emotions as emo
+    assert emo._appraisal("talk", {"agent": True, "name": "Ivo"}) == (emo.TALKED, "talked with Ivo")
+    assert emo._appraisal("talk", {"agent": True}) == (emo.TALKED, "talked with someone")
+    assert emo._appraisal("talk", {"agent": True, "again": True, "name": "Ivo"}) == ({}, "")              # already counted today
+    assert emo._appraisal("talk", {"name": "Marta", "turns": 3, "ended": "agent"}) == ({}, "")          # with a character: no lift

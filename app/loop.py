@@ -585,11 +585,12 @@ class Agent:
                 speaker, listener = listener, speaker
         finally:
             other.talking.release()
-        now = time.time()
+        now, day = time.time(), time.strftime("%Y-%m-%d")
         for a, b in ((self, other), (other, self)):
-            a.state.set_meta(**{f"talked:{b.identity.key}": str(now)})
+            again = a.state.meta(f"company:{b.identity.key}") == day                    # their company already counted today
+            a.state.set_meta(**{f"talked:{b.identity.key}": str(now), f"company:{b.identity.key}": day})
             with a.acting():
-                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended, agent=True)
+                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended, agent=True, **({"again": True} if again else {}))
             a.request_wake()                                                 # each world turn takes it from here
         return True
 

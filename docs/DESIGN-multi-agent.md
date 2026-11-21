@@ -143,13 +143,13 @@ data and store its agent-scoped modules had; later agents start fresh.
    `say` are no longer logged as a second line, setting off somewhere cuts a gathering short, and the diary is written at home.
 
 ## Talk between agents (0.60.0)
-When an agent's turn finds words from another agent who is here (its inbox, `source: agent`), and they haven't talked lately, the turn
+When an agent's turn finds words from another agent who is here (its inbox, `source: agent`), the turn
 runs the talk as one scene (`Agent._talk_with`): the two speak in turn, the listener first, each from the talk scene's small prompt,
 its own (its persona, what it thinks of the other, its to-dos about them, the talk so far as it heard it). A line is logged as the
 speaker's `say` and arrives in the listener's log at once (`inbox`, consumed), waking no one. It ends on a goodbye, a silence,
 `AGENT_LINES` lines in all, either running out of budget, or one leaving; both log `talk` and have a world turn. For
 `AGENT_QUIET_MINUTES` after (`talked:<key>`), words between them are heard but don't wake the listener, so a world turn doesn't start
-the ping-pong again. Each agent holds a lock (`talking`) for its turns, and a scene holds the other's; if the other is mid-turn for
+the ping-pong again; when the listener's turn comes, they pick the talk up again as a scene. Each agent holds a lock (`talking`) for its turns, and a scene holds the other's; if the other is mid-turn for
 `LOCK_WAIT` seconds, the words are answered the old way. Minds stay private: each line comes from its speaker's own State.
 
 Meeting someone, an agent learns where they live (0.60.0; found when Sela promised to look at Wren's vent and had no way to get there):
@@ -162,6 +162,18 @@ a talk scene too, where it shows in the talk as it happened ("Ivo: (hands you 11
 Each agent has a purse of its own (the world's first agent's is `agent`, as before; another's `agent:<key>`): until 0.61.0 every
 agent's coins were one purse. After a talk, each world turn is shown it (the talk with whoever is here), as after a talk with a
 character; without that, Ivo asked Hester his question again the moment it ended. And a scene shows the other agents who are there.
+
+Talks run longer, and go on as talks (0.64.0; found on Ashfall, 2026-11-20): at 8 lines every talk between agents was cut off
+mid-task (none ended on a goodbye), and the two went on a line per world turn, about 15,000 tokens a line where a scene's line is
+about 2,000 (140 such lines that day). The owner: let the conversation continue instead. `AGENT_LINES` is 20, and words left
+after a talk resume it as a scene, however lately they talked. A talk lifts feelings (`emotions.TALKED`) the first time each day with
+each other agent (`company:<key>`), not every talk: with a talk every half hour, grumpy Hester's joy and trust had settled at twice
+her temperament. The same day, the villagers: a character is the world's, so what it has heard (`companions.hear`) records which
+agent said it, and only that agent's beat answers or drops it (every other agent's beat had wiped Tobin's questions to Jun, far from
+the gate, as if he had left); a talk scene with characters is with the one the agent spoke to last this visit, else the first who
+spoke (it had always been the first one there, Marta). And another agent's home is laid out by its owner only (`layouts._targets`):
+seen from next door it reads differently ("home" to one, "the stillroom" to the other), so each home was rebuilt every beat, about
+20,000 times a day.
 
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it

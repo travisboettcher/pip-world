@@ -25,4 +25,19 @@ def conversation(state, name: str, verbatim_since: float | None = None) -> list[
 
 
 def hear(state, ch: dict, text: str) -> None:
-    state.update_character(ch["id"], heard=(ch["heard"] + [{"ts": time.time(), "text": text}])[-5:])
+    """The agent acting now says something to them, to be answered. With several agents a character is the world's, so each line
+    remembers who said it."""
+    line = {"ts": time.time(), "text": text, "by": world_pack.active().agent.key}
+    state.update_character(ch["id"], heard=(ch["heard"] + [line])[-5:])
+
+
+def heard(ch: dict) -> list[dict]:
+    """What the agent acting now said to them that is still waiting for an answer."""
+    me = world_pack.active().agent.key
+    return [h for h in ch["heard"] if h.get("by", me) == me]
+
+
+def not_mine(ch: dict) -> list[dict]:
+    """What other agents said to them, still waiting: not the agent acting now's to answer or to drop."""
+    me = world_pack.active().agent.key
+    return [h for h in ch["heard"] if h.get("by", me) != me]

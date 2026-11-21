@@ -17,6 +17,7 @@ import time
 from . import invented_places as invented
 from . import places
 from . import conversation as conv
+from . import companions as comp
 from .companions import conversation as talk_lines
 from .memory import ago
 from .text import brief, clip
@@ -237,7 +238,7 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     consumes. Logged as a `companion` event; returns what the model said (with `goodbye` when `closing` asks for it), or None."""
     where = places.place_of(state, ch)
     visit = state.meta("arrived_at") or ""
-    answering = bool(ch["heard"])
+    answering = bool(comp.heard(ch))
     recent = [t for t in ch["replies"] if now - t < 3600]
     a = state.agent()
     situation = f"{world_pack.active().agent.name} seems {a['mood']}."
@@ -251,13 +252,13 @@ async def reply(state, settings, gm, ch: dict, now: float, library=None, closing
     can_give = _can_give(state, settings, now)
     ask = dict(told=ch["told"], agenda=agenda(ch, now), at=at, can_give=can_give, role=ch["kind"], **_places(state, settings, library, ch),
                **({"closing": True} if closing else {}))
-    heard = [h["text"] for h in ch["heard"]] if answering else []
+    heard = [h["text"] for h in comp.heard(ch)] if answering else []
     out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, **ask) if gm else None
     mine = [e["data"]["text"] for e in state.events(200) if e["kind"] == "companion" and e["data"].get("name") == ch["name"]][:REPEAT_LOOKBACK]
     if out and conv.repeats(out["text"], mine):                 # one more try at saying something new
         out = await gm.speak_in_person(ch["name"], ch["persona"], ch["life"], talk, heard, situation, again=True, **ask) or out
     state.set_meta(**{f"greeted:{ch['id']}": visit})
-    fields = {**({"heard": [], "replies": recent + [now]} if answering else {}),
+    fields = {**({"heard": comp.not_mine(ch), "replies": recent + [now]} if answering else {}),
               **({**_told(ch, out), **_happened(ch, now)} if out else {})}
     if out and at:                              # met out in the world, their life moves on in talk
         fields.update(_news(fields.get("life", ch["life"]), out))
@@ -284,20 +285,20 @@ async def _visits(state, settings, gm, now: float, library=None) -> bool:
             continue                                            # a thing that talks lives nowhere: it talks through its workings
         where = places.place_of(state, ch)
         if not where or here != where:
-            if ch["heard"]:
-                state.update_character(ch["id"], heard=[])  # The agent left before they could answer
+            if comp.heard(ch):
+                state.update_character(ch["id"], heard=comp.not_mine(ch))  # The agent left before they could answer
             continue
         visit = state.meta("arrived_at") or ""
         if visit and state.meta("talk_scene") == visit:
             continue                                            # a talk scene is answering for them (talk.py)
         greeting = state.meta(f"greeted:{ch['id']}") != visit and greeted < GREETERS
         recent = [t for t in ch["replies"] if now - t < 3600]
-        answering = bool(ch["heard"]) and len(recent) < settings.companion_replies_per_hour
+        answering = bool(comp.heard(ch)) and len(recent) < settings.companion_replies_per_hour
         if not greeting and not answering:
             continue
         greeted += state.meta(f"greeted:{ch['id']}") != visit
-        if not answering and ch["heard"]:
-            ch = {**ch, "heard": []}                            # over the hour's limit: a greeting only
+        if not answering and comp.heard(ch):
+            ch = {**ch, "heard": comp.not_mine(ch)}                            # over the hour's limit: a greeting only
         if await reply(state, settings, gm, ch, now, library):
             wake = True
     return wake

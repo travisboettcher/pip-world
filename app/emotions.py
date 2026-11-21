@@ -26,7 +26,7 @@ DYADS = {frozenset(("joy", "trust")): "warmth", frozenset(("trust", "fear")): "s
          frozenset(("disgust", "anger")): "contempt", frozenset(("anger", "anticipation")): "aggression",
          frozenset(("anticipation", "joy")): "optimism"}
 BLEND_MIN_EXCESS = 8
-TALKED = {"joy": 4, "trust": 2, "sadness": -3}   # a talk with another agent, once (the owner, 2026-11-18: not every line, as a visitor's)
+TALKED = {"joy": 4, "trust": 2, "sadness": -3}   # a talk with another agent, once (the owner, 2026-11-18: not every line, as a visitor's), and once a day with each (2026-11-20)
 
 def alert_feelings(stat: str) -> dict:
     """How an alert on a stat moves the emotions (the stat's `alert_feelings` in the pack's stats.json)."""
@@ -96,8 +96,8 @@ def _appraisal(kind: str, data: dict) -> tuple[dict, str]:
         return {}, ""
     if kind == "inbox":
         return {"joy": 5, "trust": 4, "sadness": -6}, f"{data.get('sender', 'someone')} wrote"
-    if kind == "talk" and data.get("agent"):                # a talk with another agent, as company; how it felt is the agent's own `feel`
-        return dict(TALKED), f"talked with {data.get('name', 'someone')}"
+    if kind == "talk" and data.get("agent"):                # a talk with another agent, as company, once a day; how it felt is the agent's own `feel`
+        return ({}, "") if data.get("again") else (dict(TALKED), f"talked with {data.get('name', 'someone')}")
     if (data.get("read") or {}).get("feel"):             # a module's event, and how it says it moves the agent (modules.py, `event.read`)
         return dict(data["read"]["feel"]), str(data["read"].get("line") or kind)[:80]
     if kind == "creation_made":

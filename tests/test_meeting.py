@@ -238,6 +238,86 @@ async def test_each_place_is_laid_out_by_one_agent_and_not_again_every_beat(worl
 
 
 @pytest.mark.asyncio
+async def test_what_a_villager_heard_from_one_agent_waits_for_them_whatever_the_others_do(world):
+    """Found on Ashfall (2026-11-20): Tobin asked Jun at the gate ten times and was told "it will answer in a moment", but the villagers
+    are the world's, and every other agent's beat, finding Jun not where it was, wiped what Jun had heard as if Tobin had walked off."""
+    import app.neighbors as nb
+    wren, ivo = world.agents
+    at(wren, "ruins")
+    at(ivo, "lockup")
+    wren.state.add_character("Marta", "villager", None, "x", 60, 0, place="ruins")
+    r = await use(wren, "say", to="Marta", text="What does the gate pay for?")
+    assert r.text.startswith("said it to Marta")
+    with ivo.acting():
+        await nb._visits(ivo.state, ivo.s, None, time.time())                     # Ivo's beat, far from her
+    with wren.acting():
+        heard = wren.state.find_character("Marta")["heard"]
+    assert [(h["text"], h["by"], round(h["ts"])) for h in heard] == [("What does the gate pay for?", "wren", round(time.time()))]
+    at(ivo, "ruins")
+    with ivo.acting():
+        assert "hasn't answered yet" not in ivo._perception("timer", [])                  # not his question
+    with wren.acting():
+        assert "Marta hasn't answered yet" in wren._perception("timer", [])
+    await use(ivo, "say", to="Marta", text="Ivo here, about the chain.")
+    at(wren, "lockup")
+    with wren.acting():
+        await nb._visits(wren.state, wren.s, None, time.time())                   # she walked off: her words go unanswered, not his
+        assert [h["text"] for h in wren.state.find_character("Marta")["heard"]] == ["Ivo here, about the chain."]
+    for text in ("Where is the well?", "Who keeps the gate log?", "Is Ezra in today?", "What do eggs fetch?", "Any dogs about?",
+                 "When does the cart come?"):
+        await use(ivo, "say", to="Marta", text=text)
+    with ivo.acting():
+        assert len(ivo.state.find_character("Marta")["heard"]) == 5                # the last five wait, no more
+
+
+@pytest.mark.asyncio
+async def test_the_talk_at_a_place_is_with_whoever_the_agent_spoke_to(world):
+    """Found on Ashfall (2026-11-20): Tobin asked Jun at the gate, but the talk scene was always with Marta, the first one there who had
+    greeted him. The talk is with the one the agent addressed; failing that, with whoever spoke first."""
+    from app import talk
+    wren, _ = world.agents
+    at(wren, "ruins")
+    wren.state.set_meta(arrived_at=str(time.time() - 60))
+    for name in ("Marta", "Jun"):
+        wren.state.add_character(name, "villager", None, "x", 60, 0, place="ruins")
+    with wren.acting():
+        assert talk.waiting(wren.state) is None                                        # nobody has said a word
+        wren.state.log("companion", name="Marta", text="Out of the wind, you.", reply=True, visit=True)
+        assert talk.waiting(wren.state)["name"] == "Marta"
+    await use(wren, "say", to="Jun", text="Jun, what does the gate pay for?")
+    with wren.acting():
+        assert talk.waiting(wren.state)["name"] == "Jun"
+    await use(wren, "say", to="Marta", text="Marta, one more thing.")
+    with wren.acting():
+        assert talk.waiting(wren.state)["name"] == "Marta"                            # the latest one spoken to
+        wren.state.set_meta(arrived_at="")
+        assert talk.waiting(wren.state) is None                                        # not arrived anywhere: no talk due
+
+
+@pytest.mark.asyncio
+async def test_a_home_is_laid_out_by_its_owner_only_even_once_others_know_it(world):
+    """Found on Ashfall (2026-11-20): once agents had met and knew where each other lived, each home was laid out by its owner and by a
+    neighbour, whose view of it differs ("home" to one, "the lockup" to the other), so each rebuilt it every beat (~20,000 a day). Another
+    agent's home is its owner's to lay out."""
+    import shutil
+    wren, ivo = world.agents
+    shutil.copy(W.DEFAULT.parent / "ashfall" / "scene.json", W.active().dir / "scene.json")
+    W._data.cache_clear()
+    world.runner = M.LocalRunner()
+    src = 'def on_build(ctx):\n    return {"shapes": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "material": {"color": "#000"}}]}\n'
+    live(wren.state, {"name": "homes", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["home"]}, src)
+    wren.state.set_meta(**{"met:ivo": "1"})
+    ivo.state.set_meta(**{"met:wren": "1"})
+    for _ in range(4):
+        await world.step()
+    built = {a.identity.name: sorted(e["data"]["place"] for e in a.state.events(80) if e["kind"] == "layout_built") for a in world.agents}
+    assert built == {"Wren": ["shelter"], "Ivo": ["lockup"]}
+    from app import layouts
+    with wren.acting():
+        assert layouts.for_scene(wren.state, "lockup", "home") is not None                    # Wren still sees Ivo's home laid out
+
+
+@pytest.mark.asyncio
 async def test_once_they_have_met_each_knows_where_the_other_lives(world):
     """Found on Ashfall (2026-11-18): Sela promised to come and look at Wren's vent, but no agent knew where another lived, so she
     couldn't. Meeting someone, you learn where they live: their home is a place you can go, by its name or theirs."""

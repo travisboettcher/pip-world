@@ -17,8 +17,8 @@ from .state import State
 from .text import clip
 
 SCENE_TURNS = 6
-AGENT_LINES = 8               # a talk between two agents: lines in all, both sides
-AGENT_QUIET_MINUTES = 30      # after one, their words to each other are heard but don't wake the other
+AGENT_LINES = 20              # a talk between two agents: lines in all, both sides (8 cut every talk off mid-task: 2026-11-20)
+AGENT_QUIET_MINUTES = 30      # after one, their words to each other are heard but don't wake the other (the next turn picks the talk up)
 LOCK_WAIT = 30.0              # seconds to wait for the other to finish a turn of its own
 TRANSCRIPT = 12
 TODOS_SHOWN = 3
@@ -36,13 +36,16 @@ def partner(state) -> dict | None:
 
 
 def waiting(state) -> dict | None:
-    """The one the agent should talk with now: they have spoken this visit, and this visit's talk has not been had yet."""
-    ch = partner(state)
+    """The one the agent should talk with now, if this visit's talk has not been had yet: the one here it spoke to last this visit, or
+    else the first one here who has spoken to it."""
+    company = {c["name"]: c for c in places.company_at(state, places.present_at(state))}
     visit = state.meta("arrived_at")
-    if not ch or not visit or state.meta("talk_done") == visit:
+    if not company or not visit or state.meta("talk_done") == visit:
         return None
-    spoke = any(e["kind"] == "companion" and e["data"].get("name") == ch["name"] and e["ts"] >= float(visit) for e in state.events(50))
-    return ch if spoke else None
+    since = [e for e in state.events(50) if e["ts"] >= float(visit)]
+    addressed = next((e["data"]["to_name"] for e in since if e["kind"] == "say" and e["data"].get("to_name") in company), None)
+    spoke = {e["data"].get("name") for e in since if e["kind"] == "companion"}
+    return company[addressed] if addressed else next((c for c in company.values() if c["name"] in spoke), None)
 
 
 def lately(state, other, now: float | None = None) -> bool:
@@ -51,12 +54,11 @@ def lately(state, other, now: float | None = None) -> bool:
 
 
 def agent_waiting(state, inbox: list[dict]):
-    """The agent to talk with now, as a scene: one who spoke to the agent acting now (its inbox), is here, and hasn't talked with it
-    lately; or None."""
+    """The agent to talk with now, as a scene: one who spoke to the agent acting now (its inbox) and is here; or None. Lately or not:
+    words left after a talk pick it up again, rather than going on a line per world turn."""
     from . import others
     here = {a.identity.name: a for a in others.here(places.present_at(state))}
-    return next((here[m["sender"]] for m in inbox if m.get("source") == "agent" and m.get("sender") in here
-                 and not lately(state, here[m["sender"]])), None)
+    return next((here[m["sender"]] for m in inbox if m.get("source") == "agent" and m.get("sender") in here), None)
 
 
 def specs(tools) -> list[ToolSpec]:

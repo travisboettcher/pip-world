@@ -11,6 +11,7 @@ talk.py). See DESIGN-library.md and DESIGN-neighbor.md.
 import time
 from dataclasses import dataclass, field
 
+from . import companions
 from . import invented_places as invented
 from . import world_pack
 from . import place_kinds as kinds
@@ -359,7 +360,7 @@ def perception(state, settings, library) -> list[str]:
                      if host["place"] == here_key and _dwelling_of(state, here_key) else
                      f"{host['name']} is here" + (f" ({host['about']})" if host["about"] else "")
                      + f"; talk with them in person using say with to: {host['name']}.")
-        if host["heard"]:
+        if companions.heard(host):
             lines.append(f"{host['name']} hasn't answered yet: give them a moment, no need to say it again.")
     if here_place and here_place.verbs and not closed:
         lines.append("Here you can: " + ", ".join(f"{v} ({short})" for v, (short, _) in here_place.verbs.items()) + ".")

@@ -159,13 +159,15 @@ def _runner(m: dict, runner):
 
 
 def _targets(state, settings, m: dict, now: float, library=None) -> list[tuple[str, dict | None]]:
-    """The places a place module lays out: its own, or every real place of its kinds without a layout of its own (with their details)."""
+    """The places a place module lays out: its own, or every real place of its kinds without a layout of its own (with their details).
+    Another agent's home is its owner's to lay out: seen from next door it reads differently, and the two would rebuild it in turn."""
     if "kinds" not in m["manifest"]:
         return [(m["manifest"]["place"], None)]
-    from . import world_view, worldmap
+    from . import places, world_view, worldmap
+    theirs = {h["key"] for _, h in places.agents_homes(state)}
     return [(p["key"], world_view.place_details(state, settings, p["key"], p["kind"]))
             for p in worldmap.snapshot(state, settings, library, now)["places"]
-            if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"])]
+            if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"]) and p["key"] not in theirs]
 
 
 async def step(state, settings, runner, now: float | None = None, library=None) -> int:
