@@ -1,13 +1,15 @@
 """The conversation scene (docs/DESIGN-conversation.md, part 2).
 
-Between two agents (docs/DESIGN-multi-agent.md, "Talk between agents"), the scene is the listener's turn's: each speaks in turn from the same
-small prompt, its own (its persona, its notes on the other, the talk so far), and each line is heard at once.
+Between two agents (docs/DESIGN-multi-agent.md, "Talk between agents"), the scene is started by the listener's turn and goes on as a task of
+its own: each speaks in turn from the same small prompt, its own (its persona, its notes on the other, the talk so far), each line is
+heard at once, and each takes as long as it takes to say, with a pause after it.
 
 When someone the agent is with in person (whoever is where it is: someone at home, a villager at the village) has spoken this visit, the talk runs as its own short scene instead of
 through Pip's world turn: The agent's turns get a small prompt (who it is with, why it came, what it has with it, the date, and the talk so far) and only
 `say` and `feel`; the other side answers at once; it goes on until either says goodbye, the agent falls silent, or SCENE_TURNS of the agent's lines. Then the agent's
 world turn picks up with the whole talk in view.
 """
+import asyncio
 import time
 
 from . import conversation as conv
@@ -17,7 +19,9 @@ from .state import State
 from .text import clip
 
 SCENE_TURNS = 6
-AGENT_LINES = 20              # a talk between two agents: lines in all, both sides (8 cut every talk off mid-task: 2026-11-20)
+SPOKEN_WORDS_PER_SECOND = 2.5 # a talk between two agents takes time, not a number of lines (the owner, 2026-11-21): each line as long
+LINE_PAUSE_SECONDS = 20       # as it takes to say, and a pause after it, so how long they stay together is what limits it
+STRETCH_MINUTES = 20          # of talk, then each has a world turn (to act on what was said); words left pick the talk up again
 AGENT_QUIET_MINUTES = 30      # after one, their words to each other are heard but don't wake the other (the next turn picks the talk up)
 LOCK_WAIT = 30.0              # seconds to wait for the other to finish a turn of its own
 TRANSCRIPT = 12
@@ -46,6 +50,27 @@ def waiting(state) -> dict | None:
     addressed = next((e["data"]["to_name"] for e in since if e["kind"] == "say" and e["data"].get("to_name") in company), None)
     spoke = {e["data"].get("name") for e in since if e["kind"] == "companion"}
     return company[addressed] if addressed else next((c for c in company.values() if c["name"] in spoke), None)
+
+
+def line_seconds(text: str) -> float:
+    """How long a line of a talk between agents takes: saying it, and the pause before the next."""
+    return len(text.split()) / SPOKEN_WORDS_PER_SECOND + LINE_PAUSE_SECONDS
+
+
+async def wait(seconds: float) -> None:
+    """The pause between two lines of a talk, while the agents are free for anything else."""
+    await asyncio.sleep(seconds)
+
+
+def cut_short(speaker_state, listener_state) -> str | None:
+    """Why a talk between two agents can't go on to the next line, if it can't: one has left or fallen asleep, or the one to speak
+    has spent the day's tokens."""
+    from . import sleep as sleepmod
+    if places.present_at(speaker_state) != places.present_at(listener_state):
+        return "parted"
+    if sleepmod.asleep(speaker_state) or sleepmod.asleep(listener_state):
+        return "asleep"
+    return "budget" if speaker_state.budget_exceeded() else None
 
 
 def lately(state, other, now: float | None = None) -> bool:

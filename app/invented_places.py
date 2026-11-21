@@ -10,7 +10,6 @@ place, a neighbor or a reserved word), the caps, the minutes, the kind's verbs a
 """
 import random
 import re
-from functools import lru_cache
 import time
 
 from . import place_kinds as kinds
@@ -426,12 +425,8 @@ def backfill(state, now: float | None = None) -> list[dict]:
 # ("go to", "visit", "there's a ... in", "a lake called") followed by a name - a capitalised one, or "the" plus a few
 # words ending in a landscape or settlement word. Everything found still goes through `accept` (the caps, reserved
 # names, neighbors). What the patterns miss, the go_to backstop still catches, since it searches chat messages too.
+@world_pack.per_pack
 def _chat() -> list:
-    return _chat_for(id(world_pack.active()))
-
-
-@lru_cache(maxsize=8)
-def _chat_for(_pack) -> list:
     """The patterns that find a place in a chat message, built from the world's words for what a place may be."""
     features = "|".join(_place_words().get("features", ())) or "place"
     place = (r"(?P<place>[A-Z][\w'’-]+(?:\s+(?:of\s+|on\s+)?[A-Z][\w'’-]+){0,3}"

@@ -77,12 +77,18 @@ class World:
         self.library = lib.open_library(settings)
         self.runner = modules.runner_for(settings)
         self.agents: list["Agent"] = []
+        self.talks: dict[frozenset, asyncio.Task] = {}          # the talks between its agents going on now (Agent._hold_talk), by the pair's keys
         others.use(self)                                       # who else lives here, for code acting as one of them
         sources.wire(self)                                     # the books and the like modules may ask (sources.py)
 
     def wake(self) -> None:
         for a in self.agents:
             a.request_wake()
+
+    def talking_with(self, agent: "Agent") -> "Agent | None":
+        """Who the agent is in a talk with just now, if anyone."""
+        pair = next((p for p, t in self.talks.items() if agent.identity.key in p and not t.done()), None)
+        return next((a for a in self.agents if pair and a is not agent and a.identity.key in pair), None)
 
     def check(self) -> None:
         for a in self.agents:                                 # a new place gets its spot on the map as soon as it exists, whoever's it is
@@ -236,6 +242,8 @@ class Agent:
             wait = self.state.meta("wait_until")
             if delay is not None and wait and self.state.agent()["activity"] == self.state.meta("wait_label"):  # waiting: left to it (events still wake)
                 delay = max(delay, float(wait) - time.time())
+            if delay is not None and self.world.talking_with(self):  # talking: no heartbeat until the talk is over (events still wake)
+                delay = None
             if self._wake.is_set():
                 self._wake.clear()
                 if self._force:
@@ -415,10 +423,14 @@ class Agent:
         await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
         inbox = self.state.pending_inbox()
+        if partner := self.world.talking_with(self):                     # in a talk: what they said meanwhile is part of it, not a new one
+            mine = [m["id"] for m in inbox if m.get("source") == "agent" and m.get("sender") == partner.identity.name]
+            self.state.consume_inbox(mine)
+            inbox = [m for m in inbox if m["id"] not in mine]
         if self.s.talk_scenes == "on" and not inbox and self.gm and (ch := talk.waiting(self.state)):
             await self._converse(ch)
             return
-        if self.s.talk_scenes == "on" and (other := talk.agent_waiting(self.state, inbox)) and await self._talk_with(other, inbox):
+        if self.s.talk_scenes == "on" and (other := talk.agent_waiting(self.state, inbox)) and await self._talk_with(other):
             return
         self.ctx.visitor_ids = [m["id"] for m in inbox]
         messages: list[dict] = [{"role": "user", "content": self._perception(reason, inbox)}]
@@ -555,47 +567,70 @@ class Agent:
         self.request_wake()                                              # the world turn takes it from here
         return ended
 
-    async def _talk_with(self, other: "Agent", inbox: list[dict]) -> bool:
-        """A talk with another agent who is here and spoke to this one, as one scene (talk.py, "between agents"): each speaks in turn
-        from its own small prompt, heard at once, until a goodbye, a silence, enough lines, or one of them runs out. False if the other
-        couldn't be had (mid-turn): the words are answered in a world turn, the old way."""
+    async def _talk_with(self, other: "Agent") -> bool:
+        """A talk with another agent who is here and spoke to this one (talk.py, "between agents"): started as a task of its own, which
+        takes time (`_hold_talk`), so this turn is over at once; its first line takes in what the other said. False if the other couldn't be had (mid-turn): the words are answered in a
+        world turn, the old way."""
         try:
             await asyncio.wait_for(other.talking.acquire(), talk.LOCK_WAIT)
         except asyncio.TimeoutError:
             return False
-        try:
-            self.state.consume_inbox([m["id"] for m in inbox if m.get("source") == "agent" and m.get("sender") == other.identity.name])
-            speaker, listener, lines, ended = self, other, 0, "turns"
-            while lines < talk.AGENT_LINES:
-                if speaker.state.budget_exceeded():
-                    ended = "budget"
-                    break
-                with speaker.acting():
-                    said, bye = await speaker._scene_line(listener)
-                lines += 1
-                if not said:
-                    ended = "silence"
-                    break
-                if bye:
-                    ended = speaker.identity.name
-                    break
-                if places.present_at(listener.state) != places.present_at(speaker.state):
-                    ended = "parted"
-                    break
-                speaker, listener = listener, speaker
-        finally:
-            other.talking.release()
-        now, day = time.time(), time.strftime("%Y-%m-%d")
-        for a, b in ((self, other), (other, self)):
-            again = a.state.meta(f"company:{b.identity.key}") == day                    # their company already counted today
-            a.state.set_meta(**{f"talked:{b.identity.key}": str(now), f"company:{b.identity.key}": day})
-            with a.acting():
-                a.state.log("talk", name=b.identity.name, turns=lines, ended=ended, agent=True, **({"again": True} if again else {}))
-            a.request_wake()                                                 # each world turn takes it from here
+        other.talking.release()
+        self.world.talks[frozenset((self.identity.key, other.identity.key))] = asyncio.create_task(self._hold_talk(other))
         return True
 
-    async def _scene_line(self, listener: "Agent") -> tuple[bool, bool]:
-        """This agent's line in a talk with another agent: (said something, said goodbye). Its words are heard at once."""
+    async def _hold_talk(self, other: "Agent") -> None:
+        """The talk itself: each speaks in turn from its own small prompt, heard at once, a line taking as long as it takes to say and a
+        pause (talk.line_seconds), with both free between lines. It ends on a goodbye, a silence, one leaving or falling asleep, one
+        running out, or after STRETCH_MINUTES of talk; then each has a world turn."""
+        speaker, listener, lines, ended, spoken = self, other, 0, None, 0.0
+        first, second = sorted((self, other), key=lambda a: a.identity.key)        # always in one order: two talks can't deadlock
+        try:
+            while spoken < talk.STRETCH_MINUTES * 60:
+                try:
+                    await asyncio.wait_for(first.talking.acquire(), talk.LOCK_WAIT)
+                except asyncio.TimeoutError:
+                    ended = "busy"
+                    break
+                try:
+                    try:
+                        await asyncio.wait_for(second.talking.acquire(), talk.LOCK_WAIT)
+                    except asyncio.TimeoutError:
+                        ended = "busy"
+                        break
+                    try:
+                        ended = talk.cut_short(speaker.state, listener.state)
+                        if ended:
+                            break
+                        with speaker.acting():
+                            text, bye = await speaker._scene_line(listener)
+                        lines += 1
+                        ended = "silence" if not text else speaker.identity.name if bye else None
+                        if ended:
+                            break
+                    finally:
+                        second.talking.release()
+                finally:
+                    first.talking.release()
+                speaker, listener = listener, speaker
+                spoken += talk.line_seconds(text)
+                if spoken < talk.STRETCH_MINUTES * 60:
+                    await talk.wait(talk.line_seconds(text))
+        finally:
+            self.world.talks.pop(frozenset((self.identity.key, other.identity.key)), None)
+            now, day = time.time(), time.strftime("%Y-%m-%d")
+            for a, b in ((self, other), (other, self)):
+                again = a.state.meta(f"company:{b.identity.key}") == day                    # their company already counted today
+                a.state.set_meta(**{f"talked:{b.identity.key}": str(now), f"company:{b.identity.key}": day})
+                with a.acting():
+                    a.state.log("talk", name=b.identity.name, turns=lines, ended=ended or "a while", agent=True, **({"again": True} if again else {}))
+                a.request_wake()                                                 # each world turn takes it from here
+
+    async def _scene_line(self, listener: "Agent") -> tuple[str, bool]:
+        """This agent's line in a talk with another agent: (what it said, or "" for nothing; whether it said goodbye). Its words are
+        heard at once; what the other said to it meanwhile, in a turn of their own, is part of the talk."""
+        self.state.consume_inbox([m["id"] for m in self.state.pending_inbox() if m.get("source") == "agent"
+                                  and m.get("sender") == listener.identity.name])
         partner = {"name": listener.identity.name, "about": listener.identity.kind}
         on_mind = reminders.step(self.state, self.s, reminders.cue(self.state, [], time.time(), partner), time.time(), 1)
         resp = await self.backend.complete(system=talk.system(self._persona(), partner),
@@ -604,15 +639,15 @@ class Agent:
         self.state.add_usage(resp.usage.input_tokens, resp.usage.output_tokens)
         self.state.log("tick", reason="talk", step=0, text=resp.text, tokens=resp.usage.input_tokens + resp.usage.output_tokens,
                        tools=[c.name for c in resp.tool_calls])
-        said, bye = False, False
+        said, bye = "", False
         for i, call in enumerate(resp.tool_calls):
             if call.name == "say" and not said and str(call.arguments.get("text") or "").strip():
-                text = clip(str(call.arguments["text"]).strip(), 600)
-                self.state.log("say", text=text, to=[], to_name=listener.identity.name)
+                said = clip(str(call.arguments["text"]).strip(), 600)
+                self.state.log("say", text=said, to=[], to_name=listener.identity.name)
                 with listener.acting():
-                    mid = listener.receive(text, self.identity.name, source="agent", wake=False)
+                    mid = listener.receive(said, self.identity.name, source="agent", wake=False)
                     listener.state.consume_inbox([mid])
-                said, bye = True, call.arguments.get("goodbye") is True
+                bye = call.arguments.get("goodbye") is True
             elif call.name != "say":
                 await self._run_tool(call, i)
         return said, bye

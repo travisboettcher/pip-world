@@ -13,12 +13,13 @@ import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from functools import lru_cache
+from functools import lru_cache, wraps
 from pathlib import Path
 
 API = 1
 DEFAULT = Path(__file__).resolve().parent.parent / "worlds" / "pip"
 PRONOUNS = ("it", "she", "he", "they")
+PER_PACK_KEPT = 8                    # worlds whose built values per_pack keeps
 LIBRARY = Path(__file__).resolve().parent / "module_library"     # the engine's own modules (`std:` in a pack's `modules`)
 MODULE_NAME = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 NARRATOR_RULES = """Keep the world consistent: things behave the way such things plausibly would, and nothing becomes more powerful
@@ -165,6 +166,25 @@ def acting_state():
     """The State of the agent acting now, or None (the world's own steps)."""
     who = _acting.get()
     return who[1] if who else None
+
+
+def per_pack(build):
+    """`build()` once per world: kept with the world's pack itself (held, never its id(), which Python gives a new object once the old one
+    is gone; and never `active()`, a fresh copy while an agent acts), for the last few worlds. `.cache_clear()` forgets them."""
+    kept: list[tuple[Pack, object]] = []
+
+    @wraps(build)
+    def get():
+        pack = _active[0] if _active else default()
+        for p, value in kept:
+            if p is pack:
+                return value
+        value = build()
+        kept.append((pack, value))
+        del kept[:-PER_PACK_KEPT]
+        return value
+    get.cache_clear = kept.clear
+    return get
 
 
 def set_active(pack: Pack) -> None:

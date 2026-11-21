@@ -267,3 +267,60 @@ def test_a_half_filled_pack_and_values_that_differ_from_the_defaults(tmp_path):
     assert (built.walk_minutes, built.offers, built.daylight_only, built.verbs) == (7.0, (), False, {})
     built = places._built_in({"key": "k", "description": "d", "walk": 3, "offers": ["gather"], "daylight_only": True, "verbs": {"gather": ["g", None]}}, 7.0)
     assert (built.walk_minutes, built.offers, built.daylight_only, built.verbs) == (3, ("gather",), True, {"gather": ("g", None)})
+
+
+def test_what_is_built_from_a_pack_is_kept_for_that_pack_itself_never_its_id():
+    """Found 2026-11-21: the place kinds were cached by the active pack's id(), and once a pack was gone Python may give a new one the
+    same id, so a test now and then saw another world's kinds (KeyError: 'camp'). A cache per pack holds the pack itself."""
+    import gc
+    import weakref
+    built = []
+
+    @W.per_pack
+    def thing():
+        built.append(W.active())
+        return len(built)
+
+    pip, ash = W.load(Settings()), W.load(Settings(world_pack=str(W.DEFAULT.parent / "ashfall")))
+    try:
+        W.set_active(pip)
+        assert (thing(), thing()) == (1, 1)
+        W.set_active(ash)
+        assert thing() == 2
+        with W.acting(ash.agents[1]):                          # acting, active() is a fresh copy each time: still this world's value
+            assert W.active() is not W.active() and (thing(), thing()) == (2, 2)
+        W.set_active(pip)
+        assert thing() == 1 and built == [pip, ash]
+        kept = weakref.ref(pip)
+        del pip
+        W.set_active(ash)
+        gc.collect()
+        assert kept() is not None                              # still held: its id can't be another pack's while its value is cached
+        thing.cache_clear()
+        assert thing() == 3
+    finally:
+        W.set_active(W.load(Settings()))
+
+
+def test_per_pack_keeps_only_the_last_few_worlds(monkeypatch):
+    built = []
+
+    @W.per_pack
+    def thing():
+        built.append(1)
+        return len(built)
+
+    monkeypatch.setattr(W, "PER_PACK_KEPT", 1)
+    pip, ash = W.load(Settings()), W.load(Settings(world_pack=str(W.DEFAULT.parent / "ashfall")))
+    try:
+        W.set_active(pip)
+        thing()
+        W.set_active(ash)
+        thing()
+        W.set_active(pip)
+        assert thing() == 3                                  # one kept: the first world's was let go
+        assert W.PER_PACK_KEPT == 1 and thing() == 3
+    finally:
+        W.set_active(W.load(Settings()))
+    monkeypatch.undo()
+    assert W.PER_PACK_KEPT == 8

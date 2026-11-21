@@ -8,7 +8,6 @@ may hold and how fast it restocks. The kinds are the world pack's (places.json `
 """
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 from . import world_pack
 
@@ -31,13 +30,9 @@ class PlaceKind:
     stalls: bool = False                        # The agent may set out a stall of its own here, and customers stop while it is there
 
 
+@world_pack.per_pack
 def registry() -> dict[str, PlaceKind]:
     """The kinds of place the active world can grow (its pack's places.json `kinds`)."""
-    return _registry(id(world_pack.active()))
-
-
-@lru_cache(maxsize=8)
-def _registry(_pack) -> dict[str, PlaceKind]:
     raw = world_pack.active().data("places").get("kinds", {})
     return {name: PlaceKind(name, k["help"], tuple(k.get("words", ())), {v: tuple(x) for v, x in (k.get("verbs") or {}).items()},
                             tuple(k.get("loot_kinds", ())), k.get("max_tools", 0), k.get("capacity", 120), k.get("refill", 15),

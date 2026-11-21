@@ -24,7 +24,7 @@ QUIET = LLMResponse("", [], Usage(1, 1))
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
     os.makedirs(tmp_path / "data")
     s = Settings(world_pack=str(two(tmp_path)), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual",
                  tools=["say", "write_letter", "go_to"], talk_scenes="on", reflect_hour=99, min_tick_interval=0)
@@ -34,6 +34,11 @@ def world(tmp_path):
         a.state.update_agent(location="ruins")
     with wren.acting():
         others.seen(wren.state)                                             # they have met
+    w.waits = []
+
+    async def wait(seconds):                                                # a talk's pauses, noted and not waited out
+        w.waits.append(seconds)
+    monkeypatch.setattr(talk, "wait", wait)
     yield w
     W.set_active(W.load(Settings()))
 
@@ -42,6 +47,13 @@ def opens(speaker, listener, text):
     """A line said in a world turn (the say tool), as the speaker."""
     with speaker.acting():
         return others.say(speaker.state, listener, text)
+
+
+async def turn(agent, reason="event"):
+    """The agent's turn, and any talk it starts, to its end."""
+    with agent.acting():
+        await agent.tick(reason)
+    await asyncio.gather(*agent.world.talks.values())
 
 
 def lines(agent, kind):
@@ -54,8 +66,7 @@ async def test_a_line_from_an_agent_here_becomes_a_scene_with_each_speaking_for_
     backend = wren.backend
     backend.script = [says("Some, by the river."), says("Trade you a tin for it?"), says("Done. Safe roads.", goodbye=True)]
     opens(ivo, wren, "Found any wire?")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert len(backend.calls) == 3                                                            # three small calls, no world turn
     systems = [c["system"] for c in backend.calls]
     assert systems[0].startswith("You are Wren") and "face to face with Ivo" in systems[0]
@@ -75,29 +86,29 @@ async def test_a_line_from_an_agent_here_becomes_a_scene_with_each_speaking_for_
 
 
 @pytest.mark.asyncio
-async def test_a_talk_ends_on_silence_on_enough_lines_or_when_someone_runs_out(world, monkeypatch):
+async def test_a_talk_ends_on_silence_after_a_while_or_when_someone_runs_out(world, monkeypatch):
     wren, ivo = world.agents
     backend = wren.backend
     backend.script = [says("Hello."), QUIET]
     opens(ivo, wren, "Morning.")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"] == ["silence"]
     for a in world.agents:
         a.state.set_meta(**{f"talked:{o.identity.key}": "" for o in world.agents})
-    monkeypatch.setattr(talk, "AGENT_LINES", 3)
+    monkeypatch.setattr(talk, "STRETCH_MINUTES", 1)                                          # three lines of 20.4 s pass a minute
     backend.script = [says("One."), says("Two."), says("Three."), says("Four.")]
     opens(ivo, wren, "Again.")
-    with wren.acting():
-        await wren.tick("event")
-    assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"][0] == "turns" and backend.script == [says("Four.")]
+    wren._wake.clear()
+    ivo._wake.clear()
+    await turn(wren, "event")
+    assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"][0] == "a while" and backend.script == [says("Four.")]
+    assert wren._wake.is_set() and ivo._wake.is_set()                                              # each has a world turn, then on
     for a in world.agents:
         a.state.set_meta(**{f"talked:{o.identity.key}": "" for o in world.agents})
     monkeypatch.setattr(ivo.s, "daily_token_budget", 1)
     backend.script = [says("Still here?")]
     opens(ivo, wren, "Once more.")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"][0] == "budget"
 
 
@@ -109,15 +120,13 @@ async def test_after_a_talk_their_words_wait_without_waking_and_resume_the_talk_
     wren, ivo = world.agents
     wren.backend.script = [says("Bye.", goodbye=True)]
     opens(ivo, wren, "Hello.")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     wren._wake.clear()
     assert opens(ivo, wren, "One more thing.") == "said it to Wren; she heard you"
     assert not wren._wake.is_set() and [m["text"] for m in wren.state.pending_inbox()] == ["One more thing."]
     calls = len(wren.backend.calls)
     wren.backend.script = [says("Go on."), says("Later, then.", goodbye=True)]
-    with wren.acting():
-        await wren.tick("timer")                                                              # her turn: the talk again, not a world turn
+    await turn(wren, "timer")                                                                 # her turn: the talk again, not a world turn
     assert all("Woke because" not in c["messages"][0]["content"] for c in wren.backend.calls[calls:])
     assert [e["data"]["ended"] for e in wren.state.events(30) if e["kind"] == "talk"] == ["Ivo", "Wren"]
     assert wren.state.pending_inbox() == []
@@ -126,14 +135,14 @@ async def test_after_a_talk_their_words_wait_without_waking_and_resume_the_talk_
 
 @pytest.mark.asyncio
 async def test_a_long_talk_runs_to_its_goodbye(world):
-    """Found on Ashfall (2026-11-20): no talk between agents ended on a goodbye; all stopped at eight lines, mid-task."""
+    """Found on Ashfall (2026-11-20): no talk between agents ended on a goodbye; all stopped at eight lines, mid-task. A talk has no
+    limit on lines (2026-11-21): it takes time instead."""
     wren, ivo = world.agents
     wren.backend.script = [says(f"Line {i}.") for i in range(14)] + [says("That's all.", goodbye=True)]
     opens(ivo, wren, "Got a minute?")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert [e["data"] for e in wren.state.events(80) if e["kind"] == "talk"][0] == {"name": "Ivo", "turns": 15, "ended": "Wren", "agent": True}
-    assert talk.AGENT_LINES == 20
+    assert len(world.waits) == 14                                                                # no limit on lines: only time
 
 
 @pytest.mark.asyncio
@@ -144,8 +153,7 @@ async def test_a_scene_needs_the_other_here_and_free(world, monkeypatch):
     await ivo.talking.acquire()                                                              # Ivo is busy with a turn of his own
     try:
         wren.backend.script = [QUIET]
-        with wren.acting():
-            await wren.tick("event")
+        await turn(wren, "event")
         assert "Woke because" in wren.backend.calls[-1]["messages"][0]["content"]               # the old way: a world turn
         assert not [e for e in wren.state.events(10) if e["kind"] == "talk"]
     finally:
@@ -159,8 +167,7 @@ async def test_a_scene_needs_the_other_here_and_free(world, monkeypatch):
     ivo.state.update_agent(location="ruins")
     wren.backend.script = [QUIET]
     opens(ivo, wren, "Hello again?")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert not [e for e in wren.state.events(10) if e["kind"] == "talk"]
 
 
@@ -182,8 +189,7 @@ async def test_a_scene_at_its_edges(world):
         return await real(*a, **k)
     real = ivo._scene_line
     ivo._scene_line = walks_off
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert [m["id"] for m in wren.state.pending_inbox()] == [visitor]                          # a visitor's words wait for a world turn
     assert lines(wren, "say") == [("Ivo", "Hello, Ivo.")]                                        # one line a turn, never an empty one
     assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"] == ["parted"]
@@ -224,8 +230,7 @@ async def test_a_talk_can_close_a_deal_and_the_world_turn_after_sees_it_all(worl
                       LLMResponse("", [ToolCall("g", "give", {"to": "Ivo", "coins": 4}), ToolCall("s", "say", {"text": "And your coins.", "goodbye": True})], Usage(10, 5)),
                       QUIET]
     opens(ivo, wren, "Copper wire, eleven lengths. Interested?")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert "give" in backend.calls[1]["tools"]                                                      # offered in a talk
     assert wren.state.find_item("copper wire")[0]["qty"] == 11 and ivo.state.coins() == 14 and wren.state.coins() == 6
     hers = backend.calls[2]["messages"][0]["content"]
@@ -247,8 +252,7 @@ async def test_a_talk_lifts_each_once_not_every_line(world, monkeypatch):
     before = {a.identity.key: emo.levels(a.state) for a in world.agents}
     wren.backend.script = [says(f"Line {i}.") for i in range(7)] + [says("Bye.", goodbye=True)]
     opens(ivo, wren, "Hello.")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     for a in world.agents:
         with a.acting():
             now = emo.levels(a.state)
@@ -272,16 +276,14 @@ async def test_talking_with_someone_lifts_once_a_day_not_every_talk(world):
     for _ in range(2):
         wren.backend.script = [says("Morning."), says("Bye.", goodbye=True)]
         opens(ivo, wren, "Hello.")
-        with wren.acting():
-            await wren.tick("event")
+        await turn(wren, "event")
     assert joys(wren) == [4.0] and wren.state.meta("company:ivo") == time.strftime("%Y-%m-%d")
     talks = [e["data"] for e in wren.state.events(40) if e["kind"] == "talk"]
     assert [t.get("again", False) for t in talks] == [True, False]                       # newest first
     wren.state.set_meta(**{"company:ivo": "2000-01-01"})                                      # a new day
     wren.backend.script = [says("Morning."), says("Bye.", goodbye=True)]
     opens(ivo, wren, "Hello.")
-    with wren.acting():
-        await wren.tick("event")
+    await turn(wren, "event")
     assert joys(wren) == [4.0, 4.0]
 
 
@@ -291,3 +293,161 @@ def test_how_a_talk_is_appraised():
     assert emo._appraisal("talk", {"agent": True}) == (emo.TALKED, "talked with someone")
     assert emo._appraisal("talk", {"agent": True, "again": True, "name": "Ivo"}) == ({}, "")              # already counted today
     assert emo._appraisal("talk", {"name": "Marta", "turns": 3, "ended": "agent"}) == ({}, "")          # with a character: no lift
+
+
+@pytest.mark.asyncio
+async def test_each_line_of_a_talk_takes_its_speaking_time_and_a_pause(world):
+    """Found on Ashfall (2026-11-21): with no brake between talks, Wren and Sela said a line a second for an hour and a half, about
+    seventy talks back to back, and both spent their day's tokens by noon. The owner: the talk takes time, not a limit on lines; how
+    long they stay together is the limit. A line takes as long as it takes to say (2.5 words a second) and a pause after it."""
+    wren, ivo = world.agents
+    assert talk.line_seconds("one two three four five") == 22.0 and talk.line_seconds("") == talk.LINE_PAUSE_SECONDS == 20
+    wren.backend.script = [says("Some, by the river."), says("Trade you a tin for it?"), says("Done.", goodbye=True)]
+    opens(ivo, wren, "Found any wire?")
+    await turn(wren)
+    assert world.waits == [talk.line_seconds("Some, by the river."), talk.line_seconds("Trade you a tin for it?")]   # none after a goodbye
+    assert world.talks == {}
+
+
+@pytest.mark.asyncio
+async def test_between_lines_the_two_are_free_and_what_they_say_is_the_talk(world, monkeypatch):
+    """A talk that takes time mustn't hold the agents: between lines each can have a world turn for what comes (a visitor, a letter),
+    and what one says to the other in it is part of the talk they are having, not the start of another."""
+    wren, ivo = world.agents
+    backend = wren.backend
+    seen = {}
+
+    async def meanwhile(seconds):
+        if seen:
+            return
+        seen["talking"] = (world.talking_with(wren), world.talking_with(ivo), wren.talking.locked(), ivo.talking.locked())
+        wren._wake.clear()
+        opens(ivo, wren, "By the way, the gate's shut.")                                      # his world turn, between lines
+        seen["woken"] = wren._wake.is_set()                                                  # heard in the talk: no turn of hers for it
+        visitor = wren.receive("Anyone home?", "Morgan")
+        backend.script.insert(0, QUIET)                                                      # her world turn, for the visitor
+        with wren.acting():
+            await wren.tick("event")
+        seen["turn"] = backend.calls[-1]["messages"][0]["content"]
+        seen["pending"] = [m["sender"] for m in wren.state.pending_inbox()]
+        seen["talks"] = len(world.talks)
+        seen["visitor"] = visitor
+    monkeypatch.setattr(talk, "wait", meanwhile)
+    backend.script = [says("Morning."), says("Gate's shut, then. Bye.", goodbye=True)]
+    opens(ivo, wren, "Morning, Wren.")
+    await turn(wren)
+    assert seen["talking"] == (ivo, wren, False, False)
+    assert "Anyone home?" in seen["turn"] and "Ivo" not in seen["pending"] and seen["talks"] == 1
+    assert [l for l in lines(wren, "inbox") if l[0] == "Ivo"] == [("Ivo", "Morning, Wren."), ("Ivo", "By the way, the gate's shut."),
+                                                                  ("Ivo", "Gate's shut, then. Bye.")]
+    assert seen["woken"] is False
+    assert [e["data"]["turns"] for e in wren.state.events(40) if e["kind"] == "talk"] == [2]
+    assert world.talking_with(wren) is None and world.talks == {}
+
+
+@pytest.mark.asyncio
+async def test_no_heartbeat_while_a_talk_goes_on(world, monkeypatch):
+    """Talking, an agent is busy: its heartbeat waits (an event still wakes it), and wakes it once the talk is over."""
+    from types import SimpleNamespace
+    wren, ivo = world.agents
+    wren.pacing = SimpleNamespace(next_delay=lambda now, last: 0.01, wakes_on_events=True)
+    go_on = asyncio.Event()
+
+    async def held(seconds):
+        await go_on.wait()
+    monkeypatch.setattr(talk, "wait", held)
+    wren.backend.script = [says("Morning."), says("Bye.", goodbye=True)]
+    opens(ivo, wren, "Morning, Wren.")
+    with wren.acting():
+        await wren.tick("event")
+    wren._wake.clear()
+    await asyncio.sleep(0.05)                                                                  # the first line, then the pause
+    assert world.talking_with(wren) is ivo
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(wren._sleep(), 0.2)
+    go_on.set()
+    await asyncio.gather(*world.talks.values())
+    assert await asyncio.wait_for(wren._sleep(), 1) == "event"                               # the talk over, her world turn
+    wren._wake.clear()
+    assert await asyncio.wait_for(wren._sleep(), 1) == "timer"                               # and her heartbeat again
+
+
+def test_why_a_talk_cant_go_on_to_its_next_line(world, monkeypatch):
+    """Between lines, one may have left or gone to bed in a turn of their own, or the one to speak may have run out."""
+    wren, ivo = world.agents
+    assert talk.cut_short(wren.state, ivo.state) is None
+    ivo.state.update_agent(location="lockup")
+    assert talk.cut_short(wren.state, ivo.state) == "parted"
+    ivo.state.update_agent(location="ruins")
+    for asleep in (ivo, wren):
+        asleep.state.update_agent(activity="sleeping")
+        assert talk.cut_short(wren.state, ivo.state) == "asleep"
+        asleep.state.update_agent(activity="idle")
+    monkeypatch.setattr(ivo.s, "daily_token_budget", 1)
+    ivo.state.add_usage(5, 5)
+    assert talk.cut_short(wren.state, ivo.state) is None and talk.cut_short(ivo.state, wren.state) == "budget"   # the speaker's own
+
+
+@pytest.mark.asyncio
+async def test_who_is_in_a_talk_is_only_whoever_is_in_one_still_going(world):
+    wren, ivo = world.agents
+    done, going = asyncio.Future(), asyncio.Future()
+    done.set_result(None)
+    world.talks = {frozenset(("wren", "ivo")): done, frozenset(("hester", "tobin")): going}
+    assert world.talking_with(wren) is None and world.talking_with(ivo) is None              # theirs is over; someone else's isn't
+    world.talks = {frozenset(("wren", "ivo")): going}
+    assert world.talking_with(wren) is ivo and world.talking_with(ivo) is wren
+    going.cancel()
+
+
+@pytest.mark.asyncio
+async def test_a_talk_runs_until_its_stretch_is_spent_to_the_second(world, monkeypatch):
+    """Each line here takes 22 s (five words and the pause): a stretch of 44 s is two lines, and the last has no pause after it."""
+    wren, ivo = world.agents
+    five = "One two three four five."
+    for stretch, lines_said, waits in ((44, 2, 1), (44.5, 3, 2)):
+        monkeypatch.setattr(talk, "STRETCH_MINUTES", stretch / 60)
+        world.waits.clear()
+        wren.backend.script = [says(five) for _ in range(4)]
+        opens(ivo, wren, "Morning.")
+        await turn(wren)
+        talked = [e["data"] for e in wren.state.events(30) if e["kind"] == "talk"][0]
+        assert (talked["turns"], talked["ended"], len(world.waits)) == (lines_said, "a while", waits), stretch
+        wren.backend.script = []
+
+
+@pytest.mark.asyncio
+async def test_a_talk_waits_for_one_busy_with_a_turn_of_their_own_but_not_for_ever(world, monkeypatch):
+    """Between lines either may be in a turn of their own; the next line waits for it, and if it never comes, the talk ends."""
+    wren, ivo = world.agents
+    monkeypatch.setattr(talk, "LOCK_WAIT", 0.05)
+    for busy in (ivo, wren):                                                                 # the first lock taken, and the second
+        async def held(seconds):
+            await busy.talking.acquire()                                                      # a long turn of theirs, between lines
+        monkeypatch.setattr(talk, "wait", held)
+        wren.backend.script = [says("Morning."), says("Never said.")]
+        opens(ivo, wren, "Morning, Wren.")
+        await asyncio.wait_for(turn(wren), 2)
+        busy.talking.release()
+        assert [e["data"]["ended"] for e in wren.state.events(30) if e["kind"] == "talk"][0] == "busy"
+        assert wren.backend.script == [says("Never said.")] and world.talks == {}
+        wren.backend.script = []
+
+
+@pytest.mark.asyncio
+async def test_a_talk_takes_in_only_the_other_ones_words(world, monkeypatch):
+    """What the other said meanwhile is the talk's; a visitor's words, or another agent's, wait for a world turn."""
+    wren, ivo = world.agents
+
+    async def meanwhile(seconds):
+        if not world.waits:
+            opens(ivo, wren, "By the way, the gate's shut.")                                  # his world turn; she has none for it
+        world.waits.append(seconds)
+    monkeypatch.setattr(talk, "wait", meanwhile)
+    wren.receive("A note from the gate.", "Ivo", source="web")
+    wren.receive("Wren? It's Hester.", "Hester", source="agent")
+    wren.backend.script = [says("Morning."), says("Shut, is it."), says("Bye.", goodbye=True)]
+    opens(ivo, wren, "Morning, Wren.")
+    await turn(wren)
+    assert sorted((m["sender"], m["source"]) for m in wren.state.pending_inbox()) == [("Hester", "agent"), ("Ivo", "web")]
+    assert "By the way, the gate's shut." in wren.backend.calls[2]["messages"][0]["content"]       # heard, in the talk, by her next line

@@ -144,10 +144,13 @@ data and store its agent-scoped modules had; later agents start fresh.
 
 ## Talk between agents (0.60.0)
 When an agent's turn finds words from another agent who is here (its inbox, `source: agent`), the turn
-runs the talk as one scene (`Agent._talk_with`): the two speak in turn, the listener first, each from the talk scene's small prompt,
-its own (its persona, what it thinks of the other, its to-dos about them, the talk so far as it heard it). A line is logged as the
-speaker's `say` and arrives in the listener's log at once (`inbox`, consumed), waking no one. It ends on a goodbye, a silence,
-`AGENT_LINES` lines in all, either running out of budget, or one leaving; both log `talk` and have a world turn. For
+runs the talk as one scene (`Agent._talk_with`, then `Agent._hold_talk`, a task of its own in `World.talks`): the two speak in turn,
+the listener first, each from the talk scene's small prompt, its own (its persona, what it thinks of the other, its to-dos about them,
+the talk so far as it heard it). A line is logged as the speaker's `say` and arrives in the listener's log at once (`inbox`, consumed),
+waking no one. A talk takes time (0.65.0): each line as long as it takes to say and a pause (`talk.line_seconds`), both agents free
+between lines (a visitor or a letter gets a world turn; what one says to the other meanwhile is part of the talk, waking no one), and
+no heartbeat while it goes on. It ends on a goodbye, a silence, either running out of budget, one leaving or falling asleep
+(`talk.cut_short`), or after `STRETCH_MINUTES` of talk; both log `talk` and have a world turn. For
 `AGENT_QUIET_MINUTES` after (`talked:<key>`), words between them are heard but don't wake the listener, so a world turn doesn't start
 the ping-pong again; when the listener's turn comes, they pick the talk up again as a scene. Each agent holds a lock (`talking`) for its turns, and a scene holds the other's; if the other is mid-turn for
 `LOCK_WAIT` seconds, the words are answered the old way. Minds stay private: each line comes from its speaker's own State.
@@ -174,6 +177,13 @@ the gate, as if he had left); a talk scene with characters is with the one the a
 spoke (it had always been the first one there, Marta). And another agent's home is laid out by its owner only (`layouts._targets`):
 seen from next door it reads differently ("home" to one, "the stillroom" to the other), so each home was rebuilt every beat, about
 20,000 times a day.
+
+A talk takes time, not lines (0.65.0; found on Ashfall, 2026-11-21): with 0.64.0's brake gone, Wren and Sela, checking her vent
+together, said a line a second (about seventy 20-line talks back to back, 07:00 to 08:34) and both spent their day's tokens. The owner:
+make the dialogue take time rather than limit it, so how long they stay together is the limit. A line now takes its speaking time
+(2.5 words a second) and a 20-second pause; there is no limit on lines; every 20 minutes of talk each has a world turn, and words
+left pick the talk up again. A line costs about 2,300 tokens and a world turn about 15,000, so an hour together costs each about
+150-200k: a whole day at the same place stays inside a 3M budget.
 
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it
