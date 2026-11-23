@@ -54,6 +54,7 @@ class Agent:
     temperament: tuple = ()        # where its feelings rest: (emotion, 0-100) pairs over the engine's baselines (emotions.baseline)
     knows: tuple = ()              # the other agents it already knows when the world starts (neighbours), by key; the rest it meets by chance
     role: str = ""                 # what it does in this world (a word): guide pages may be for a role (`when: role villager`)
+    was: str = ""                  # the character it was, by name, if it was one: on its first start it takes over what they carried (becoming.py)
 
     @property
     def home_place(self) -> dict:
@@ -263,8 +264,11 @@ def _agent(d: Path, a, bad) -> Agent:
     knows = a.get("knows", [])
     if not isinstance(knows, list) or not all(isinstance(k, str) for k in knows):
         raise bad("an agent's `knows` lists other agents of this world by key")
+    was = a.get("was", "")
+    if not isinstance(was, str):
+        raise bad("an agent's `was` is the name of a character it was")
     return Agent(name, pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""), tuple(look.items()), key,
-                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows), role)
+                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows), role, was.strip())
 
 
 @lru_cache(maxsize=8)

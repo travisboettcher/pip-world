@@ -388,19 +388,20 @@ def test_the_app_starts_ashfall_with_ashfalls_belongings(tmp_path):
         W.set_active(W.load(Settings()))
 
 
-def test_ashfall_has_five_agents_and_each_has_a_home_and_a_view(tmp_path):
+def test_ashfall_has_six_agents_and_each_has_a_home_and_a_view(tmp_path):
     from fastapi.testclient import TestClient
     from app.llm.fake import FakeBackend
     from app.main import create_app
     pack = W.load(Settings(world_pack=str(ASHFALL)))
-    assert [a.key for a in pack.agents] == ["wren", "ivo", "hester", "tobin", "sela"] and pack.agent.name == "Wren"
+    assert [a.key for a in pack.agents] == ["wren", "ivo", "hester", "tobin", "sela", "marta"] and pack.agent.name == "Wren"
     homes = {a.key: a.home_place.get("key") for a in pack.agents[2:]}
-    assert homes == {"hester": "cooperage", "tobin": "loft", "sela": "stillroom"}
+    assert homes == {"hester": "cooperage", "tobin": "loft", "sela": "stillroom", "marta": "gatehouse"}
     assert all(pack.persona(a).startswith(f"You are {a.name}, ") for a in pack.agents[2:])
-    assert {a.key: a.role for a in pack.agents} == {"wren": "survivor", "ivo": "scavenger", "hester": "villager", "tobin": "villager", "sela": "villager"}
+    assert {a.key: a.role for a in pack.agents} == {"wren": "survivor", "ivo": "scavenger", "hester": "villager", "tobin": "villager", "sela": "villager", "marta": "villager"}
     rests = {a.key: dict(a.temperament) for a in pack.agents}
     assert rests["hester"]["anger"] > rests["sela"].get("anger", 8) and rests["tobin"]["trust"] > rests["hester"]["trust"]   # grumpy, sunny
     assert rests["sela"]["fear"] > rests["tobin"]["fear"] and not rests["wren"] and not rests["ivo"]                         # and anxious
+    assert pack.agent_named("marta").was == "Marta" and [a.key for a in pack.agents if a.was] == ["marta"]                    # the gate's villager, become an agent
     ivo = pack.agent_named("ivo")
     assert ivo.home_place["key"] == "lockup" and pack.persona(ivo).startswith("You are Ivo, a scavenger")
     os.makedirs(tmp_path / "data")
@@ -472,3 +473,18 @@ async def test_the_village_gate_is_a_market_where_salvage_sells(tmp_path, monkey
         assert ivo.state.find_item("copper wire")[0] is None and ivo.state.coins() > 0
     finally:
         W.set_active(W.load(Settings()))
+
+
+def test_the_village_never_brings_a_villager_who_is_an_agent_now():
+    """Marta became an agent (0.66.0): in a world where she runs as one, the village brings the next villager, not a second Marta."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("village", ASHFALL / "modules" / "village.py")
+    village = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(village)
+    ctx = {"time": {"hour": 10, "minute": 0, "season": ""}, "now": 1000.0, "params": {"broadcast_hour": 19}, "state": {"next": 1e10},
+           "people": [], "agents": [{"key": "wren", "name": "Wren"}]}
+    assert village.on_time(ctx)["character"]["name"] == "Marta"
+    ctx["agents"].append({"key": "marta", "name": "Marta"})
+    out = village.on_time(ctx)
+    assert out["character"]["name"] == "Ezra" and out["state"]["brought"] == ["Ezra"]
+    assert "agents" in json.loads((ASHFALL / "modules" / "village.json").read_text())["reads"]

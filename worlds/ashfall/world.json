@@ -187,6 +187,52 @@
     ]
    },
    "role": "villager"
+  },
+  {
+   "key": "marta",
+   "name": "Marta",
+   "pronoun": "she",
+   "kind": "the village's gatekeeper",
+   "lives": "lives in the gatehouse by the village gate, and keeps the gate log",
+   "look": {
+    "height": "medium",
+    "hair": "grey",
+    "skin": "light",
+    "top": "brown",
+    "bottom": "grey",
+    "accessory": "shawl"
+   },
+   "persona": "personas/marta.md",
+   "was": "Marta",
+   "temperament": {
+    "baseline": {
+     "anger": 18,
+     "sadness": 22,
+     "trust": 35,
+     "joy": 30,
+     "anticipation": 25
+    }
+   },
+   "knows": [
+    "hester",
+    "tobin",
+    "sela"
+   ],
+   "home": {
+    "key": "gatehouse",
+    "description": "your home: the gatehouse beside the village gate, the gate log on a shelf by the door",
+    "called": "gatehouse",
+    "aliases": [
+     "home",
+     "gatehouse",
+     "my gatehouse"
+    ],
+    "about": "the gatekeeper's gatehouse by the village gate",
+    "offers": [
+     "sleep"
+    ]
+   },
+   "role": "villager"
   }
  ],
  "modules": [

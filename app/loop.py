@@ -16,6 +16,7 @@ from . import library as lib
 from . import memory as mem
 from . import builder
 from . import calendar
+from . import becoming
 from . import layouts
 from . import looks
 from . import modules
@@ -168,6 +169,7 @@ def build(settings: Settings, backend: LLMBackend, gm_backend: LLMBackend | None
         world = Agent(s, State(s), backend, get_policy(s), gm_backend=gm_backend, world=world).world
     looks.gather_scenes(world.agents)                   # each place looks one way to everyone: the world's
     others.acquainted(world.agents)                     # neighbours know each other from the start
+    becoming.step(world.agents)                         # an agent that was a character takes over from them, once
     return world
 
 

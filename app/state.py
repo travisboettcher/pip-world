@@ -389,6 +389,17 @@ class State:
             return new
 
     # --- events ------------------------------------------------------
+    def remember(self, ts: float, kind: str, **data) -> int:
+        """An event from before, at the time it happened: in the log and the recall index, without the moment's side effects (no firsts,
+        nothing appraised or told to listeners). For a history carried over (becoming.py)."""
+        with self.lock:
+            cur = self.db.execute("INSERT INTO events (ts, kind, data, importance) VALUES (?, ?, ?, ?)",
+                                  (ts, kind, json.dumps(data), event_importance(kind, data, [])))
+            if kind in RECALL_EVENT_KINDS and (text := recall_text(kind, data)):
+                self._index(f"event:{kind}", cur.lastrowid, ts, text, commit=False, data=data, importance=event_importance(kind, data, []))
+            self.db.commit()
+        return cur.lastrowid
+
     def log(self, kind: str, **data) -> int:
         now = time.time()
         with self.lock:
@@ -1002,6 +1013,11 @@ class State:
         """Everyone letters go between the agent and (a module brought them as writing)."""
         return [c for c in self.characters() if c["writes"]]
 
+    def remove_character(self, character_id: int) -> None:
+        with self.lock:
+            self.db.execute("DELETE FROM characters WHERE id = ?", (character_id,))
+            self.db.commit()
+
     def characters(self, kind: str | None = None) -> list[dict]:
         with self.lock:
             rows = self.db.execute("SELECT * FROM characters ORDER BY id").fetchall()
@@ -1602,7 +1618,7 @@ class State:
     @staticmethod
     def _people_in(source: str, data: dict) -> list[str]:
         """The people a remembered thing is about: who wrote, spoke, was spoken to or told the agent something."""
-        keys = ("sender", "to", "by") + (("name",) if source in ("event:companion", "person") else ())
+        keys = ("sender", "to", "to_name", "by") + (("name",) if source in ("event:companion", "person") else ())
         names = [str(data[k]).strip() for k in keys if isinstance(data.get(k), str) and data[k].strip()]
         return list(dict.fromkeys(n for n in names if n.lower() not in (world_pack.active().agent.name.lower(), "a visitor")))
 

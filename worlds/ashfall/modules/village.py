@@ -29,7 +29,7 @@ def _villager(v):
 def _arrivals(ctx, out, st):
     """The next villager not yet in the world (or brought already: remembered here), and the next broadcast to look again at."""
     brought = list(st.get("brought", []))
-    here = {p["name"] for p in ctx["people"]} | set(brought)
+    here = {p["name"] for p in ctx["people"]} | {a["name"] for a in ctx.get("agents", [])} | set(brought)   # one who is an agent now isn't brought
     missing = [v for v in VILLAGERS if v["name"] not in here]
     if missing:
         out["character"] = _villager(missing[0])

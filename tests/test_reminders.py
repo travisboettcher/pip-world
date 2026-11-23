@@ -63,6 +63,14 @@ def test_a_feeling_only_counts_when_it_stands_out_and_names_only_people(tmp_path
     assert st.memory_context("event:say", st.events(1)[0]["id"])["people"] == []
 
 
+def test_words_said_in_person_are_remembered_with_who_heard_them(tmp_path):
+    """Found 2026-11-23 (0.66.0): a line said to someone in person (`say` with `to_name`) kept no one in its context, so meeting them
+    again never brought it back."""
+    s, st, gm, agent = make(tmp_path)
+    st.log("say", text="The tide turns at four.", to=[], to_name="Oriel")
+    assert st.memory_context("event:say", st.events(1)[0]["id"])["people"] == ["Oriel"]
+
+
 @pytest.mark.asyncio
 async def test_at_a_neighbors_home_she_is_part_of_every_memory_and_a_walk_has_no_place(tmp_path):
     s, st, gm, agent = make(tmp_path, [report(text="A low cottage."), report(text="Pip! Come in.")], work_speed=1e6)

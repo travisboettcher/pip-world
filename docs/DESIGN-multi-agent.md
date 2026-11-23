@@ -185,6 +185,17 @@ make the dialogue take time rather than limit it, so how long they stay together
 left pick the talk up again. A line costs about 2,300 tokens and a world turn about 15,000, so an hour together costs each about
 150-200k: a whole day at the same place stays inside a 3M budget.
 
+## A character becomes an agent (0.66.0)
+The owner (2026-11-22): Oriel, Pip's neighbour, should become an agent of her own; tried first on Ashfall, with Marta at the gate.
+A world.json agent may name the character it was (`was`). The first time it starts (`becoming.step`, at the world's start, after the
+agents know each other), if the world has that character, the agent takes over what they carried: their `life` and what they `told`
+(as things it has `learned`), and every exchange the other agents had with them, told from its own side at the time it happened
+(`State.remember`: in the log and the recall index, nothing appraised): the character's letters are its `letter_sent`, letters to
+them its `inbox` (`source: letter`), their words in person its `say`, words to them its `inbox` (`source: agent`). Letters still in
+the post become the world's agent post, due when they were. Each agent who dealt with the character has met the agent, both ways; the
+character is removed, and the agent logs `became`. Once only (`became` in its file). A world that never had the character starts the
+agent as written. A module that brings people must not bring an agent back as a character (Ashfall's village reads `agents`).
+
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it
 knows and paints only where it has walked.
