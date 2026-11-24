@@ -8,7 +8,14 @@ RETRY = 3600
 
 
 def _neighbours(ctx):
+    """The characters who are the agent's neighbours: the ones this module asks to write."""
     return [p["name"] for p in ctx["people"] if p["kind"] == "neighbor"]
+
+
+def _has_neighbour(ctx):
+    """Whether the agent has a neighbour at all: a character, or another agent who is one (they write their own letters)."""
+    me = ctx["agent"]["name"]
+    return bool(_neighbours(ctx)) or any(a["role"] == "neighbor" and a["name"] != me for a in ctx.get("agents", []))
 
 
 def _invite(ctx):
@@ -40,7 +47,7 @@ def on_time(ctx):
     every = ctx["params"]["every_hours"] * 3600
     names = _neighbours(ctx)
     if not names:
-        if not ctx["params"]["invent"] or ctx["asking"]:
+        if not ctx["params"]["invent"] or ctx["asking"] or _has_neighbour(ctx):
             return {"schedule": now + RETRY}
         return {"ask": _invite(ctx), "schedule": now + RETRY}
     due = dict(st.get("due", {}))
@@ -58,7 +65,7 @@ def on_time(ctx):
 
 def on_answer(ctx):
     got = ctx["answer"]
-    if got["purpose"] != "neighbour" or not got.get("data") or _neighbours(ctx):
+    if got["purpose"] != "neighbour" or not got.get("data") or _has_neighbour(ctx):
         return {"schedule": ctx["now"] + RETRY}
     d = got["data"]
     new = {"name": d["name"][:40].strip(), "kind": "neighbor", "persona": d["persona"][:800], "about": d["about"][:160], "writes": True,

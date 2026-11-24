@@ -181,3 +181,24 @@ def test_a_narrator_given_an_agent_keeps_to_it(tmp_path, restore):
     p = W.load(Settings(world_pack=str(two(tmp_path))))
     gm = GameMaster(FakeBackend(), None, agent=p.agent_named("ivo"))
     assert gm.agent.name == "Ivo"
+
+
+def test_an_agent_may_start_with_belongings_of_its_own(tmp_path, restore):
+    """Found on Ashfall (2026-11-18): the villagers started with Wren's kit and acted like scavengers; for Pip's world (0.67.0) Oriel
+    starts with her tin of brass and wire, not Pip's seed packets. An agent's `items` replace the world's starting belongings."""
+    tin = {"name": "brass and wire tin", "qty": 1, "kind": "material", "description": "a tin of found brass and wire"}
+    d = two(tmp_path)
+    w = json.loads((d / "world.json").read_text())
+    w["agents"][1]["items"] = [tin, {"name": "rope", "qty": 2, "kind": "material"}]
+    (d / "world.json").write_text(json.dumps(w))
+    (d / "items.json").write_text(json.dumps({"kinds": ["tool", "material", "food"], "start": [{"name": "bandage", "qty": 1, "kind": "tool"}]}))
+    os.makedirs(tmp_path / "data")
+    s = Settings(world_pack=str(d), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual")
+    wren, ivo = loop.build(s, FakeBackend()).agents
+    assert [(i["name"], i["qty"]) for i in wren.state.items()] == [("bandage", 1)]               # the world's
+    assert sorted((i["name"], i["qty"], i["description"]) for i in ivo.state.items()) == [("brass and wire tin", 1, tin["description"]), ("rope", 2, "")]
+    for bad in ([{"name": "rope"}], [{"name": "", "qty": 1, "kind": "material"}], [{"name": "rope", "qty": 0, "kind": "material"}], "rope"):
+        w["agents"][1]["items"] = bad
+        (d / "world.json").write_text(json.dumps(w))
+        with pytest.raises(W.PackError, match="an agent's `items` are its starting belongings: \\[\\{name, qty, kind, description\\?, attrs\\?\\}\\]$"):
+            W.load(Settings(world_pack=str(d)))

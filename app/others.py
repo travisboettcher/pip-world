@@ -165,6 +165,6 @@ def read(state) -> list[dict]:
     out = []
     for a in everyone():
         me = a.state.agent()
-        out.append({"key": a.identity.key, "name": a.identity.name, "where": me["location"], "activity": me["activity"],
+        out.append({"key": a.identity.key, "name": a.identity.name, "role": a.identity.role, "where": me["location"], "activity": me["activity"],
                     "asleep": me["activity"] == "sleeping"})
     return out

@@ -324,3 +324,28 @@ def test_per_pack_keeps_only_the_last_few_worlds(monkeypatch):
         W.set_active(W.load(Settings()))
     monkeypatch.undo()
     assert W.PER_PACK_KEPT == 8
+
+
+def test_pips_world_has_its_neighbours_as_agents():
+    """The owner (2026-11-22): Oriel, Pip's neighbour, becomes an agent, with three new neighbours: Abel at the scrapyard, Tansy the
+    beekeeper by the wood, Lio the carrier at the harbour (0.67.0). Pip is still the first, and the one who reaches the owner."""
+    from app import guide
+    p = W.load(Settings())
+    assert [a.key for a in p.agents] == ["pip", "oriel", "abel", "tansy", "lio"] and p.agent.name == "Pip"
+    assert {a.key: a.role for a in p.agents} == {"pip": "maker", "oriel": "neighbor", "abel": "neighbor", "tansy": "neighbor", "lio": "neighbor"}
+    assert [(a.key, a.was) for a in p.agents if a.was] == [("oriel", "Oriel Vantosh")]
+    homes = {a.key: a.home_place.get("key") for a in p.agents}
+    assert homes == {"pip": None, "oriel": "Oriel Vantosh's home", "abel": "caravan", "tansy": "hive cottage", "lio": "net loft"}
+    assert all(p.persona(a).startswith(f"You are {a.name}, ") for a in p.agents[1:])
+    assert p.agent.starting_items is None and all(a.starting_items for a in p.agents[1:])        # Pip's are the world's
+    assert any(i["name"] == "brass and wire tin" for i in p.agent_named("oriel").starting_items)
+    assert p.agent_named("tansy").kind == "a beekeeper and painter" and "sketchbook" in {i["name"] for i in p.agent_named("tansy").starting_items}
+    assert "you draw all the time" in p.persona(p.agent_named("tansy"))                          # the owner: one who draws (2026-11-23)
+    rest = {a.key: dict(a.temperament) for a in p.agents}
+    assert rest["tansy"]["joy"] > rest["oriel"]["joy"] and rest["lio"]["sadness"] > rest["tansy"].get("sadness", 15) and not rest["pip"]
+    with W.acting(p.agent):
+        pips = guide.render(["say", "go_to", "write_letter"], Settings(), True)
+    with W.acting(p.agent_named("oriel")):
+        hers = guide.render(["say", "go_to", "write_letter"], Settings(), True)
+    assert "Home is your workshop and garden" in pips and "Your life here is your own" not in pips
+    assert "Home is your own place" in hers and "Your life here is your own" in hers and "Home is your workshop" not in hers

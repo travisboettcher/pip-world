@@ -1,12 +1,335 @@
 {
  "name": "Pip's world",
  "api": 1,
- "agent": {
-  "name": "Pip",
-  "pronoun": "it",
-  "kind": "a small creature",
-  "lives": "lives alone in a workshop with a garden"
- },
+ "agents": [
+  {
+   "key": "pip",
+   "name": "Pip",
+   "pronoun": "it",
+   "kind": "a small creature",
+   "lives": "lives alone in a workshop with a garden",
+   "role": "maker",
+   "knows": [
+    "oriel"
+   ]
+  },
+  {
+   "key": "oriel",
+   "name": "Oriel Vantosh",
+   "pronoun": "she",
+   "kind": "a tide-reader",
+   "lives": "lives alone in a grey cottage across the salt marsh, and walks the mudflats each morning to log the tides",
+   "look": {
+    "height": "tall",
+    "hair": "grey",
+    "skin": "light",
+    "top": "grey",
+    "bottom": "brown",
+    "accessory": "shawl"
+   },
+   "persona": "personas/oriel.md",
+   "was": "Oriel Vantosh",
+   "role": "neighbor",
+   "knows": [
+    "pip",
+    "abel",
+    "lio"
+   ],
+   "temperament": {
+    "baseline": {
+     "trust": 45,
+     "joy": 35,
+     "sadness": 25,
+     "anticipation": 30,
+     "fear": 15
+    }
+   },
+   "home": {
+    "key": "Oriel Vantosh's home",
+    "description": "your home: a grey cottage with a blue door across the salt marsh, a cabinet of sea glass and driftwood along one wall",
+    "called": "cottage",
+    "aliases": [
+     "home",
+     "cottage",
+     "my cottage",
+     "marsh cottage",
+     "the cottage"
+    ],
+    "about": "a grey cottage with a blue door across the salt marsh",
+    "offers": [
+     "projects",
+     "garden",
+     "sleep"
+    ]
+   },
+   "items": [
+    {
+     "name": "tide book",
+     "qty": 1,
+     "kind": "tool",
+     "description": "a cloth-bound log of tides, birds and finds, in a careful hand"
+    },
+    {
+     "name": "brass and wire tin",
+     "qty": 1,
+     "kind": "material",
+     "description": "a tin of found brass and wire, kept for Pip"
+    },
+    {
+     "name": "sea glass",
+     "qty": 4,
+     "kind": "material",
+     "description": "frosted pieces of sea glass, labelled by beach"
+    },
+    {
+     "name": "oatcakes",
+     "qty": 3,
+     "kind": "food",
+     "description": "plain oatcakes in a paper twist"
+    },
+    {
+     "name": "carrot seeds",
+     "qty": 3,
+     "kind": "seed",
+     "description": "a paper packet of carrot seeds",
+     "attrs": {
+      "crop": "carrots",
+      "grow_minutes": 1080,
+      "yield": 3,
+      "food_value": 0.4
+     }
+    }
+   ]
+  },
+  {
+   "key": "abel",
+   "name": "Abel Marrow",
+   "pronoun": "he",
+   "kind": "the scrapyard keeper",
+   "lives": "lives in a caravan at the edge of the scrapyard over the hill, sorting what people throw away",
+   "look": {
+    "height": "tall",
+    "hair": "white",
+    "skin": "olive",
+    "top": "ochre",
+    "bottom": "navy",
+    "accessory": "hat"
+   },
+   "persona": "personas/abel.md",
+   "role": "neighbor",
+   "knows": [
+    "oriel"
+   ],
+   "temperament": {
+    "baseline": {
+     "trust": 35,
+     "joy": 40,
+     "anger": 12,
+     "anticipation": 25
+    }
+   },
+   "home": {
+    "key": "caravan",
+    "description": "your home: a green caravan on blocks at the edge of the scrapyard, sorted bins of metal under its awning",
+    "called": "caravan",
+    "aliases": [
+     "home",
+     "caravan",
+     "my caravan",
+     "the caravan"
+    ],
+    "about": "a green caravan at the edge of the scrapyard",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   },
+   "items": [
+    {
+     "name": "tin snips",
+     "qty": 1,
+     "kind": "tool",
+     "description": "heavy tin snips with taped handles"
+    },
+    {
+     "name": "scrap brass",
+     "qty": 4,
+     "kind": "material",
+     "description": "offcuts of brass, sorted by the ring they make"
+    },
+    {
+     "name": "copper wire",
+     "qty": 3,
+     "kind": "material",
+     "description": "lengths of copper wire, straightened"
+    },
+    {
+     "name": "bread",
+     "qty": 2,
+     "kind": "food",
+     "description": "a heel of brown bread"
+    }
+   ]
+  },
+  {
+   "key": "tansy",
+   "name": "Tansy Hale",
+   "pronoun": "she",
+   "kind": "a beekeeper and painter",
+   "lives": "lives in a low cottage at the edge of the wood, with hives along the hedge, a kitchen garden at the back and a sketchbook always in her pocket",
+   "look": {
+    "height": "short",
+    "hair": "auburn",
+    "skin": "pale",
+    "top": "green",
+    "bottom": "blue",
+    "accessory": "apron"
+   },
+   "persona": "personas/tansy.md",
+   "role": "neighbor",
+   "temperament": {
+    "baseline": {
+     "joy": 60,
+     "anticipation": 55,
+     "anger": 15,
+     "fear": 8
+    }
+   },
+   "home": {
+    "key": "hive cottage",
+    "description": "your home: a low cottage at the edge of the wood, hives along the hedge and a kitchen garden at the back",
+    "called": "hive cottage",
+    "aliases": [
+     "home",
+     "hive cottage",
+     "my hive cottage",
+     "the hive cottage",
+     "hives"
+    ],
+    "about": "a low cottage at the edge of the wood, with hives along the hedge",
+    "offers": [
+     "projects",
+     "garden",
+     "sleep"
+    ]
+   },
+   "items": [
+    {
+     "name": "sketchbook",
+     "qty": 1,
+     "kind": "tool",
+     "description": "a battered sketchbook, half full of bees, flowers and faces"
+    },
+    {
+     "name": "box of watercolours",
+     "qty": 1,
+     "kind": "tool",
+     "description": "a tin box of watercolour pans and two brushes"
+    },
+    {
+     "name": "hive tool",
+     "qty": 1,
+     "kind": "tool",
+     "description": "a flat steel hive tool, sticky with wax"
+    },
+    {
+     "name": "honey",
+     "qty": 3,
+     "kind": "food",
+     "description": "a jar of runny wildflower honey"
+    },
+    {
+     "name": "bean seeds",
+     "qty": 3,
+     "kind": "seed",
+     "description": "a paper packet of bean seeds",
+     "attrs": {
+      "crop": "beans",
+      "grow_minutes": 1440,
+      "yield": 3,
+      "food_value": 0.5
+     }
+    },
+    {
+     "name": "pea seeds",
+     "qty": 3,
+     "kind": "seed",
+     "description": "a paper packet of pea seeds",
+     "attrs": {
+      "crop": "peas",
+      "grow_minutes": 1200,
+      "yield": 3,
+      "food_value": 0.4
+     }
+    }
+   ]
+  },
+  {
+   "key": "lio",
+   "name": "Lio Fenn",
+   "pronoun": "he",
+   "kind": "a carrier and net-mender",
+   "lives": "lives above the net loft by the harbour in the market town, and carries goods and letters along the coast",
+   "look": {
+    "height": "medium",
+    "hair": "black",
+    "skin": "brown",
+    "top": "blue",
+    "bottom": "grey",
+    "accessory": "satchel"
+   },
+   "persona": "personas/lio.md",
+   "role": "neighbor",
+   "knows": [
+    "oriel"
+   ],
+   "temperament": {
+    "baseline": {
+     "sadness": 25,
+     "trust": 50,
+     "joy": 40,
+     "anticipation": 30
+    }
+   },
+   "home": {
+    "key": "net loft",
+    "description": "your home: a room above the net loft by the harbour, nets hung to dry from the beams",
+    "called": "net loft",
+    "aliases": [
+     "home",
+     "net loft",
+     "my net loft",
+     "the net loft",
+     "loft"
+    ],
+    "about": "a room above the net loft by the harbour",
+    "offers": [
+     "projects",
+     "sleep"
+    ]
+   },
+   "items": [
+    {
+     "name": "netting needle",
+     "qty": 1,
+     "kind": "tool",
+     "description": "a wooden netting needle, worn smooth"
+    },
+    {
+     "name": "rope",
+     "qty": 2,
+     "kind": "material",
+     "description": "a coil of tarred rope"
+    },
+    {
+     "name": "smoked fish",
+     "qty": 2,
+     "kind": "food",
+     "description": "smoked herring wrapped in paper"
+    }
+   ]
+  }
+ ],
  "modules": [
   "pip:gallery-wall",
   "pip:stall-pictures",

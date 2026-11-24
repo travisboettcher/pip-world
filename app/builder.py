@@ -53,7 +53,7 @@ def parts_list(state) -> str:
 
 def anchor_list(state=None) -> str:
     """Every kind of place and the anchors its scene has (type tagged ...), so a module can ask for one that exists: from what a kind's
-    layout module has built."""
+    layout module has built; then each place with a layout of its own (an agent's home laid out apart from other homes)."""
     from . import anchors, layouts
     spots = lambda rows: "; ".join(dict.fromkeys(f"{a['type']} tagged {', '.join(a['tags'])}" for a in rows if anchors.RESERVED not in a["tags"]))
     laid = {}
@@ -61,7 +61,9 @@ def anchor_list(state=None) -> str:
         m = layouts.kind_module(state, kind) if state is not None else None
         built = next(iter((m or {}).get("built", {}).get("places", {}).values()), None) if m else None
         laid.setdefault(spots(built["anchors"]) if built and built.get("anchors") else "ground tagged outside (once its layout is built)", []).append(kind)
-    return "\n".join(f"  {'/'.join(kinds)}: {where}" for where, kinds in laid.items())
+    own = [(m["manifest"]["place"], spots(m["built"]["anchors"])) for m in (state.modules("live") if state is not None else [])
+           if m["kind"] == "place" and "place" in m["manifest"] and m["built"].get("anchors")]
+    return "\n".join([f"  {'/'.join(kinds)}: {where}" for where, kinds in laid.items()] + [f"  {place} (its own): {where}" for place, where in own])
 
 
 def manifest(source: str, name: str, events) -> dict:

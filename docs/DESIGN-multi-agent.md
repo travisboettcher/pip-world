@@ -196,6 +196,20 @@ the post become the world's agent post, due when they were. Each agent who dealt
 character is removed, and the agent logs `became`. Once only (`became` in its file). A world that never had the character starts the
 agent as written. A module that brings people must not bring an agent back as a character (Ashfall's village reads `agents`).
 
+## Pip's neighbours (0.67.0)
+The owner (2026-11-22, -23): Pip's world gets neighbours who are agents. Oriel Vantosh, the tide-reader Pip has written to and visited
+since its first week, becomes one (`was`); with her, Abel Marrow at the scrapyard (who knew her husband), Tansy Hale the beekeeper and
+painter by the wood (one who draws, so the draw tool is used), and Lio Fenn, who carries goods and letters from the harbour. Pip is still
+the first agent and the only one who reaches the owner. What it took, all generic:
+- an agent may start with belongings of its own (`items`, shaped as items.json's `start`), not the world's (Oriel's tin of brass and
+  wire, not Pip's seed packets; Ashfall's villagers had acted like scavengers on Wren's kit);
+- the modules' `agents` read gives each agent's `role`, and the neighbourhood invents a neighbour only when the agent has none,
+  character or agent (it would otherwise have replaced Oriel the moment she stepped aside);
+- Pip's own home layout claims its place (`workshop`), and the neighbour-cottage layout lays out other homes; the builder's list of
+  anchors now names a place with a layout of its own, as well as each kind's;
+- guide pages by role: Pip is the `maker`, the others `neighbor` (their own home page and a page on their own lives).
+Tried on a copy of Pip's data: Oriel takes over 34 letters she wrote, 198 lines and letters from Pip and 135 of her own words.
+
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it
 knows and paints only where it has walked.

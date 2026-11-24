@@ -116,3 +116,20 @@ def test_the_module_ships_with_the_settings_as_its_params():
     man, _ = M.library("neighborhood")
     assert M.settings_params(Settings(neighbor=False, neighbor_writes_every_hours=12), "neighborhood", man["params"]) == {"invent": False, "every_hours": 12}
     assert "neighborhood" in M.RULES
+
+
+def test_a_neighbour_who_is_an_agent_is_neighbour_enough():
+    """Pip's world (0.67.0): Oriel, the neighbour, became an agent, and her neighbours are agents too. The neighbourhood invents a
+    neighbour only when the agent has none, character or agent; the letters it asks for are a character's (an agent writes its own)."""
+    man, src = M.library("neighborhood")
+    assert "agents" in man["reads"]
+    mod = {}
+    exec(src, mod)
+    ctx = {"now": 1000.0, "seed": 1, "state": {}, "asking": False, "params": {"invent": True, "every_hours": 24},
+           "agent": {"name": "Pip", "lives": "lives in a workshop"}, "creations": [], "people": [],
+           "agents": [{"key": "pip", "name": "Pip", "role": "maker"}, {"key": "abel", "name": "Abel", "role": "scrapper"}]}
+    assert "ask" in mod["on_time"](ctx)                                                       # no neighbour of any kind: one is invented
+    ctx["agents"].append({"key": "oriel", "name": "Oriel Vantosh", "role": "neighbor"})
+    out = mod["on_time"](ctx)
+    assert "ask" not in out and "letter" not in out and out["schedule"] == 1000.0 + mod["RETRY"]
+    assert mod["on_answer"]({**ctx, "answer": {"purpose": "neighbour", "data": {"name": "X"}}}) == {"schedule": 1000.0 + mod["RETRY"]}

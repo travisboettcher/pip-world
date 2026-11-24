@@ -140,8 +140,8 @@ def test_modules_see_where_everyone_is(world):
     m = live(wren.state, rule(name="census", reads=["agents"], api=2), "x")
     with wren.acting():
         got = M.context(wren.state, wren.s, m, time.time())["agents"]
-    assert got == [{"key": "wren", "name": "Wren", "where": "shelter", "activity": "idle", "asleep": False},
-                   {"key": "ivo", "name": "Ivo", "where": "ruins", "activity": "sleeping", "asleep": True}]
+    assert got == [{"key": "wren", "name": "Wren", "role": "", "where": "shelter", "activity": "idle", "asleep": False},
+                   {"key": "ivo", "name": "Ivo", "role": "", "where": "ruins", "activity": "sleeping", "asleep": True}]
 
 
 def test_meeting_at_its_edges(world, monkeypatch):

@@ -24,10 +24,14 @@ CHARACTER = [
     "Visitors are welcome to ask about your journal.",
 ]
 # What the guide said once and says differently now, on purpose: set_activity was how the agent "did" things before projects, walks and
-# gathering were tools of their own; it only says what the agent is doing now (2026-11-16).
+# gathering were tools of their own; it only says what the agent is doing now (2026-11-16). Pip's neighbours are agents now, who visit
+# too (0.67.0, 2026-11-23): the page about them says so.
 RETIRED = ["Otherwise pick an activity you find interesting and commit to it with set_activity: a short `activity` label (1-3 words) plus a "
            "one-sentence `description`. Let your to-do list, wishlist and ambitions guide you. Change activity when you've made real progress "
-           "or lose interest; don't just restate it."]
+           "or lose interest; don't just restate it.",
+           "You have a neighbor who lives nearby. You can walk over to visit them at home (go_to) and talk in person with say (to: their "
+           "name); they don't come visiting you. Otherwise you write letters (write_letter), which take hours to arrive each way, and they "
+           "sometimes send a small parcel. Letters from them arrive in your inbox. You can tuck something you own or made into a letter as a gift."]
 SPLIT = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you), in character."
 SPLIT_GUIDE_HALF = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you)."
 SPLIT_CHARACTER_HALF = "Answer visitors in character."
@@ -100,8 +104,8 @@ GATES = [
     (dict(tools=[t for t in ALL if t not in ("plant", "use_item")]), "You have a small garden"),
     (dict(tools=[t for t in ALL if t != "start_project"]), "Making things is real here"),
     (dict(tools=[t for t in ALL if t != "start_project"]), "Some finished things work or act on their own"),
-    (dict(tools=[t for t in ALL if t != "write_letter"]), "You have a neighbor who lives nearby."),
-    (dict(neighbor=False), "You have a neighbor who lives nearby."),
+    (dict(tools=[t for t in ALL if t != "write_letter"]), "Your neighbours live nearby, each at home."),
+    (dict(neighbor=False), "Your neighbours live nearby, each at home."),
     (dict(tools=[t for t in ALL if t not in ("browse", "read")]), "a library full of real books"),
     (dict(tools=[t for t in ALL if t not in ("gather", "where_to")]), "Beyond the garden there are more places"),
     (dict(tools=[t for t in ALL if t != "send_postcard"]), "send_postcard starts a conversation"),

@@ -55,6 +55,12 @@ class Agent:
     knows: tuple = ()              # the other agents it already knows when the world starts (neighbours), by key; the rest it meets by chance
     role: str = ""                 # what it does in this world (a word): guide pages may be for a role (`when: role villager`)
     was: str = ""                  # the character it was, by name, if it was one: on its first start it takes over what they carried (becoming.py)
+    items: str = ""                # its own starting belongings (json, shaped as items.json's `start`), or "" for the world's
+
+    @property
+    def starting_items(self) -> list | None:
+        """What it starts with, if not the world's starting belongings."""
+        return json.loads(self.items) if self.items else None
 
     @property
     def home_place(self) -> dict:
@@ -267,8 +273,14 @@ def _agent(d: Path, a, bad) -> Agent:
     was = a.get("was", "")
     if not isinstance(was, str):
         raise bad("an agent's `was` is the name of a character it was")
+    items = a.get("items")
+    if items is not None and not (isinstance(items, list) and all(
+            isinstance(i, dict) and isinstance(i.get("name"), str) and i["name"].strip() and isinstance(i.get("kind"), str)
+            and isinstance(i.get("qty"), int) and not isinstance(i["qty"], bool) and i["qty"] >= 1 for i in items)):
+        raise bad("an agent's `items` are its starting belongings: [{name, qty, kind, description?, attrs?}]")
     return Agent(name, pronoun, str(a.get("kind") or ""), str(a.get("lives") or ""), tuple(look.items()), key,
-                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows), role, was.strip())
+                 json.dumps(home, sort_keys=True) if home else "", persona, tuple(rest.items()), tuple(knows), role, was.strip(),
+                 json.dumps(items) if items is not None else "")
 
 
 @lru_cache(maxsize=8)

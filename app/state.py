@@ -341,8 +341,9 @@ class State:
                 self._backfill_memory_context()
             self.merge_duplicate_items()
             if not self.db.execute("SELECT 1 FROM meta WHERE key = 'starter_items'").fetchone():
-                for it in world_content.starter_items():  # once ever, so used-up seeds don't come back on restart
-                    self.add_item(it["name"], it["qty"], it["kind"], it["description"], it["attrs"])
+                own = self.identity().starting_items                   # an agent's own belongings, else the world's
+                for it in world_content.starter_items() if own is None else own:  # once ever, so used-up seeds don't come back on restart
+                    self.add_item(it["name"], it["qty"], it["kind"], it.get("description", ""), it.get("attrs") or {})
                 self.db.execute("INSERT INTO meta VALUES ('starter_items', '1')")
             self.db.commit()
 

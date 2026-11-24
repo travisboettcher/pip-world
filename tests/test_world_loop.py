@@ -91,7 +91,8 @@ def test_the_app_runs_the_world(tmp_path):
     from app.main import create_app
     with TestClient(create_app(settings(tmp_path), FakeBackend())) as c:
         world = c.app.state.world
-        assert world is c.app.state.agent.world and [a.state for a in world.agents] == [c.app.state.agent.state]   # the first, by default
+        assert world is c.app.state.agent.world and world.agents[0].state is c.app.state.agent.state                # the first, by default
+        assert [a.identity.key for a in world.agents] == ["pip", "oriel", "abel", "tansy", "lio"]                  # Pip's neighbours run too
 
 
 def test_the_world_has_the_packs_narrator_and_its_own_runner_and_library(tmp_path):

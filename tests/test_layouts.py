@@ -553,14 +553,20 @@ async def test_the_builder_hears_the_anchors_a_kind_layout_has_built(tmp_path):
     assert B.anchor_list() == B.anchor_list(None)
     await shipped_layouts(st, s, "home")
     text = B.anchor_list(st)
-    assert text.splitlines()[-1] == "  neighbor/library/wild/yard/shop/market/sight: ground tagged outside (once its layout is built)"
-    assert text.splitlines()[0].startswith("  home: ") and "wall tagged inside, back" in text.splitlines()[0]
+    assert text.splitlines()[0] == "  home/neighbor/library/wild/yard/shop/market/sight: ground tagged outside (once its layout is built)"
+    assert text.splitlines()[-1].startswith("  workshop (its own): ") and "wall tagged inside, back" in text.splitlines()[-1]   # Pip's home
+    assert B.anchor_list().splitlines() == text.splitlines()[:1]                                                              # no world: kinds only
     await M.propose(st, s, agent.runner, "world", {"name": "fields", "kind": "place", "api": 1, "hooks": ["on_build"], "kinds": ["wild", "yard"]}, KIND, now=NOW)
     await L.step(st, s, agent.runner, NOW)
     lines = B.anchor_list(st).splitlines()
-    assert "  wild/yard: ground tagged agent" in lines and "  neighbor/library/shop/market/sight: ground tagged outside (once its layout is built)" in lines
-    assert "reserved" not in lines[0] and "clock" not in lines[0]                                    # where the scene draws its own: not offered
+    assert "  wild/yard: ground tagged agent" in lines and "  home/neighbor/library/shop/market/sight: ground tagged outside (once its layout is built)" in lines
+    assert "reserved" not in lines[-1] and "clock" not in lines[-1]                                  # where the scene draws its own: not offered
     assert len([l for l in lines if l.startswith("  wild")]) == 1
+    await M.propose(st, s, agent.runner, "world", part_man(), TREE, now=NOW)                         # a part has no place of its own
+    assert len([l for l in B.anchor_list(st).splitlines() if "(its own)" in l]) == 1
+    home = next(m for m in st.modules("live") if m["kind"] == "place" and m["manifest"].get("place") == "workshop")
+    st.update_module(home["id"], status="replaced")                                                   # only a live layout is offered
+    assert not [l for l in B.anchor_list(st).splitlines() if "(its own)" in l]
 
 
 @pytest.mark.asyncio
