@@ -95,8 +95,11 @@ def say(state, other, text: str) -> str:
     meet(state, other)
     from . import talk
     talking = bool(_world) and (partner := _world[0].talking_with(other)) is not None and partner.identity.key == me.key
-    other.receive(text, me.name, source="agent", wake=not (talk.lately(state, other) or talking))   # just after a talk, or in one: heard, not woken
+    spent = other.state.budget_exceeded()                                   # the day's tokens gone: heard, but no talk until tomorrow
+    other.receive(text, me.name, source="agent", wake=not (talk.lately(state, other) or talking or spent))   # after a talk, or in one: not woken
     state.log("say", text=text, to=[], to_name=other.identity.name)
+    if spent:
+        return f"{other.identity.name} is too worn out to talk today; {other.identity.they} heard you"
     return f"said it to {other.identity.name}; {other.identity.they} heard you"
 
 

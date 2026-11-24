@@ -29,9 +29,8 @@ def test_the_grid_has_limits_and_every_refusal_says_what_to_fix():
     assert "4 to 32 rows tall; this one has 3" in reject(["kkkk"] * 3)
     assert "this one has 33" in reject(["kkkk"] * 33)
     assert art.clean_pixels(["k" * 32] * 32, PAL)[0][0] == "k" * 32 and art.clean_pixels(["kkkk"] * 4, PAL)
-    assert "same length, 4 to 32" in reject(["kkk"] * 4)
-    assert "same length" in reject(["k" * 33] * 4)
-    assert "same length" in reject(["kkkk", "kkkk", "kkk", "kkkk"])
+    assert reject(["kkk"] * 4) == "a row is 4 to 32 letters long; the longest here has 3"
+    assert reject(["kkkk", "k" * 33, "kkkk", "kkkk"]) == "a row is 4 to 32 letters long; the longest here has 33"
     assert reject("kkkk") == '`pixels` is a list of rows, each a string of palette letters ("." for nothing)' and "list of rows" in reject(["kkkk", 5, "kkkk", "kkkk"])
     assert art.clean_pixels(["kkkk\n"] * 4, PAL)[0] == ["kkkk"] * 4 and art.clean_pixels(["kkXX"] * 4, {"k": "#000", "X": "#fff"})[0] == ["kkXX"] * 4 and "aren't in your palette" in reject(["kk  "] * 4)
     assert "maps up to 16 single letters" in reject(ROWS, {})
@@ -186,3 +185,10 @@ async def test_stall_pictures_show_copies_of_a_drawing_and_creations_pip_drew(tm
     st.merge_store("trade", {"stall": {slot("Brygdon", "The Marsh"): None}})
     await M.step(st, s, agent.runner, now + 601)                                                   # it looks again
     assert [o["tip"]["title"] for o in WV.scene_view(st, s, None, "Brygdon")["objects"]] == ["Gear Clock"]
+
+
+def test_a_short_row_is_filled_out_with_nothing():
+    """Found live on Pip's world (2026-11-24): Tansy, the painter, had seven of eight pictures refused because a row came out a letter or
+    two short. A short row is filled out to the longest with "." (nothing), as it would be on paper."""
+    rows, _ = art.clean_pixels(["kkkk", "kk", "kkkkk", ""], PAL)
+    assert rows == ["kkkk.", "kk...", "kkkkk", "....."]

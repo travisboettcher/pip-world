@@ -719,3 +719,30 @@ def test_the_renderer_draws_live_elements_on_tagged_anchors():
     for token in ("$label", "$description", "$blurb", "$belongings", "$busy", "$hours", "$note", "$resident", "$wares", "$stock", "$stall"):
         assert f'"{token}"' in js, token
     assert not (web / "templates").exists() and not (web / "anchors").exists()
+
+
+@pytest.mark.asyncio
+async def test_a_beat_reads_the_modules_once_however_many_layouts_and_parts(tmp_path):
+    """Found live on Pip's world (2026-11-24): with five agents, each beat's layout step read and decoded every module row for every
+    part of every place (about 200,000 JSON decodes), stalling the server about 5 s every 35 s, long enough to fail its health check."""
+    from tests.test_modules import shipped_layouts
+    s, st, agent = modular(tmp_path, modules_approval="")
+    await shipped_layouts(st, s, "outdoors", "shed", "bench", "scrap-heap", "standing-stones")
+    reads, real = [], st.modules
+    st.modules = lambda *a, **k: reads.append(a) or real(*a, **k)
+    assert await L.step(st, s, agent.runner, NOW) == 0                                 # nothing out of date
+    assert reads == [("live",), ("live",)]                                           # once for the layouts, once for the season
+
+
+@pytest.mark.asyncio
+async def test_only_live_layouts_and_parts_count(tmp_path):
+    from tests.test_modules import shipped_layouts
+    s, st, agent = modular(tmp_path, modules_approval="")
+    await shipped_layouts(st, s, "home")
+    home = L.place_module(st, "workshop") or L.kind_module(st, "home")
+    parts = L.live_parts(st)
+    assert home and parts and L.live_parts(st, st.modules("live")) == parts
+    for m in st.modules("live"):
+        if m["kind"] in ("place", "part"):
+            st.update_module(m["id"], status="replaced")
+    assert L.place_module(st, home["manifest"].get("place", "")) is None and L.live_parts(st) == []

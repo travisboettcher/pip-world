@@ -58,7 +58,7 @@ def _history(a, b, name: str, now: float) -> bool:
                                (sender.identity.key, recipient.identity.key, lt["text"], lt["ts"], lt["deliver_at"]))
             b.state.update_letter(lt["id"], delivered_at=now)
         elif mine:
-            a.state.remember(lt["ts"], "letter_sent", to=them, text=lt["text"])
+            a.state.remember(lt["ts"], "letter_sent", to=them, text=lt["text"], enclosed=lt["enclosed"] or "")
         else:
             a.state.remember(lt["ts"], "inbox", text=lt["text"], sender=them, source="letter")
     b.state.db.commit()

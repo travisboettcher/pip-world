@@ -572,7 +572,9 @@ class Agent:
     async def _talk_with(self, other: "Agent") -> bool:
         """A talk with another agent who is here and spoke to this one (talk.py, "between agents"): started as a task of its own, which
         takes time (`_hold_talk`), so this turn is over at once; its first line takes in what the other said. False if the other couldn't be had (mid-turn): the words are answered in a
-        world turn, the old way."""
+        world turn, the old way, as they are when either has spent the day's tokens (no talk: it would end before a word)."""
+        if self.state.budget_exceeded() or other.state.budget_exceeded():
+            return False
         try:
             await asyncio.wait_for(other.talking.acquire(), talk.LOCK_WAIT)
         except asyncio.TimeoutError:

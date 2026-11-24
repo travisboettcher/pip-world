@@ -209,6 +209,11 @@ the first agent and the only one who reaches the owner. What it took, all generi
   anchors now names a place with a layout of its own, as well as each kind's;
 - guide pages by role: Pip is the `maker`, the others `neighbor` (their own home page and a page on their own lives).
 Tried on a copy of Pip's data: Oriel takes over 34 letters she wrote, 198 lines and letters from Pip and 135 of her own words.
+Its first day (0.67.1, 2026-11-24): the layout step read and decoded every module row for each part of each place, five agents over,
+and stalled the server about 5 s every 35 s (failing its health check); it now reads the live modules once a beat. An agent who has
+spent the day's tokens doesn't talk (Pip opened ten one-line talks with Oriel in four minutes after she ran out) and isn't woken by
+being spoken to; the speaker hears they're too worn out today. Carried letters are shaped like the agent's own (`enclosed`), and a
+pixel picture's short rows are filled out with nothing (Tansy had seven of eight refused).
 
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it

@@ -105,11 +105,12 @@ async def test_a_talk_ends_on_silence_after_a_while_or_when_someone_runs_out(wor
     assert wren._wake.is_set() and ivo._wake.is_set()                                              # each has a world turn, then on
     for a in world.agents:
         a.state.set_meta(**{f"talked:{o.identity.key}": "" for o in world.agents})
-    monkeypatch.setattr(ivo.s, "daily_token_budget", 1)
-    backend.script = [says("Still here?")]
+    monkeypatch.setattr(talk, "STRETCH_MINUTES", 20)
+    monkeypatch.setattr(ivo.s, "daily_token_budget", ivo.state.usage_today()["total_tokens"] + 1)    # one line left in him
+    backend.script = [says("Still here?"), says("Just."), says("Good."), says("Never said.")]
     opens(ivo, wren, "Once more.")
     await turn(wren, "event")
-    assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"][0] == "budget"
+    assert [e["data"]["ended"] for e in wren.state.events(5) if e["kind"] == "talk"][0] == "budget" and backend.script == [says("Never said.")]
 
 
 @pytest.mark.asyncio
@@ -451,3 +452,22 @@ async def test_a_talk_takes_in_only_the_other_ones_words(world, monkeypatch):
     await turn(wren)
     assert sorted((m["sender"], m["source"]) for m in wren.state.pending_inbox()) == [("Hester", "agent"), ("Ivo", "web")]
     assert "By the way, the gate's shut." in wren.backend.calls[2]["messages"][0]["content"]       # heard, in the talk, by her next line
+
+
+@pytest.mark.asyncio
+async def test_one_who_has_spent_the_days_tokens_is_too_worn_out_to_talk(world, monkeypatch):
+    """Found live on Pip's world (2026-11-24): Oriel spent her day's tokens at 14:21; Pip, beside her, opened ten talks in four minutes,
+    each over before a word (`budget`), and each followed by a world turn of Pip's. One who has run out doesn't talk, and isn't woken
+    by being spoken to; the one speaking is told so, in the world's terms."""
+    wren, ivo = world.agents
+    monkeypatch.setattr(ivo.s, "daily_token_budget", 100)
+    ivo.state.add_usage(90, 20)                                                                # spent
+    ivo._wake.clear()
+    with wren.acting():
+        said = others.say(wren.state, ivo, "Still up for a talk?")
+    assert said == "Ivo is too worn out to talk today; he heard you" and not ivo._wake.is_set()
+    wren.backend.script = [QUIET]
+    opens(ivo, wren, "Morning.")                                                               # words of his from before he ran out
+    await turn(wren)
+    assert not [e for e in wren.state.events(20) if e["kind"] == "talk"] and world.talks == {}
+    assert "Woke because" in wren.backend.calls[-1]["messages"][0]["content"]                  # a turn of her own instead

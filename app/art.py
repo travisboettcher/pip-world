@@ -50,9 +50,10 @@ def clean_pixels(rows, palette) -> tuple[list[str], dict]:
     rows = [r.rstrip("\n") for r in rows]
     if not PIXELS_MIN <= len(rows) <= PIXELS_MAX:
         raise SvgRejected(f"a pixel picture is {PIXELS_MIN} to {PIXELS_MAX} rows tall; this one has {len(rows)}")
-    width = len(rows[0])
-    if not PIXELS_MIN <= width <= PIXELS_MAX or any(len(r) != width for r in rows):
-        raise SvgRejected(f"every row needs the same length, {PIXELS_MIN} to {PIXELS_MAX} letters; check rows of a different length")
+    width = max(len(r) for r in rows)
+    if not PIXELS_MIN <= width <= PIXELS_MAX:
+        raise SvgRejected(f"a row is {PIXELS_MIN} to {PIXELS_MAX} letters long; the longest here has {width}")
+    rows = [r.ljust(width, ".") for r in rows]                          # a short row is filled out with nothing, as on paper
     if not isinstance(palette, dict) or not palette or len(palette) > PALETTE_MAX:
         raise SvgRejected(f"`palette` maps up to {PALETTE_MAX} single letters to colours like \"#3a2a1c\"")
     clean = {}

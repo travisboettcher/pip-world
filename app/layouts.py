@@ -125,9 +125,9 @@ async def build_place(state, settings, runner, m: dict, now: float, waiting: boo
             **({"camera": plan["camera"]} if "camera" in plan else {})}
 
 
-def place_module(state, key: str) -> dict | None:
-    """The live place module that lays out this place by name, if there is one."""
-    return next((m for m in reversed(state.modules("live")) if m["kind"] == "place" and m["manifest"].get("place") == key), None)
+def place_module(state, key: str, live: list | None = None) -> dict | None:
+    """The live place module that lays out this place by name, if there is one (from `live`, the live modules, when read already)."""
+    return next((m for m in reversed(state.modules("live") if live is None else live) if m["kind"] == "place" and m["manifest"].get("place") == key), None)
 
 
 def kind_module(state, kind: str) -> dict | None:
@@ -135,17 +135,20 @@ def kind_module(state, kind: str) -> dict | None:
     return next((m for m in reversed(state.modules("live")) if m["kind"] == "place" and kind in m["manifest"].get("kinds", [])), None)
 
 
-def live_parts(state) -> list[int]:
+def live_parts(state, live: list | None = None) -> list[int]:
     """The ids of the live parts: when they change, a layout that couldn't be built is worth trying again."""
-    return sorted(m["id"] for m in state.modules("live") if m["kind"] == "part")
+    return sorted(m["id"] for m in (state.modules("live") if live is None else live) if m["kind"] == "part")
 
 
-def _stale(state, settings, b: dict, version: int, now: float, details: dict | None = None) -> bool:
-    if not b or "error" in b or b.get("version") != version or b.get("season") != season(state):
+def _stale(state, settings, b: dict, version: int, now: float, details: dict | None = None, live: list | None = None,
+           season_now: str | None = None) -> bool:
+    if not b or "error" in b or b.get("version") != version or b.get("season") != (season(state) if season_now is None else season_now):
         return True
     if details is not None and b.get("details") != details:
         return True
-    return any((part_named(state, name) or {}).get("id") != mid for name, mid in b.get("parts", {}).items())
+    parts = {m["name"]: m["id"] for m in live if m["kind"] == "part"} if live is not None else None   # the newest live part of each name
+    return any((parts.get(name) if parts is not None else (part_named(state, name) or {}).get("id")) != mid
+               for name, mid in b.get("parts", {}).items())
 
 
 def stale(state, settings, m: dict, now: float) -> bool:
@@ -158,7 +161,7 @@ def _runner(m: dict, runner):
     return runner or (modules.LocalRunner() if m["author"] == modules.SHIPPED else None)
 
 
-def _targets(state, settings, m: dict, now: float, library=None) -> list[tuple[str, dict | None]]:
+def _targets(state, settings, m: dict, now: float, library=None, live: list | None = None) -> list[tuple[str, dict | None]]:
     """The places a place module lays out: its own, or every real place of its kinds without a layout of its own (with their details).
     Another agent's home is its owner's to lay out: seen from next door it reads differently, and the two would rebuild it in turn."""
     if "kinds" not in m["manifest"]:
@@ -167,22 +170,23 @@ def _targets(state, settings, m: dict, now: float, library=None) -> list[tuple[s
     theirs = {h["key"] for _, h in places.agents_homes(state)}
     return [(p["key"], world_view.place_details(state, settings, p["key"], p["kind"]))
             for p in worldmap.snapshot(state, settings, library, now)["places"]
-            if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"]) and p["key"] not in theirs]
+            if not p["heard_only"] and p["kind"] in m["manifest"]["kinds"] and not place_module(state, p["key"], live) and p["key"] not in theirs]
 
 
 async def step(state, settings, runner, now: float | None = None, library=None) -> int:
     """Build or rebuild every live place layout that is missing or out of date. Returns how many were built."""
     now, n = now or time.time(), 0
-    parts = live_parts(state)
-    for m in state.modules("live"):
+    live = state.modules("live")                                       # read once a beat: every lookup below is from it
+    parts, season_now = live_parts(state, live), season(state)
+    for m in live:
         run = _runner(m, runner)
         if m["kind"] != "place" or run is None:
             continue
-        for key, details in _targets(state, settings, m, now, library):
+        for key, details in _targets(state, settings, m, now, library, live):
             fresh = state.module(m["id"])["built"]
             b = fresh.get("places", {}).get(key, {}) if details is not None else fresh
             waiting = b.get("failed_at", 0) > now - 3600 and b.get("failed_parts") == parts
-            if not _stale(state, settings, b, m["version"], now, details) or waiting:   # a failure waits an hour, unless the parts changed
+            if not _stale(state, settings, b, m["version"], now, details, live, season_now) or waiting:   # a failure waits an hour, unless the parts changed
                 continue
             try:
                 built = await build_place(state, settings, run, m, now, key=key, details=details)

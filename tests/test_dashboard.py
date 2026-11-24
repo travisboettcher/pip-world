@@ -185,6 +185,9 @@ def test_what_passes_between_them_at_its_edges(app):
     assert [x["text"] for x in app.get("/world/between?limit=3").json()["happened"]] == ["Hello, Ivo.", "Just a note."]   # says to no one don't crowd them out
     ivo.state.log("met", name="Wren", about="a survivor", place="ruins")                              # remembered by the second of the two
     assert [x["kind"] for x in app.get("/world/between").json()["happened"]] == ["said", "letter"]
+    ivo.state.remember(time.time(), "letter_sent", to="Wren", text="An old letter, from before.")    # carried over (becoming.py), live 2026-11-24
+    got = app.get("/world/between")
+    assert got.status_code == 200 and got.json()["happened"][0]["enclosed"] == ""
 
 
 def test_two_nights_alike_both_show_and_the_newest_failure_comes_first(app):

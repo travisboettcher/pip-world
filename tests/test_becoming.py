@@ -76,6 +76,7 @@ def test_the_character_becomes_the_agent_with_what_she_carried(before):
                             ("inbox", {"sender": "Wren", "source": "agent", "text": "Morning, Marta."}, 3000),
                             ("say", {"to": [], "to_name": "Wren", "text": "You're late, Wren."}, 3001)]      # her side of it, when it happened
     assert marta.state.pending_inbox() == [] and marta.state.db.execute("SELECT COUNT(*) FROM emotion_log").fetchone()[0] == 0
+    assert [e["data"]["enclosed"] for e in marta.state.events(50) if e["kind"] == "letter_sent"] == [""]     # shaped as her own letters are
     with marta.acting():
         assert others.met(marta.state, wren)
     with wren.acting():
