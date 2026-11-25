@@ -17,9 +17,11 @@ def bird(st, now=None):
 
 
 @pytest.mark.asyncio
-async def test_say_to_unknown_name_is_plain_speech(tmp_path):
+async def test_say_to_unknown_name_is_said_aloud_to_no_one(tmp_path):
+    """Plain speech, said aloud, but the agent hears that no one by that name is here (2026-11-24: Marta and "the men at the door")."""
     s, st, gm, agent = make(tmp_path)
-    assert (await call(agent, "say", text="hello?", to="ghost")).text == "said it"
+    assert (await call(agent, "say", text="hello?", to="ghost")).text == "no one called ghost is here to hear you"
+    assert [e["data"]["text"] for e in st.events(5) if e["kind"] == "say"] == ["hello?"]
 
 
 def test_conversation_with_one_name_and_earlier_lines_in_brief(tmp_path):

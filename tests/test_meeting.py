@@ -446,3 +446,28 @@ def test_one_agents_land_is_its_own_places_as_before(tmp_path):
     m = world_view.map_view(st, s, None)
     assert [(p["key"], p["x"], p["y"], p["coastal"]) for p in m["places"]] == [(p["key"], p["x"], p["y"], p["coastal"]) for p in m["land"]["spots"]]
     assert m["land"]["homes"] == [m["home"]] and m["land"]["seed"] == m["seed"]
+
+
+@pytest.mark.asyncio
+async def test_saying_something_with_no_one_there_says_so(world):
+    """Found on Ashfall (2026-11-24): Marta spent six hours at Ivo's empty lock-up demanding word from "the men at the side door", who
+    don't exist; every line came back "said it". Words spoken with no one to hear them say so, and so do words to someone who isn't here.
+    Someone here (an agent or a character), or a visitor waiting for an answer, hears as before."""
+    wren, ivo = world.agents
+    at(wren, "ruins")
+    at(ivo, "lockup")
+    r = await use(wren, "say", text="Is anyone there?")
+    assert r.text == "said it, but no one is here to hear you" and r.followup is True
+    r = await use(wren, "say", to="the men at the side door", text="Is Ivo hurt?")
+    assert r.text == "no one called the men at the side door is here to hear you" and r.followup is True
+    assert [e["data"]["text"] for e in wren.state.events(10) if e["kind"] == "say"] == ["Is Ivo hurt?", "Is anyone there?"]   # said aloud all the same
+    at(ivo, "ruins")
+    assert (await use(wren, "say", text="Morning, all.")).text == "said it"                  # another agent is here
+    at(ivo, "lockup")
+    wren.state.add_character("Marta", "villager", None, "x", 60, 0, place="ruins")
+    assert (await use(wren, "say", text="Morning, Marta and whoever else.")).text == "said it"  # someone is here
+    wren.state.remove_character(wren.state.find_character("Marta")["id"])
+    wren.ctx.visitor_ids = [1]
+    assert (await use(wren, "say", text="Hello, visitor.")).text == "said it"                   # an answer to a visitor
+    assert (await use(wren, "say", to="Travis", text="Hello, Travis.")).text == "said it"        # by their name, too
+    wren.ctx.visitor_ids = []

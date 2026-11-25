@@ -324,6 +324,11 @@ async def say(ctx: ToolContext, args: dict) -> ToolResult:
     ctx.state.log("say", text=text, to=list(ctx.visitor_ids))
     if ctx.outreach:
         await ctx.outreach.route_reply(text, list(ctx.visitor_ids))  # answers go back the way the message came
+    if args.get("to") and not ctx.visitor_ids:                         # someone who isn't here, or isn't anyone (2026-11-24)
+        return ToolResult(f"no one called {str(args['to']).strip()} is here to hear you", followup=True)
+    here = places.present_at(ctx.state)
+    if not ctx.visitor_ids and not places.company_at(ctx.state, here) and not others.here(here):
+        return ToolResult("said it, but no one is here to hear you", followup=True)
     return ToolResult("said it")
 
 

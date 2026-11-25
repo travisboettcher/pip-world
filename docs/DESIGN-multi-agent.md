@@ -214,6 +214,11 @@ and stalled the server about 5 s every 35 s (failing its health check); it now r
 spent the day's tokens doesn't talk (Pip opened ten one-line talks with Oriel in four minutes after she ran out) and isn't woken by
 being spoken to; the speaker hears they're too worn out today. Carried letters are shaped like the agent's own (`enclosed`), and a
 pixel picture's short rows are filled out with nothing (Tansy had seven of eight refused).
+0.67.2 (2026-11-24): Marta, on Ashfall, took Ivo for the son who left (her persona's lost boy, and the lock-up in what she carried) and
+spent six hours at his empty lock-up demanding word from "the men at the side door". The owner liked the drama and kept her deduction;
+her persona now gives her days to the gate. What the engine fixes: words said with no one to hear them say so ("said it, but no one is
+here to hear you"), and words to someone who isn't here ("no one called ... is here to hear you"), unless a visitor's message waits
+for the answer.
 
 The map's land is the world's (0.63.1; found when one agent's map had mountains and another's none): drawn from the world's seed
 (kept by its first agent, like the places' looks) and every place's spot, the same for all; each agent's map still frames what it

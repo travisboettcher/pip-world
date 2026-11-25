@@ -102,13 +102,14 @@ async def test_pip_is_stopped_from_repeating_a_line_it_has_just_said(tmp_path):
     s, st, gm, agent = make(tmp_path)
     agent.tools["say"] = T.REGISTRY["say"]
     line = "I'll keep the packet dry and feel its weight before I tip it."
-    assert (await call(agent, "say", text=line)).text == "said it"
+    said = lambda r: r.text.startswith("said it")                                                  # alone here: said, to no one
+    assert said(await call(agent, "say", text=line))
     r = await call(agent, "say", text="Thank you, Oriel. " + line)
     assert r.text == "not said: you said that a moment ago. Say something new, ask something, or say goodbye." and r.followup
-    assert (await call(agent, "say", text="Thank you!")).text == "said it" and (await call(agent, "say", text="Thank you!")).text == "said it"
+    assert said(await call(agent, "say", text="Thank you!")) and said(await call(agent, "say", text="Thank you!"))
     st.db.execute("UPDATE events SET ts = ts - ? WHERE kind = 'say'", (3 * HOUR,))
     st.db.commit()
-    assert (await call(agent, "say", text=line)).text == "said it"                                   # hours later, it may come again
+    assert said(await call(agent, "say", text=line))                                                 # hours later, it may come again
 
 
 # --- the neighbor ----------------------------------------------------------------------------------------------------------
