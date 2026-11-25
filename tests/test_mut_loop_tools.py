@@ -204,7 +204,7 @@ def test_a_module_session_tires_only_if_it_is_work(tmp_path):
         st.update_agent(energy=0.8, updated_at=time.time() - 3600, activity="idle")
         st.start_session(0, stage, 60, time.time() + 3600, kind=kind, target="x")
         st.apply_decay()
-        assert st.agent()["energy"] == pytest.approx(0.75, abs=0.001), (stage, kind)
+        assert st.agent()["energy"] == pytest.approx(0.78, abs=0.001), (stage, kind)          # an hour awake: -0.02 (DESIGN-stamina.md)
         assert st.agent()["updated_at"] == pytest.approx(time.time(), abs=5)
 
 
@@ -256,7 +256,7 @@ def test_a_working_module_session_tires_by_the_work_rate(tmp_path):
     st.update_agent(energy=0.8, updated_at=time.time() - 3600, activity="idle")
     st.start_session(0, 1, 60, time.time() + 3600, kind="module", target="x")
     st.apply_decay()
-    assert st.agent()["energy"] == pytest.approx(0.7, abs=0.001)
+    assert st.agent()["energy"] == pytest.approx(0.73, abs=0.001)                             # -0.02 awake, -0.05 working
 
 
 async def test_a_session_of_a_kind_nothing_finishes_just_ends(tmp_path):

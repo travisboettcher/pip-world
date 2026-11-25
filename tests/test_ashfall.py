@@ -402,6 +402,7 @@ def test_ashfall_has_six_agents_and_each_has_a_home_and_a_view(tmp_path):
     assert rests["hester"]["anger"] > rests["sela"].get("anger", 8) and rests["tobin"]["trust"] > rests["hester"]["trust"]   # grumpy, sunny
     assert rests["sela"]["fear"] > rests["tobin"]["fear"] and not rests["wren"] and not rests["ivo"]                         # and anxious
     assert pack.agent_named("marta").was == "Marta" and [a.key for a in pack.agents if a.was] == ["marta"]                    # the gate's villager, become an agent
+    assert {a.key: a.stamina for a in pack.agents} == {"wren": 2_500_000, "ivo": 3_000_000, "hester": 2_000_000, "tobin": 3_000_000, "sela": 2_000_000, "marta": 1_500_000}
     ivo = pack.agent_named("ivo")
     assert ivo.home_place["key"] == "lockup" and pack.persona(ivo).startswith("You are Ivo, a scavenger")
     os.makedirs(tmp_path / "data")

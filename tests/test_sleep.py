@@ -36,7 +36,7 @@ async def test_sleep_tool_works_any_time_but_only_at_home(tmp_path):
     assert "go_to home first" in (await call(agent, "sleep")).text and st.agent()["activity"] != "sleeping"
     st.update_agent(location="workshop")
     r = await call(agent, "sleep")                    # no "not time for bed": Pip may go whenever it likes
-    assert "fall asleep" in r.text and "not time for bed" not in r.text
+    assert "lie down for a nap" in r.text and "not time for bed" not in r.text   # by day it's a nap (DESIGN-stamina.md)
     a = st.agent()
     assert a["activity"] == "sleeping" and float(st.meta("sleep_until")) > time.time()
     assert "already asleep" in (await call(agent, "sleep")).text
@@ -81,7 +81,8 @@ async def test_waking_on_time_and_early(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_only_visitors_wake_a_sleeper(tmp_path):
+async def test_nothing_but_a_forced_tick_wakes_a_sleeper(tmp_path):
+    """Until 2026-11-24 a visitor's message woke a sleeper; the owner: it waits in the inbox until the agent wakes (DESIGN-stamina.md)."""
     s, st, gm, agent = make(tmp_path, sleep=True)
     night_now(s)
     await call(agent, "sleep")
@@ -90,7 +91,10 @@ async def test_only_visitors_wake_a_sleeper(tmp_path):
     with pytest.raises(asyncio.TimeoutError):  # ...and the heartbeat is stretched to the morning
         await asyncio.wait_for(agent._sleep(), timeout=0.3)
     agent.request_wake(urgent=True)  # a visitor
-    assert await asyncio.wait_for(agent._sleep(), timeout=2) == "event"
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(agent._sleep(), timeout=0.3)
+    agent.request_wake(force=True)  # POST /tick
+    assert await asyncio.wait_for(agent._sleep(), timeout=2) == "forced"
 
 
 def test_reflection_runs_once_per_sleep_with_a_fallback(tmp_path):
@@ -116,7 +120,7 @@ def test_perception_gives_period_day_and_a_bed_hint(tmp_path):
     p = agent._perception("timer", [])
     usual = datetime(2000, 1, 1, s.bedtime_hour).strftime("%-I %p").lower()
     assert "It is " in p and f"You usually go to bed around {usual}" in p
-    assert "sleep" in p and "whenever" in p           # sleeping isn't forbidden by day, just not the habit
+    assert "a nap until you're rested" in p or "for the night" in p   # sleeping isn't forbidden by day: a nap, or an early night
 
 
 # --- boundaries of the pure rules ------------------------------------------------
@@ -151,7 +155,7 @@ def test_fall_asleep_records_the_night(tmp_path):
     now = at(23)
     r = sl.fall_asleep(st, s, now)
     a = st.agent()
-    assert r == {"until": sl.next_wake(s, now)}
+    assert r == {"until": sl.next_wake(s, now), "nap": False}
     assert (a["activity"], a["description"]) == ("sleeping", "asleep")
     assert float(st.meta("sleep_started")) == now and float(st.meta("sleep_until")) == r["until"]
     t0 = time.time()
@@ -191,8 +195,9 @@ def test_usual_bedtime_wording(tmp_path):
         s.bedtime_hour, s.wake_hour = bed, (bed + 8) % 24
         day = next(h for h in range(24) if not sl.is_night(s, at(h)))
         assert sl.perception(st, s, at(day)) == [
-            f"It is {sl.period(s, at(day))}; day 1 of your life here. You usually go to bed around {words}, "
-            "but you can sleep whenever you like (you'd wake in the morning)."]
+            f"It is {sl.period(s, at(day))}; day 1 of your life here. You usually go to bed around {words}; "
+            + ("lying down now is a nap until you're rested." if sl.is_nap(s, at(day)) else
+               "you can go to bed now for the night (you'd wake in the morning).")]
 
 
 def test_perception_is_empty_when_sleep_is_off(tmp_path):

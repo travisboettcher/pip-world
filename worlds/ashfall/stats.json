@@ -23,7 +23,7 @@
  "energy": {
   "label": "energy",
   "start": 0.8,
-  "per_hour": -0.05,
+  "per_hour": -0.02,
   "asleep_per_hour": 0.25,
   "resting_per_hour": 0.3,
   "working_per_hour": -0.05,

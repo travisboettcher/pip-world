@@ -31,7 +31,11 @@ RETIRED = ["Otherwise pick an activity you find interesting and commit to it wit
            "or lose interest; don't just restate it.",
            "You have a neighbor who lives nearby. You can walk over to visit them at home (go_to) and talk in person with say (to: their "
            "name); they don't come visiting you. Otherwise you write letters (write_letter), which take hours to arrive each way, and they "
-           "sometimes send a small parcel. Letters from them arrive in your inbox. You can tuck something you own or made into a letter as a gift."]
+           "sometimes send a small parcel. Letters from them arrive in your inbox. You can tuck something you own or made into a letter as a gift.",
+           # Sleep is a nap by day and tiredness comes from what the agent does (DESIGN-stamina.md, 2026-11-24): the sleep page says so.
+           "Days and nights pass here. You can go to bed (sleep) whenever you like, though you usually go around bedtime, and you'll sleep "
+           "until morning: you recover more than resting, and while you sleep your day settles into memory. Visitors can still wake you. You "
+           "don't have to sleep, but you'll feel it if you don't; with plenty of energy you may well prefer to do something else first."]
 SPLIT = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you), in character."
 SPLIT_GUIDE_HALF = "If a visitor left a message, answer them with the say tool (it is the only way they can hear you)."
 SPLIT_CHARACTER_HALF = "Answer visitors in character."
@@ -113,8 +117,8 @@ GATES = [
     (dict(emotions="quiet"), "The world also keeps an emotion state for you"),
     (dict(emotions="off"), "The world also keeps an emotion state for you"),
     (dict(tools=[t for t in ALL if t != "settle"]), "you can `settle` it"),
-    (dict(sleep=False), "Days and nights pass here."),
-    (dict(tools=[t for t in ALL if t != "sleep"]), "Days and nights pass here."),
+    (dict(sleep=False), "Days and nights pass here, and what you do tires you"),
+    (dict(tools=[t for t in ALL if t != "sleep"]), "Days and nights pass here, and what you do tires you"),
     (dict(night_pass="off"), "While you sleep, your sleeping self may look after your plans"),
     (dict(reflect_hour=24), "Each night while you sleep you go over your day"),
     (dict(tools=[t for t in ALL if t != "recall"]), "use recall."),

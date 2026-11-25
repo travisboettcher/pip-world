@@ -103,6 +103,7 @@ class Settings:
     emotion_settle_per_day: int = 3    # times the agent may settle a strong feeling per local day
     bedtime_hour: int = 22             # night runs from bedtime to wake_hour (local time)
     wake_hour: int = 6
+    nap_before_hour: int | None = None # bed before this is a nap until rested (DESIGN-stamina.md); None: two hours before bedtime
     reflect_max_chars: int = 12000     # how much of the day a reflection reads (newest kept)
     neighbor: bool = True              # invent a neighbor who writes letters
     letter_delay_minutes: float = 120  # how long a letter takes each way (+-30%)
@@ -255,6 +256,7 @@ class Settings:
             emotion_settle_per_day=_int("EMOTION_SETTLE_PER_DAY", 3),
             bedtime_hour=_int("BEDTIME_HOUR", 22),
             wake_hour=_int("WAKE_HOUR", 6),
+            nap_before_hour=_int("NAP_BEFORE_HOUR", None) if e("NAP_BEFORE_HOUR") else None,
             reflect_max_chars=_int("REFLECT_MAX_CHARS", 12000),
             neighbor=(e("NEIGHBOR") or "1") not in ("0", "false", "no"),
             letter_delay_minutes=_float("LETTER_DELAY_MINUTES", 120),

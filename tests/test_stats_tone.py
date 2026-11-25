@@ -43,7 +43,7 @@ def test_the_agents_stats_are_its_worlds(wasteland):
     s, st = wasteland
     a = st.agent()
     assert (a["radiation"], a["stamina"], a["food"]) == (0.1, 0.8, 0.9) and S.values(st) == {"radiation": 0.1, "stamina": 0.8, "food": 0.9}
-    assert S.prompt_line(st) == "rads 0.10 (1=dying), stamina 0.80, food 0.90" and S.line(st) == "rads 0.1, stamina 0.8, food 0.9"
+    assert S.prompt_line(st) == "rads 0.10 (1=dying), stamina 0.80 (you feel wide awake), food 0.90" and S.line(st) == "rads 0.1, stamina 0.8, food 0.9"
     assert S.restored_by("eat", s) == ["food"] and S.restored_by("sleep", s) == ["stamina"] and S.tiring(s) == "stamina"
     assert not S.low(st) and not S.tired(st) and S.tired(st, 0.3)
 

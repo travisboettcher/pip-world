@@ -253,8 +253,9 @@ class Agent:
                     self._urgent = False
                     return "forced"
                 if self.pacing.wakes_on_events:
-                    if sleepmod.asleep(self.state) and (not self._urgent or stakes.out(self.state)):
-                        continue  # only a visitor wakes a sleeper (not one out cold); the rest will be there in the morning
+                    if sleepmod.asleep(self.state):
+                        self._urgent = False
+                        continue  # nothing wakes a sleeper, a visitor's message included (the owner, 2026-11-24): it waits for the morning
                     self._urgent = False
                     wait = self.last_tick + self.s.min_tick_interval - time.time()
                     if wait > 0:
@@ -447,7 +448,10 @@ class Agent:
                 if not self._budget_logged:
                     self.state.log("budget_exceeded", **self.state.usage_today())
                     self._budget_logged = True
-                if step:
+                if self.s.sleep and not sleepmod.asleep(self.state):     # spent for the day: it sleeps it off (DESIGN-stamina.md)
+                    r = sleepmod.fall_asleep(self.state, self.s, night=True)
+                    self.state.log("fell_asleep", why="spent", until=r["until"])
+                elif step:
                     self.request_wake()  # follow-up is waiting on budget
                 return
             self._budget_logged = False

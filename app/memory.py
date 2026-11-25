@@ -207,11 +207,11 @@ def material(state, since: float, until: float, max_chars: int) -> tuple[list[st
 
 def due(state, settings, now: float) -> bool:
     failed = float(state.meta("reflection_failed_at") or 0)
-    if now - failed < RETRY_AFTER:
+    if now - failed < RETRY_AFTER or state.budget_exceeded():         # spent for the day: it reflects once the day's budget is back
         return False
     if settings.sleep:
-        if state.agent()["activity"] == "sleeping":  # The agent reflects as it sleeps: once per sleep
-            return state.meta("reflected_sleep") != state.meta("sleep_started")
+        if state.agent()["activity"] == "sleeping":  # The agent reflects as it sleeps: once per night's sleep, not in a nap
+            return state.meta("sleep_kind") != "nap" and state.meta("reflected_sleep") != state.meta("sleep_started")
         # fallback if the agent hasn't slept for a long while: the old fixed hour
         if now - float(state.meta("last_reflection_ts") or 0) < 30 * 3600:
             return False

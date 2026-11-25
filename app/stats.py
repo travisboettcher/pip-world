@@ -22,6 +22,24 @@ def restored_by(action: str, settings=None) -> list[str]:
     return [n for n, d in declared(settings).items() if action in d.get("restored_by", ())]
 
 
+DEFAULT_STAMINA = 2_500_000 # tokens a full bar of the tiring stat holds, unless the agent or the world says (docs/DESIGN-stamina.md)
+
+
+def stamina(state) -> int:
+    """How many tokens a full bar of the agent's tiring stat holds: its own (world.json), else the stat's (stats.json), else the default."""
+    t = tiring(state.s)
+    return state.identity().stamina or (declared(state.s)[t].get("stamina") if t else None) or DEFAULT_STAMINA
+
+
+def spend(state, tokens: int) -> None:
+    """A call's tokens tire the agent who made it: its tiring stat moves toward its bad side by tokens / stamina (never past its floor)."""
+    t = tiring(state.s)
+    if not t or tokens <= 0:
+        return
+    d, a = declared(state.s)[t], state.agent()
+    state.update_agent(**{t: bounded(d, a[t] - good_sign(d) * tokens / stamina(state))})
+
+
 def tiring(settings=None) -> str | None:
     """The stat that work wears down and that tiredness reads (the one marked `tires`), if the world has one."""
     return next((n for n, d in declared(settings).items() if d.get("tires")), None)
@@ -74,10 +92,38 @@ def line(state) -> str:
 
 
 def prompt_line(state) -> str:
-    """The stats for the agent's own prompt: "hunger 0.20 (1=starving), energy 0.90 (0=exhausted)"."""
-    a = state.agent()
-    return ", ".join(f"{d.get('label', n)} {a[n]:.2f}" + (f" ({d['scale']})" if d.get("scale") else "")
-                     for n, d in declared(state.s).items() if n in a)
+    """The stats for the agent's own prompt: "hunger 0.20 (1=starving), energy 0.90 (0=exhausted; you feel wide awake)"."""
+    a, t = state.agent(), tiring(state.s)
+    def note(n, d):
+        bits = ([d["scale"]] if d.get("scale") else []) + ([f"you feel {how_tired(state)}"] if n == t else [])
+        return f" ({'; '.join(bits)})" if bits else ""
+    return ", ".join(f"{d.get('label', n)} {a[n]:.2f}{note(n, d)}" for n, d in declared(state.s).items() if n in a)
+
+
+WIDE_AWAKE = 0.55          # the tiring stat from here up feels wide awake; below `tired_below`, tired; within EXHAUSTED of its floor, exhausted
+EXHAUSTED = 0.02
+
+
+def how_tired(state) -> str | None:
+    """How the agent feels, in words, from its tiring stat (None if the world has none)."""
+    t = tiring(state.s)
+    if not t:
+        return None
+    d, v = declared(state.s)[t], state.agent()[t]
+    rested = v if good_sign(d) > 0 else 1 - v
+    if exhausted(state):
+        return "exhausted"
+    return "tired" if tired(state) else "a little tired" if rested < WIDE_AWAKE else "wide awake"
+
+
+def exhausted(state) -> bool:
+    """At the end of what it can spend: the tiring stat within EXHAUSTED of its floor (DESIGN-stamina.md)."""
+    t = tiring(state.s)
+    if not t:
+        return False
+    d, v = declared(state.s)[t], state.agent()[t]
+    end = d.get("floor", 0.0) if good_sign(d) > 0 else d.get("ceiling", 1.0)
+    return round(abs(v - end), 9) <= EXHAUSTED
 
 
 def tiredness(state) -> float:

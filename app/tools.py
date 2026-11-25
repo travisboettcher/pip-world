@@ -446,6 +446,8 @@ async def go_to_bed(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(f"you're on your way to {places.label(sess['target'])}; you can sleep once you get there")
     note = await stop_working(ctx)
     r = sleepmod.fall_asleep(ctx.state, ctx.settings, now)
+    if r["nap"]:
+        return ToolResult(f"you lie down for a nap; you'll wake rested in about {round((r['until'] - now) / 60)} min{note}.")
     wake = time.strftime("%-I %p", time.localtime(r["until"])).lower()
     return ToolResult(f"you go to bed and fall asleep; you'll sleep until about {wake}{note}.")
 

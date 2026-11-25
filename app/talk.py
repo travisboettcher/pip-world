@@ -64,12 +64,14 @@ async def wait(seconds: float) -> None:
 
 def cut_short(speaker_state, listener_state) -> str | None:
     """Why a talk between two agents can't go on to the next line, if it can't: one has left or fallen asleep, or the one to speak
-    has spent the day's tokens."""
-    from . import sleep as sleepmod
+    is exhausted or has spent the day's tokens."""
+    from . import sleep as sleepmod, stats
     if places.present_at(speaker_state) != places.present_at(listener_state):
         return "parted"
     if sleepmod.asleep(speaker_state) or sleepmod.asleep(listener_state):
         return "asleep"
+    if stats.exhausted(speaker_state):                                    # spent: the talk has worn them out (DESIGN-stamina.md)
+        return "too tired"
     return "budget" if speaker_state.budget_exceeded() else None
 
 

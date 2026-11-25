@@ -33,7 +33,7 @@ def test_a_settings_world_and_its_overrides(waste, tmp_path):
     s, _ = waste
     assert set(S.declared(s)) == {"radiation", "stamina"} and set(S.declared()) == {"hunger", "energy"}
     over = S.declared(Settings(stats={"hunger": {"per_hour": 0.5}}))
-    assert over["hunger"]["per_hour"] == 0.5 and over["hunger"]["start"] == 0.2 and over["energy"]["per_hour"] == -0.05
+    assert over["hunger"]["per_hour"] == 0.5 and over["hunger"]["start"] == 0.2 and over["energy"]["per_hour"] == -0.02
     assert S.restored_by("rest", s) == ["stamina"] and S.restored_by("rest") == ["energy"]
     assert S.tiring(s) == "stamina" and S.tiring(pack(tmp_path, "calm", CALM)) is None
 
@@ -62,7 +62,7 @@ def test_bounds():
 def test_a_state_reads_its_own_world(waste):
     s, st = waste
     assert S.values(st) == {"radiation": 0.1, "stamina": 0.8} and S.line(st) == "rads 0.1, stamina 0.8"
-    assert S.prompt_line(st) == "rads 0.10, stamina 0.80" and not S.low(st)
+    assert S.prompt_line(st) == "rads 0.10, stamina 0.80 (you feel wide awake)" and not S.low(st)
     st.update_agent(radiation=0.6)
     assert S.low(st) and S.tiredness(st) == 0.8 and not S.tired(st) and S.tired(st, 0.39) and not S.tired(st, 0.4)
 

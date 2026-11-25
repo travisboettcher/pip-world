@@ -341,6 +341,8 @@ def test_pips_world_has_its_neighbours_as_agents():
     assert any(i["name"] == "brass and wire tin" for i in p.agent_named("oriel").starting_items)
     assert p.agent_named("tansy").kind == "a beekeeper and painter" and "sketchbook" in {i["name"] for i in p.agent_named("tansy").starting_items}
     assert "you draw all the time" in p.persona(p.agent_named("tansy"))                          # the owner: one who draws (2026-11-23)
+    assert {a.key: a.stamina for a in p.agents} == {"pip": 2_500_000, "oriel": 1_200_000, "abel": 2_000_000, "tansy": 3_000_000, "lio": 2_500_000}
+    assert min(p.agents, key=lambda a: a.stamina).key == "oriel"                                  # the owner: she's old, she tires easily
     rest = {a.key: dict(a.temperament) for a in p.agents}
     assert rest["tansy"]["joy"] > rest["oriel"]["joy"] and rest["lio"]["sadness"] > rest["tansy"].get("sadness", 15) and not rest["pip"]
     with W.acting(p.agent):

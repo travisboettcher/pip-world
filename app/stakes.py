@@ -58,8 +58,9 @@ def weak(state) -> bool:
 
 
 def allowed(state, tool: str) -> bool:
-    """Whether the agent can use a tool as it is: anything, unless weak (then only eating, resting, sleeping, talking and thinking)."""
-    return tool in WEAK_TOOLS or not weak(state)
+    """Whether the agent can use a tool as it is: anything, unless weak or exhausted (DESIGN-stamina.md): then only eating, resting,
+    sleeping, talking and thinking."""
+    return tool in WEAK_TOOLS or not (weak(state) or stats_mod.exhausted(state))
 
 
 async def _stop(state, settings) -> None:

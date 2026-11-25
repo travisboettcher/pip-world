@@ -16,7 +16,8 @@
     "bottom": "brown",
     "accessory": "scarf"
    },
-   "role": "survivor"
+   "role": "survivor",
+   "stamina": 2500000
   },
   {
    "key": "ivo",
@@ -50,7 +51,8 @@
      "sleep"
     ]
    },
-   "role": "scavenger"
+   "role": "scavenger",
+   "stamina": 3000000
   },
   {
    "key": "hester",
@@ -95,7 +97,8 @@
      "sleep"
     ]
    },
-   "role": "villager"
+   "role": "villager",
+   "stamina": 2000000
   },
   {
    "key": "tobin",
@@ -141,7 +144,8 @@
      "sleep"
     ]
    },
-   "role": "villager"
+   "role": "villager",
+   "stamina": 3000000
   },
   {
    "key": "sela",
@@ -186,7 +190,8 @@
      "sleep"
     ]
    },
-   "role": "villager"
+   "role": "villager",
+   "stamina": 2000000
   },
   {
    "key": "marta",
@@ -232,7 +237,8 @@
      "sleep"
     ]
    },
-   "role": "villager"
+   "role": "villager",
+   "stamina": 1500000
   }
  ],
  "modules": [

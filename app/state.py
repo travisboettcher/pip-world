@@ -1780,6 +1780,7 @@ class State:
                 (day, input_tokens, output_tokens),
             )
             self.db.commit()
+        stats_mod.spend(self, input_tokens + output_tokens)            # what it cost tires whoever made the call (DESIGN-stamina.md)
 
     def usage_today(self) -> dict:
         with self.lock:

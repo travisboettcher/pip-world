@@ -11,7 +11,8 @@
    "role": "maker",
    "knows": [
     "oriel"
-   ]
+   ],
+   "stamina": 2500000
   },
   {
    "key": "oriel",
@@ -99,7 +100,8 @@
       "food_value": 0.4
      }
     }
-   ]
+   ],
+   "stamina": 1200000
   },
   {
    "key": "abel",
@@ -169,7 +171,8 @@
      "kind": "food",
      "description": "a heel of brown bread"
     }
-   ]
+   ],
+   "stamina": 2000000
   },
   {
    "key": "tansy",
@@ -262,7 +265,8 @@
       "food_value": 0.4
      }
     }
-   ]
+   ],
+   "stamina": 3000000
   },
   {
    "key": "lio",
@@ -327,7 +331,8 @@
      "kind": "food",
      "description": "smoked herring wrapped in paper"
     }
-   ]
+   ],
+   "stamina": 2500000
   }
  ],
  "modules": [
