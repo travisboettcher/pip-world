@@ -188,8 +188,12 @@ async def test_a_message_waits_for_a_sleeper_to_wake(tmp_path):
     """The owner (2026-11-24): a message, the owner's too, waits in the inbox until the agent wakes. A forced tick still wakes it."""
     import asyncio
     from app import sleep as sl
+    import time
+    from datetime import datetime
     s, st, gm, agent = make(tmp_path, sleep=True)
-    sl.fall_asleep(st, s, at(23))
+    now = time.time()                                                                          # the loop waits on the real clock, so the night must start from it:
+    s.wake_hour = (datetime.fromtimestamp(now).hour - 1) % 24                                  # a fixed bedtime's morning passes, and then the sleeper wakes on its own
+    sl.fall_asleep(st, s, now, night=True)                                                     # asleep until a morning nearly a day away, whenever this runs
     agent.pacing.next_delay = lambda now, last: 0.05
     agent.receive("Are you awake?", "Travis")                                                  # a visitor's message
     with pytest.raises(asyncio.TimeoutError):
