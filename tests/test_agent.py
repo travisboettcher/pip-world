@@ -596,10 +596,10 @@ async def test_timed_rest_sleeps_through_the_heartbeat(tmp_path):
 async def test_rest_default_is_until_recovered_and_capped(tmp_path):
     import time
     s, st, backend, agent = make(tmp_path, [LLMResponse("", [ToolCall("1", "rest", {})], Usage(1, 1))])
-    st.update_agent(energy=0.1)
+    st.update_agent(energy=0.15)                                                             # tired, not exhausted (that dozes off: DESIGN-stamina.md)
     await agent.tick("test")
     mins = (float(st.meta("rest_until")) - time.time()) / 60
-    assert mins == pytest.approx(min(240, 0.9 / 0.30 * 60), abs=1)                          # Pip's world rests at 0.30 an hour
+    assert mins == pytest.approx(min(240, 0.85 / 0.30 * 60), abs=1)                         # Pip's world rests at 0.30 an hour
 
 
 # --- a message Pip read but didn't answer gets one more look ----------------------------------------------

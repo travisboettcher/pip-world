@@ -95,12 +95,19 @@ def say(state, other, text: str) -> str:
     meet(state, other)
     from . import talk
     talking = bool(_world) and (partner := _world[0].talking_with(other)) is not None and partner.identity.key == me.key
+    from . import sleep as sleepmod, stats
     spent = other.state.budget_exceeded()                                   # the day's tokens gone: heard, but no talk until tomorrow
-    other.receive(text, me.name, source="agent", wake=not (talk.lately(state, other) or talking or spent))   # after a talk, or in one: not woken
+    asleep, tired = sleepmod.asleep(other.state), stats.exhausted(other.state)
+    other.receive(text, me.name, source="agent", wake=not (talk.lately(state, other) or talking or spent or asleep or tired))   # not woken
     state.log("say", text=text, to=[], to_name=other.identity.name)
+    heard = f"; {other.identity.they} heard you"
+    if asleep:
+        return f"{other.identity.name} is asleep{heard}"
     if spent:
-        return f"{other.identity.name} is too worn out to talk today; {other.identity.they} heard you"
-    return f"said it to {other.identity.name}; {other.identity.they} heard you"
+        return f"{other.identity.name} is too worn out to talk today{heard}"
+    if tired:
+        return f"{other.identity.name} is too tired to talk now{heard}"
+    return f"said it to {other.identity.name}{heard}"
 
 
 def hand(state, other, item: dict | None, qty: int, coins: int) -> str:

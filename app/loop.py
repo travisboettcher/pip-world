@@ -423,6 +423,10 @@ class Agent:
         if stakes.out(self.state):                # out cold: nothing until the agent comes to (a visitor's words wait)
             return
         sleepmod.wake_up(self.state)
+        if self.s.sleep and stats_mod.exhausted(self.state) and not sleepmod.asleep(self.state):   # spent and pushing on: it dozes off
+            r = sleepmod.fall_asleep(self.state, self.s, doze=True)                                # where it is (DESIGN-stamina.md)
+            self.state.log("fell_asleep", why="exhausted", until=r["until"], nap=r["nap"])
+            return
         await self.finish_work()  # the heartbeat can land right as a session ends: show its result now
 
         inbox = self.state.pending_inbox()
@@ -576,9 +580,10 @@ class Agent:
     async def _talk_with(self, other: "Agent") -> bool:
         """A talk with another agent who is here and spoke to this one (talk.py, "between agents"): started as a task of its own, which
         takes time (`_hold_talk`), so this turn is over at once; its first line takes in what the other said. False if the other couldn't be had (mid-turn): the words are answered in a
-        world turn, the old way, as they are when either has spent the day's tokens (no talk: it would end before a word)."""
-        if self.state.budget_exceeded() or other.state.budget_exceeded():
-            return False
+        world turn, the old way, as they are when either has spent the day's tokens, is asleep or is exhausted (no talk: it would end
+        before a word, again and again: Tobin opened 1,547 with a sleeping Hester on 2026-11-25)."""
+        if any(a.state.budget_exceeded() or sleepmod.asleep(a.state) or stats_mod.exhausted(a.state) for a in (self, other)):
+            return False                                                 # no talk with one spent, asleep or exhausted (2026-11-25)
         try:
             await asyncio.wait_for(other.talking.acquire(), talk.LOCK_WAIT)
         except asyncio.TimeoutError:

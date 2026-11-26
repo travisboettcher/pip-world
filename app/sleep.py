@@ -58,13 +58,13 @@ def nap_until(state, settings, now: float) -> float:
     return now + min(max(to_go / rate * 60, NAP_MINUTES[0]), NAP_MINUTES[1]) * 60
 
 
-def fall_asleep(state, settings, now: float | None = None, night: bool = False) -> dict:
+def fall_asleep(state, settings, now: float | None = None, night: bool = False, doze: bool = False) -> dict:
     """The agent goes to bed: a nap until rested by day, the night's sleep until morning after the evening's cut-off (or whenever,
-    with `night`: spent for the day). Returns when it will wake, and whether it is a nap."""
+    with `night`: spent for the day; `doze`: exhausted, where it is). Returns when it will wake, and whether it is a nap."""
     now = now or time.time()
     nap = not night and is_nap(settings, now)
     until = nap_until(state, settings, now) if nap else next_wake(settings, now)
-    state.update_agent(activity="sleeping", description="napping" if nap else "asleep")
+    state.update_agent(activity="sleeping", description="dozing" if doze else "napping" if nap else "asleep")
     state.set_meta(sleep_started=now, sleep_until=until, sleep_kind="nap" if nap else "night")
     return {"until": until, "nap": nap}
 

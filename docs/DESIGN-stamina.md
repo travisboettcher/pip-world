@@ -49,6 +49,17 @@ Replayed on Monday's calls (no naps taken, to see where they would come): Oriel,
 exhausted at 10:59 (she hit her 2M budget at 14:21 instead); Pip, on his heaviest day, tired at 12:47 and exhausted at 14:22; Abel and
 Lio, on ordinary days, end the afternoon at 0.3-0.4, tired by the evening.
 
+## Ashfall's first day (2026-11-25), and 0.68.1
+Naps came and were short (Hester 17:32 for two hours, then 38 minutes, to bed at 20:10; Marta a nap at 18:32, to bed at 20:32; Ivo to
+bed at 22:02, where before everyone went at about 17:30), naps brought no reflection, ordinary days fitted their budgets (1.6-1.7M),
+and "too tired" ended talks. Two loops:
+- Tobin, at Hester's while she napped and then slept, had words waiting for her: every turn of his opened a talk that ended at once
+  ("asleep"), 1,547 of them from 17:32 to midnight, and he never went to bed. Wren, exhausted from 15:34, had 44 talks with Sela end
+  "too tired" before a word. Now no talk starts with one asleep or exhausted: the words are answered in a turn of the other's, and
+  speaking to them says so ("is asleep", "is too tired to talk now").
+- Exhausted only limited what Wren could do, not whether she went on: 43 lines and 35 activities later she was out of budget at
+  16:40. Now an exhausted agent who is awake dozes off where it is, without a call to the model: a nap by day, the night by night.
+
 ## What changes in the engine (generic)
 - `stats.py`: the tiring stat's drain from a call's tokens (`spend(state, tokens)`, called where usage is added); `stamina` from the
   agent or the stat.

@@ -177,6 +177,7 @@ async def test_an_agent_at_its_days_budget_sleeps_until_morning(tmp_path, monkey
     assert st.agent()["activity"] == "sleeping" and st.meta("sleep_kind") == "night"
     assert float(st.meta("sleep_until")) == sl.next_wake(s, float(st.meta("sleep_started")))
     assert [e["kind"] for e in st.events(5)][:2] == ["fell_asleep", "budget_exceeded"] and agent.backend.calls == []
+    assert st.events(1)[0]["data"] == {"why": "spent", "until": float(st.meta("sleep_until"))}
     from app import memory as mem
     assert not mem.due(st, s, float(st.meta("sleep_started")) + 60)                         # no reflection it can't pay for
     monkeypatch.setattr(s, "daily_token_budget", 10_000)
@@ -242,3 +243,93 @@ def test_a_nap_in_a_world_whose_tiredness_counts_up_or_has_no_sleep_rate(tmp_pat
     W.set_active(W.load(s))
     with wren.acting():
         assert sl.nap_until(wren.state, s, 1000.0) == 1000.0 + 120 * 60                        # no sleep rate: the longest nap
+
+
+# --- found on Ashfall's first day of it (2026-11-25) ---------------------------------------------------------------------------------
+def awake_by_day(s):
+    """The real clock's hour made mid-morning: bedtime three hours off, waking an hour ago (so going to bed now is a nap)."""
+    import time
+    from datetime import datetime
+    h = datetime.fromtimestamp(time.time()).hour
+    s.bedtime_hour, s.wake_hour = (h + 3) % 24, (h - 1) % 24
+
+
+def world_of_two(tmp_path, **kw):
+    d = two(tmp_path)
+    (d / "stats.json").write_text(json.dumps({"energy": {"label": "energy", "start": 0.9, "tires": True, "floor": 0.1, "good": "high",
+                                                         "asleep_per_hour": 0.25}}))
+    os.makedirs(tmp_path / "data")
+    s = Settings(world_pack=str(d), db_path=str(tmp_path / "data" / "agent.db"), persona_path="/x", pacing="manual", talk_scenes="on",
+                 tools=["say", "go_to", "sleep", "rest"], reflect_hour=99, min_tick_interval=0, sleep=True, **kw)
+    w = loop.build(s, FakeBackend())
+    for a in w.agents:
+        a.state.update_agent(location="ruins")
+        awake_by_day(a.s)
+    return w
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["asleep", "exhausted"])
+async def test_no_talk_with_one_who_is_asleep_or_exhausted(tmp_path, restore, state):
+    """Tobin, at Hester's while she slept, opened 1,547 talks with her in six hours, each over at once ("asleep"), and never went to bed
+    himself; Wren, exhausted, had 44 talks with Sela end "too tired" before a word. One asleep or exhausted doesn't talk: what they were
+    told is answered in a turn of the other's, and whoever speaks to them hears why."""
+    from tests.test_agent_talk import opens, turn, QUIET
+    w = world_of_two(tmp_path)
+    wren, ivo = w.agents
+    opens(ivo, wren, "Still up?")                                                              # his words, waiting for her
+    if state == "asleep":
+        ivo.state.update_agent(activity="sleeping")
+    else:
+        ivo.state.update_agent(energy=0.1)
+    wren.backend.script = [QUIET]
+    await turn(wren)
+    assert not [e for e in wren.state.events(20) if e["kind"] == "talk"] and w.talks == {}
+    turn_seen = wren.backend.calls[-1]["messages"][0]["content"]
+    assert "Woke because" in turn_seen and "Ivo (here with you) said: Still up?" in turn_seen                # her own turn answers it
+    ivo._wake.clear()
+    with wren.acting():
+        said = others_say(wren, ivo, "Are you awake?")
+    assert said == ("Ivo is asleep; he heard you" if state == "asleep" else "Ivo is too tired to talk now; he heard you")
+    assert not ivo._wake.is_set()
+
+
+def others_say(a, b, text):
+    from app import others
+    return others.say(a.state, b, text)
+
+
+@pytest.mark.asyncio
+async def test_an_exhausted_agent_who_pushes_on_dozes_off_where_it_is(tmp_path, restore):
+    """Wren, exhausted from 15:34, went on taking turns (43 lines, 35 activities, 9 short rests) until her budget ran out at 16:40.
+    Exhausted and awake, an agent dozes off where it is, without a call to the model: a nap by day, the night's sleep by night."""
+    from app import sleep as sl
+    w = world_of_two(tmp_path)
+    wren, _ = w.agents
+    wren.state.update_agent(energy=0.1, location="ruins")                                     # away from home: it dozes where it is
+    wren.backend.script = []
+    with wren.acting():
+        await wren.tick("timer")
+    a = wren.state.agent()
+    assert a["activity"] == "sleeping" and a["location"] == "ruins" and wren.state.meta("sleep_kind") == "nap"
+    assert wren.backend.calls == [] and a["description"] == "dozing"
+    assert [e["data"] for e in wren.state.events(5) if e["kind"] == "fell_asleep"] == [
+        {"why": "exhausted", "until": float(wren.state.meta("sleep_until")), "nap": True}]
+    assert float(wren.state.meta("sleep_until")) == pytest.approx(float(wren.state.meta("sleep_started")) + 120 * 60)   # the longest nap
+    wren.state.update_agent(activity="idle", energy=0.5)
+    wren.backend.script = [__import__("tests.test_agent_talk", fromlist=["QUIET"]).QUIET]
+    with wren.acting():
+        await wren.tick("timer")
+    assert wren.state.agent()["activity"] != "sleeping" and len(wren.backend.calls) == 1             # tired is not exhausted: a turn
+
+
+@pytest.mark.asyncio
+async def test_without_day_and_night_a_spent_agent_just_stops(tmp_path, monkeypatch):
+    s, st, gm, agent = make(tmp_path, sleep=False)
+    monkeypatch.setattr(s, "daily_token_budget", 100)
+    st.add_usage(80, 30)
+    st.update_agent(energy=0.1)                                                                # exhausted too: no bed to doze into
+    agent.backend.script = []
+    await agent.tick("timer")
+    assert st.agent()["activity"] != "sleeping" and agent.backend.calls == []
+    assert [e["kind"] for e in st.events(5)][:1] == ["budget_exceeded"]
